@@ -5,10 +5,6 @@ middle-out programming<sup>[1](#middle-out-def)</sup><a name="middle-out"></a> i
 
 We have failed to approach our programming languages and library implementations with the knowledge and results gained from the first language abstraction experiments: that by building upon a series of linearly-declared instructions with increased granularity increases productivity and eases analysis, implementation, composition, extensibility, modularity, generation, optimization, and execution. I hope to show that complex libraries should always be written in a style whose functionality can be subsumed and optionally overwritten. 
 
-## Naming
-
-While `mop` is meant as a solution to this problem, the name is simply an homage to MP Ward's work on Language-oriented programming. Thus, this library could similarly be named `lomop` or language-oriented middle-out programming.
-
 ## Solution
 
 Towards this goal, the middle-out approach attempts to reify the concept of designing programs as the granular composition of DSLs. `mop` declares the machinery for defining DSLs as free monadic algebras paired with cofree comonadic coalgebras. This library exists as a utility layer for modules written in this modular style as well as as a guide for the generic approach to library design that this style entails. Thus, the style of development implied by middle-out programming is the production of a problem-specific DSL built as the composition of new and existing DSLs. 
@@ -32,6 +28,10 @@ The plan for now is:
 1. Experiments in combining instruction sets. 
 1. Experiments in styles of testing.
 1. Experiments in optimization of free monadic instruction sets.
+
+## Naming
+
+While `mop` is meant as a solution to this problem, the name is simply an homage to MP Ward's work on Language-oriented programming. Thus, this library could similarly be named `lomop` or language-oriented middle-out programming.
 
 ### References
 
