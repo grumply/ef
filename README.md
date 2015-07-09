@@ -15,7 +15,7 @@ Towards this goal, the middle-out approach attempts to reify the concept of desi
 
 For modularity, the pairing of instructions with interpreters is class-based for overloading. That is, if you want to swap out an interpreter for an individual instruction in your domain you may easily overlap its existing instance with a custom-designed interpreter and pair them up.
 
-<about optimization>
+For performance, DSLs may be optimized before being paired with a coalgebraic interpreter for execution. The chances for optimization of a domain should be unbounded and guaranteed as opposed to that of RULES pragmas. 
 
 ## Past
 
