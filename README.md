@@ -17,6 +17,8 @@ For modularity, the pairing of instructions with interpreters is class-based for
 
 For performance, DSLs may be optimized before being paired with a coalgebraic interpreter for execution. The chances for optimization of a domain should be unbounded and guaranteed as opposed to that of RULES pragmas. 
 
+For purity and optimizability, effectful operations should be pushed to the bottom of the interpreter - instead of being effectful, non-effectfully produce a series of instructions that can be executed in an effectful context. This can maintain the purity of your stack which improves chances for optimization. 
+
 ## Past
 
 This library came about as a realization of the need for, and capabilities implied by, the production of libraries as DSLs with instances of the free monad. This realization came shortly before finding Dave Laing's excellent series of articles titled 'Coproducts for free and products for cofree' which cemented the desire to jump in and the recognition of the beautiful duality between free monadic algebras and cofree comonadic coalgebras.
