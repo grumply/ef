@@ -24,15 +24,21 @@
 
 > class (Functor sub,Functor sup) => sub :<: sup where
 >   inj :: sub a -> sup a
+>   prj :: sup a -> Maybe (sub a)
 
 > instance Functor f => f :<: f where
 >   inj = id
+>   prj = Just
 
 > instance (Functor f,Functor g) => f :<: (f :+: g) where
 >   inj = InL
+>   prj (InL f) = Just f
+>   prj _ = Nothing
 
 > instance {-# OVERLAPS #-} (Functor f,Functor g,Functor h,f :<: g) => f :<: (h :+: g) where
 >   inj = InR . inj
+>   prj (InL _) = Nothing
+>   prj x = prj x
 
 > data Product f g a = Product (f a) (g a)
 >   deriving (Functor)
