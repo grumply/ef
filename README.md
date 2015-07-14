@@ -1,19 +1,19 @@
 # mop
 middle-out programming<sup>[1](#middle-out-def)</sup><a name="middle-out"></a> in Haskell. 
 
-## Argument
+This library and its dependents mainly exist as a playground for paired, extensible, composable DSL/interpreter implementations. 
 
-We have failed to approach our programming languages and library implementations with the knowledge and results gained from the first language abstraction experiments: that by building upon a series of linearly-declared instructions with increased granularity increases productivity and eases analysis, implementation, composition, extensibility, modularity, generation, optimization, and execution. I hope to show that complex libraries should always be written in a style whose functionality can be subsumed and optionally overwritten. 
+## Mission Statement
+
+We have failed to approach our programming languages and library implementations with the knowledge and results gained from the first language abstraction experiments: that by building upon a series of linearly-declared instructions with increased granularity increases productivity and eases analysis, implementation, composition, extensibility, modularity, generation, optimization, and execution; that complex libraries should always be written in a style whose functionality can be subsumed and optionally overwritten. 
 
 ## Solution
 
-Towards this goal, the middle-out approach attempts to reify the concept of designing programs as the granular composition of DSLs. `mop` declares the machinery for defining DSLs as free monadic algebras paired with cofree comonadic coalgebras. This library exists as a utility layer for modules written in this modular style as well as as a guide for the generic approach to library design that this style entails. Thus, the style of development implied by middle-out programming is the production of a problem-specific DSL built as the composition of new and existing DSLs. 
+Towards this goal, the middle-out approach attempts to reify the concept of designing programs as the granular composition of DSLs. `mop` declares the machinery for defining DSLs as free monadic algebras paired with cofree comonadic coalgebras. This library exists as a utility layer for modules written in this modular style as well as as a guide for the generic approach to library design that this style entails. Thus, the style of development implied by middle-out programming is the production of a problem-specific DSL built as the composition of new and existing DSLs as well as a problem-specific interpreter built as the composition of new and existing interpreters.
 
 For modularity, the pairing of instructions with interpreters is class-based for overloading. That is, if you want to swap out an interpreter for an individual instruction in your domain you may easily overlap its existing instance with a custom-designed interpreter and pair them up.
 
-For performance, DSLs may be optimized before being paired with a coalgebraic interpreter for execution. The chances for optimization of a domain should be unbounded and guaranteed as opposed to that of RULES pragmas. 
-
-For purity and optimizability, effectful operations should be pushed to the bottom of the interpreter - instead of being effectful, non-effectfully produce a series of instructions that can be executed in an effectful context. This can maintain the purity of your stack which improves chances for optimization. 
+For performance, DSLs may be optimized before being paired with a coalgebraic interpreter for execution. The chances for optimization of a domain should be unbounded and guaranteed as opposed to that of RULES pragmas. That is, custom optimization passes for a free algebra that is defined as the composition of two other algebras is possible.
 
 ## Past
 
@@ -31,7 +31,7 @@ The plan for now is:
 
 ## Naming
 
-While `mop` is meant as a solution to this problem, the name is simply an homage to MP Ward's work on Language-oriented programming. Thus, this library could similarly be named `lomop` or language-oriented middle-out programming.
+While `mop` is meant as a solution to this problem, the name is simply an homage to MP Ward's work on Language-oriented programming. Thus, this library could similarly be named `lomop` or `language-oriented middle-out programming`.
 
 ### References
 
