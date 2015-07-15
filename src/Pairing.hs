@@ -1,14 +1,15 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE UndecidableInstances   #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeOperators          #-}
 module Pairing (
       Pairing(..)
     , pairEffect
     , pairEffect'
     , PairingM(..)
     , pairEffectM
+    , pairEffectM'
     ) where
 
 import           Control.Comonad              (Comonad, extract)

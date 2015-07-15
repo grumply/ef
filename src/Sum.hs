@@ -1,4 +1,3 @@
-{-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE DeriveFunctor          #-}
 {-# LANGUAGE TemplateHaskell        #-}

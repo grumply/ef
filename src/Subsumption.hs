@@ -7,20 +7,13 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE DeriveFunctor          #-}
 {-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE UndecidableInstances   #-}
 module Subsumption ((:<:), inj, prj) where
 
-import           Pairing        (Pairing (..))
 import           Sum
-import           Product
-
-import           Control.Applicative (liftA2)
 
 import           Data.Proxy
-
-import           Language.Haskell.TH.Syntax
 
 data Crumbs = Here | L Crumbs | R Crumbs
 
