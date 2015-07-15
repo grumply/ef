@@ -24,8 +24,10 @@ import Control.Comonad.Env      as Export
 import Control.Comonad.Identity as Export
 import Control.Comonad.Traced   as Export hiding (Sum(..),Product(..))
 
-import Product as Export
-import Pairing as Export
+import Sum         as Export
+import Product     as Export
+import Subsumption as Export
+import Pairing     as Export
 
 import Language.Haskell.TH.Syntax
 

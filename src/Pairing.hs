@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE TypeOperators #-}
 module Pairing (
       Pairing(..)
     , pairEffect
@@ -16,6 +17,9 @@ import           Control.Monad.Trans.Free     (FreeF (..), FreeT, runFreeT)
 import           Data.Functor.Identity        (Identity (..))
 import qualified Control.Monad.Free as Free
 import qualified Control.Comonad.Cofree as Cofree
+
+import           Sum
+import           Product
 
 class Pairing f g | f -> g, g -> f where
   pair :: (a -> b -> r) -> f a -> g b -> r
@@ -32,6 +36,13 @@ instance Pairing ((->) a) ((,) a) where
 instance Pairing f g => Pairing (Cofree.Cofree f) (Free.Free g) where
    pair p (a Cofree.:< _) (Free.Pure x) = p a x
    pair p (_ Cofree.:< fs) (Free.Free gs) = pair (pair p) fs gs
+
+instance (Pairing f f',Pairing g g') => Pairing (f :+: g) (f' :*: g') where
+  pair p (Inl x) (Product a _) = pair p x a
+  pair p (Inr x) (Product _ b) = pair p x b
+instance (Pairing f f',Pairing g g') => Pairing (f :*: g) (f' :+: g') where
+  pair p (Product a _) (Inl x) = pair p a x
+  pair p (Product _ b) (Inr x) = pair p b x
 
 pairEffect :: (Pairing f g, Functor f, Functor g, Comonad w, Monad m)
            => (a -> b -> r) -> CofreeT f w a -> FreeT g m b -> m r
