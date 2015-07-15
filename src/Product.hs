@@ -9,6 +9,7 @@
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE DeriveFunctor          #-}
+{-# LANGUAGE TemplateHaskell        #-}
 module Product (
       (:+:)(..)
     , (:<:)
@@ -23,12 +24,19 @@ import           Control.Applicative (liftA2)
 
 import           Data.Proxy
 
+import           Language.Haskell.TH.Syntax
+
 data (f :+: g) x = Inl (f x) | Inr (g x)
   deriving Functor
+instance (Lift (f a),Lift (g a)) => Lift ((:+:) f g a) where
+  lift (Inl fa) = [| Inl fa |]
+  lift (Inr ga) = [| Inr ga |]
 
 data Crumbs = Here | L Crumbs | R Crumbs
 
+
 data Res = Found Crumbs | NotFound | Ambiguous
+
 
 type family Elem e f :: Res where
   Elem e e         = 'Found 'Here
@@ -73,6 +81,8 @@ type f :<: g = Subsume (Elem f g) f g
 
 data (f :*: g) a = Product (f a) (g a)
   deriving Functor
+instance (Lift (f a), Lift (g a)) => Lift ((:*:) f g a) where
+  lift (Product x y) = [| Product x y |]
 
 (*:*) :: (Functor f,Functor g) => (a -> f a) -> (a -> g a) -> a -> (f :*: g) a
 (*:*) = liftA2 Product
