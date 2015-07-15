@@ -28,7 +28,6 @@ import Product as Export
 import Pairing as Export
 
 import Language.Haskell.TH.Syntax
-import Language.Haskell.TH.Lift
 
 instance (Lift (f b),Lift a) => Lift (FreeF f a b) where
   lift (Pure x) = [| Pure x |]

@@ -34,9 +34,7 @@ instance (Lift (f a),Lift (g a)) => Lift ((:+:) f g a) where
 
 data Crumbs = Here | L Crumbs | R Crumbs
 
-
 data Res = Found Crumbs | NotFound | Ambiguous
-
 
 type family Elem e f :: Res where
   Elem e e         = 'Found 'Here
