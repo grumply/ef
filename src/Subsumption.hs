@@ -19,7 +19,7 @@ data Crumbs = Here | L Crumbs | R Crumbs
 
 data Res = Found Crumbs | NotFound | Ambiguous
 
--- I suspect a 'type familiy Elem e l r' with :+: defined in terms of a
+-- I suspect a 'type familiy Elem l r' with :+: defined in terms of a
 -- terminating Void type would get rid of the undecidable instances.
 type family Elem e f :: Res where
   Elem e e         = 'Found 'Here

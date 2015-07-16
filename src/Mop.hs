@@ -3,11 +3,14 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-
-Product and Pairing are the work of Dave Laing and his cofun
-series on github at https://github.com/dalaing/cofun
+Product and Pairing were largely the work of Dave Laing and his cofun
+series on github at https://github.com/dalaing/cofun and Swierstra's
+Data Types a la Carte.
 
-Only minor modifications have been performed to conform to the deprecation of
-the OverlappingInstances pragma in GHC 7.10
+Modifications have been made to Subsumption to integrate a blog post that
+described a weaker version of what compdata implements. I have been
+unable to find it again for attribution. If you've seen the blog post,
+please send me an email to sean@grump.ly
 -}
 
 module Mop (module Export) where
@@ -28,6 +31,7 @@ import Sum         as Export
 import Product     as Export
 import Subsumption as Export
 import Pairing     as Export
+import Optimize    as Export
 
 import Language.Haskell.TH.Syntax
 
