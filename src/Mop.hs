@@ -5,12 +5,9 @@
 {-
 Product and Pairing were largely the work of Dave Laing and his cofun
 series on github at https://github.com/dalaing/cofun and Swierstra's
-Data Types a la Carte.
-
-Modifications have been made to Subsumption to integrate a blog post that
-described a weaker version of what compdata implements. I have been
-unable to find it again for attribution. If you've seen the blog post,
-please send me an email to sean@grump.ly
+Data Types a la Carte. Matthew Pickering's mpickering.github.io blog
+had a wonderful post about a weaker version of compdata's subsumption/
+dependency injection type families that was largely integrated.
 -}
 
 module Mop (module Export) where
