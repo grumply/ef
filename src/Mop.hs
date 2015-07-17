@@ -29,6 +29,7 @@ import Product     as Export
 import Subsumption as Export
 import Pairing     as Export
 import Optimize    as Export
+import Synonyms    as Export
 
 import Language.Haskell.TH.Syntax
 
