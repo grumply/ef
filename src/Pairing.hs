@@ -22,6 +22,9 @@ import qualified Control.Comonad.Cofree as Cofree
 import           Sum
 import           Product
 
+import           Control.Category
+import           Prelude hiding ((.),id)
+
 class Pairing f g | f -> g, g -> f where
   pair :: (a -> b -> r) -> f a -> g b -> r
 
