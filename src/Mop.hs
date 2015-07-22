@@ -52,4 +52,4 @@ showF (Free fb) = show fb
 showF (Pure a) = show a
 
 object = pairEffect (\_ b -> b) . flip coiterT (Identity id)
-object' = pairEffect' (\_ b -> b) . flip coiterT (Identity (return ())
+object' = pairEffect' (\_ b -> b) . flip coiterT (Identity (return ()))
