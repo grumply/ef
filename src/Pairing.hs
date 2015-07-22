@@ -64,7 +64,12 @@ pairEffect' p s c = do
 
 class (Functor m, Functor f, Functor g) => PairingM f g m | f g -> m where
   pairM :: (a -> b -> m r) -> f a -> g b -> m r
-
+instance (PairingM f f' m,PairingM g g' m) => PairingM (f :+: g) (f' :*: g') m where
+  pairM p (Inl l) (Product a _) = pairM p l a
+  pairM p (Inr r) (Product _ b) = pairM p r b
+instance (PairingM f f' m,PairingM g g' m) => PairingM (f :*: g) (f' :+: g') m where
+  pairM p (Product a _) (Inl l) = pairM p a l
+  pairM p (Product _ b) (Inr r) = pairM p b r
 pairEffectM :: (PairingM f g m, Comonad w, Monad m)
             => (a -> b -> m r) -> CofreeT f w a -> FreeT g m b -> m r
 pairEffectM p s c = do

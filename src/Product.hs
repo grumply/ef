@@ -9,7 +9,9 @@ import           Control.Applicative (liftA2)
 import           Language.Haskell.TH.Syntax
 
 data (f :*: g) a = Product (f a) (g a)
-  deriving (Functor,Show,Eq)
+  deriving (Functor,Eq)
+instance (Show (f a),Show (g a)) => Show ((:*:) f g a) where
+  show (Product fa ga) = show (fa,ga)
 instance (Lift (f a), Lift (g a)) => Lift ((:*:) f g a) where
   lift (Product x y) = [| Product x y |]
 
