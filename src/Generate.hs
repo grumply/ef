@@ -1,44 +1,79 @@
+{-# LANGUAGE ViewPatterns #-}
 module Generate where
 
 import Language.Haskell.TH
 
 import Data.Char
 
-type TI = (Name, [Name], [(Name, Int)], [(Name, [(Maybe Name, Type)])])
+type Params = [Name]
+type Constructors = [(Name,Int)]
+type Terms = [(Name,[(Maybe Name,Type)])]
+type TI = (Name,Params,Constructors,Terms)
 
--- Use a data declaration to construct an instruction
-make :: Name -> Q [Dec]
-make instr_nm = do
-  TyConI d <- reify instr_nm
-  instr <- typeInfo (return d)
-  generateInstruction instr
-  where
-    generateInstruction :: TI -> Q [Dec]
-    generateInstruction
-      (name,params,cons,terms) = return $
-        flip concatMap cons $ \(con,varCount) ->
-          let ln = lowerName con
-          in [ (FunD ln
-                 [ Clause
-                     (foldl (\st a -> VarP a:st) [] params)
-                     (NormalB $
-                        VarE (mkName "instr")
-                        `AppE` (ConE con)
-                        `AppE`
-                          if varCount == 1
-                          then TupE []
-                          else
-                     )
-                     []
-                 ])
-             ]
-
+nameTerms :: [(Maybe Name,Type)] -> Q [(Name,(Maybe Name,Type))]
+nameTerms ts = do
+  let varNames = [ c : s | s <- "":varNames, c <- ['a'..'z'] ]
+      prenamedTerms = zip varNames ts
+  mapM (\(nm,t) -> newName nm >>= \n -> return (n,t)) prenamedTerms
 
 lowerName :: Name -> Name
 lowerName nm =
    let s = nameBase nm
    in case s of
         ~(up:rest) -> mkName (toLower up:rest)
+
+coName :: Name -> Name
+coName = mkName . ("Co" ++) . nameBase
+
+make :: Name -> Q [Dec]
+make instr_nm = do
+  TyConI d <- reify instr_nm
+  (_,params,_,terms) <- typeInfo (return d)
+  mapM (generateInstruction params) terms
+  where
+    generateInstruction [] _ = error
+      "A continuation parameter must exist - like k in the following:\n\n\
+      \  F k = A Int k\n\
+      \      | A (Bool -> k)"
+    generateInstruction params (con@(lowerName -> ln),terms0) = do
+      runIO (print (params,con,terms0))
+      let cont = last params
+      terms1 <- nameTerms terms0
+      let (arrTy,hasCont) = if null terms1
+                            then (False,False)
+                            else check cont (last terms1)
+          terms = if hasCont then init terms1 else terms1
+          varsP = map (VarP . fst) terms
+          varsE = map (VarE . fst) terms
+          body = createInstruction arrTy hasCont con varsE
+      return $ FunD ln [ Clause varsP body [] ]
+
+    check cont (_,(_,ty)) = (isArrowType ty,searchType cont ty)
+      where
+        isArrowType (AppT ArrowT _) = True
+        isArrowType (AppT _ ArrowT) = True
+        isArrowType (AppT ty1 ty2) = isArrowType ty1 || isArrowType ty2
+        isArrowType _ = False
+
+        searchType c (AppT _ t) = searchType c t
+        searchType c         t  = t == VarT c
+
+    normal con ps
+      = NormalB $ AppE (VarE (mkName "liftF"))
+      $ ParensE $ AppE (VarE (mkName "inj"))
+                $ foldl AppE (ConE con) ps
+
+    createInstruction _     False con vars = normal con vars
+    createInstruction False _     con vars = normal con (vars ++ [TupE []])
+    createInstruction True  _     con vars = normal con (vars ++ [VarE (mkName "id")])
+
+
+makeCo :: Name -> Q [Dec]
+makeCo instrName@(coName -> coInstrName) = do
+  TyConI d <- reify instrName
+  ti <- typeInfo (return d)
+  runIO $ print ti
+  return []
 
 pairs :: Name -> Name -> Q [Dec]
 pairs coinstr instr = do
