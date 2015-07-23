@@ -3,6 +3,10 @@
 {-# LANGUAGE UndecidableInstances   #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
+{-# LANGUAGE DefaultSignatures      #-}
+{-# LANGUAGE DeriveGeneric          #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE DeriveGeneric #-}
 module Pairing (
       Pairing(..)
     , pairEffect
@@ -25,6 +29,9 @@ import           Product
 import           Control.Category
 import           Prelude hiding ((.),id)
 
+import qualified GHC.Generics as GHC
+import           Language.Haskell.TH
+
 class Pairing f g | f -> g, g -> f where
   pair :: (a -> b -> r) -> f a -> g b -> r
 
@@ -41,12 +48,9 @@ instance Pairing f g => Pairing (Cofree.Cofree f) (Free.Free g) where
    pair p (a Cofree.:< _) (Free.Pure x) = p a x
    pair p (_ Cofree.:< fs) (Free.Free gs) = pair (pair p) fs gs
 
-instance (Pairing f f',Pairing g g') => Pairing (f :+: g) (f' :*: g') where
+instance (Pairing f f',Pairing g g') => Pairing (f Sum.:+: g) (f' Product.:*: g') where
   pair p (Inl x) (Product a _) = pair p x a
   pair p (Inr x) (Product _ b) = pair p x b
-instance (Pairing f f',Pairing g g') => Pairing (f :*: g) (f' :+: g') where
-  pair p (Product a _) (Inl x) = pair p a x
-  pair p (Product _ b) (Inr x) = pair p b x
 
 pairEffect :: (Pairing f g, Functor f, Functor g, Comonad w, Monad m)
            => (a -> b -> r) -> CofreeT f w a -> FreeT g m b -> m r
@@ -67,12 +71,14 @@ pairEffect' p s c = do
 
 class (Functor m, Functor f, Functor g) => PairingM f g m | f g -> m where
   pairM :: (a -> b -> m r) -> f a -> g b -> m r
+
+instance {-# OVERLAPPABLE #-} PairingM f g m => PairingM g f m where
+  pairM p f g = pair (flip p) g f
+
 instance (PairingM f f' m,PairingM g g' m) => PairingM (f :+: g) (f' :*: g') m where
   pairM p (Inl l) (Product a _) = pairM p l a
   pairM p (Inr r) (Product _ b) = pairM p r b
-instance (PairingM f f' m,PairingM g g' m) => PairingM (f :*: g) (f' :+: g') m where
-  pairM p (Product a _) (Inl l) = pairM p a l
-  pairM p (Product _ b) (Inr r) = pairM p b r
+
 pairEffectM :: (PairingM f g m, Comonad w, Monad m)
             => (a -> b -> m r) -> CofreeT f w a -> FreeT g m b -> m r
 pairEffectM p s c = do
@@ -89,3 +95,9 @@ pairEffectM' p s c = do
   case mb of
     Pure x -> p a x
     Free gs -> pairM (pairEffectM' p) (unwrap s) gs
+
+is :: Name -> Name -> Q Dec
+is coinstr instr = do
+  _ <- reify coinstr
+  _ <- reify instr
+  undefined
