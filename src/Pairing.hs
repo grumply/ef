@@ -6,7 +6,6 @@
 {-# LANGUAGE DefaultSignatures      #-}
 {-# LANGUAGE DeriveGeneric          #-}
 {-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE DeriveGeneric #-}
 module Pairing (
       Pairing(..)
     , pairEffect
@@ -28,9 +27,6 @@ import           Product
 
 import           Control.Category
 import           Prelude hiding ((.),id)
-
-import qualified GHC.Generics as GHC
-import           Language.Haskell.TH
 
 class Pairing f g | f -> g, g -> f where
   pair :: (a -> b -> r) -> f a -> g b -> r
@@ -95,9 +91,3 @@ pairEffectM' p s c = do
   case mb of
     Pure x -> p a x
     Free gs -> pairM (pairEffectM' p) (unwrap s) gs
-
-is :: Name -> Name -> Q Dec
-is coinstr instr = do
-  _ <- reify coinstr
-  _ <- reify instr
-  undefined
