@@ -1,9 +1,10 @@
 {-# LANGUAGE ViewPatterns #-}
 module Generate where
 
-import Language.Haskell.TH
-
+import Control.Monad
 import Data.Char
+
+import Language.Haskell.TH
 
 type Params = [Name]
 type Constructors = [(Name,Int)]
@@ -25,55 +26,94 @@ lowerName nm =
 coName :: Name -> Name
 coName = mkName . ("Co" ++) . nameBase
 
+isArrowType :: Type -> Bool
+isArrowType (AppT ArrowT _) = True
+isArrowType (AppT _ ArrowT) = True
+isArrowType (AppT ty1 ty2) = isArrowType ty1 || isArrowType ty2
+isArrowType _ = False
+
+unqualify :: Name -> Name
+unqualify = mkName . reverse . takeWhile (/= '.') . reverse . nameBase
+
+typeEndsIn :: Type -> Type -> Bool
+typeEndsIn cont (AppT _ t) = typeEndsIn cont t
+typeEndsIn cont t  = t == cont
+
+noContinuation =
+  "A continuation parameter must exist or the algebra will not compose.\n\
+  \Instructions should have a continuation type as their last variable,\n\
+  \like 'k' in the following:\n\n\
+  \    F k = A Int k\n\
+  \        | A (Bool -> k)"
+
+embed :: Q [Dec] -> Q ()
+embed qdecs =  do
+  decs <- qdecs
+  loc <- location
+  let start = fst (loc_start loc)
+      end = fst (loc_end loc)
+  runIO $ do
+    f <- lines <$> readFile (loc_filename loc)
+    length f `seq`
+      writeFile (loc_filename loc)
+        $ unlines
+        $ replace decs end (start,end) f
+  where
+    replace :: [Dec] -> Int -> (Int,Int) -> [String] -> [String]
+    replace decs e = go
+      where
+        go (0,0) fs = (++) (lines $ pprint decs) ("-- End auto-generation.":fs)
+        go (0,(==) e -> True) fs = "-- Start auto-generation.":go (0,e-1) fs
+        go (0,n) (f:fs) = ("-- " ++ f):go (0,n-1) fs
+        go (st,e') (f:fs) = f:go (st-1,e') fs
+
 make :: Name -> Q [Dec]
 make instr_nm = do
   TyConI d <- reify instr_nm
-  (_,params,_,terms) <- typeInfo (return d)
-  mapM (generateInstruction params) terms
-  where
-    generateInstruction [] _ = error
-      "A continuation parameter must exist - like k in the following:\n\n\
-      \  F k = A Int k\n\
-      \      | A (Bool -> k)"
-    generateInstruction params (con@(lowerName -> ln),terms0) = do
-      runIO (print (params,con,terms0))
-      let cont = last params
-      terms1 <- nameTerms terms0
-      let (arrTy,hasCont) = if null terms1
-                            then (False,False)
-                            else check cont (last terms1)
-          terms = if hasCont then init terms1 else terms1
-          varsP = map (VarP . fst) terms
-          varsE = map (VarE . fst) terms
-          body = createInstruction arrTy hasCont con varsE
-      return $ FunD ln [ Clause varsP body [] ]
-
-    check cont (_,(_,ty)) = (isArrowType ty,searchType cont ty)
-      where
-        isArrowType (AppT ArrowT _) = True
-        isArrowType (AppT _ ArrowT) = True
-        isArrowType (AppT ty1 ty2) = isArrowType ty1 || isArrowType ty2
-        isArrowType _ = False
-
-        searchType c (AppT _ t) = searchType c t
-        searchType c         t  = t == VarT c
-
-    normal con ps
-      = NormalB $ AppE (VarE (mkName "liftF"))
-      $ ParensE $ AppE (VarE (mkName "inj"))
-                $ foldl AppE (ConE con) ps
-
-    createInstruction _     False con vars = normal con vars
-    createInstruction False _     con vars = normal con (vars ++ [TupE []])
-    createInstruction True  _     con vars = normal con (vars ++ [VarE (mkName "id")])
-
+  (nm,params,_,terms0) <- typeInfo (return d)
+  when (null params) $ error noContinuation
+  let cont = VarT $ last params
+  ms <- forM terms0 $ \(con@(lowerName -> ln),terms1) -> do
+    terms2 <- nameTerms terms1
+    let finTy = snd $ snd $ last terms2
+        arrTy    = not (null terms2) && isArrowType finTy
+        hasCont  = arrTy && typeEndsIn cont finTy
+        unitOrId = if arrTy   then VarE (mkName "id") else TupE []
+        terms    = if hasCont then init terms2        else terms2
+        end      = [unitOrId | hasCont]
+    return $ FunD ln
+      [ flip (Clause $ map (VarP . fst) terms) [] $
+          NormalB     $ AppE (VarE (mkName "liftF"))
+            $ ParensE $ AppE (VarE (mkName "inj"))
+            $ foldl     AppE (ConE $ unqualify con)
+            $ map (VarE . fst) terms ++ end
+      ]
+  let sd = StandaloneDerivD [] $
+           foldl (\st a -> AppT st (VarT a))
+                 (AppT (VarT (mkName "Functor"))
+                       (VarT nm)
+                 ) $ init params
+  return (sd:ms)
 
 makeCo :: Name -> Q [Dec]
 makeCo instrName@(coName -> coInstrName) = do
   TyConI d <- reify instrName
-  ti <- typeInfo (return d)
-  runIO $ print ti
-  return []
+  (_,params,_,terms0) <- typeInfo (return d)
+  cont <- newName "k"
+  constructed <-
+    if isClosed terms0
+    then makeClosed params terms0
+    else makeOpen params terms0
+  return
+    [ DataD [] coInstrName
+            (foldl (\st a -> (PlainTV a):st) [] params)
+            []
+            [mkName "Functor",mkName "Generic"]
+    ]
+  where
+    isClosed = (> 1) . length
+    makeClosed ps ts = return (TupE [])
+    makeOpen ps ts = return (TupE [])
 
 pairs :: Name -> Name -> Q [Dec]
 pairs coinstr instr = do
