@@ -99,62 +99,83 @@ makeCo :: Name -> Q [Dec]
 makeCo instrName@(coName -> coInstrName) = do
   TyConI d <- reify instrName
   (_,params,_,terms0) <- typeInfo (return d)
-  cont <- newName "k"
+  let tvs = foldr ((:) . PlainTV) [] params
   constructed <-
-    if isClosed terms0
-    then makeClosed params terms0
-    else makeOpen params terms0
+    if length terms0 > 1
+    then makeClosed terms0
+    else makeOpen (head terms0)
   return
-    [ DataD [] coInstrName
-            (foldl (\st a -> (PlainTV a):st) [] params)
-            []
-            [mkName "Functor",mkName "Generic"]
-    ]
+    [ DataD [] coInstrName tvs constructed [mkName "Functor"] ]
   where
-    isClosed = (> 1) . length
-    makeClosed ps ts = return (TupE [])
-    makeOpen ps ts = return (TupE [])
+    makeOpen (coName -> t,nmts) =
+      let listize (AppT a b) = listize a ++ listize b
+          listize (VarT v) = [VarT v]
+          listize (ConT v) = [ConT v]
+          listize _ = []
+          countRes = pred . go
+            where
+              go (AppT (AppT ArrowT l) r) = 1 + go l + go r
+              go (AppT l r) = go l + go r
+              go (VarT _) = 1
+              go (ConT _) = 1
+              go _ = 0
+          ts = map snd nmts
+          res = last ts
+          sz = countRes res
+          lr = listize res
+          coRes = if length lr > 1
+                  then foldl AppT (TupleT sz)
+                  else head
+          converted = if length ts > 1
+                      then foldr1 (AppT . AppT ArrowT) (init ts ++ [coRes lr])
+                      else coRes lr
+      in do runIO (print (ts,res,sz,lr))
+            return [ NormalC t [(NotStrict,converted)] ]
+    makeClosed ts = do
+      open <- mapM makeOpen ts
+      return
+        [ RecC coInstrName $
+            map (\([NormalC _ [(s,conv)]]
+                  ,(lowerName . coName -> recNm,_)
+                  ) -> (recNm,s,conv)
+                )
+             $ zip open ts
+        ]
+
 
 pairs :: Name -> Name -> Q [Dec]
-pairs coinstr instr = do
-  TyConI cod@(DataD _ _ _ _ _) <- reify coinstr
-  co_ti <- typeInfo (return cod)
+pairs co_instr instr = do
+  TyConI cod <- reify co_instr
+  coinstr_ti <- typeInfo (return cod)
+  TyConI d <- reify instr
+  instr_ti <- typeInfo (return d)
+  pairs_ti coinstr_ti instr_ti
 
-  TyConI d@(DataD _ _ _ _ _) <- reify instr
-  ti <- typeInfo (return d)
-
-  generatePairingInstance co_ti ti
+pairs_ti :: TI -> TI -> Q [Dec]
+pairs_ti co_ti ti = do
+  let (nm,_,_,instr_terms) = ti
+      (co_nm,_,_,_) = co_ti
+      isClosed = length instr_terms > 1
+  pairings <- if isClosed then createClosedPairing else createOpenPairing
+  let inst_head = ConT (mkName "Pairing") `AppT` ConT co_nm `AppT` ConT nm
+  return [ InstanceD [] inst_head pairings ]
   where
-    generatePairingInstance
-      (co_name,[co_param],co_cons,co_terms)
-      (name,params,cons,terms) = return $
-         [ InstanceD [] (       (ConT $ mkName "Pairing")
-                         `AppT` (ConT co_name)
-                         `AppT` (ConT name)
-                        )
-             [ FunD (mkName "pair")
-                 [ Clause
-                     [ VarP $ mkName "p"
-                     , ConP co_name [VarP co_param]
-                     , ConP name    (map VarP params)
-                     ]
-                     (NormalB $
-                       (VarE $ mkName "pair")
-                       `AppE` (VarE $ mkName "p")
-                       `AppE` (foldl
-                                (\st a -> st `AppE` (VarE a))
-                                (VarE co_param)
-                                (init params)
-                              )
-                       `AppE` (VarE (last params))
-                    )
-                    []
-                 ]
-             ]
-         ]
-    generatePairingInstance _ _ =
-      error "Cannot generate pairing for a co-instruction\n\
-            \with multiple variables and/or continuations."
+    clear = putStrLn ""
+    createOpenPairing = do
+      let (co_nm,co_params,co_cons,co_terms) = co_ti
+      runIO $ do
+        print co_nm >> clear
+        mapM_ print co_params >> clear
+        mapM_ print co_cons >> clear
+        mapM_ print co_terms >> clear
+      let (nm,params,cons,terms) = ti
+      runIO $ do
+        print nm >> clear
+        mapM_ print params >> clear
+        mapM_ print cons >> clear
+        mapM_ print terms >> clear
+      return []
+    createClosedPairing = undefined
 
 typeInfo :: DecQ -> Q (Name, [Name], [(Name, Int)], [(Name, [(Maybe Name, Type)])])
 typeInfo m =
