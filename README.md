@@ -33,6 +33,63 @@ The plan for now is:
 
 While `mop` is meant as a solution to this problem, the name is simply an homage to MP Ward's work on Language-oriented programming. Thus, this library could similarly be named `lomop` or `language-oriented middle-out programming`.
 
+## Standard Conventions
+
+### Nomenclature
+
+There are a few fundamental pieces of this DSL-based design. They include:
+
+1. Instruction: A data declaration with a continuation parameter.
+    Variants:
+      1. Open: Has only one constructor. 
+      1. Closed: Has multiple constructors.
+1. Interpreter: A data declaration that pairs an Instruction. Derivable.
+    Variants:
+      1. Open: Single record data declaration.
+      1. Closed: Multiple record data declaration.
+1. Pairing: A type-classed link between Instruction and Interpreter.
+1. Interface: A type used to guide development and include a set of functionality in a goal implementation.
+1. Implementation: A type used to implement a group of interpreters that pairs with an algebra. 
+
+### Usage
+
+The following will lay out what open and closed means and how various styles of interface and implementation interact. These are largely just good-practice suggestions rather than compiler-enforced invariants. While some of these suggestions may be ignored, it can break modularity.
+
+Instructions may be combined in a sum-of-functors style to create sets of instructions that may be paired with interpreters combined in a product-of-functors style. As long as pairing exists between individual instruction and individual interpreter, the pairing propagates to the pairing of sum-of-instructions and product-of-interpreters.
+
+Open variants of instructions implies that some functionality exists independent from the rest of a system. That no other instructions are required to implement the functionality implied by the instruction.
+
+Example open instruction: tag something as full
+```Haskell
+data Full k = Full k
+
+-- Use like this to ease and automate derivation of implementation
+type SomeInterface = Full :+: RestOfInterface
+```
+
+A closed instruction set implies that some functionality exists in an always-coupled fashion; that one instruction may not be implemented without implementation of the others.
+
+Example of closed instruction: validity
+```Haskell
+data Validity k = Valid k | Invalid k
+
+type SomeInterface = Validity :+: RestOfInterface
+```
+
+Any implementation must pair both instructions. Since Validity is a single type with multiple constructors, we must pair it with a record of interpreters.
+
+```Haskell
+data CoValidity k = CoValidity
+  { coValid :: k
+  , coInvalid :: k
+  }
+```
+
+TODO: 
+1. expand on pairings
+1. demonstrate concrete instruction set
+1. expand on implementation, including derivation
+
 ### References
 
 <a name="middle-out-def">[<sup>1</sup>](#middle-out):</a> MP Ward - Language Oriented Programming: <a href="http://www.cse.dmu.ac.uk/~mward/martin/papers/middle-out-t.ps.gz">PDF</a>
