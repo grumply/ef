@@ -85,6 +85,35 @@ data CoValidity k = CoValidity
   }
 ```
 
+Examples of shapes of instructions and their corresponding interpreter shapes. Interpreter shapes are automatically derivable from instructions. I am unsure about instructions defined as the product of continuations. Is the proper pairing to unify them as in G/CoG below, or should records be used for closed interpreters/data?
+```Haskell
+data A k = A k
+data CoA k = CoA k
+
+data B s k = B s k
+data CoB s k = CoB (s -> k)
+
+data C s k = C (s -> k)
+data CoC s k = CoC (s,k)
+
+data D s k = D (s,k)
+data CoD s k = CoD (s -> k)
+
+data EF k = E (Int -> k) | F k
+data CoEF k = CoEF
+  { coE :: (Int,k)
+  , coF :: k
+  }
+
+data G k = Monoid k => G
+  { g1 :: Int -> k
+  , g2 :: Bool -> k
+  }
+data CoG k = Monoid k => CoG (Int,k) (Bool,k)
+instance Pairing CoG G where
+  pair p (CoG ((i,k1),(b,k2))) (G ik bk) = p (k1 <> k2) (ik i <> bk b)
+```
+
 TODO: 
 1. expand on pairings
 1. demonstrate concrete instruction set
