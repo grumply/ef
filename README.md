@@ -47,9 +47,9 @@ There are a few fundamental pieces of this DSL-based design. They include:
     Variants:
       1. Open: Single record data declaration.
       1. Closed: Multiple record data declaration.
-1. Pairing: A type-classed link between Instruction and Interpreter.
-1. Interface: A type used to guide development and include a set of functionality in a goal implementation.
-1. Implementation: A type used to implement a group of interpreters that pairs with an algebra. 
+1. Pairing: A type-classed link between Instruction and Interpreter. Derivable.
+1. Interface: A type used to guide development and include a set of functionality in a goal implementation. Derivable.
+1. Implementation: A type used to implement a group of interpreters that pairs with an algebra. Skeletally-derivable. 
 
 ### Usage
 
