@@ -1,6 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TypeOperators #-}
 module Generate where
 
 import Control.Arrow
@@ -8,6 +9,8 @@ import Control.Monad
 import Data.Char
 import Data.Maybe
 import Language.Haskell.TH
+
+import Product
 
 type Params = [Name]
 type Constructors = [(Name,Int)]
@@ -111,20 +114,22 @@ makeCo instrName@(coName -> coInstrName) = do
     [ DataD [] coInstrName tvs constructed [mkName "Functor"] ]
   where
     makeOpen (coName -> t,nmts) =
-      let listize (AppT a b) = listize a ++ listize b
+      let listize (AppT (ConT c1) x) = [AppT (ConT c1) x]
+          listize (AppT a b) = listize a ++ listize b
           listize (VarT v) = [VarT v]
           listize (ConT v) = [ConT v]
           listize _ = []
           countRes = pred . go
             where
-              go (AppT (AppT ArrowT l) r) = 1 + go l + go r
+              go (AppT (ConT _) _) = 1
+              go (AppT (AppT ArrowT l) r) = go l + go r
               go (AppT l r) = go l + go r
               go (VarT _) = 1
               go (ConT _) = 1
               go _ = 0
           ts = map snd nmts
           res = last ts
-          sz = countRes res
+          sz = countRes res + 1
           lr = listize res
           coRes = if length lr > 1
                   then foldl AppT (TupleT sz)
@@ -144,7 +149,6 @@ makeCo instrName@(coName -> coInstrName) = do
                 )
              $ zip open ts
         ]
-
 
 pairs :: Name -> Name -> Q [Dec]
 pairs co_instr instr = do
@@ -232,109 +236,134 @@ pairs_ti co_ti ti = do
              )
              []
          ]
-
 makeInterpreter :: Name -> Q [Dec]
 makeInterpreter co_instr_nm = do
   TyConI cod <- reify co_instr_nm
-  ti@((co_nm,_,co_cons,co_terms) :: TI) <- typeInfo (return cod)
+  (_,_,co_cons,_) <- typeInfo (return cod)
   if snd (head co_cons) > 1
-  then makeClosedInterpreter ti
-  else makeOpenInterpreter ti
-  where
-   makeClosedInterpreter :: TI -> Q [Dec]
-   makeClosedInterpreter ti@(co_nm,_,co_cons,co_terms) = do
-     let defRet = ConE (mkName "Identity") `AppE` VarE (mkName "id")
-         ts = map (VarE . fromJust . fst) . snd $ head co_terms
-         coalgebraBuilder = foldl
-           (flip UInfixE (VarE $ mkName "<*>"))
-           (UInfixE (ConE co_nm) (VarE $ mkName "<$>") (head ts))
-           (tail ts)
-     coalgebra <- makeOpenInterpreter ti
-     return
-       [ FunD (mkName $ "mk" ++ nameBase co_nm)
-          [Clause
-            []
-            (NormalB $
-                     VarE (mkName "coiterT")
-              `AppE` VarE (mkName "next")
-              `AppE` VarE (mkName "start")
-            )
-            [ FunD (mkName "start") [Clause [] (NormalB defRet) []]
-            , FunD (mkName "next") [Clause [] (NormalB coalgebraBuilder) coalgebra]
-            ]
-          ]
-       ]
-   makeOpenInterpreter :: TI -> Q [Dec]
-   makeOpenInterpreter (co_nm,_,co_cons,co_terms) = do
-     wa <- newName "wa"
-     runIO $ do
-       print co_cons
-       print co_terms
-     let defRet = ConE (mkName "Identity") `AppE` VarE (mkName "id")
-         ts = map (VarE . fromJust . fst) . snd $ head co_terms
-         coalgebraBuilder = foldl
-           (flip UInfixE (VarE $ mkName "<*>"))
-           (UInfixE (ConE co_nm) (VarE $ mkName "<$>") (head ts))
-           (tail ts)
-         ct = snd $ last $ snd $ last co_terms
-     runIO (print ct)
-     if length (snd $ head co_terms) > 1
-     then return $ flip map (snd $ head co_terms) $ \(Just nm,ty) ->
-              FunD
-                 nm
-                 [ Clause
-                 ([VarP wa] ++ (convertToPat $ last $ collectVars ct))
-                 (NormalB $ makeEmptyFunction wa ct)
-                 []
-             ]
+  then makeClosedInterpreter co_instr_nm
+  else makeOpenInterpreter co_instr_nm
 
-     else return $
-         [ FunD
-             (mkName $ "mk" ++ nameBase co_nm)
-             [ Clause
-                 []
-                 (NormalB $
-                          VarE (mkName "coiterT")
-                   `AppE` VarE (mkName "next")
-                   `AppE` VarE (mkName "start")
-                 )
-                 [ FunD (mkName "start") [Clause [] (NormalB defRet) []]
-                 , FunD (mkName "next") [Clause [] (NormalB coalgebraBuilder) []]
-                 ]
-             ]
-         , FunD
-             (lowerName co_nm)
-             [ Clause
-                 ([VarP wa] ++ (convertToPat $ last $ collectVars ct))
-                 (NormalB $ makeEmptyFunction wa ct)
-                 []
-             ]
+makeClosedInterpreter :: Name -> Q [Dec]
+makeClosedInterpreter co_instr_nm = do
+  TyConI cod <- reify co_instr_nm
+  (co_nm,_,_,co_terms) <- typeInfo (return cod)
+  let defRet = ConE (mkName "Identity") `AppE` VarE (mkName "id")
+      ts = map (VarE . fromJust . fst) . snd $ head co_terms
+      coalgebraBuilder = foldl
+        (flip UInfixE (VarE $ mkName "<*>"))
+        (UInfixE (ConE co_nm) (VarE $ mkName "<$>") (head ts))
+        (tail ts)
+  coalgebra <- createClosedCoalgebra co_instr_nm
+  return
+    [ FunD (mkName $ "mk" ++ nameBase co_nm)
+       [Clause
+         []
+         (NormalB $
+                  VarE (mkName "coiterT")
+           `AppE` VarE (mkName "next")
+           `AppE` VarE (mkName "start")
+         )
+         [ FunD (mkName "start") [Clause [] (NormalB defRet) []]
+         , FunD (mkName "next") [Clause [] (NormalB coalgebraBuilder) coalgebra]
          ]
+       ]
+    ]
 
-convertToPat :: Type -> [Pat]
-convertToPat (AppT a b) = convertToPat a ++ convertToPat b
-convertToPat (VarT v) = [VarP v]
-convertToPat (ConT v) = [ConP v []]
-convertToPat _ = []
-
-makeEmptyFunction :: Name -> Type -> Exp
-makeEmptyFunction em (pred . countVars -> n) = TupE $ (replicate n (VarE (mkName "undefined"))) ++ [VarE em]
-
-collectVars :: Type -> [Type]
-collectVars = init . go
+createClosedCoalgebra :: Name -> Q [Dec]
+createClosedCoalgebra co_instr_nm = do
+  TyConI cod <- reify co_instr_nm
+  (_,_,_,co_terms) <- typeInfo (return cod)
+  wa <- newName "wa"
+  fmap concat $ forM co_terms $ \(_,ts) ->
+    forM ts $ \(Just fun_nm,fun_ty) -> do
+      (patterns,body) <- createPatterns wa fun_ty
+      return $ FunD fun_nm [ Clause patterns body [] ]
   where
-    go (AppT t0 t1) = go t0 ++ go t1
-    go vt@(VarT _) = [vt]
-    go _ = []
+    createPatterns :: Name -> Type -> Q ([Pat],Body)
+    createPatterns wa ty = do
+      f <- collectFree ty
+      let ret = getReturn ty
+          n = hasReturn ret
+      if isJust n
+      then return (VarP wa:map VarP f,NormalB $ buildUndefinedTuple wa (fromJust n))
+      else return (VarP wa:map VarP f,NormalB (VarE wa))
 
-countVars (AppT (TupE _) x) = countVars x
-countVars (AppT ArrowT (VarT _)) = 0
-countVars (AppT ArrowT (ConT _)) = 0
-countVars (AppT (AppT (TupleT _) _) x) = 1 + countVars x
-countVars (AppT t0 t1) = countVars t0 + countVars t1
-countVars (VarT _) = 1
-countVars (ConT _) = 1
-countVars _ = 0
+makeOpenInterpreter :: Name -> Q [Dec]
+makeOpenInterpreter co_instr_nm = do
+  TyConI oi <- reify co_instr_nm
+  case oi of
+    TySynD _ vars ty -> do
+      let vs = map extractVarNames vars
+      Just tn <- lookupTypeName ":*:"
+      let coalg = filter (/= (ConT tn)) $ gatherCoalgebra vs ty
+      mapM makeOpenCoalgebra $ map (\(ConT x) -> x) coalg
+    _ -> error "Expected a type synonym for a coalgebra built from (:*:)."
+
+extractVarNames (PlainTV n) = n
+extractVarNames (KindedTV n _) = n
+
+gatherCoalgebra vs (ConT x)
+  | x `elem` vs = []
+  | otherwise = [ConT x]
+gatherCoalgebra vs (AppT x y) = gatherCoalgebra vs x ++ gatherCoalgebra vs y
+gatherCoalgebra _ _ = []
+
+data CoA k = CoA (String -> k)
+data CoB k = CoB k
+data CoC k = CoC (String,k)
+data CoD s k = CoD (s -> (String,k))
+type CoAlg s = CoA :*: CoB :*: CoC :*: CoD s
+
+makeOpenCoalgebra :: Name -> Q Dec
+makeOpenCoalgebra co_instr_nm = do
+  TyConI cod <- reify co_instr_nm
+  ti@(co_nm,_,co_cons,co_terms) <- typeInfo (return cod)
+  wa <- newName "wa"
+  body <- createPatterns (fst $ head co_cons) wa (snd $ last $ snd $ last co_terms)
+  return $ FunD (lowerName co_nm) [ Clause [] body [] ]
+  where
+    createPatterns tc wa ty = do
+      f <- collectFree ty
+      let ret = getReturn ty
+          n = hasReturn ret
+      return $ NormalB $ AppE (VarE tc) $ LamE (VarP wa:map VarP f) $
+        if isJust n
+        then (buildUndefinedTuple wa (fromJust n))
+        else (VarE wa)
+
+hasReturn :: Type -> Maybe Int
+hasReturn (AppT (TupleT n) _) = Just n
+hasReturn (AppT x _) = hasReturn x
+hasReturn _ = Nothing
+
+getReturn :: Type -> Type
+getReturn (AppT (AppT ArrowT _) x) =
+  if isArrowType x
+  then getReturn x
+  else x
+getReturn (AppT _ y) = getReturn y
+getReturn (ConT _) = error "Did not expect a higher-kinded return in interpreter."
+getReturn t@(VarT _) = t
+
+-- collectFree will extract all non-final variables assuming
+-- the correct shape of the interpreter.
+collectFree :: Type -> Q [Name]
+collectFree (AppT (TupleT _) (VarT x)) = return []
+collectFree (AppT x y) = liftM2 (++) (collectFree x) (collectFree y)
+collectFree (TupleT _) = do
+  nm <- newName "t"
+  return [nm]
+collectFree (ConT n) = do
+  nm <- newName "c"
+  return [nm]
+collectFree ArrowT = return []
+collectFree (VarT v) = return [] -- final var?
+collectFree _ = return []
+
+buildUndefinedTuple :: Name -> Int -> Exp
+buildUndefinedTuple wa n =
+  TupE (replicate (pred n) (VarE (mkName "undefined")) ++ [VarE wa])
 
 typeInfo :: DecQ -> Q (Name, [Name], [(Name, Int)], [(Name, [(Maybe Name, Type)])])
 typeInfo m =
