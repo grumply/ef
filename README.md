@@ -105,13 +105,14 @@ data CoEF k = CoEF
   , coF :: k
   }
 
-data G k = Monoid k => G
+data G k = Magma k => G
   { g1 :: Int -> k
   , g2 :: Bool -> k
   }
-data CoG k = Monoid k => CoG (Int,k) (Bool,k)
+data CoG k = Magma k => CoG (Int,k) (Bool,k)
 instance Pairing CoG G where
-  pair p (CoG ((i,k1),(b,k2))) (G ik bk) = p (k1 <> k2) (ik i <> bk b)
+  pair p (CoG (i,k1) (b,k2)) (G ik bk) 
+    = p (k1 <> k2) (ik i <> bk b)
 ```
 
 TODO: 
