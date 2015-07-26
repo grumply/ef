@@ -14,7 +14,7 @@ had a wonderful post about a weaker version of compdata's subsumption/
 dependency injection type families that was largely integrated.
 -}
 
-module Mop (module Export,showFT,showF,object,object',instr,instr') where
+module Mop (module Export,showFT,showF,object,object') where
 
 import Control.Monad as Export
 import Control.Comonad as Export
@@ -57,5 +57,5 @@ showF (Pure a) = show a
 object = pairEffect (\_ b -> b) . flip coiterT (Identity id)
 object' = pairEffect' (\_ b -> b) . flip coiterT (Identity (return ()))
 
-instr f = liftF (inj (f ()))
-instr' f = liftF (inj (f id))
+-- instr f = liftF (inj (f ()))
+-- instr' f = liftF (inj (f id))

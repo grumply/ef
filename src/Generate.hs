@@ -2,6 +2,7 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE BangPatterns #-}
 module Generate where
 
 import Control.Arrow
@@ -52,29 +53,25 @@ noContinuation =
   \    F k = A Int k\n\
   \        | A (Bool -> k)"
 
-embed :: Q [Dec] -> Q ()
-embed qdecs =  do
-  decs <- qdecs
+derive :: [Name -> Q [Dec]] -> [Name] -> Q [Dec]
+derive qdecs nms =  do
+  !decs <- concat <$> mapM (\nm -> concat <$> mapM ($ nm) qdecs) nms
   loc <- location
   let start = fst (loc_start loc)
       end = fst (loc_end loc)
   runIO $ do
     f <- lines <$> readFile (loc_filename loc)
+    let strt = take (pred start) f
+        deriveLines = map ("-- " ++ ) $ take (end - start) $ drop (pred start) f
+        lst = drop end f
     length f `seq`
       writeFile (loc_filename loc)
-        $ unlines
-        $ replace decs end (start,end) f
-  where
-    replace :: [Dec] -> Int -> (Int,Int) -> [String] -> [String]
-    replace decs e = go
-      where
-        go (0,0) fs = (++) (lines $ pprint decs) ("-- End auto-generation.":fs)
-        go (0,(==) e -> True) fs = "-- Start auto-generation.":go (0,e-1) fs
-        go (0,n) (f:fs) = ("-- " ++ f):go (0,n-1) fs
-        go (st,e') (f:fs) = f:go (st-1,e') fs
+        $ unlines $ strt ++ deriveLines ++ lines (pprint decs) ++ lst
+  runIO (putStrLn $ pprint decs)
+  return []
 
-make :: Name -> Q [Dec]
-make instr_nm = do
+instr :: Name -> Q [Dec]
+instr instr_nm = do
   TyConI d <- reify instr_nm
   (nm,params,_,terms0) <- typeInfo (return d)
   when (null params) $ error noContinuation
@@ -94,15 +91,23 @@ make instr_nm = do
             $ foldl     AppE (ConE $ unqualify con)
             $ map (VarE . fst) terms ++ end
       ]
-  let sd = StandaloneDerivD [] $
-           foldl (\st a -> AppT st (VarT a))
-                 (AppT (VarT (mkName "Functor"))
-                       (VarT nm)
-                 ) $ init params
-  return (sd:ms)
+  -- let sd = StandaloneDerivD [] $
+  --          foldl (\st a -> AppT st (VarT a))
+  --                (AppT (VarT (mkName "Functor"))
+  --                      (VarT nm)
+  --                ) $ init params
+  return ms
 
-makeCo :: Name -> Q [Dec]
-makeCo instrName@(coName -> coInstrName) = do
+
+-- interp should generate a coalgebraic representation of a concrete algebra
+-- Thus, given:
+--
+--   data A k = A String k
+--   data B k = B String (s -> k)
+--
+--
+interp :: Name -> Q [Dec]
+interp instrName@(coName -> coInstrName) = do
   TyConI d <- reify instrName
   (_,params,_,terms0) <- typeInfo (return d)
   let tvs = map PlainTV params
@@ -110,8 +115,10 @@ makeCo instrName@(coName -> coInstrName) = do
     if length terms0 > 1
     then makeClosed terms0
     else makeOpen (head terms0)
-  return
-    [ DataD [] coInstrName tvs constructed [mkName "Functor"] ]
+  let d' = DataD [] coInstrName tvs constructed [mkName "Functor"]
+      co_ti = (simpleName $ name d', paramsA d', consA d', termsA d')
+  ps <- pairs instrName co_ti
+  return $ (d':ps)
   where
     makeOpen (coName -> t,nmts) =
       let listize (AppT (ConT c1) x) = [AppT (ConT c1) x]
@@ -150,10 +157,8 @@ makeCo instrName@(coName -> coInstrName) = do
              $ zip open ts
         ]
 
-pairs :: Name -> Name -> Q [Dec]
-pairs co_instr instr = do
-  TyConI cod <- reify co_instr
-  coinstr_ti <- typeInfo (return cod)
+pairs :: Name -> TI -> Q [Dec]
+pairs instr coinstr_ti = do
   TyConI d <- reify instr
   instr_ti <- typeInfo (return d)
   pairs_ti coinstr_ti instr_ti
@@ -177,8 +182,11 @@ pairs_ti co_ti ti = do
   return [ InstanceD [] inst_head pairings ]
   where
     createOpenPairing = do
-      let (co_nm,co_params,_,_) = co_ti
-      let (nm,params,_,_) = ti
+      let (co_nm,co_params0,_,_) = co_ti
+      let (nm,params0,_,_) = ti
+      let rename = newName . nameBase
+      params <- mapM rename params0
+      co_params <- mapM rename co_params0
       return
        [ FunD (mkName "pair")
            [ Clause
@@ -237,24 +245,74 @@ pairs_ti co_ti ti = do
              []
          ]
 makeInterpreter :: Name -> Q [Dec]
-makeInterpreter co_instr_nm = do
-  TyConI cod <- reify co_instr_nm
-  (_,_,co_cons,_) <- typeInfo (return cod)
+makeInterpreter nm  = do
+  TyConI d <- reify nm
+  co_ti@(co_nm,_,co_cons,_) <- typeInfo (return d)
   if snd (head co_cons) > 1
-  then makeClosedInterpreter co_instr_nm
-  else makeOpenInterpreter co_instr_nm
+  then makeClosedInterpreter co_ti
+  else makeOpenInterpreter co_nm
 
-makeClosedInterpreter :: Name -> Q [Dec]
-makeClosedInterpreter co_instr_nm = do
-  TyConI cod <- reify co_instr_nm
-  (co_nm,_,_,co_terms) <- typeInfo (return cod)
+-- makeOpenInterpreter should, from a Name, generate a coalgebra and
+-- an executor
+-- Thus, given:
+--
+--   data CoA k = CoA (String -> k)
+--   data CoB s k = CoB (s,k)
+--
+-- and the coalgebra
+--
+--   type CoAB s = CoA :*: CoB s
+--
+-- makeOpenInterpreter should generate
+--
+--   coAB = coiterT next start
+--     where
+--       next = coA *:* coB
+--       start = Identity id
+--
+--   coA wa = CoA $ \str -> wa
+--
+--   coB wa = CoB (undefined,wa)
+--
+makeOpenInterpreter :: Name -> Q [Dec]
+makeOpenInterpreter co_instr_nm = do
+  TyConI oi <- reify co_instr_nm
+  case oi of
+    TySynD _ vars ty -> do
+      let vs = map extractVarNames vars
+      Just tn <- lookupTypeName ":*:"
+      let coalg = filter (/= (ConT tn)) $ gatherCoalgebra vs ty
+      mapM makeOpenCoalgebra $ map (\(ConT x) -> x) coalg
+    _ -> return . (:[]) =<< makeOpenCoalgebra co_instr_nm
+
+-- makeClosedInterpreter should, from a Name, generate a coalgebra and
+-- an executor
+-- Thus, given the name of CoAB:
+--
+--   data CoAB s k = CoAB
+--     { coA :: String -> k
+--     , coB :: (s,k)
+--     }
+--
+-- makeClosedInterpreter should generate
+--
+--   coAB = coiterT next start
+--     where
+--       start = Identity id
+--       next = CoAB <$> coA <*> coB
+--         where
+--           coA wa = \_ -> wa
+--           coB wa = (undefined,wa)
+--
+makeClosedInterpreter :: TI -> Q [Dec]
+makeClosedInterpreter co_ti@(co_nm,_,_,co_terms) = do
   let defRet = ConE (mkName "Identity") `AppE` VarE (mkName "id")
       ts = map (VarE . fromJust . fst) . snd $ head co_terms
       coalgebraBuilder = foldl
         (flip UInfixE (VarE $ mkName "<*>"))
         (UInfixE (ConE co_nm) (VarE $ mkName "<$>") (head ts))
         (tail ts)
-  coalgebra <- createClosedCoalgebra co_instr_nm
+  coalgebra <- createClosedCoalgebra co_ti
   return
     [ FunD (mkName $ "mk" ++ nameBase co_nm)
        [Clause
@@ -270,10 +328,8 @@ makeClosedInterpreter co_instr_nm = do
        ]
     ]
 
-createClosedCoalgebra :: Name -> Q [Dec]
-createClosedCoalgebra co_instr_nm = do
-  TyConI cod <- reify co_instr_nm
-  (_,_,_,co_terms) <- typeInfo (return cod)
+createClosedCoalgebra :: TI -> Q [Dec]
+createClosedCoalgebra (co_nm,_,_,co_terms) = do
   wa <- newName "wa"
   fmap concat $ forM co_terms $ \(_,ts) ->
     forM ts $ \(Just fun_nm,fun_ty) -> do
@@ -289,16 +345,6 @@ createClosedCoalgebra co_instr_nm = do
       then return (VarP wa:map VarP f,NormalB $ buildUndefinedTuple wa (fromJust n))
       else return (VarP wa:map VarP f,NormalB (VarE wa))
 
-makeOpenInterpreter :: Name -> Q [Dec]
-makeOpenInterpreter co_instr_nm = do
-  TyConI oi <- reify co_instr_nm
-  case oi of
-    TySynD _ vars ty -> do
-      let vs = map extractVarNames vars
-      Just tn <- lookupTypeName ":*:"
-      let coalg = filter (/= (ConT tn)) $ gatherCoalgebra vs ty
-      mapM makeOpenCoalgebra $ map (\(ConT x) -> x) coalg
-    _ -> error "Expected a type synonym for a coalgebra built from (:*:)."
 
 extractVarNames (PlainTV n) = n
 extractVarNames (KindedTV n _) = n
@@ -376,29 +422,29 @@ typeInfo m =
            _ -> error ("derive: not a data type declaration: " ++ show d)
 
      where
-        consA (DataD _ _ _ cs _)    = map conA cs
-        consA (NewtypeD _ _ _ c _)  = [ conA c ]
+consA (DataD _ _ _ cs _)    = map conA cs
+consA (NewtypeD _ _ _ c _)  = [ conA c ]
 
-        paramsA (DataD _ _ ps _ _) = map nameFromTyVar ps
-        paramsA (NewtypeD _ _ ps _ _) = map nameFromTyVar ps
+paramsA (DataD _ _ ps _ _) = map nameFromTyVar ps
+paramsA (NewtypeD _ _ ps _ _) = map nameFromTyVar ps
 
-        nameFromTyVar (PlainTV a) = a
-        nameFromTyVar (KindedTV a _) = a
+nameFromTyVar (PlainTV a) = a
+nameFromTyVar (KindedTV a _) = a
 
-        termsA (DataD _ _ _ cs _) = map termA cs
-        termsA (NewtypeD _ _ _ c _) = [ termA c ]
+termsA (DataD _ _ _ cs _) = map termA cs
+termsA (NewtypeD _ _ _ c _) = [ termA c ]
 
-        termA (NormalC c xs)        = (c, map (\x -> (Nothing, snd x)) xs)
-        termA (RecC c xs)           = (c, map (\(n, _, t) -> (Just $ simpleName n, t)) xs)
-        termA (InfixC t1 c t2)      = (c, [(Nothing, snd t1), (Nothing, snd t2)])
+termA (NormalC c xs)        = (c, map (\x -> (Nothing, snd x)) xs)
+termA (RecC c xs)           = (c, map (\(n, _, t) -> (Just $ simpleName n, t)) xs)
+termA (InfixC t1 c t2)      = (c, [(Nothing, snd t1), (Nothing, snd t2)])
 
-        conA (NormalC c xs)         = (simpleName c, length xs)
-        conA (RecC c xs)            = (simpleName c, length xs)
-        conA (InfixC _ c _)         = (simpleName c, 2)
+conA (NormalC c xs)         = (simpleName c, length xs)
+conA (RecC c xs)            = (simpleName c, length xs)
+conA (InfixC _ c _)         = (simpleName c, 2)
 
-        name (DataD _ n _ _ _)      = n
-        name (NewtypeD _ n _ _ _)   = n
-        name d                      = error $ show d
+name (DataD _ n _ _ _)      = n
+name (NewtypeD _ n _ _ _)   = n
+name d                      = error $ show d
 
 simpleName :: Name -> Name
 simpleName nm =
