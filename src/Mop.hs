@@ -7,6 +7,8 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-
 Product and Pairing were largely the work of Dave Laing and his cofun
 series on github at https://github.com/dalaing/cofun and Swierstra's
@@ -15,7 +17,7 @@ had a wonderful post about a weaker version of compdata's subsumption/
 dependency injection type families that was largely integrated.
 -}
 
-module Mop (module Export,showFT,showF,run,object,object') where
+module Mop (module Export,showFT,showF) where
 
 import Control.Monad as Export
 import Control.Comonad as Export
@@ -37,6 +39,7 @@ import Synonyms    as Export
 import Generate    as Export
 
 import Language.Haskell.TH.Syntax
+import Control.Monad.IO.Class
 
 instance (Lift (f b),Lift a) => Lift (FreeF f a b) where
   lift (Pure x) = [| Pure x |]
@@ -55,20 +58,20 @@ showF :: (Show (f b),Show a) => FreeF f a b -> String
 showF (Free fb) = show fb
 showF (Pure a) = show a
 
-run :: (Functor f, Comonad w, Combines (CofreeT f w a) b r)
-  => w a -> (w a -> f (w a)) -> b -> r
-run start next = combine (coiterT next start)
+-- run :: (Functor f, Comonad w, Combines (CofreeT f w a) b r)
+--   => w a -> (w a -> f (w a)) -> b -> r
+-- run start next = combine (coiterT next start)
 
-object
-  :: (Functor f, Combines (CofreeT f Identity (a -> a)) b r) =>
-     (Identity (a -> a) -> f (Identity (a -> a))) -> b -> r
-object = run (Identity id)
+-- object
+--   :: (Functor f, Combines (CofreeT f Identity (a -> a)) b r) =>
+--      (Identity (a -> a) -> f (Identity (a -> a))) -> b -> r
+-- object = run (Identity id)
 
-object'
-  :: (Monad m, Functor f,
-      Combines (CofreeT f Identity (a -> m a)) b r) =>
-     (Identity (a -> m a) -> f (Identity (a -> m a))) -> b -> r
-object' = run (Identity return)
+-- object'
+--   :: (Monad m, Functor f,
+--       Combines (CofreeT f Identity (a -> m a)) b r) =>
+--      (Identity (a -> m a) -> f (Identity (a -> m a))) -> b -> r
+-- object' = run (Identity return)
 
 {-
 
@@ -79,24 +82,42 @@ data CoD s k = CoD (s -> (String,k))
 type CoAlg s = CoA :*: CoB :*: CoC :*: CoD s
 -}
 
-data A k = A k
+data A k = A k deriving Functor
+a :: (A :<: f,MonadFree f m) => m ()
 a = liftF (inj (A ()))
-data B k = B (String -> k)
+
+data B k = B (String -> k) deriving Functor
+b :: (B :<: f,MonadFree f m) => m String
 b = liftF (inj (B id))
+
 type AB = A :+: B
 
-data CoA k = CoA k
+data CoA k = CoA k deriving Functor
+
 coA = CoA
-instance Pairing CoA A where
-  pair (CoA cok) (A k) = combine cok k
-data CoB k = CoB (String,k)
-instance Pairing CoB B where
-  pair (CoB (s,cok)) (B sk) = combine cok (sk s)
+instance Functor m => PairingM CoA A m where
+  pairM (CoA cok) (A k) = combineM cok k
+
+data CoB k = CoB (String,k) deriving Functor
+coB :: k -> CoB k
 coB wa = CoB (undefined,wa)
+instance Functor m => PairingM CoB B m where
+  pairM (CoB (s,cok)) (B sk) = combineM cok (sk s)
+
 type CoAB = CoA :*: CoB
 
-ab = coA *:* coB
+mkcoab = coiterT (coA *:* coB) (Identity ())
+
+test :: (MonadIO m,MonadFree AB m) => m ()
+test = do
+  a
+  b
+  a
+
+
+r :: IO ()
+r = pairEffectM mkcoab test
 
 main = do
-  let Identity r = object ab (a >> b)
+  print =<< r
   return ()
