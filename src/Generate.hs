@@ -15,8 +15,29 @@ import Product
 
 type Params = [Name]
 type Constructors = [(Name,Int)]
-type Terms = [(Name,[(Maybe Name,Type)])]
+type Terms = [(Name,SubTerms)]
+type SubTerms = [(Maybe Name,Type)]
+type CoTerms = Terms
+type CoSubTerms = SubTerms
 type TI = (Name,Params,Constructors,Terms)
+
+
+coizeTerms :: Terms -> CoTerms
+coizeTerms = map (first coizeName . second coizeSubTerms)
+  where
+    coizeName :: Name -> Name
+    coizeName = undefined
+    coizeSubTerms :: SubTerms -> CoSubTerms
+    coizeSubTerms = undefined
+
+generateCoData :: CoTerms -> Q [Dec]
+generateCoData _ = return []
+
+generatePairings :: Terms -> CoTerms -> Q [Dec]
+generatePairings ts cots = return []
+
+
+
 
 nameTerms :: [(Maybe Name,Type)] -> Q [(Name,(Maybe Name,Type))]
 nameTerms ts = do
@@ -244,6 +265,8 @@ pairs_ti co_ti ti = do
              )
              []
          ]
+
+
 makeInterpreter :: Name -> Q [Dec]
 makeInterpreter nm  = do
   TyConI d <- reify nm
@@ -355,11 +378,6 @@ gatherCoalgebra vs (ConT x)
 gatherCoalgebra vs (AppT x y) = gatherCoalgebra vs x ++ gatherCoalgebra vs y
 gatherCoalgebra _ _ = []
 
-data CoA k = CoA (String -> k)
-data CoB k = CoB k
-data CoC k = CoC (String,k)
-data CoD s k = CoD (s -> (String,k))
-type CoAlg s = CoA :*: CoB :*: CoC :*: CoD s
 
 makeOpenCoalgebra :: Name -> Q Dec
 makeOpenCoalgebra co_instr_nm = do

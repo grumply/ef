@@ -6,6 +6,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE RankNTypes #-}
 {-
 Product and Pairing were largely the work of Dave Laing and his cofun
 series on github at https://github.com/dalaing/cofun and Swierstra's
@@ -14,7 +15,7 @@ had a wonderful post about a weaker version of compdata's subsumption/
 dependency injection type families that was largely integrated.
 -}
 
-module Mop (module Export,showFT,showF,object,object') where
+module Mop (module Export,showFT,showF,run,object,object') where
 
 import Control.Monad as Export
 import Control.Comonad as Export
@@ -54,8 +55,48 @@ showF :: (Show (f b),Show a) => FreeF f a b -> String
 showF (Free fb) = show fb
 showF (Pure a) = show a
 
-object = pairEffect (\_ b -> b) . flip coiterT (Identity id)
-object' = pairEffect' (\_ b -> b) . flip coiterT (Identity (return ()))
+run :: (Functor f, Comonad w, Combines (CofreeT f w a) b r)
+  => w a -> (w a -> f (w a)) -> b -> r
+run start next = combine (coiterT next start)
 
--- instr f = liftF (inj (f ()))
--- instr' f = liftF (inj (f id))
+object
+  :: (Functor f, Combines (CofreeT f Identity (a -> a)) b r) =>
+     (Identity (a -> a) -> f (Identity (a -> a))) -> b -> r
+object = run (Identity id)
+
+object'
+  :: (Monad m, Functor f,
+      Combines (CofreeT f Identity (a -> m a)) b r) =>
+     (Identity (a -> m a) -> f (Identity (a -> m a))) -> b -> r
+object' = run (Identity return)
+
+{-
+
+data CoA k = CoA (String -> k)
+data CoB k = CoB k
+data CoC k = CoC (String,k)
+data CoD s k = CoD (s -> (String,k))
+type CoAlg s = CoA :*: CoB :*: CoC :*: CoD s
+-}
+
+data A k = A k
+a = liftF (inj (A ()))
+data B k = B (String -> k)
+b = liftF (inj (B id))
+type AB = A :+: B
+
+data CoA k = CoA k
+coA = CoA
+instance Pairing CoA A where
+  pair (CoA cok) (A k) = combine cok k
+data CoB k = CoB (String,k)
+instance Pairing CoB B where
+  pair (CoB (s,cok)) (B sk) = combine cok (sk s)
+coB wa = CoB (undefined,wa)
+type CoAB = CoA :*: CoB
+
+ab = coA *:* coB
+
+main = do
+  let Identity r = object ab (a >> b)
+  return ()
