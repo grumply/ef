@@ -17,6 +17,12 @@ Design:
 
 Semantic Versioning:
 
+
+<img src="https://github.com/grumply/mop/blob/master/doc/VersioningAlgCoalg.jpg" width="500">
+
+<img src="https://github.com/grumply/mop/blob/master/doc/VersioningInstrInterp.jpg" width="500">
+
+
 <add image>
 
 TODO: 
