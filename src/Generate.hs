@@ -11,6 +11,7 @@ import Data.Char
 
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
+import Language.Haskell.Exts
 
 import Data.Monoid
 
@@ -82,17 +83,61 @@ newtype CoTerms = CoTerms
   { coTerms :: [CoTerm] }
   deriving (Show,Eq)
 
-data Context = Instructions | Interpreters | Instruction | Interpreter
-
-
 --------------------------------------------------------------------------------
 -- Entry; runnable from TH
 
 mop :: Q [Dec]
 mop = do
   Module pn (ModName mn) <- thisModule
-  runIO (print mn)
-  return []
+  Loc{..} <- location
+  case mn of
+    "Devel" -> do
+      devPrompt
+      developmentMode
+    _ -> do
+      pr <- runIO $ parseFile loc_filename
+      case pr of
+        ParseOk a -> do
+          interactive a
+        ParseFailed loc str ->
+          fail $ "Could not parse module at "
+                 ++ show loc ++
+                 "\nError:\n\t:"
+                 ++ str
+  where
+    devPrompt =
+      "--------------------------------\n\
+      \----- mop development mode -----\n\
+      \--------------------------------\n\n"
+
+data DevelopmentCmds
+  = New
+  | Extend
+  | Remove
+  | Depend
+  | Implement
+
+developmentMode :: Q [Dec]
+developmentMode = do
+  x <- runIO prompt
+  case x of
+    New       -> getNew       >>= handleNew
+    Extend    -> getExtend    >>= handleExtend
+    Remove    -> getRemove    >>= handleRemove
+    Depend    -> getDepend    >>= handleDepend
+    Implement -> getImplement >>= handleImplement
+  where
+    prompt = flip (>>) getLine $ putStrLn $
+      "Pick:\n\
+      \  New    - Create a new compiler\n\
+      \  Extend - Extend an existing mop library\n\
+      \  Remove - Remove from an existing mop library\n\
+      \  Depend - Import a dependency into the current mop library\n\
+      \  Implement - Implement
+      "
+
+data InteractiveCmds
+  =
 
 --------------------------------------------------------------------------------
 -- Top-level functionality; importable.
@@ -133,8 +178,6 @@ coizeTerms (Terms ts) = CoTerms (map coizeTerm ts)
     coizeTerm (Term (nm,SubTerms subts)) = undefined
     coizeName :: Name -> Name
     coizeName = mkName . ("Co" ++) . nameBase
-
-
 
 generateCoData :: CoTerms -> Q [Dec]
 generateCoData _ = return []
