@@ -133,11 +133,10 @@ developmentMode = do
       \  Extend - Extend an existing mop library\n\
       \  Remove - Remove from an existing mop library\n\
       \  Depend - Import a dependency into the current mop library\n\
-      \  Implement - Implement
+      \  Implement - Implement an existing interface\n\
       "
-
-data InteractiveCmds
-  =
+interactive :: Module -> Q [Dec]
+interactive m = return []
 
 --------------------------------------------------------------------------------
 -- Top-level functionality; importable.
