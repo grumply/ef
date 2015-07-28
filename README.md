@@ -24,24 +24,15 @@ Semantic Versioning:
 Implementation:
 
 A mop binary that handles:
-  Creation of new algebras.
-  Derivations from algebra.
-  Modification of algebras.
-  Modification derivations.
-  Downloading of libraries.
-  Auto-versioning changes from code analysis.
-  Understandable errors from compilation.
-  Upgrade code generation for env/state.
 
-TODO - Comment on:
-1. Algebra easier to implement than coalgebra
-2. Coalgebra derivable from algebra.
-3. Instructions derivable from algebra.
-4. Interpreter derivable from coalgebra, thus transitively derivable from algebra.
-5. Algebra, theoretically, derivable from instructions.
-6. Easiest approach is to implement an algebra representing instruction set and derive coalgebra, instructions, and interpreters and then use the skeletal implementation of interpreters to write a library. So the approach to library design is 'Write a specification as an algebra' and 'Implement derived interpreter'.
-7. Type signatures are largely unneccesary.
-    
+1. Creation of new algebras.
+1. Derivations from algebra.
+1. Modification of algebras.
+1. Modification derivations.
+1. Downloading of libraries.
+1. Auto-versioning changes from code analysis.
+1. Understandable errors from compilation.
+1. Upgrade code generation for env/state.
 
 ## Past
 
@@ -133,10 +124,18 @@ instance Pairing CoG G where
     = p (k1 <> k2) (ik i <> bk b)
 ```
 
-TODO: 
+
+TODO - Comment on:
+
+1. Algebra easier to implement than coalgebra
+1. Coalgebra derivable from algebra.
+1. Instructions derivable from algebra.
+1. Interpreter derivable from coalgebra, thus transitively derivable from algebra.
+1. Algebra, theoretically, derivable from instructions.
+1. Easiest approach is to implement an algebra representing instruction set and derive coalgebra, instructions, and interpreters and then use the skeletal implementation of interpreters to write a library. So the approach to library design is 'Write a specification as an algebra' and 'Implement derived interpreter'.
+1. Type signatures are largely unneccesary.
 1. expand on pairings
 1. demonstrate concrete instruction set
-1. expand on implementation, including derivation
 
 ### References
 
