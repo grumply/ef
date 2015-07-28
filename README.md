@@ -17,23 +17,30 @@ Design:
 
 Semantic Versioning:
 
-
 <img src="https://github.com/grumply/mop/blob/master/doc/VersioningAlgCoalg.jpg" width="500">
 
 <img src="https://github.com/grumply/mop/blob/master/doc/VersioningInstrInterp.jpg" width="500">
 
+Implementation:
 
-<add image>
+A mop binary that handles:
+  Creation of new algebras.
+  Derivations from algebra.
+  Modification of algebras.
+  Modification derivations.
+  Downloading of libraries.
+  Auto-versioning changes from code analysis.
+  Understandable errors from compilation.
+  Upgrade code generation for env/state.
 
-TODO: 
-  Comment on:
-    1. Algebra easier to implement than coalgebra
-    2. Coalgebra derivable from algebra.
-    3. Instructions derivable from algebra.
-    4. Interpreter derivable from coalgebra, thus transitively derivable from algebra.
-    5. Algebra, theoretically, derivable from instructions.
-    6. Easiest approach is to implement an algebra representing instruction set and derive coalgebra, instructions, and interpreters and then use the skeletal implementation of interpreters to write a library. So the approach to library design is 'Write a specification as an algebra' and 'Implement derived interpreter'.
-    7. Type signatures are largely unneccesary.
+TODO - Comment on:
+1. Algebra easier to implement than coalgebra
+2. Coalgebra derivable from algebra.
+3. Instructions derivable from algebra.
+4. Interpreter derivable from coalgebra, thus transitively derivable from algebra.
+5. Algebra, theoretically, derivable from instructions.
+6. Easiest approach is to implement an algebra representing instruction set and derive coalgebra, instructions, and interpreters and then use the skeletal implementation of interpreters to write a library. So the approach to library design is 'Write a specification as an algebra' and 'Implement derived interpreter'.
+7. Type signatures are largely unneccesary.
     
 
 ## Past
