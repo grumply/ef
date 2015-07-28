@@ -11,7 +11,24 @@ The goal of the mop ecosystem is a reasoned approach to software design includin
 
 ## Approach
 
+Design:
+
 <img src="https://github.com/grumply/mop/blob/master/doc/Design.jpg" width="500">
+
+Semantic Versioning:
+
+<add image>
+
+TODO: 
+  Comment on:
+    1. Algebra easier to implement than coalgebra
+    2. Coalgebra derivable from algebra.
+    3. Instructions derivable from algebra.
+    4. Interpreter derivable from coalgebra, thus transitively derivable from algebra.
+    5. Algebra, theoretically, derivable from instructions.
+    6. Easiest approach is to implement an algebra representing instruction set and derive coalgebra, instructions, and interpreters and then use the skeletal implementation of interpreters to write a library. So the approach to library design is 'Write a specification as an algebra' and 'Implement derived interpreter'.
+    7. Type signatures are largely unneccesary.
+    
 
 ## Past
 
