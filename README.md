@@ -9,23 +9,16 @@ We have failed to approach our programming languages and library implementations
 
 The goal of the mop ecosystem is a reasoned approach to software design including automatic derivation of skeletal implementations from abstract instruction representations, automated versioning based on interplay between abstract interfaces and concrete implementations.
 
+## Approach
+
+
 ## Past
 
-This library came about as the realization of the need for, and capabilities implied by, the duality between monadic free algebras and comonadic cofree coalebgras plus the duality between code and data that these constructs have strongly suggested. Dave Laing has a nice [series](http://dlaing.org/cofun/) which was part of the impetus to start this project. If you haven't read it, I strongly suggest reading the wonderful paper by Wouter Swierstra: [Data types à la carte](http://www.cs.ru.nl/~W.Swierstra/Publications/DataTypesALaCarte.pdf) (Warning: PDF).
-
-## Future
-
-The plan for now is:
-
-1. The production of a set of base libraries in this style.
-1. Experiments in composing interpreters.
-1. Experiments in combining instruction sets. 
-1. Experiments in styles of testing.
-1. Experiments in optimization of free monadic instruction sets.
+This library came about as the realization of the need for, and capabilities implied by, the duality between monadic free algebras and comonadic cofree coalebgras plus the duality between code and data that these constructs have strongly suggested. Dave Laing has a nice [series](http://dlaing.org/cofun/) which was part of the impetus to start this project. If you haven't read it, I strongly suggest reading the wonderful paper by Wouter Swierstra: [Data types à la carte](http://www.cs.ru.nl/~W.Swierstra/Publications/DataTypesALaCarte.pdf) (Warning: PDF)
 
 ## Naming
 
-While `mop` is meant as a solution to this problem, the name is simply an homage to MP Ward's work on Language-oriented programming. Thus, this library could similarly be named `lomop` or `language-oriented middle-out programming`.
+The name `mop` is an homage to MP Ward's work on Language-oriented programming. Thus, this library could similarly be named `lomop` or `language-oriented middle-out programming`.
 
 ## Standard Conventions
 
