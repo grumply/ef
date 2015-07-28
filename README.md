@@ -11,7 +11,7 @@ The goal of the mop ecosystem is a reasoned approach to software design includin
 
 ## Past
 
-This library came about as the realization of the need for, and capabilities implied by, the duality between monadic free algebras and comonadic cofree coalebgras plus the duality between code and data that these constructs have strongly suggested. Dave Laing has a nice [series](http://dlaing.org/cofun/) which was part of the impetus to start this project. If you haven't read it, I strongly suggest reading the wonderful paper by Wouter Swierstra: [Data types à la carte](https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=1&cad=rja&uact=8&ved=0CB4QFjAAahUKEwjTtYWj4P7GAhVXG5IKHUrwA28&url=http%3A%2F%2Fwww.cs.ru.nl%2F~W.Swierstra%2FPublications%2FDataTypesALaCarte.pdf&ei=vPG3VdPnOde2yATK4I_4Bg&usg=AFQjCNHTd-wFnUQ0MfIxo8dMSVny-cyuww&bvm=bv.98717601,d.aWw) (Warning: PDF).
+This library came about as the realization of the need for, and capabilities implied by, the duality between monadic free algebras and comonadic cofree coalebgras plus the duality between code and data that these constructs have strongly suggested. Dave Laing has a nice [series](http://dlaing.org/cofun/) which was part of the impetus to start this project. If you haven't read it, I strongly suggest reading the wonderful paper by Wouter Swierstra: [Data types à la carte](http://www.cs.ru.nl/~W.Swierstra/Publications/DataTypesALaCarte.pdf) (Warning: PDF).
 
 ## Future
 
