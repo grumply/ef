@@ -11,7 +11,7 @@ The goal of the mop ecosystem is a reasoned approach to software design includin
 
 ## Approach
 
-![Design](github.com/grumply/mop/doc/Design.jpg)
+![Design](doc/Design.jpg)
 
 ## Past
 
