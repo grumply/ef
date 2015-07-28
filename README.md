@@ -1,23 +1,17 @@
 # mop
 middle-out programming<sup>[1](#middle-out-def)</sup><a name="middle-out"></a> in Haskell. 
 
-This library and its dependents mainly exist as a playground for paired, extensible, composable DSL/interpreter implementations. 
+This file exists purely as a development environment for the mop ecosystem including requirements and specifications.
 
 ## Mission Statement
 
 We have failed to approach our programming languages and library implementations with the knowledge and results gained from the first language abstraction experiments: that by building upon a series of linearly-declared instructions with increased granularity increases productivity and eases analysis, implementation, composition, extensibility, modularity, generation, optimization, and execution; that complex libraries should always be written in a style whose functionality can be subsumed and optionally overwritten. 
 
-## Solution
-
-Towards this goal, the middle-out approach attempts to reify the concept of designing programs as the granular composition of DSLs. `mop` declares the machinery for defining DSLs as free monadic algebras paired with cofree comonadic coalgebras. This library exists as a utility layer for modules written in this modular style as well as as a guide for the generic approach to library design that this style entails. Thus, the style of development implied by middle-out programming is the production of a problem-specific DSL built as the composition of new and existing DSLs as well as a problem-specific interpreter built as the composition of new and existing interpreters.
-
-For modularity, the pairing of instructions with interpreters is class-based for overloading. That is, if you want to swap out an interpreter for an individual instruction in your domain you may easily overlap its existing instance with a custom-designed interpreter and pair them up.
-
-For performance, DSLs may be optimized before being paired with a coalgebraic interpreter for execution. The chances for optimization of a domain should be unbounded and guaranteed as opposed to that of RULES pragmas. That is, custom optimization passes for a free algebra that is defined as the composition of two other algebras is possible.
+The goal of the mop ecosystem is a reasoned approach to software design including automatic derivation of skeletal implementations from abstract instruction representations, automated versioning based on interplay between abstract interfaces and concrete implementations.
 
 ## Past
 
-This library came about as a realization of the need for, and capabilities implied by, the production of libraries as DSLs with instances of the free monad. This realization came shortly before finding Dave Laing's excellent series of articles titled 'Coproducts for free and products for cofree' which cemented the desire to jump in and the recognition of the beautiful duality between free monadic algebras and cofree comonadic coalgebras.
+This library came about as the realization of the need for, and capabilities implied by, the duality between monadic free algebras and comonadic cofree coalebgras plus the duality between code and data that these constructs have strongly suggested. Dave Laing has a nice [series](http://dlaing.org/cofun/) which was part of the impetus to start this project. If you haven't read it, I strongly suggest reading the wonderful paper by Wouter Swierstra: [Data types à la carte](https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=1&cad=rja&uact=8&ved=0CB4QFjAAahUKEwjTtYWj4P7GAhVXG5IKHUrwA28&url=http%3A%2F%2Fwww.cs.ru.nl%2F~W.Swierstra%2FPublications%2FDataTypesALaCarte.pdf&ei=vPG3VdPnOde2yATK4I_4Bg&usg=AFQjCNHTd-wFnUQ0MfIxo8dMSVny-cyuww&bvm=bv.98717601,d.aWw) (Warning: PDF).
 
 ## Future
 
