@@ -1,7 +1,7 @@
 # mop
 middle-out programming<sup>[1](#middle-out-def)</sup><a name="middle-out"></a> in Haskell. 
 
-This file exists purely as a development environment for the mop ecosystem including requirements and specifications.
+This file exists purely as a development environment for the mop ecosystem including requirements and specifications. This repository is a work in progress, please do not share yet. Discussion and contributions welcome.
 
 ## Mission Statement
 
