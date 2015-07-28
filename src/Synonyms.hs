@@ -5,7 +5,6 @@ import Control.Monad.Trans.Free
 
 import Subsumption
 
-import Data.List
 
 pattern If fb <- (runFree -> Free fb)
 pattern Result x <- (runFree -> Pure x)
