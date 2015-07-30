@@ -1,5 +1,7 @@
 # mop
-middle-out programming<sup>[1](#middle-out-def)</sup><a name="middle-out"></a> in Haskell. It's all about manipulating datas.
+middle-out programming<sup>[1](#middle-out-def)</sup><a name="middle-out"></a> in Haskell. 
+
+It's all about manipulating datas.
 
 This repository is a work in progress, please do not share yet. Discussion and contributions welcome.
 
