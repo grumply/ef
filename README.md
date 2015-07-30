@@ -3,7 +3,7 @@ middle-out programming<sup>[1](#middle-out-def)</sup><a name="middle-out"></a> i
 
 It's all about manipulating datas.
 
-This repository is a work in progress, please do not share yet. Discussion and contributions welcome.
+This repository is a work in progress, please do not share yet.
 
 ## Naming
 
