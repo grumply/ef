@@ -24,6 +24,11 @@ library
                        free >=4.12 && <4.13,
                        comonad >=4.2 && <4.3,
                        haskell-src-exts,
-                       template-haskell >=2.10 && <2.11
+                       template-haskell >=2.10 && <2.11,
+                       containers,
+                       filepath,
+                       directory,
+                       unix,
+                       Cabal
   hs-source-dirs:      src
   default-language:    Haskell2010
