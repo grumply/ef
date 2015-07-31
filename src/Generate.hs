@@ -82,12 +82,6 @@ bumpMinor _ = undefined
 bumpPatch :: Version -> Version
 bumpPatch _ = undefined
 
-data AlgebraType = MixedAlgebra | OpenAlgebra | ClosedAlgebra
-  deriving (Read,Show,Eq,Generic)
-
-data CoalgebraType = OpenCoalgebra | ClosedCoalgebra
-  deriving (Read,Show,Eq,Generic)
-
 data Visibility = Private | Public
   deriving (Read,Show,Eq,Generic)
 
@@ -99,8 +93,9 @@ instance Monoid Visibility where
 
 data TypeComponent = TypeComponent
   { typeComponentName :: HSE.Name
-  , typeComponentType :: HSE.Type
-  , typeComponentDerives :: [HSE.Name]
+  , typeComponentVars :: [HSE.TyVarBind]
+  , typeComponentType :: [(HSE.Name,HSE.Type)]
+  , typeComponentDerives :: [HSE.Deriving]
   } deriving (Read,Show,Generic)
 
 data FuncComponent = FuncComponent
@@ -118,15 +113,14 @@ data Pair = Pair
 data Component
   = Algebra
       { algebraVisibility      :: Visibility
-      , algebraAlgebraType     :: AlgebraType
       , algebraName            :: HSE.Name
       , algebraType            :: HSE.Type
+      , algebraVars            :: [HSE.TyVarBind]
       , algebraModuleName      :: HSE.ModuleName
       , algebraComponents      :: [TypeComponent]
       }
   | Coalgebra
       { coalgebraVisibility    :: Visibility
-      , coalgebraCoalgebraType :: CoalgebraType
       , coalgebraName          :: HSE.Name
       , coalgebraType          :: HSE.Type
       , coalgebraModuleName    :: HSE.ModuleName
@@ -156,10 +150,11 @@ type VersionedPackage = (Version,[Component],GenericPackageDescription)
 data History = History [Version]
   deriving (Read,Show,Generic)
 
-analyze config m@(HSE.Module _ (HSE.ModuleName mn) _ _ _ _ _) = do
+analyze :: History -> HSE.Module -> PackageDescription -> Component
+analyze config m@(HSE.Module _ (HSE.ModuleName mn) _ _ _ _ _) pd = do
   case break (=='.') mn of
     ("Devel",[]) -> undefined
-    ("Alg",_)    -> analyzeAlgebra m
+    ("Alg",_)    -> analyzeAlgebra pd m
     ("Coalg",_)  -> undefined
     ("Instr",_)  -> undefined
     ("Interp",_) -> undefined
@@ -179,17 +174,35 @@ getVisibility m@(HSE.Module _ _ _ _ _ _ decls) =
        [x] -> x
        _ -> error "Found multiple visibility declarations."
 
-analyzeAlgebra pkg m@(HSE.Module _ (HSE.ModuleName nm) _ _ _ _ decls) =
-  let v = getVisibility m
-  in Algebra v
+analyzeAlgebra :: PackageDescription -> HSE.Module -> Component
+analyzeAlgebra pkg m@(HSE.Module _ nm _ _ _ _ decls) =
+  let (algebraName,algebraVars,algebraType) = extractAlgebra m
+      algebraVisibility = getVisibility m
+      algebraModuleName = nm
+      algebraComponents = makeAlgebraComponents decls
+  in Algebra{..}
 
-checkInstructions m = undefined
+extractAlgebra :: HSE.Module -> (HSE.Name,[HSE.TyVarBind],HSE.Type)
+extractAlgebra m@(HSE.Module _ nm _ _ _ _ decls) =
+  extract $ mapMaybe justSumType decls
+  where
+    justSumType t@(HSE.TypeDecl _ _ _ st@(isAlgebra -> True)) = Just t
+    justSumType _ = Nothing
 
-checkInterpreters m = undefined
+    extract [] = error $ "Could not find sum of instructions in " ++ show nm
+    extract (x:xs) =
+      case x of
+        HSE.TypeDecl _ nm tvars ty -> (nm,tvars,ty)
+        _ -> extract xs
 
-checkAlgebra m = undefined
+isAlgebra (HSE.TyInfix _ (HSE.UnQual (HSE.Symbol ":+:")) _) = True
+isAlgebra _ = False
 
-checkCoalgebra m = undefined
+isCoalgebra (HSE.TyInfix _ (HSE.UnQual (HSE.Symbol ":*:")) _) = True
+isCoalgebra _ = False
+
+makeAlgebraComponents :: [HSE.Decl] -> [TypeComponent]
+makeAlgebraComponents ds = undefined
 
 dispatch _ = return []
 
@@ -208,33 +221,6 @@ findCabalFile d
 
 readCabalFile :: FilePath -> IO PackageDescription
 readCabalFile f = flattenPackageDescription <$> readPackageDescription normal f
-
-makePrivate m = addOtherModule m . removeExposedModule m
-makePublic m  = addExposedModule m . removeOtherModule m
-
-addOtherModule m pkg =
-  let Just lib@Library{..} = library pkg
-      bi@BuildInfo{..} = libBuildInfo
-      oms = m:otherModules
-      lbi = bi { otherModules = oms }
-  in pkg { library = Just lib { libBuildInfo = lbi } }
-
-removeOtherModule m pkg =
-  let Just lib@Library{..} = library pkg
-      bi@BuildInfo{..} = libBuildInfo
-      oms = filter (/=m) otherModules
-      lbi = bi { otherModules = oms }
-  in pkg { library = Just lib { libBuildInfo = lbi } }
-
-addExposedModule m pkg =
-  let Just lib@Library{..} = library pkg
-      ems = m:exposedModules
-  in pkg { library = Just lib { exposedModules = ems } }
-
-removeExposedModule m pkg =
-  let Just lib@Library{..} = library pkg
-      ems = filter (/=m) exposedModules
-  in pkg { library = Just lib { exposedModules = ems } }
 
 sourceDirectory pkg =
   let Just Library{..} = library pkg
@@ -279,6 +265,27 @@ findModules ty pkg = concat <$> mapM go (sourceDirectory pkg)
 filterValidDirectories = filterM $ \x ->
   liftM ((not ("." `isPrefixOf` x)) &&) (doesDirectoryExist x)
 
+modifyOtherModules f pkg =
+  let Just lib@Library{..} = library pkg
+      bi@BuildInfo{..} = libBuildInfo
+      oms = f otherModules
+      lbi = bi { otherModules = oms }
+  in pkg { library = Just lib { libBuildInfo = lbi } }
+
+modifyExposedModules f pkg =
+  let Just lib@Library{..} = library pkg
+      ems = f exposedModules
+  in pkg { library = Just lib { exposedModules = ems } }
+
+addOtherModule m = modifyOtherModules (m:)
+removeOtherModule m = modifyOtherModules (filter (/=m))
+
+addExposedModule m = modifyExposedModules (m:)
+removeExposedModule m = modifyExposedModules (filter (/=m))
+
+makePrivate m = addOtherModule m . removeExposedModule m
+makePublic m  = addExposedModule m . removeOtherModule m
+
 modNameToAlgebra = createModuleName "Alg"
 createAlgebraModule = mopCreateModule "Alg"
 gatherAlgebraModules = findModules "Alg"
@@ -300,7 +307,6 @@ createPairingsModule = mopCreateModule "Pair"
 gatherPairingsModules = findModules "Pair"
 
 removeCallSite TH.Loc{..} = undefined
-
 
 groupByConstructor :: Data a => [a] -> [[a]]
 groupByConstructor =
