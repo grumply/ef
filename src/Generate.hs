@@ -5,28 +5,30 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 module Generate where
 
 import Control.Applicative
 import Control.Arrow
-
 import Control.Monad
 
 import Data.Char
-
 import Data.Data
+import qualified Data.IntMap as IM
+import Data.List
+import Data.Maybe
+import Data.Monoid
+
+import GHC.Generics
 
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Syntax as TH
 
 import qualified Language.Haskell.Exts as HSE
 
-import Data.Monoid
-
+import Derives
 import qualified Product
 import qualified Sum
-
-import qualified Data.IntMap as IM
 
 import System.Directory
 import System.FilePath
@@ -35,21 +37,31 @@ import System.Posix.Files
 
 import Distribution.Package
 import Distribution.PackageDescription
+import Distribution.PackageDescription.Configuration
+import Distribution.PackageDescription.Parse
+import Distribution.Verbosity
+import Distribution.Version
 
 import Control.Monad.Trans.State
 
+private :: TH.Q [TH.Dec]
+private = return []
 
---------------------------------------------------------------------------------
--- Entry; runnable from TH
+public :: TH.Q [TH.Dec]
+public = return []
 
 mop :: TH.Q [TH.Dec]
 mop = do
   TH.Module pn (TH.ModName mn) <- TH.thisModule
   TH.Loc{..} <- TH.location
   pr <- TH.runIO $ HSE.parseFile loc_filename
-  TH.runIO (print =<< findCabalFileFromSourceFile loc_filename)
+  --TH.runIO (print =<< readCabalFile =<< findCabalFileFromSourceFile loc_filename)
   case pr of
-    HSE.ParseOk a -> analyze a >>= dispatch
+    HSE.ParseOk a -> do
+      TH.runIO $ print a
+      TH.runIO (putStrLn "Here")
+      return []
+
     HSE.ParseFailed loc str ->
       fail $ "Could not parse module at "
              ++ show loc ++
@@ -61,35 +73,115 @@ mopDir = ".mop/"
 isDataDecl (HSE.DataDecl _ _ _ _ _ _ _) = True
 isDataDecl _ = False
 
-data MopState
-  = MopState
-  { initialDir :: FilePath
-  , modifiedFile :: Maybe FilePath
-  }
+bumpMajor :: Version -> Version
+bumpMajor _ = undefined
 
--- finalizing a coalgebra prevents modification of type,
--- but allows modification of method.
+bumpMinor :: Version -> Version
+bumpMinor _ = undefined
 
-type Mop = StateT MopState TH.Q
+bumpPatch :: Version -> Version
+bumpPatch _ = undefined
 
-data ModuleType = Algebra | Coalgebra | Instructions | Interpreters
+data AlgebraType = MixedAlgebra | OpenAlgebra | ClosedAlgebra
+  deriving (Read,Show,Eq,Generic)
 
-analyze m@(HSE.Module _ _ _ _ _ _ decls)= do
-  let grouped = groupByConstructor decls
-      datas = concat $ filter (isDataDecl . head) grouped
-  if null datas
-  then do
-    isInstrs <- checkInstructions m
-    if isInstrs
-    then return Instructions
-    else do
-      isInterps <- checkInterpreters m
-      if isInterps
-      then return Interpreters
-      else undefined
+data CoalgebraType = OpenCoalgebra | ClosedCoalgebra
+  deriving (Read,Show,Eq,Generic)
 
-  else undefined
-  return []
+data Visibility = Private | Public
+  deriving (Read,Show,Eq,Generic)
+
+instance Monoid Visibility where
+  mempty                  = Public
+  mappend Private _       = Private
+  mappend _       Private = Private
+  mappend _       _       = Public
+
+data TypeComponent = TypeComponent
+  { typeComponentName :: HSE.Name
+  , typeComponentType :: HSE.Type
+  , typeComponentDerives :: [HSE.Name]
+  } deriving (Read,Show,Generic)
+
+data FuncComponent = FuncComponent
+  { funcComponentName :: HSE.Name
+  , funcComponentType :: HSE.Type
+  , funcComponentImpl :: HSE.Decl
+  } deriving (Read,Show,Generic)
+
+data Pair = Pair
+  { pairInstruction :: HSE.Name
+  , pairInterpreter :: HSE.Name
+  , pairInstance    :: HSE.Decl
+  } deriving (Read,Show,Generic)
+
+data Component
+  = Algebra
+      { algebraVisibility      :: Visibility
+      , algebraAlgebraType     :: AlgebraType
+      , algebraName            :: HSE.Name
+      , algebraType            :: HSE.Type
+      , algebraModuleName      :: HSE.ModuleName
+      , algebraComponents      :: [TypeComponent]
+      }
+  | Coalgebra
+      { coalgebraVisibility    :: Visibility
+      , coalgebraCoalgebraType :: CoalgebraType
+      , coalgebraName          :: HSE.Name
+      , coalgebraType          :: HSE.Type
+      , coalgebraModuleName    :: HSE.ModuleName
+      , coalgebraComponents    :: [TypeComponent]
+      }
+  | Instructions
+      { instructionsVisibility :: Visibility
+      , instructionsType       :: HSE.Type
+      , instructionsModuleName :: HSE.ModuleName
+      , instructionsComponents :: [FuncComponent]
+      }
+  | Interpreters
+      { interpretersVisibility :: Visibility
+      , interpretersType       :: HSE.Type
+      , interpretersModuleName :: HSE.ModuleName
+      , interpretersComponents :: [FuncComponent]
+      }
+  | Pairings
+      { pairingsVisibility     :: Visibility
+      , pairingsModuleName     :: HSE.ModuleName
+      , pairingsComponents     :: [Pair]
+      }
+  deriving (Read,Show,Generic)
+
+type VersionedPackage = (Version,[Component],GenericPackageDescription)
+
+data History = History [Version]
+  deriving (Read,Show,Generic)
+
+analyze config m@(HSE.Module _ (HSE.ModuleName mn) _ _ _ _ _) = do
+  case break (=='.') mn of
+    ("Devel",[]) -> undefined
+    ("Alg",_)    -> analyzeAlgebra m
+    ("Coalg",_)  -> undefined
+    ("Instr",_)  -> undefined
+    ("Interp",_) -> undefined
+    ("Pair",_)   -> undefined
+
+getVisibility m@(HSE.Module _ _ _ _ _ _ decls) =
+  let spl = catMaybes $ flip map decls $ \d ->
+              case d of
+                HSE.SpliceDecl _ (HSE.Var (HSE.UnQual (HSE.Ident x))) ->
+                  case x of
+                    "private" -> Just Private
+                    "public" -> Just Public
+                    _ -> Nothing
+                _ -> Nothing
+  in case spl of
+       [] -> Public
+       [x] -> x
+       _ -> error "Found multiple visibility declarations."
+
+analyzeAlgebra pkg m@(HSE.Module _ (HSE.ModuleName nm) _ _ _ _ decls) =
+  let v = getVisibility m
+  in Algebra v
 
 checkInstructions m = undefined
 
@@ -98,6 +190,8 @@ checkInterpreters m = undefined
 checkAlgebra m = undefined
 
 checkCoalgebra m = undefined
+
+dispatch _ = return []
 
 findCabalFileFromSourceFile = findCabalFile . takeDirectory
 
@@ -112,21 +206,40 @@ findCabalFile d
      then return (d </> head fs)
      else findCabalFile (takeDirectory d)
 
-readCabalFile f = do
-  pd <- readPackageDescription normal f
+readCabalFile :: FilePath -> IO PackageDescription
+readCabalFile f = flattenPackageDescription <$> readPackageDescription normal f
 
-determineSrcDir = do
-  cwd <- getCurrentDirectory
-  return $ findSrcDir cwd
-  where
-    findSrcDir cwd = verify . reconstruct . takeSrcDir $ deconstruct cwd
-      where
-        verify x = if length cwd == length x
-                   then undefined
-                   else undefined
-        reconstruct = (</> "src") . foldl1 (</>)
-        takeSrcDir  = takeWhile (/= "src")
-        deconstruct = splitPath
+makePrivate m = addOtherModule m . removeExposedModule m
+makePublic m  = addExposedModule m . removeOtherModule m
+
+addOtherModule m pkg =
+  let Just lib@Library{..} = library pkg
+      bi@BuildInfo{..} = libBuildInfo
+      oms = m:otherModules
+      lbi = bi { otherModules = oms }
+  in pkg { library = Just lib { libBuildInfo = lbi } }
+
+removeOtherModule m pkg =
+  let Just lib@Library{..} = library pkg
+      bi@BuildInfo{..} = libBuildInfo
+      oms = filter (/=m) otherModules
+      lbi = bi { otherModules = oms }
+  in pkg { library = Just lib { libBuildInfo = lbi } }
+
+addExposedModule m pkg =
+  let Just lib@Library{..} = library pkg
+      ems = m:exposedModules
+  in pkg { library = Just lib { exposedModules = ems } }
+
+removeExposedModule m pkg =
+  let Just lib@Library{..} = library pkg
+      ems = filter (/=m) exposedModules
+  in pkg { library = Just lib { exposedModules = ems } }
+
+sourceDirectory pkg =
+  let Just Library{..} = library pkg
+      BuildInfo{..} = libBuildInfo
+  in hsSourceDirs
 
 moduleDirectory :: String -> String
 moduleDirectory = foldl1 (</>) . break [] []
@@ -149,29 +262,46 @@ mopCreateModule dir srcDir mn@(HSE.ModuleName x) = do
   fe <- doesFileExist f
   unless fe (createFile f stdFileMode >>= closeFd)
 
-modNameToAlgebra = createModuleName "Algebra"
-createAlgebraModule = mopCreateModule "Algebra"
+findModules ty pkg = concat <$> mapM go (sourceDirectory pkg)
+  where
+    go sd = do
+      dc <- getDirectoryContents sd
+      let ds = filter (==ty) dc
+      if null ds
+      then return []
+      else concat <$> mapM (findModules' . (sd </>)) ds
+      where
+        findModules' d = do
+          dc <- filterValidDirectories =<< getDirectoryContents d
+          rest <- concat <$> mapM (findModules' . (d </>)) dc
+          return (dc ++ rest)
 
-modNameToCoalgebra = createModuleName "Coalgebra"
-createCoalgebraModule = mopCreateModule "Coalgebra"
+filterValidDirectories = filterM $ \x ->
+  liftM ((not ("." `isPrefixOf` x)) &&) (doesDirectoryExist x)
 
-modNameToInstructions = createModuleName "Instructions"
-createInstructionsModule = mopCreateModule "Instructions"
+modNameToAlgebra = createModuleName "Alg"
+createAlgebraModule = mopCreateModule "Alg"
+gatherAlgebraModules = findModules "Alg"
 
-modNameToInterpreters = createModuleName "Interpreters"
-createInterpretersModule = mopCreateModule "Interpreters"
+modNameToCoalgebra = createModuleName "Coalg"
+createCoalgebraModule = mopCreateModule "Coalg"
+gatherCoalgebraModules = findModules "Coalg"
 
-modNameToPairings = createModuleName "Pairings"
-createPairingsModule = mopCreateModule "Pairings"
+modNameToInstructions = createModuleName "Instr"
+createInstructionsModule = mopCreateModule "Instr"
+gatherInstructionsModules = findModules "Instr"
 
--- remove the original calling TH expression; this is the cleanup method
--- for successful runs
+modNameToInterpreters = createModuleName "Interp"
+createInterpretersModule = mopCreateModule "Interp"
+gatherInterpretersModules = findModules "Interp"
+
+modNameToPairings = createModuleName "Pair"
+createPairingsModule = mopCreateModule "Pair"
+gatherPairingsModules = findModules "Pair"
+
 removeCallSite TH.Loc{..} = undefined
 
-dispatch _ = return []
 
-
-deriving instance Typeable HSE.Decl
 groupByConstructor :: Data a => [a] -> [[a]]
 groupByConstructor =
   map ($ [])
