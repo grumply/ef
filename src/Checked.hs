@@ -70,10 +70,3 @@ throwUnchecked = MC.throwM
 -- | Rethrow IO exceptions as checked exceptions
 checkIO :: (MonadIO m,MC.MonadCatch m,Throws IOException) => IO a -> m a
 checkIO = MC.handle (\(ex :: IOException) -> throwChecked ex) . liftIO
-
-readFile' :: Throws IOException => FilePath -> IO String
-readFile' = checkIO . readFile
-
-readEtcPasswd :: IO String
-readEtcPasswd = catchChecked (readFile' "/etc/passwd") $ \(ex :: IOException) ->
-                  return "Could not read"

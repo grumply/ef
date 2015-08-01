@@ -38,6 +38,9 @@ import Pairing     as Export
 import Optimize    as Export
 import Synonyms    as Export
 import Generate    as Export
+import Checked     as Export
+
+import Control.Monad.Catch as Export
 
 import Language.Haskell.TH.Syntax
 
