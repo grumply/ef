@@ -1,3 +1,10 @@
 dist/
 .cabal-sandbox/
 cabal.sandbox.config
+x86_64-linux-ghc-7.10.2-packages.conf.d/
+add-source-timestamps
+bin/
+lib/
+logs/
+packages/
+share/

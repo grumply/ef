@@ -153,7 +153,7 @@ data History = History [Version]
   deriving (Read,Show,Generic)
 
 allLocalInstances :: HSE.QName -> [HSE.Decl] -> [HSE.Deriving]
-allLocalInstances
+allLocalInstances qn decls = undefined
 
 analyze :: History -> HSE.Module -> PackageDescription -> Component
 analyze config m@(HSE.Module _ (HSE.ModuleName mn) _ _ _ _ _) pd = do
