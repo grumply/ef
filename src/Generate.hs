@@ -93,10 +93,12 @@ instance Monoid Visibility where
 
 data TypeComponent = TypeComponent
   { typeComponentName :: HSE.Name
+  , typeComponentContext :: HSE.Context
   , typeComponentVars :: [HSE.TyVarBind]
-  , typeComponentType :: [(HSE.Name,HSE.Type)]
+  , typeComponentType :: [([HSE.TyVarBind],HSE.Context,HSE.Name,HSE.ConDecl)]
   , typeComponentDerives :: [HSE.Deriving]
   } deriving (Read,Show,Generic)
+-- gather instances and derives
 
 data FuncComponent = FuncComponent
   { funcComponentName :: HSE.Name
@@ -150,6 +152,9 @@ type VersionedPackage = (Version,[Component],GenericPackageDescription)
 data History = History [Version]
   deriving (Read,Show,Generic)
 
+allLocalInstances :: HSE.QName -> [HSE.Decl] -> [HSE.Deriving]
+allLocalInstances
+
 analyze :: History -> HSE.Module -> PackageDescription -> Component
 analyze config m@(HSE.Module _ (HSE.ModuleName mn) _ _ _ _ _) pd = do
   case break (=='.') mn of
@@ -202,7 +207,9 @@ isCoalgebra (HSE.TyInfix _ (HSE.UnQual (HSE.Symbol ":*:")) _) = True
 isCoalgebra _ = False
 
 makeAlgebraComponents :: [HSE.Decl] -> [TypeComponent]
-makeAlgebraComponents ds = undefined
+makeAlgebraComponents ds = flip mapMaybe ds $ \d ->
+  case d of
+    HSE.DataDecl _ _ _ cxt nm _ _ -> undefined
 
 dispatch _ = return []
 
