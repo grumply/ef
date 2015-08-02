@@ -44,8 +44,10 @@ import Distribution.PackageDescription.PrettyPrint
 import Distribution.Verbosity
 import Distribution.Version
 
-import Control.Monad.State
 import Control.Monad.Reader
+import Control.Monad.State
+import Control.Monad.Writer
+
 
 private :: TH.Q [TH.Dec]
 private = return []
@@ -57,40 +59,38 @@ mop :: TH.Q [TH.Dec]
 mop = do
   TH.Module pn (TH.ModName mn) <- TH.thisModule
   TH.Loc{..} <- TH.location
-  (pr,cf,c,h) <- TH.runIO $ do
+  let d = takeDirectory loc_filename
+  (pr,cf,c,h,hd) <- TH.runIO $ do
           pr <- HSE.parseFile loc_filename
-          cf <- findCabalFileFromSourceFile loc_filename
+          cf <- findCabalFile d
           c <- readCabalFile cf
-          h <- readHistory
-          return (pr,cf,c,h)
+          hd <- findMopDir d
+          h <- getMopHistory hd
+          return (pr,cf,c,h,hd)
   case pr of
-    HSE.ParseOk m -> run TH.Loc{..} m h (c,cf) undefined
+    HSE.ParseOk m -> run TH.Loc{..} m (History h,hd) (c,cf) undefined
     HSE.ParseFailed loc str ->
       fail $ "Could not parse module at "
              ++ show loc ++
              "\nError:\n\t:"
              ++ str
 
-readHistory = readHistoryFile =<< findHistoryFile
-  where
-    findHistoryFile = undefined
-    readHistoryFile = undefined
-
-
 -- run a given set of mop commands within a context of a module, the history for
 -- the package and the cabal description.
-run :: TH.Loc -> HSE.Module -> History -> (GenericPackageDescription,FilePath) -> Mop a -> TH.Q a
-run TH.Loc{..} m h (gpd,cf) x = do
-  let mc = MopContext h (gpd,cf) m
-  (a,c) <- flip runStateT mc . flip runReaderT mc $ runMop x
-  when (packageDescChanged gpd (fst $ ms_packageDesc c)) $ TH.runIO $
-    writeGenericPackageDescription
-      (snd (ms_packageDesc c))
-      (fst (ms_packageDesc c))
-  when (moduleChanged m (ms_hseModule c)) $ TH.runIO $
-    writeModuleModifications m (ms_hseModule c)
-  when (historyChanged h (ms_history c)) $ TH.runIO $
-    writeHistoryModifications h (ms_history c)
+run :: TH.Loc -> HSE.Module -> (History,FilePath) -> (GenericPackageDescription,FilePath) -> Mop a -> TH.Q a
+run TH.Loc{..} m (h,hf) (gpd,cf) x = do
+  let mc = MopContext (h,hf) (gpd,cf) m
+  ((a,s),c) <- flip runStateT mc . flip runReaderT mc . runWriterT $ runMop x
+  TH.runIO $ do
+    mapM_ putStrLn s
+    when (packageDescChanged gpd (fst $ ms_packageDesc c)) $
+      writeGenericPackageDescription
+        (snd (ms_packageDesc c))
+        (fst (ms_packageDesc c))
+    when (moduleChanged m (ms_hseModule c)) $
+      writeModuleModifications m (ms_hseModule c)
+    when (historyChanged h (fst $ ms_history c)) $
+      writeHistoryModifications h (fst $ ms_history c)
   return a
 
 mopDir = ".mop/"
@@ -174,23 +174,25 @@ data Component
 
 type VersionedPackage = (Version,[Component],GenericPackageDescription)
 
-data History = History [VersionedPackage]
-  deriving (Eq,Read,Show,Generic)
+data History = History [(Version,IO VersionedPackage)]
+instance Eq History where
+  (History xs) == (History ys) = map fst xs == map fst ys
 
 allLocalInstances :: HSE.QName -> [HSE.Decl] -> [HSE.Deriving]
 allLocalInstances qn decls = undefined
 
 data MopContext = MopContext
-  { ms_history     :: History
+  { ms_history     :: (History,FilePath)
   , ms_packageDesc :: (GenericPackageDescription,FilePath)
   , ms_hseModule   :: HSE.Module
   }
 
 newtype Mop a = Mop
-  { runMop :: ReaderT MopContext (StateT MopContext TH.Q) a }
+  { runMop :: WriterT [String] (ReaderT MopContext (StateT MopContext TH.Q)) a }
   deriving ( Functor, Applicative, Monad
            , MonadState MopContext
            , MonadReader MopContext
+           , MonadWriter [String]
            )
 
 algebra :: Mop [TH.Dec]
@@ -209,7 +211,7 @@ historyChanged x y = not $ (==) x y
 moduleChanged x y = not $ (==) x y
 
 modifyHistory :: (History -> History) -> Mop ()
-modifyHistory f = modify (\st -> st { ms_history = f $ ms_history st })
+modifyHistory f = modify (\st -> st { ms_history = first f $ ms_history st })
 
 modifyGenericPackageDescription :: (GenericPackageDescription -> GenericPackageDescription) -> Mop ()
 modifyGenericPackageDescription f =
@@ -295,7 +297,6 @@ makeAlgebraComponents ds = flip mapMaybe ds $ \d ->
 
 dispatch _ = return []
 
-findCabalFileFromSourceFile = findCabalFile . takeDirectory
 
 findCabalFile d
   | null d || d == "/" = do
@@ -310,6 +311,28 @@ findCabalFile d
 
 readCabalFile :: FilePath -> IO GenericPackageDescription
 readCabalFile f = readPackageDescription normal f
+
+findMopDir d
+  | null d || d == "/" = do
+     cwd <- getCurrentDirectory
+     error $ "Could not find .mop directory in or above " ++ cwd
+  | otherwise = do
+     dc <- filterValidDirectories =<< getDirectoryContents d
+     if ".mop" `elem` dc
+     then return (d </> ".mop")
+     else findMopDir (takeDirectory d)
+
+getMopHistory d = do
+  dc <- getDirectoryContents d
+  let mops = filter (".mop" `isSuffixOf`) dc
+      mvs = mapMaybe breakNameVersion mops
+  return $ map (\(nm,v) -> (v,read <$> readFile (d </> (nm ++ "_" ++ show v) <.> "mop"))) mvs
+  where
+    breakNameVersion (reverse . drop 4 . reverse -> str) =
+      case break (=='_') str of
+        ([],_) -> Nothing
+        (_,[]) -> Nothing
+        (nm,_:ver) -> Just (nm,read ver)
 
 sourceDirectory pkg =
   let Just Library{..} = library pkg
@@ -344,7 +367,7 @@ findModules ty pkg = concat <$> mapM go (sourceDirectory pkg)
       let ds = filter (==ty) dc
       if null ds
       then return []
-      else concat <$> mapM (findModules' . (sd </>)) ds
+      else filter (".hs" `isSuffixOf`) . concat <$> mapM (findModules' . (sd </>)) ds
       where
         findModules' d = do
           dc <- filterValidDirectories =<< getDirectoryContents d
