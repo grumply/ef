@@ -6,6 +6,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Generate where
 
 import Control.Applicative
@@ -39,10 +40,12 @@ import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.PackageDescription.Configuration
 import Distribution.PackageDescription.Parse
+import Distribution.PackageDescription.PrettyPrint
 import Distribution.Verbosity
 import Distribution.Version
 
-import Control.Monad.Trans.State
+import Control.Monad.State
+import Control.Monad.Reader
 
 private :: TH.Q [TH.Dec]
 private = return []
@@ -54,19 +57,41 @@ mop :: TH.Q [TH.Dec]
 mop = do
   TH.Module pn (TH.ModName mn) <- TH.thisModule
   TH.Loc{..} <- TH.location
-  pr <- TH.runIO $ HSE.parseFile loc_filename
-  --TH.runIO (print =<< readCabalFile =<< findCabalFileFromSourceFile loc_filename)
+  (pr,cf,c,h) <- TH.runIO $ do
+          pr <- HSE.parseFile loc_filename
+          cf <- findCabalFileFromSourceFile loc_filename
+          c <- readCabalFile cf
+          h <- readHistory
+          return (pr,cf,c,h)
   case pr of
-    HSE.ParseOk a -> do
-      TH.runIO $ print a
-      TH.runIO (putStrLn "Here")
-      return []
-
+    HSE.ParseOk m -> run TH.Loc{..} m h (c,cf) undefined
     HSE.ParseFailed loc str ->
       fail $ "Could not parse module at "
              ++ show loc ++
              "\nError:\n\t:"
              ++ str
+
+readHistory = readHistoryFile =<< findHistoryFile
+  where
+    findHistoryFile = undefined
+    readHistoryFile = undefined
+
+
+-- run a given set of mop commands within a context of a module, the history for
+-- the package and the cabal description.
+run :: TH.Loc -> HSE.Module -> History -> (GenericPackageDescription,FilePath) -> Mop a -> TH.Q a
+run TH.Loc{..} m h (gpd,cf) x = do
+  let mc = MopContext h (gpd,cf) m
+  (a,c) <- flip runStateT mc . flip runReaderT mc $ runMop x
+  when (packageDescChanged gpd (fst $ ms_packageDesc c)) $ TH.runIO $
+    writeGenericPackageDescription
+      (snd (ms_packageDesc c))
+      (fst (ms_packageDesc c))
+  when (moduleChanged m (ms_hseModule c)) $ TH.runIO $
+    writeModuleModifications m (ms_hseModule c)
+  when (historyChanged h (ms_history c)) $ TH.runIO $
+    writeHistoryModifications h (ms_history c)
+  return a
 
 mopDir = ".mop/"
 
@@ -97,20 +122,20 @@ data TypeComponent = TypeComponent
   , typeComponentVars :: [HSE.TyVarBind]
   , typeComponentType :: [([HSE.TyVarBind],HSE.Context,HSE.Name,HSE.ConDecl)]
   , typeComponentDerives :: [HSE.Deriving]
-  } deriving (Read,Show,Generic)
+  } deriving (Eq,Read,Show,Generic)
 -- gather instances and derives
 
 data FuncComponent = FuncComponent
   { funcComponentName :: HSE.Name
   , funcComponentType :: HSE.Type
   , funcComponentImpl :: HSE.Decl
-  } deriving (Read,Show,Generic)
+  } deriving (Eq,Read,Show,Generic)
 
 data Pair = Pair
   { pairInstruction :: HSE.Name
   , pairInterpreter :: HSE.Name
   , pairInstance    :: HSE.Decl
-  } deriving (Read,Show,Generic)
+  } deriving (Eq,Read,Show,Generic)
 
 data Component
   = Algebra
@@ -145,25 +170,82 @@ data Component
       , pairingsModuleName     :: HSE.ModuleName
       , pairingsComponents     :: [Pair]
       }
-  deriving (Read,Show,Generic)
+  deriving (Eq,Read,Show,Generic)
 
 type VersionedPackage = (Version,[Component],GenericPackageDescription)
 
-data History = History [Version]
-  deriving (Read,Show,Generic)
+data History = History [VersionedPackage]
+  deriving (Eq,Read,Show,Generic)
 
 allLocalInstances :: HSE.QName -> [HSE.Decl] -> [HSE.Deriving]
 allLocalInstances qn decls = undefined
 
-analyze :: History -> HSE.Module -> PackageDescription -> Component
-analyze config m@(HSE.Module _ (HSE.ModuleName mn) _ _ _ _ _) pd = do
-  case break (=='.') mn of
-    ("Devel",[]) -> undefined
-    ("Alg",_)    -> analyzeAlgebra pd m
-    ("Coalg",_)  -> undefined
-    ("Instr",_)  -> undefined
-    ("Interp",_) -> undefined
-    ("Pair",_)   -> undefined
+data MopContext = MopContext
+  { ms_history     :: History
+  , ms_packageDesc :: (GenericPackageDescription,FilePath)
+  , ms_hseModule   :: HSE.Module
+  }
+
+newtype Mop a = Mop
+  { runMop :: ReaderT MopContext (StateT MopContext TH.Q) a }
+  deriving ( Functor, Applicative, Monad
+           , MonadState MopContext
+           , MonadReader MopContext
+           )
+
+algebra :: Mop [TH.Dec]
+algebra = undefined
+
+writeModuleModifications :: HSE.Module -> HSE.Module -> IO ()
+writeModuleModifications old new = undefined
+
+writeHistoryModifications :: History -> History -> IO ()
+writeHistoryModifications old new = undefined
+
+packageDescChanged x y = not $ (==) x y
+
+historyChanged x y = not $ (==) x y
+
+moduleChanged x y = not $ (==) x y
+
+modifyHistory :: (History -> History) -> Mop ()
+modifyHistory f = modify (\st -> st { ms_history = f $ ms_history st })
+
+modifyGenericPackageDescription :: (GenericPackageDescription -> GenericPackageDescription) -> Mop ()
+modifyGenericPackageDescription f =
+  modify (\st -> st { ms_packageDesc = first f $ ms_packageDesc st })
+
+modifyPackageDescription :: (PackageDescription -> PackageDescription) -> Mop ()
+modifyPackageDescription f =
+  modifyGenericPackageDescription
+    (\st -> st { packageDescription = f (packageDescription st) })
+
+modifyModule :: (HSE.Module -> HSE.Module) -> Mop ()
+modifyModule f =
+  modify (\st -> st { ms_hseModule = f $ ms_hseModule st })
+
+modifyModuleName :: (HSE.ModuleName -> HSE.ModuleName) -> Mop ()
+modifyModuleName x =
+  modifyModule (\(HSE.Module a b c d e f g) -> HSE.Module a (x b) c d e f g)
+
+modifyExports :: (Maybe [HSE.ExportSpec] -> Maybe [HSE.ExportSpec]) -> Mop ()
+modifyExports x =
+  modifyModule (\(HSE.Module a b c d e f g) -> HSE.Module a b c d (x e) f g)
+
+modifyImports :: ([HSE.ImportDecl] -> [HSE.ImportDecl]) -> Mop ()
+modifyImports x =
+  modifyModule (\(HSE.Module a b c d e f g) -> HSE.Module a b c d e (x f) g)
+
+modifyPragmas :: ([HSE.ModulePragma] -> [HSE.ModulePragma]) -> Mop ()
+modifyPragmas x =
+  modifyModule (\(HSE.Module a b c d e f g) -> HSE.Module a b (x c) d e f g)
+
+modifyDecls :: ([HSE.Decl] -> [HSE.Decl]) -> Mop ()
+modifyDecls x =
+  modifyModule (\(HSE.Module a b c d e f g) -> HSE.Module a b c d e f (x g))
+
+runCoalgebraMop = undefined
+
 
 getVisibility m@(HSE.Module _ _ _ _ _ _ decls) =
   let spl = catMaybes $ flip map decls $ \d ->
@@ -226,8 +308,8 @@ findCabalFile d
      then return (d </> head fs)
      else findCabalFile (takeDirectory d)
 
-readCabalFile :: FilePath -> IO PackageDescription
-readCabalFile f = flattenPackageDescription <$> readPackageDescription normal f
+readCabalFile :: FilePath -> IO GenericPackageDescription
+readCabalFile f = readPackageDescription normal f
 
 sourceDirectory pkg =
   let Just Library{..} = library pkg
