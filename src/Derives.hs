@@ -18,7 +18,12 @@ import Distribution.PackageDescription.Parse
 import Distribution.Verbosity
 import Distribution.Version
 
+deriving instance Read TH.Loc
+deriving instance Read TH.Module
+deriving instance Read TH.PkgName
+deriving instance Read TH.ModName
 
+deriving instance Read HSE.Module
 deriving instance Read HSE.Name
 deriving instance Read HSE.Type
 deriving instance Read HSE.Decl
@@ -73,7 +78,14 @@ deriving instance Read HSE.Annotation
 deriving instance Read HSE.PXAttr
 deriving instance Read HSE.RPatOp
 deriving instance Read HSE.SrcLoc
-
+deriving instance Read HSE.WarningText
+deriving instance Read HSE.ModulePragma
+deriving instance Read HSE.Tool
+deriving instance Read HSE.ImportDecl
+deriving instance Read HSE.ImportSpec
+deriving instance Read HSE.Namespace
+deriving instance Read HSE.CName
+deriving instance Read HSE.ExportSpec
 deriving instance (Read a) => Read (Condition a)
 deriving instance Read ConfVar
 deriving instance (Read a,Read b,Read c) => Read (CondTree a b c)

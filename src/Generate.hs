@@ -13,6 +13,7 @@ import Control.Applicative
 import Control.Arrow
 import Control.Monad
 
+import Data.Aeson hiding (Error)
 import Data.Char
 import Data.Data
 import qualified Data.IntMap as IM
@@ -37,6 +38,7 @@ import System.FilePath
 import System.Posix.IO
 import System.Posix.Files
 
+import Distribution.ModuleName
 import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.PackageDescription.Configuration
@@ -49,59 +51,44 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
 
---------------------------------------------------------------------------------
--- Types for configuration of mops and buckets, bucket representations, exec.
--- context (TH location/module), execution state (buckets and cabal file), and
--- history (function from version to execution state), logging, and the Mop
--- execution context.
-
-data MopName = MopName String
-  deriving (Show,Read,Eq,Ord,Data,Typeable)
+import Prelude hiding (log)
 
 data BucketName = BucketName String
-  deriving (Show,Read,Eq,Ord,Data,Typeable)
+  deriving (Show,Read,Eq,Data,Typeable)
 
 data BucketVersion = BucketVersion Version
-  deriving (Show,Read,Eq,Ord,Data,Typeable)
-
-data MopConfiguration = MopConfiguration
-  { mopName             :: MopName
-  , buckets             :: [(BucketName,BucketVersion)]
-  } deriving (Show,Read,Eq,Data,Typeable)
+  deriving (Show,Read,Eq,Data,Typeable)
 
 data BucketConfiguration = BucketConfiguration
-  { bucketName          :: BucketName
-  , bucketVersion       :: BucketVersion
+  { bucketName         :: BucketName
+  , bucketVersion      :: BucketVersion
   } deriving (Show,Read,Eq,Data,Typeable)
 
--- Bucket is a subset of a cabal package. Multiple `bucket`S may be used
--- in a single cabal package.
 data Bucket = Bucket
   { bucketConfig        :: BucketConfiguration
-  , algebraModules      :: [HSE.Module]
-  , coalgebraModules    :: [HSE.Module]
-  , instructionsModules :: [HSE.Module]
-  , interpretersModules :: [HSE.Module]
-  , pairingsModules     :: [HSE.Module]
-  , otherModules        :: [HSE.Module]
+  , bucketAlgebras      :: [HSE.Module]
+  , bucketCoalgebras    :: [HSE.Module]
+  , bucketInstructions  :: [HSE.Module]
+  , bucketInterpreters  :: [HSE.Module]
+  , bucketPairings      :: [HSE.Module]
+  , bucketOtherModules  :: [HSE.Module]
   } deriving (Show,Read,Eq,Data,Typeable)
 type Buckets = [Bucket]
 
 data Context = Context
   { executionModule     :: TH.Module
   , location            :: TH.Loc
+  , originalModule      :: HSE.Module
   } deriving (Show,Read,Eq,Data,Typeable)
 
-data State = State
-  { currentMops         :: [Bucket]
+-- would like to include MopHistory, but prevents data/typeable
+-- will tuple it up in StateT s in Mop execution context.
+data MopState = MopState
+  { currentBuckets      :: [Bucket]
   , currentPackageDesc  :: GenericPackageDescription
+  , cabalFile           :: FilePath
+  , currentModule       :: HSE.Module
   } deriving (Show,Read,Eq,Data,Typeable)
-
--- The hope for this implementation of History is a memoizing version accessor.
--- This implementation will leak memory in the case of used-once versions,
--- but I hope the leak to be of an acceptable magnitude.
-newtype MopHistory = MopHistory
-  { history :: Version -> IO (Buckets,GenericPackageDescription) }
 
 data Log
   = Alert    String
@@ -113,15 +100,45 @@ data Log
   | Debug    String
   deriving (Show,Ord,Eq,Data,Typeable)
 
+data Algebra = Algebra
+  { algebraName         :: HSE.Name
+  , algebraType         :: HSE.Decl
+  , algebraComponents   :: [HSE.Decl]
+  } deriving (Show,Read,Eq,Data,Typeable)
+
+data Coalgebra = Coalgebra
+  { coalgebraName       :: HSE.Name
+  , coalgebraType       :: HSE.Decl
+  , coalgebraComponents :: [HSE.Decl]
+  } deriving (Show,Read,Eq,Data,Typeable)
+
+data Instructions = Instructions
+  { instructions        :: [HSE.Decl]
+  } deriving (Show,Read,Eq,Data,Typeable)
+
+data Interpreters = Interpreters
+  { interpreters        :: [HSE.Decl]
+  } deriving (Show,Read,Eq,Data,Typeable)
+
+data Pairings = Pairings
+  { pairings            :: [(HSE.Decl,HSE.Decl,HSE.Decl)]
+  } deriving (Show,Read,Eq,Data,Typeable)
+
 newtype Mop a = Mop
-  { runMop :: WriterT [Log] (ReaderT Context (StateT State TH.Q)) a }
-  deriving ( Functor
-           , Applicative
-           , Monad
-           , MonadReader Context
-           , MonadState  State
-           , MonadWriter [Log]
-           )
+  { runMop :: WriterT [Log] (ReaderT Context (StateT MopState TH.Q)) a
+  } deriving ( Functor
+             , Applicative
+             , Monad
+             , MonadReader Context
+             , MonadState  MopState
+             , MonadWriter [Log]
+             )
+
+liftTH :: TH.Q a -> Mop a
+liftTH f = Mop $ lift $ lift $ lift f
+
+io :: IO a -> Mop a
+io = liftTH . TH.runIO
 
 --------------------------------------------------------------------------------
 
@@ -135,24 +152,61 @@ mop mentry = do
   let l = loc_filename
       d = takeDirectory l
 
-  (pm,h,c) <- TH.runIO $ do
-    pm     <- HSE.parseFile l
+  (pm,c,cf) <- TH.runIO $ do
+    pm      <- HSE.parseFile l
 
-    md     <- findMopDir d
-    mh     <- getMopHistory md
+    cf      <- findCabalFile d
+    c       <- readCabalFile cf
 
-    cf     <- findCabalFile d
-    c      <- readCabalFile cf
-
-    return (pm,(mh,md),(c,cf))
+    return (pm,c,cf)
 
   case pm of
     HSE.ParseOk m           -> do
-      when (hasExpand entry) $ run
+      when (hasExpand entry) $
+        run (Context (TH.Module pn (TH.ModName mn)) TH.Loc{..} m)
+            (MopState [] c cf m)
+            expandAlgebra
     HSE.ParseFailed loc str -> fail $
       "Could not parse module at " ++ show loc ++ "\nError:\n\t:" ++ str
 
-run ::
+run :: Context -> MopState -> Mop a -> TH.Q a
+run ctxt st f = do
+  ((a,s),_) <-   flip runStateT  st
+               . flip runReaderT ctxt
+               .      runWriterT
+               $      runMop     f
+  TH.runIO (mapM_ print s)
+  return a
+
+expandAlgebra = do
+  alg <- parseAlgebra
+  writeCoalgebra    (createCoalgebra    alg)
+  writeInstructions (createInstructions alg)
+  writeInterpreters (createInterpreters alg)
+  writePairings     (createPairings     alg)
+
+parseAlgebra :: Mop Algebra
+parseAlgebra = do
+  Context{..} <- ask
+  undefined
+
+writeCoalgebra :: Coalgebra -> Mop ()
+writeCoalgebra = undefined
+writeInstructions :: Instructions -> Mop ()
+writeInstructions = undefined
+writeInterpreters :: Interpreters -> Mop ()
+writeInterpreters = undefined
+writePairings :: Pairings -> Mop ()
+writePairings = undefined
+
+createCoalgebra :: Algebra -> Coalgebra
+createCoalgebra = undefined
+createInstructions :: Algebra -> Instructions
+createInstructions = undefined
+createInterpreters :: Algebra -> Interpreters
+createInterpreters = undefined
+createPairings :: Algebra -> Pairings
+createPairings = undefined
 
 --------------------------------------------------------------------------------
 -- Primitives to trigger functionality in the mop preprocess phase; we'll scan
@@ -171,31 +225,166 @@ hasExpand :: [TH.Dec] -> Bool
 hasExpand = elem expandFunSplice
 
 --------------------------------------------------------------------------------
--- Mop directory: locate, initialize, read, and write
+-- Mop helper functions for manipulating state, viewing environment and logging.
 
-mopDir = ".mop/"
-
-locateMopDir d
-  | null d || d == "/" = promptForNewMopDir
-  | otherwise = do
-     dc <- filterValidDirectories =<< getDirectoryContents d
-     if mopDir `elem` dc
-     then return (d </> mopDir)
-     else locateMopDir (takeDirectory d)
-
-createMopDir d = createDirectory (d </> mopDir)
-
-promptForNewMopDir = do
-  cd <- takeDirectory <$> findCabalFile
-  cwd <- getCurrentDirectory
-  putStrLn $ "Could not find .mop directory in or above " ++ cwd
-  putStrLn $ "Create new .mop directory at " ++ cd ++ "? [Y/n]"
-  ln <- getLine
-  case map toLower ln of
-    xs | "y" `isPrefixOf` xs -> createMopDir cd
-       | otherwise           -> error "No mop history directory - exiting."
-
-readMop = History historyAccessor
+moduleDirectory :: String -> String
+moduleDirectory = foldl1 (</>) . break [] []
   where
-    historyAccessor v = do
-      findMopDir
+    break acc cur [] = reverse (reverse cur:acc)
+    break acc cur ('.':xs) = break (reverse cur:acc) [] xs
+    break acc cur (x:xs) = break acc (x:cur) xs
+
+createModuleName x (HSE.ModuleName str) = HSE.ModuleName (x ++ '.':str)
+
+createStandardDir dir srcDir (HSE.ModuleName x) = do
+  let d = srcDir </> dir </> moduleDirectory x
+  de <- doesDirectoryExist d
+  unless de (createDirectory d)
+  return d
+
+createStandardModule dir srcDir mn@(HSE.ModuleName x) = do
+  d <- createStandardDir dir srcDir mn
+  let f = d </> dir <.> "hs"
+  fe <- doesFileExist f
+  unless fe (createFile f stdFileMode >>= closeFd)
+
+log :: (String -> Log) -> String -> Mop ()
+log x str = tell [x str]
+
+--------------------------------------------------------------------------------
+-- Cabal utilities injected into the mop scope
+
+findCabalFile d
+  | null d || d == "/" = do
+     cwd <- getCurrentDirectory
+     error $ "Could not find cabal file above " ++ cwd
+  | otherwise = do
+     dc <- getDirectoryContents d
+     let fs = filter ((==) ".cabal" . takeExtensions) dc
+     if not (null fs)
+     then return (d </> head fs)
+     else findCabalFile (takeDirectory d)
+
+readCabalFile :: FilePath -> IO GenericPackageDescription
+readCabalFile f = readPackageDescription normal f
+
+modifyOtherModules :: ([ModuleName] -> [ModuleName]) -> Mop ()
+modifyOtherModules f = do
+  MopState bs pkg fp hsem <- get
+  let pd = packageDescription pkg
+      Just lib@Library{..} = library pd
+      bi@BuildInfo{..} = libBuildInfo
+      oms = f otherModules
+      lbi = bi { otherModules = oms }
+      pkg' = pkg { packageDescription = pd { library = Just lib { libBuildInfo = lbi } } }
+  put $ MopState bs pkg' fp hsem
+
+modifyExposedModules :: ([ModuleName] -> [ModuleName]) -> Mop ()
+modifyExposedModules f = do
+  MopState bs pkg fp hsem <- get
+  let pd = packageDescription pkg
+      Just lib@Library{..} = library pd
+      ems = f exposedModules
+      pkg' = pkg { packageDescription = pd { library = Just lib { exposedModules = ems } } }
+  put $ MopState bs pkg' fp hsem
+
+addOtherModule m = modifyOtherModules (m:)
+removeOtherModule m = modifyOtherModules (filter (/=m))
+
+sourceDirectories :: Mop [FilePath]
+sourceDirectories = do
+  MopState bs pkg fp hsem <- get
+  let pd = packageDescription pkg
+      Just Library{..} = library pd
+      BuildInfo{..} = libBuildInfo
+  return hsSourceDirs
+
+modifyGenericPackageDescription :: (GenericPackageDescription -> GenericPackageDescription) -> Mop ()
+modifyGenericPackageDescription f =
+  modify (\st -> st { currentPackageDesc = f $ currentPackageDesc st })
+
+modifyPackageDescription :: (PackageDescription -> PackageDescription) -> Mop ()
+modifyPackageDescription f =
+  modifyGenericPackageDescription
+    (\st -> st { packageDescription = f (packageDescription st) })
+
+--------------------------------------------------------------------------------
+-- HSE module modification utility functions for the module in state.
+
+modifyModule :: (HSE.Module -> HSE.Module) -> Mop ()
+modifyModule f =
+  modify (\st -> st { currentModule = f $ currentModule st })
+
+modifyModuleName :: (HSE.ModuleName -> HSE.ModuleName) -> Mop ()
+modifyModuleName x =
+  modifyModule (\(HSE.Module a b c d e f g) -> HSE.Module a (x b) c d e f g)
+
+modifyExports :: (Maybe [HSE.ExportSpec] -> Maybe [HSE.ExportSpec]) -> Mop ()
+modifyExports x =
+  modifyModule (\(HSE.Module a b c d e f g) -> HSE.Module a b c d (x e) f g)
+
+modifyImports :: ([HSE.ImportDecl] -> [HSE.ImportDecl]) -> Mop ()
+modifyImports x =
+  modifyModule (\(HSE.Module a b c d e f g) -> HSE.Module a b c d e (x f) g)
+
+modifyPragmas :: ([HSE.ModulePragma] -> [HSE.ModulePragma]) -> Mop ()
+modifyPragmas x =
+  modifyModule (\(HSE.Module a b c d e f g) -> HSE.Module a b (x c) d e f g)
+
+modifyDecls :: ([HSE.Decl] -> [HSE.Decl]) -> Mop ()
+modifyDecls x =
+  modifyModule (\(HSE.Module a b c d e f g) -> HSE.Module a b c d e f (x g))
+
+--------------------------------------------------------------------------------
+-- Module creation utility functions
+
+mopCreateDir dir srcDir (HSE.ModuleName x) = do
+  let d = srcDir </> dir </> moduleDirectory x
+  de <- doesDirectoryExist d
+  unless de (createDirectory d)
+  return d
+
+mopCreateModule dir srcDir mn@(HSE.ModuleName x) = do
+  d <- mopCreateDir dir srcDir mn
+  let f = d </> dir <.> "hs"
+  fe <- doesFileExist f
+  unless fe (createFile f stdFileMode >>= closeFd)
+
+findModules ty = do
+  sds <- sourceDirectories
+  liftTH $ TH.runIO $ concat <$> mapM go sds
+  where
+    go sd = do
+      dc <- getDirectoryContents sd
+      let ds = filter (==ty) dc
+      if null ds
+      then return []
+      else filter (".hs" `isSuffixOf`) . concat <$> mapM (findModules' . (sd </>)) ds
+      where
+        findModules' d = do
+          dc <- filterValidDirectories =<< getDirectoryContents d
+          rest <- concat <$> mapM (findModules' . (d </>)) dc
+          return (dc ++ rest)
+
+filterValidDirectories = filterM $ \x ->
+  liftM ((not ("." `isPrefixOf` x)) &&) (doesDirectoryExist x)
+
+modNameToAlgebra = createModuleName "Alg"
+createAlgebraModule = mopCreateModule "Alg"
+gatherAlgebraModules = findModules "Alg"
+
+modNameToCoalgebra = createModuleName "Coalg"
+createCoalgebraModule = mopCreateModule "Coalg"
+gatherCoalgebraModules = findModules "Coalg"
+
+modNameToInstructions = createModuleName "Instr"
+createInstructionsModule = mopCreateModule "Instr"
+gatherInstructionsModules = findModules "Instr"
+
+modNameToInterpreters = createModuleName "Interp"
+createInterpretersModule = mopCreateModule "Interp"
+gatherInterpretersModules = findModules "Interp"
+
+modNameToPairings = createModuleName "Pair"
+createPairingsModule = mopCreateModule "Pair"
+gatherPairingsModules = findModules "Pair"
