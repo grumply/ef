@@ -161,11 +161,12 @@ mop mentry = do
     return (pm,c,cf)
 
   case pm of
-    HSE.ParseOk m           -> do
-      when (hasExpand entry) $
-        run (Context (TH.Module pn (TH.ModName mn)) TH.Loc{..} m)
-            (MopState [] c cf m)
-            expandAlgebra
+    HSE.ParseOk m           ->
+      if hasExpand entry
+      then run (Context (TH.Module pn (TH.ModName mn)) TH.Loc{..} m)
+               (MopState [] c cf m)
+               expandAlgebra
+      else return []
     HSE.ParseFailed loc str -> fail $
       "Could not parse module at " ++ show loc ++ "\nError:\n\t:" ++ str
 
@@ -178,17 +179,24 @@ run ctxt st f = do
   TH.runIO (mapM_ print s)
   return a
 
+expandAlgebra :: Mop [TH.Dec]
 expandAlgebra = do
-  alg <- parseAlgebra
+  alg <- createAlgebra
   writeCoalgebra    (createCoalgebra    alg)
   writeInstructions (createInstructions alg)
   writeInterpreters (createInterpreters alg)
   writePairings     (createPairings     alg)
+  renderAlgebra alg
 
-parseAlgebra :: Mop Algebra
-parseAlgebra = do
+createAlgebra :: Mop Algebra
+createAlgebra = do
   Context{..} <- ask
+  let m = originalModule
+      ((nm,ln),st) = (findExpand m,findStop m)
   undefined
+
+renderAlgebra :: Algebra -> Mop [TH.Dec]
+renderAlgebra = undefined
 
 writeCoalgebra :: Coalgebra -> Mop ()
 writeCoalgebra = undefined
@@ -212,17 +220,41 @@ createPairings = undefined
 -- Primitives to trigger functionality in the mop preprocess phase; we'll scan
 -- splice phrases beginning with mop for these triggers. For example:
 --
--- 'mop expand' - placed in an algebra module to create a instruction set,
--- coalgebra, interpreter set, and pairings.
+-- 'mop (expand "some_name")' - placed in an algebra module to create an
+-- instruction set, coalgebra, interpreter set, and pairings. Will extract
+-- algebraic components up to a 'stop' splice if one exists.
 
-expandFunSplice :: TH.Dec
-expandFunSplice = TH.FunD (TH.mkName "expand") []
+expandFunSplice :: String -> TH.Dec
+expandFunSplice str =
+  TH.FunD
+    (TH.mkName "expand")
+    [TH.Clause
+       []
+       (TH.NormalB
+          (TH.VarE (TH.mkName str))
+       )
+       []
+    ]
 
-expand :: TH.Q [TH.Dec]
-expand = return [expandFunSplice]
+expand :: String -> TH.Q [TH.Dec]
+expand str = return [expandFunSplice str]
 
 hasExpand :: [TH.Dec] -> Bool
-hasExpand = elem expandFunSplice
+hasExpand [] = False
+hasExpand (TH.FunD (TH.nameBase -> "expand") _:_) = True
+hasExpand (x:xs) = hasExpand xs
+
+findExpand :: HSE.Module -> (String,Int)
+findExpand = undefined
+
+expandStopSplice :: TH.Dec
+expandStopSplice = TH.FunD (TH.mkName "stop") []
+
+stop :: TH.Q [TH.Dec]
+stop = return [expandStopSplice]
+
+findStop :: HSE.Module -> Int
+findStop _ = undefined
 
 --------------------------------------------------------------------------------
 -- Mop helper functions for manipulating state, viewing environment and logging.
