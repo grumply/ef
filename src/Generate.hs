@@ -13,13 +13,15 @@ import Control.Applicative
 import Control.Arrow
 import Control.Monad
 
-import Data.Aeson hiding (Error)
+import qualified Data.Aeson as JSON
 import Data.Char
 import Data.Data
+import Data.Function
 import qualified Data.IntMap as IM
 import Data.List
 import Data.Maybe
 import Data.Monoid
+import Data.Ord
 import Data.Typeable
 
 import GHC.Generics
@@ -28,28 +30,33 @@ import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Syntax as TH
 
 import qualified Language.Haskell.Exts as HSE
+import           Language.Haskell.Exts.Syntax
 
 import Derives
 import qualified Product
 import qualified Sum
 
+import System.Exit
+import System.IO
 import System.Directory
 import System.FilePath
 import System.Posix.IO
 import System.Posix.Files
 
-import Distribution.ModuleName
+import Distribution.ModuleName as Dist
 import Distribution.Package
-import Distribution.PackageDescription
+import Distribution.PackageDescription hiding (Var,Lit)
 import Distribution.PackageDescription.Configuration
 import Distribution.PackageDescription.Parse
 import Distribution.PackageDescription.PrettyPrint
-import Distribution.Verbosity
+import qualified Distribution.Verbosity as Verbosity
 import Distribution.Version
 
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
+
+import qualified Data.Map as Map
 
 import Prelude hiding (log)
 
@@ -75,10 +82,11 @@ data Bucket = Bucket
   } deriving (Show,Read,Eq,Data,Typeable)
 type Buckets = [Bucket]
 
-data Context = Context
+data MopContext = MopContext
   { executionModule     :: TH.Module
   , location            :: TH.Loc
   , originalModule      :: HSE.Module
+  , verbosity           :: Verbosity
   } deriving (Show,Read,Eq,Data,Typeable)
 
 -- would like to include MopHistory, but prevents data/typeable
@@ -88,6 +96,7 @@ data MopState = MopState
   , currentPackageDesc  :: GenericPackageDescription
   , cabalFile           :: FilePath
   , currentModule       :: HSE.Module
+  , deletes             :: Map.Map FilePath [Int]
   } deriving (Show,Read,Eq,Data,Typeable)
 
 data Log
@@ -99,6 +108,15 @@ data Log
   | Info     String
   | Debug    String
   deriving (Show,Ord,Eq,Data,Typeable)
+
+data Verbosity
+  = ReallySilent -- ^   Nothing
+  | Silent       -- ^ < Warning; default
+  | Quiet        -- ^ < Info
+  | Normal       -- ^ < Debug
+  | Loud         -- ^   All
+  deriving (Read,Show,Eq,Ord,Enum,Data,Typeable)
+
 
 data Algebra = Algebra
   { algebraName         :: HSE.Name
@@ -125,11 +143,11 @@ data Pairings = Pairings
   } deriving (Show,Read,Eq,Data,Typeable)
 
 newtype Mop a = Mop
-  { runMop :: WriterT [Log] (ReaderT Context (StateT MopState TH.Q)) a
+  { runMop :: WriterT [Log] (ReaderT MopContext (StateT MopState TH.Q)) a
   } deriving ( Functor
              , Applicative
              , Monad
-             , MonadReader Context
+             , MonadReader MopContext
              , MonadState  MopState
              , MonadWriter [Log]
              )
@@ -140,10 +158,20 @@ liftTH f = Mop $ lift $ lift $ lift f
 io :: IO a -> Mop a
 io = liftTH . TH.runIO
 
+insertDelete :: FilePath -> Int -> Mop ()
+insertDelete fp x = do
+  ms@MopState{..} <- get
+  put ms { deletes = Map.insertWith fp (x:) deletes }
+
+calculateDeleteOffset :: FilePath -> Int -> Mop Int
+calculateDeleteOffset fp x = do
+  MopState _ _ _ _ (maybe [] reverse . Map.lookup fp -> ds) <- get
+  return (foldr (\a st -> if a < st then pred st else st) x ds)
+
 --------------------------------------------------------------------------------
 
-mop :: TH.Q [TH.Dec] -> TH.Q [TH.Dec]
-mop mentry = do
+mop :: Verbosity -> TH.Q [TH.Dec] -> TH.Q [TH.Dec]
+mop vbosity mentry = do
   entry <- mentry
 
   TH.Module pn (TH.ModName mn) <- TH.thisModule
@@ -161,16 +189,17 @@ mop mentry = do
     return (pm,c,cf)
 
   case pm of
-    HSE.ParseOk m           ->
+    HSE.ParseOk m           -> do
+      TH.runIO (print m)
       if hasExpand entry
-      then run (Context (TH.Module pn (TH.ModName mn)) TH.Loc{..} m)
-               (MopState [] c cf m)
+      then run (MopContext (TH.Module pn (TH.ModName mn)) TH.Loc{..} m vbosity)
+               (MopState [] c cf m mempty)
                expandAlgebra
       else return []
     HSE.ParseFailed loc str -> fail $
       "Could not parse module at " ++ show loc ++ "\nError:\n\t:" ++ str
 
-run :: Context -> MopState -> Mop a -> TH.Q a
+run :: MopContext -> MopState -> Mop a -> TH.Q a
 run ctxt st f = do
   ((a,s),_) <-   flip runStateT  st
                . flip runReaderT ctxt
@@ -190,31 +219,62 @@ expandAlgebra = do
 
 createAlgebra :: Mop Algebra
 createAlgebra = do
-  Context{..} <- ask
-  let m = originalModule
-      ((nm,ln),st) = (findExpand m,findStop m)
-  undefined
+  MopContext{..} <- ask
+  let ds      = gatherDataDecls mn mx originalModule
+      (nm,mn) = findExpand            originalModule
+      mx      = findStop              originalModule
+  if null ds
+  then do
+    log Error $ "No instructions found between lines "
+                ++ show mn ++ " and " ++ show mx ++ "."
+    io exitFailure
+  else do
+    log Notify "Algebraic components extracted."
 
-renderAlgebra :: Algebra -> Mop [TH.Dec]
-renderAlgebra = undefined
+    ty <- makeType nm ds
 
-writeCoalgebra :: Coalgebra -> Mop ()
-writeCoalgebra = undefined
-writeInstructions :: Instructions -> Mop ()
-writeInstructions = undefined
-writeInterpreters :: Interpreters -> Mop ()
-writeInterpreters = undefined
-writePairings :: Pairings -> Mop ()
-writePairings = undefined
+    unsplice mn
+    unsplice mx
 
-createCoalgebra :: Algebra -> Coalgebra
-createCoalgebra = undefined
+    return (Algebra (HSE.Ident nm) ty ds)
+  where
+    gatherDataDecls mn mx (Module _ _ _ _ _ _ (filter (p mn mx) -> xs)) = xs
+    p mn mx (DataDecl (SrcLoc _ l _) _ _ _ _ _ _) = l > mn && l < mx
+    p _  _  _                                     = False
+
+    makeType nm ds = do
+     loc <- asks location
+     let getNameVars ~(DataDecl _ _ _ nm vs _ _) = (nm,vs)
+         ds' = groupBy ((==) `on` (length . snd)) (map getNameVars ds)
+     if length ds' == 1
+     then return $ foldr (\st a -> ) (TypeDecl (SrcLoc loc_filename loc_start 0) (Name nm) [] (TyInfix _ (QName _) _)) ds
+     else do
+       log Error "Gathered data declarations have different number of type variable arguments."
+       io exitFailure
+
+
+
+
+renderAlgebra      :: Algebra -> Mop [TH.Dec]
+renderAlgebra      = undefined
+
+writeCoalgebra     :: Coalgebra -> Mop ()
+writeCoalgebra     = undefined
+writeInstructions  :: Instructions -> Mop ()
+writeInstructions  = undefined
+writeInterpreters  :: Interpreters -> Mop ()
+writeInterpreters  = undefined
+writePairings      :: Pairings -> Mop ()
+writePairings      = undefined
+
+createCoalgebra    :: Algebra -> Coalgebra
+createCoalgebra    = undefined
 createInstructions :: Algebra -> Instructions
 createInstructions = undefined
 createInterpreters :: Algebra -> Interpreters
 createInterpreters = undefined
-createPairings :: Algebra -> Pairings
-createPairings = undefined
+createPairings     :: Algebra -> Pairings
+createPairings     = undefined
 
 --------------------------------------------------------------------------------
 -- Primitives to trigger functionality in the mop preprocess phase; we'll scan
@@ -223,6 +283,25 @@ createPairings = undefined
 -- 'mop (expand "some_name")' - placed in an algebra module to create an
 -- instruction set, coalgebra, interpreter set, and pairings. Will extract
 -- algebraic components up to a 'stop' splice if one exists.
+
+
+unsplice n = do
+  TH.Loc{..} <- asks location
+  x <- calculateDeleteOffset loc_filename n
+  str <- deleteLine n loc_filename
+  insertDelete loc_filename x
+  return str
+
+deleteLine :: Int -> FilePath -> Mop String
+deleteLine n fp = io $ do
+  h <- openFile fp ReadWriteMode
+  cntnt <- lines <$> hGetContents h
+  let begin = take (pred n) cntnt
+      (toDelete:end) = drop (pred n) cntnt
+  let cntnt' = unlines $ begin ++ end
+  length cntnt' `seq` hPutStr h cntnt'
+  hClose h
+  return toDelete
 
 expandFunSplice :: String -> TH.Dec
 expandFunSplice str =
@@ -245,7 +324,18 @@ hasExpand (TH.FunD (TH.nameBase -> "expand") _:_) = True
 hasExpand (x:xs) = hasExpand xs
 
 findExpand :: HSE.Module -> (String,Int)
-findExpand = undefined
+findExpand (HSE.Module _ _ _ _ _ _ decls) =
+  head $ mapMaybe getExpandSplice decls
+  where
+    getExpandSplice (HSE.SpliceDecl (SrcLoc _ l _) e) =
+      case e of
+        App (Var (UnQual (Ident "mop")))
+            (Paren (App (Var (UnQual (Ident "expand")))
+                        (Lit (String x))
+                   )
+            )        -> Just (x,l)
+        _            -> Nothing
+    getExpandSplice _ = Nothing
 
 expandStopSplice :: TH.Dec
 expandStopSplice = TH.FunD (TH.mkName "stop") []
@@ -254,7 +344,17 @@ stop :: TH.Q [TH.Dec]
 stop = return [expandStopSplice]
 
 findStop :: HSE.Module -> Int
-findStop _ = undefined
+findStop (HSE.Module _ _ _ _ _ _ decls) =
+  let ss = mapMaybe getStopSplice decls
+  in if null ss
+     then maxBound
+     else head ss
+  where
+    getStopSplice s@(HSE.SpliceDecl (SrcLoc _ l _) e) =
+      case e of
+        Var (UnQual (Ident "stop")) -> Just l
+        _                           -> Nothing
+    getStopSplice _                  = Nothing
 
 --------------------------------------------------------------------------------
 -- Mop helper functions for manipulating state, viewing environment and logging.
@@ -281,7 +381,9 @@ createStandardModule dir srcDir mn@(HSE.ModuleName x) = do
   unless fe (createFile f stdFileMode >>= closeFd)
 
 log :: (String -> Log) -> String -> Mop ()
-log x str = tell [x str]
+log x str = do
+  when (x str < Info str) (io (print (x str)))
+  tell [x str]
 
 --------------------------------------------------------------------------------
 -- Cabal utilities injected into the mop scope
@@ -298,34 +400,34 @@ findCabalFile d
      else findCabalFile (takeDirectory d)
 
 readCabalFile :: FilePath -> IO GenericPackageDescription
-readCabalFile f = readPackageDescription normal f
+readCabalFile f = readPackageDescription Verbosity.normal f
 
-modifyOtherModules :: ([ModuleName] -> [ModuleName]) -> Mop ()
+modifyOtherModules :: ([Dist.ModuleName] -> [Dist.ModuleName]) -> Mop ()
 modifyOtherModules f = do
-  MopState bs pkg fp hsem <- get
+  MopState bs pkg fp hsem ds <- get
   let pd = packageDescription pkg
       Just lib@Library{..} = library pd
       bi@BuildInfo{..} = libBuildInfo
       oms = f otherModules
       lbi = bi { otherModules = oms }
       pkg' = pkg { packageDescription = pd { library = Just lib { libBuildInfo = lbi } } }
-  put $ MopState bs pkg' fp hsem
+  put $ MopState bs pkg' fp hsem ds
 
-modifyExposedModules :: ([ModuleName] -> [ModuleName]) -> Mop ()
+modifyExposedModules :: ([Dist.ModuleName] -> [Dist.ModuleName]) -> Mop ()
 modifyExposedModules f = do
-  MopState bs pkg fp hsem <- get
+  MopState bs pkg fp hsem ds <- get
   let pd = packageDescription pkg
       Just lib@Library{..} = library pd
       ems = f exposedModules
       pkg' = pkg { packageDescription = pd { library = Just lib { exposedModules = ems } } }
-  put $ MopState bs pkg' fp hsem
+  put $ MopState bs pkg' fp hsem ds
 
 addOtherModule m = modifyOtherModules (m:)
 removeOtherModule m = modifyOtherModules (filter (/=m))
 
 sourceDirectories :: Mop [FilePath]
 sourceDirectories = do
-  MopState bs pkg fp hsem <- get
+  MopState bs pkg fp hsem ds <- get
   let pd = packageDescription pkg
       Just Library{..} = library pd
       BuildInfo{..} = libBuildInfo
