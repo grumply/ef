@@ -7,7 +7,10 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE BangPatterns #-}
 module Generate where
+
+import qualified Calypso.Static as C
 
 import Control.Applicative
 import Control.Arrow
@@ -16,6 +19,7 @@ import Control.Monad
 import qualified Data.Aeson as JSON
 import Data.Char
 import Data.Data
+import Data.Either
 import Data.Function
 import qualified Data.IntMap as IM
 import Data.List
@@ -23,6 +27,8 @@ import Data.Maybe
 import Data.Monoid
 import Data.Ord
 import Data.Typeable
+
+import Debug.Trace
 
 import GHC.Generics
 
@@ -161,8 +167,9 @@ io = liftTH . TH.runIO
 insertDelete :: FilePath -> Int -> Mop ()
 insertDelete fp x = do
   ms@MopState{..} <- get
+  io (print deletes)
   put ms { deletes = Map.insertWith (++) fp [x] deletes }
-  -- might need (flip (++))
+
 
 calculateDeleteOffset :: FilePath -> Int -> Mop Int
 calculateDeleteOffset fp x = do
@@ -211,86 +218,72 @@ run ctxt st f = do
 expandAlgebra :: Mop [TH.Dec]
 expandAlgebra = do
   alg <- createAlgebra
-  io (print alg)
-  writeCoalgebra    (createCoalgebra    alg)
-  writeInstructions (createInstructions alg)
-  writeInterpreters (createInterpreters alg)
-  writePairings     (createPairings     alg)
-  renderAlgebra alg
+  -- writeCoalgebra    (createCoalgebra    alg)
+  -- writeInstructions (createInstructions alg)
+  -- writeInterpreters (createInterpreters alg)
+  -- writePairings     (createPairings     alg)
+  -- renderAlgebra alg
+  return []
 
 createAlgebra :: Mop Algebra
 createAlgebra = do
   MopContext{..} <- ask
-  (nm,mn) <- findExpand originalModule
-  let ds = dataDecls  mn mx originalModule
-      mx = findStop         originalModule
-  if null ds
-  then do
-    log Error $ "No instructions found between lines "
-                ++ show mn ++ " and " ++ show mx ++ "."
-    io exitFailure
+  let m@(Module _ _ _ _ _ _ decls) = originalModule
+  (algebraName,start) <- findExpand m
+  let stop = findStop m
+      instructions = [ x | x@(DataDecl (SrcLoc _ l _) _ _ _ _ _ _) <- decls
+                         , l > start, l < stop ]
+      namesAndVars = [ (n,vs) | DataDecl _ _ _ n vs _ _ <- instructions ]
+      tyVars = foldr1 (\x@(_,xvs) y@(_,yvs)-> if length xvs > length yvs
+                                              then x
+                                              else y
+                      ) namesAndVars
+      ty = error "ty"
+  io $ mapM_ putStrLn [ show algebraName
+                      , show start
+                      , show stop
+                      , unlines $ map show instructions
+                      , "\n"
+                      , unlines $ map show namesAndVars
+                      , show tyVars
+                      ]
+  if null instructions
+  then errorAt "Could not find instructions" start stop
   else do
-    log Notify "Algebraic components extracted."
+    l <- unsplice start
+    log Notify ("Unspliced expand (line " ++ show start ++ "): " ++ l)
+    l' <- unsplice stop
+    log Notify ("Unspliced stop (line" ++  show stop ++ "): " ++ l)
 
-    ty <- makeType nm ds
+    return (Algebra (HSE.Ident algebraName) ty instructions)
 
-    unsplice mn
-    unsplice mx
-
-    return (Algebra (HSE.Ident nm) ty ds)
-  where
-    dataDecls mn mx (Module _ _ _ _ _ _ decls) =
-      [ x | x@(DataDecl (SrcLoc _ l _) _ _ _ _ _ _) <- decls
-          , l > mn
-          , l < mx
-          ]
-
-    makeType :: String -> [Decl] -> Mop Decl
-    makeType nm ds = do
-     TH.Loc{..} <- asks location
-     let nvs = [ (nm,vs) | (DataDecl _ _ _ nm vs _ _) <- ds ]
-         groupedByVarCount = groupBy ((==) `on` (length . snd)) nvs
-         typeRoot = TyVar $ fst $ head $ head groupedByVarCount
-     if length groupedByVarCount == 1
-     then return $ foldr
-            (\(nm',_)
-              (TypeDecl sl nm vs ty)
-              -> TypeDecl sl nm vs (TyInfix ty (UnQual (Ident ":+:")) (TyVar nm'))
-            )
-            (TypeDecl
-              (SrcLoc loc_filename (fst loc_start) 0)
-              (Ident nm)
-              (snd $ head $ concat groupedByVarCount)
-              typeRoot
-            )
-            (tail $ concat groupedByVarCount)
-     else do
-       log Error "Gathered data declarations have different number of type variable arguments."
-       io exitFailure
+errorAt :: String -> Int -> Int -> Mop a
+errorAt err beg end = do
+  log Error $
+    err ++ " between lines " ++ show beg ++ " and " ++ show end ++ "."
+  io exitFailure
 
 
+-- renderAlgebra      :: Algebra -> Mop [TH.Dec]
+-- renderAlgebra      = undefined
 
+-- writeCoalgebra     :: Coalgebra -> Mop ()
+-- writeCoalgebra     = undefined
+-- writeInstructions  :: Instructions -> Mop ()
+-- writeInstructions  = undefined
+-- writeInterpreters  :: Interpreters -> Mop ()
+-- writeInterpreters  = undefined
+-- writePairings      :: Pairings -> Mop ()
+-- writePairings      = undefined
 
-renderAlgebra      :: Algebra -> Mop [TH.Dec]
-renderAlgebra      = undefined
-
-writeCoalgebra     :: Coalgebra -> Mop ()
-writeCoalgebra     = undefined
-writeInstructions  :: Instructions -> Mop ()
-writeInstructions  = undefined
-writeInterpreters  :: Interpreters -> Mop ()
-writeInterpreters  = undefined
-writePairings      :: Pairings -> Mop ()
-writePairings      = undefined
-
-createCoalgebra    :: Algebra -> Coalgebra
-createCoalgebra    = undefined
-createInstructions :: Algebra -> Instructions
-createInstructions = undefined
-createInterpreters :: Algebra -> Interpreters
-createInterpreters = undefined
-createPairings     :: Algebra -> Pairings
-createPairings     = undefined
+-- createCoalgebra    :: Algebra -> Coalgebra
+-- createCoalgebra    = undefined
+-- createInstructions :: Algebra -> Instructions
+-- createInstructions = undefined
+-- createInterpreters :: Algebra -> Interpreters
+-- createInterpreters = undefined
+-- createPairings     :: Algebra -> Pairings
+-- createPairings     = undefined
 
 --------------------------------------------------------------------------------
 -- Primitives to trigger functionality in the mop preprocess phase; we'll scan
@@ -304,24 +297,36 @@ createPairings     = undefined
 unsplice n = do
   TH.Loc{..} <- asks location
   x <- calculateDeleteOffset loc_filename n
-  str <- deleteLine n loc_filename
+  str <- deleteLineFromFile x loc_filename
   insertDelete loc_filename x
   return str
 
-deleteLine :: Int -> FilePath -> Mop String
-deleteLine n fp = io $ do
-  h <- openFile fp ReadMode
-  cntnt <- lines <$> hGetContents h
-  length cntnt `seq` do
-    hClose h
-    h <- openFile fp WriteMode
-    let begin = take (pred n) cntnt
-        (toDelete:end) = drop (pred n) cntnt
-    let cntnt' = unlines $ begin ++ end
-    print cntnt'
-    hPutStr h cntnt'
-    hClose h
-    toDelete `seq` return toDelete
+deleteLineFromFile :: Int -> FilePath -> Mop String
+deleteLineFromFile n fp = io $ do
+  cs <- lines <$> readFile fp
+  cs `seq` do
+    let (ln,c') = deleteAt n cs
+    writeFile fp $ unlines c'
+    return ln
+
+deleteAt :: Int -> [a] -> (a,[a])
+deleteAt n = first fst . C.accum go (e,Just 1)
+  where
+    e = error "deleteAt: index too large"
+    go = do
+      ((_,mi),ma) <- C.view
+      case (mi,ma) of
+        (Nothing,Just a) -> C.yield a
+        (_,Nothing)      -> C.done
+        (Just i,Just a)
+         | i == n        -> C.put (a,Nothing)
+         | otherwise     -> C.yield a >> C.put (e,Just (i + 1))
+
+--------------------------------------------------------------------------------
+-- DSL
+
+expand :: String -> TH.Q [TH.Dec]
+expand str = return [expandFunSplice str]
 
 expandFunSplice :: String -> TH.Dec
 expandFunSplice str =
@@ -335,15 +340,20 @@ expandFunSplice str =
        []
     ]
 
-expand :: String -> TH.Q [TH.Dec]
-expand str = return [expandFunSplice str]
+stop :: TH.Q [TH.Dec]
+stop = return [expandStopSplice]
+
+expandStopSplice :: TH.Dec
+expandStopSplice = TH.FunD (TH.mkName "stop") []
+
+
+--------------------------------------------------------------------------------
+-- Helpers for DSL
 
 hasExpand :: [TH.Dec] -> Bool
 hasExpand [] = False
 hasExpand (TH.FunD (TH.nameBase -> "expand") _:_) = True
 hasExpand (x:xs) = hasExpand xs
-
-
 
 findExpand :: HSE.Module -> Mop (String,Int)
 findExpand (HSE.Module _ _ _ _ _ _ decls) =
@@ -363,12 +373,6 @@ findExpand (HSE.Module _ _ _ _ _ _ decls) =
              )       -> Just (x,l)
         _            -> Nothing
     getExpandSplice _ = Nothing
-
-expandStopSplice :: TH.Dec
-expandStopSplice = TH.FunD (TH.mkName "stop") []
-
-stop :: TH.Q [TH.Dec]
-stop = return [expandStopSplice]
 
 findStop :: HSE.Module -> Int
 findStop (HSE.Module _ _ _ _ _ _ decls) =
