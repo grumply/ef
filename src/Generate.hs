@@ -314,13 +314,12 @@ deleteAt n = first fst . C.accum go (e,Just 1)
   where
     e = error "deleteAt: index too large"
     go = do
-      ((_,mi),ma) <- C.view
-      case (mi,ma) of
-        (Nothing,Just a) -> C.yield a
-        (_,Nothing)      -> C.done
-        (Just i,Just a)
-         | i == n        -> C.put (a,Nothing)
-         | otherwise     -> C.yield a >> C.put (e,Just (i + 1))
+      ((_,mi),a) <- C.view
+      case mi of
+        Nothing       -> C.yield a
+        Just i
+          | i == n    -> C.put (a,Nothing)
+          | otherwise -> C.yield a >> C.put (e,Just (i + 1))
 
 --------------------------------------------------------------------------------
 -- DSL
