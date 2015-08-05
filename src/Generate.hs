@@ -161,7 +161,8 @@ io = liftTH . TH.runIO
 insertDelete :: FilePath -> Int -> Mop ()
 insertDelete fp x = do
   ms@MopState{..} <- get
-  put ms { deletes = Map.insertWith fp (x:) deletes }
+  put ms { deletes = Map.insertWith (++) fp [x] deletes }
+  -- might need (flip (++))
 
 calculateDeleteOffset :: FilePath -> Int -> Mop Int
 calculateDeleteOffset fp x = do
@@ -190,7 +191,6 @@ mop vbosity mentry = do
 
   case pm of
     HSE.ParseOk m           -> do
-      TH.runIO (print m)
       if hasExpand entry
       then run (MopContext (TH.Module pn (TH.ModName mn)) TH.Loc{..} m vbosity)
                (MopState [] c cf m mempty)
@@ -211,6 +211,7 @@ run ctxt st f = do
 expandAlgebra :: Mop [TH.Dec]
 expandAlgebra = do
   alg <- createAlgebra
+  io (print alg)
   writeCoalgebra    (createCoalgebra    alg)
   writeInstructions (createInstructions alg)
   writeInterpreters (createInterpreters alg)
@@ -220,9 +221,9 @@ expandAlgebra = do
 createAlgebra :: Mop Algebra
 createAlgebra = do
   MopContext{..} <- ask
-  let ds      = gatherDataDecls mn mx originalModule
-      (nm,mn) = findExpand            originalModule
-      mx      = findStop              originalModule
+  (nm,mn) <- findExpand originalModule
+  let ds = dataDecls  mn mx originalModule
+      mx = findStop         originalModule
   if null ds
   then do
     log Error $ "No instructions found between lines "
@@ -238,16 +239,31 @@ createAlgebra = do
 
     return (Algebra (HSE.Ident nm) ty ds)
   where
-    gatherDataDecls mn mx (Module _ _ _ _ _ _ (filter (p mn mx) -> xs)) = xs
-    p mn mx (DataDecl (SrcLoc _ l _) _ _ _ _ _ _) = l > mn && l < mx
-    p _  _  _                                     = False
+    dataDecls mn mx (Module _ _ _ _ _ _ decls) =
+      [ x | x@(DataDecl (SrcLoc _ l _) _ _ _ _ _ _) <- decls
+          , l > mn
+          , l < mx
+          ]
 
+    makeType :: String -> [Decl] -> Mop Decl
     makeType nm ds = do
-     loc <- asks location
-     let getNameVars ~(DataDecl _ _ _ nm vs _ _) = (nm,vs)
-         ds' = groupBy ((==) `on` (length . snd)) (map getNameVars ds)
-     if length ds' == 1
-     then return $ foldr (\st a -> ) (TypeDecl (SrcLoc loc_filename loc_start 0) (Name nm) [] (TyInfix _ (QName _) _)) ds
+     TH.Loc{..} <- asks location
+     let nvs = [ (nm,vs) | (DataDecl _ _ _ nm vs _ _) <- ds ]
+         groupedByVarCount = groupBy ((==) `on` (length . snd)) nvs
+         typeRoot = TyVar $ fst $ head $ head groupedByVarCount
+     if length groupedByVarCount == 1
+     then return $ foldr
+            (\(nm',_)
+              (TypeDecl sl nm vs ty)
+              -> TypeDecl sl nm vs (TyInfix ty (UnQual (Ident ":+:")) (TyVar nm'))
+            )
+            (TypeDecl
+              (SrcLoc loc_filename (fst loc_start) 0)
+              (Ident nm)
+              (snd $ head $ concat groupedByVarCount)
+              typeRoot
+            )
+            (tail $ concat groupedByVarCount)
      else do
        log Error "Gathered data declarations have different number of type variable arguments."
        io exitFailure
@@ -294,14 +310,18 @@ unsplice n = do
 
 deleteLine :: Int -> FilePath -> Mop String
 deleteLine n fp = io $ do
-  h <- openFile fp ReadWriteMode
+  h <- openFile fp ReadMode
   cntnt <- lines <$> hGetContents h
-  let begin = take (pred n) cntnt
-      (toDelete:end) = drop (pred n) cntnt
-  let cntnt' = unlines $ begin ++ end
-  length cntnt' `seq` hPutStr h cntnt'
-  hClose h
-  return toDelete
+  length cntnt `seq` do
+    hClose h
+    h <- openFile fp WriteMode
+    let begin = take (pred n) cntnt
+        (toDelete:end) = drop (pred n) cntnt
+    let cntnt' = unlines $ begin ++ end
+    print cntnt'
+    hPutStr h cntnt'
+    hClose h
+    toDelete `seq` return toDelete
 
 expandFunSplice :: String -> TH.Dec
 expandFunSplice str =
@@ -323,17 +343,24 @@ hasExpand [] = False
 hasExpand (TH.FunD (TH.nameBase -> "expand") _:_) = True
 hasExpand (x:xs) = hasExpand xs
 
-findExpand :: HSE.Module -> (String,Int)
+
+
+findExpand :: HSE.Module -> Mop (String,Int)
 findExpand (HSE.Module _ _ _ _ _ _ decls) =
-  head $ mapMaybe getExpandSplice decls
+  case mapMaybe getExpandSplice decls of
+    (x:_) -> return x
+    _ -> do log Error "No expand splice found in module decls."
+            io exitFailure
   where
     getExpandSplice (HSE.SpliceDecl (SrcLoc _ l _) e) =
       case e of
-        App (Var (UnQual (Ident "mop")))
-            (Paren (App (Var (UnQual (Ident "expand")))
-                        (Lit (String x))
-                   )
-            )        -> Just (x,l)
+        App (App (Var (UnQual (Ident "mop")))
+                  (Con (UnQual (Ident _)))
+             )
+             (Paren (App (Var (UnQual (Ident "expand")))
+                         (Lit (String x))
+                    )
+             )       -> Just (x,l)
         _            -> Nothing
     getExpandSplice _ = Nothing
 
@@ -394,7 +421,9 @@ findCabalFile d
      error $ "Could not find cabal file above " ++ cwd
   | otherwise = do
      dc <- getDirectoryContents d
-     let fs = filter ((==) ".cabal" . takeExtensions) dc
+     let fs = [ x | x <- dc
+                  , takeExtensions x == ".cabal"
+                  ]
      if not (null fs)
      then return (d </> head fs)
      else findCabalFile (takeDirectory d)
