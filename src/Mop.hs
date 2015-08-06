@@ -93,23 +93,6 @@ class (Comonad w,Functor f) => Coalgebra f w where
 instance (Cofree.ComonadCofree f w) => Coalgebra f w where
   unwrap = Cofree.unwrap
 
-pureEval :: (MonadFree f m, Cofree.ComonadCofree g w, Pairing g f)
-           => (a -> b -> r) -> w a -> FreeT f m b -> m r
-pureEval p s c = do
-  mb <- runFreeT c
-  case mb of
-    Pure x -> return $ p (extract s) x
-    Free gs -> pair (pureEval p) (Mop.unwrap s) gs
-
-pureEval' :: (MonadFree f m, Cofree.ComonadCofree g w, Pairing g f)
-            => (a -> b -> r) -> w (m a) -> FreeT f m b -> m r
-pureEval' p s c = do
-  mb <- runFreeT c
-  a  <- extract s
-  case mb of
-    Pure x -> return $ p a x
-    Free gs -> pair (pureEval' p) (Mop.unwrap s) gs
-
 eval :: (ComonadCofree g w,MonadFree f m,Algebra f m,Coalgebra g w,Pairing g f)
      => (a -> b -> m r) -> w a -> FreeT f m b -> m r
 eval p cofree free = do
@@ -127,21 +110,65 @@ eval' p cofree free = do
     Pure x -> p a x
     Free ms -> pair (eval' p) (Mop.unwrap $ corun cofree) ms
 
-evalW :: (MonadFree f m, ComonadCofree g w, Algebra f m, Coalgebra g w, Pairing g f)
+evalC :: (MonadFree f m, ComonadCofree g w, Algebra f m, Coalgebra g w, Pairing g f)
       => (a -> b -> m r) -> CofreeT g w a -> FreeT f m b -> m r
-evalW p cofree free = do
+evalC p cofree free = do
   mf <- runFreeT free
   case mf of
     Pure x -> p (extract cofree) x
-    Free ms -> pair (evalW p) (Mop.unwrap cofree) ms
+    Free ms -> pair (evalC p) (Mop.unwrap cofree) ms
 
-evalW' :: (MonadFree f m, ComonadCofree g w, Algebra f m, Coalgebra g w, Pairing g f)
+evalC' :: (MonadFree f m, ComonadCofree g w, Algebra f m, Coalgebra g w, Pairing g f)
       => (a -> b -> m r) -> CofreeT g w (m a) -> FreeT f m b -> m r
-evalW' p cofree free = do
+evalC' p cofree free = do
   mf <- runFreeT free
   a <- extract cofree
   case mf of
     Pure x -> p a x
-    Free ms -> pair (evalW' p) (Mop.unwrap $ corun cofree) ms
--- the benefit to this approach is the ability to use mfix
--- in arbitrary FreeT f m where m is an instance of MonadFix
+    Free ms -> pair (evalC' p) (Mop.unwrap $ corun cofree) ms
+
+data A k = A k deriving Functor
+a = liftF (inj (A ()))
+data B k = B Int k deriving Functor
+b i = liftF (inj (B i ()))
+data C k = C (Int -> k) deriving Functor
+c = liftF (inj (C id))
+
+type ABC = A :+: B :+: C
+
+data CoA k = CoA k deriving Functor
+data CoB k = CoB (Int -> k) deriving Functor
+data CoC k = CoC (Int,k) deriving Functor
+instance Pairing CoA A where
+  pair p (CoA cok) (A k) = p cok k
+instance Pairing CoB B where
+  pair p (CoB ik) (B i k) = p (ik i) k
+instance Pairing CoC C where
+  pair p (CoC (i,k)) (C ik) = p k (ik i)
+
+type CoABC = CoA :*: CoB :*: CoC
+
+coabcCoalgebra :: Comonad w => w a -> CoABC (w a)
+coabcCoalgebra = coA *:* coB *:* coC
+  where
+    coA wa = CoA wa
+    coB wa = CoB (\i -> wa)
+    coC wa = CoC (1,wa)
+
+type CoABCT = CofreeT CoABC
+
+mkCoABC :: CofreeT CoABC Identity ()
+mkCoABC = coiterT coabcCoalgebra (Identity ())
+
+test :: (MonadFree f m, A :<: f, B :<: f, C :<: f) => m Int
+test = do
+ a
+ b 3
+ c
+
+x :: (Pairing CoABC f,MonadFree f m,ABC :<: f) => FreeT f m a -> m a
+x = eval (\a b -> return b) mkCoABC
+
+main = do
+  i <- x test
+  print i
