@@ -167,7 +167,6 @@ io = liftTH . TH.runIO
 insertDelete :: FilePath -> Int -> Mop ()
 insertDelete fp x = do
   ms@MopState{..} <- get
-  io (print deletes)
   put ms { deletes = Map.insertWith (++) fp [x] deletes }
 
 
@@ -212,7 +211,7 @@ run ctxt st f = do
                . flip runReaderT ctxt
                .      runWriterT
                $      runMop     f
-  TH.runIO (mapM_ print s)
+  TH.runIO (mapM_ print [ x | x <- s, x > Info ""])
   return a
 
 expandAlgebra :: Mop [TH.Dec]
@@ -251,9 +250,9 @@ createAlgebra = do
   then errorAt "Could not find instructions" start stop
   else do
     l <- unsplice start
-    log Notify ("Unspliced expand (line " ++ show start ++ "): " ++ l)
+    log Notify ("Unspliced expand (line " ++ show start ++ "): " ++ show l)
     l' <- unsplice stop
-    log Notify ("Unspliced stop (line" ++  show stop ++ "): " ++ l)
+    log Notify ("Unspliced stop (line" ++  show stop ++ "): " ++ show l)
 
     return (Algebra (HSE.Ident algebraName) ty instructions)
 
@@ -294,32 +293,32 @@ errorAt err beg end = do
 -- algebraic components up to a 'stop' splice if one exists.
 
 
+unsplice :: Int -> Mop (Maybe String)
 unsplice n = do
   TH.Loc{..} <- asks location
   x <- calculateDeleteOffset loc_filename n
-  str <- deleteLineFromFile x loc_filename
+  mstr <- deleteLineFromFile x loc_filename
   insertDelete loc_filename x
-  return str
+  return mstr
 
-deleteLineFromFile :: Int -> FilePath -> Mop String
+deleteLineFromFile :: Int -> FilePath -> Mop (Maybe String)
 deleteLineFromFile n fp = io $ do
   cs <- lines <$> readFile fp
   cs `seq` do
     let (ln,c') = deleteAt n cs
-    writeFile fp $ unlines c'
+    length c' `seq` writeFile fp $ unlines c'
     return ln
 
-deleteAt :: Int -> [a] -> (a,[a])
-deleteAt n = first fst . C.accum go (e,Just 1)
+deleteAt :: Int -> [a] -> (Maybe a,[a])
+deleteAt n = first fst . C.accum go (Nothing,Just 1)
   where
-    e = error "deleteAt: index too large"
     go = do
       ((_,mi),a) <- C.view
       case mi of
         Nothing       -> C.yield a
         Just i
-          | i == n    -> C.put (a,Nothing)
-          | otherwise -> C.yield a >> C.put (e,Just (i + 1))
+          | i == n    -> C.put (Just a,Nothing)
+          | otherwise -> C.yield a >> C.put (Nothing,Just (i + 1))
 
 --------------------------------------------------------------------------------
 -- DSL
