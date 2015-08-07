@@ -34,6 +34,9 @@ import           Prelude hiding ((.),id)
 class Pairing f g | f -> g, g -> f where
   pair :: (a -> b -> r) -> f a -> g b -> r
 
+instance {-# OVERLAPPABLE #-}Pairing f g => Pairing g f where
+  pair p f g = pair (flip p) g f
+
 instance Pairing Identity Identity where
   pair f (Identity a) (Identity b) = f a b
 

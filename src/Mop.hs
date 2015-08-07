@@ -1,15 +1,12 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE IncoherentInstances #-}
 {-
 Product and Pairing were largely the work of Dave Laing and his cofun
 series on github at https://github.com/dalaing/cofun and Swierstra's
@@ -18,7 +15,7 @@ had a wonderful post about a weaker version of compdata's subsumption/
 dependency injection type families that was largely integrated.
 -}
 
-module Mop (module Export,showFT,showF) where
+module Mop (module Export,showFT,showF, object,object') where
 
 import Control.Monad as Export
 import Control.Comonad as Export
@@ -61,21 +58,15 @@ showF :: (Show (f b),Show a) => FreeF f a b -> String
 showF (Free fb) = show fb
 showF (Pure a) = show a
 
--- run :: (Functor f, Comonad w, Combines (CofreeT f w a) b r)
---   => w a -> (w a -> f (w a)) -> b -> r
--- run start next = combine (coiterT next start)
+object
+  :: (Monad m, Functor f, Pairing f g) =>
+     (Identity (a -> a) -> f (Identity (a -> a))) -> FreeT g m r -> m r
+object = pairEffect (\_ b -> b) . flip coiterT (Identity id)
 
--- object
---   :: (Functor f, Combines (CofreeT f Identity (a -> a)) b r) =>
---      (Identity (a -> a) -> f (Identity (a -> a))) -> b -> r
--- object = run (Identity id)
-
--- object'
---   :: (Monad m, Functor f,
---       Combines (CofreeT f Identity (a -> m a)) b r) =>
---      (Identity (a -> m a) -> f (Identity (a -> m a))) -> b -> r
--- object' = run (Identity return)
-
+object'
+  :: (Monad m, Functor f, Pairing f g) =>
+     (Identity (m ()) -> f (Identity (m ()))) -> FreeT g m r -> m r
+object' = pairEffect' (\_ b -> b) . flip coiterT (Identity (return ()))
 {-
 
 data CoA k = CoA (String -> k)
