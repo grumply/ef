@@ -15,7 +15,14 @@ had a wonderful post about a weaker version of compdata's subsumption/
 dependency injection type families that was largely integrated.
 -}
 
-module Mop (module Export,showFT,showF, object,object') where
+module Mop
+  ( module Export
+  , showFT, showF
+  , run,   eval,   exec
+  , runT,  evalT,  execT
+  , runM,  evalM,  execM
+  , runMT, evalMT, execMT
+  ) where
 
 import Control.Monad as Export
 import Control.Comonad as Export
@@ -34,12 +41,12 @@ import Subsumption as Export
 import Pairing     as Export
 import Optimize    as Export
 import Synonyms    as Export
-import Generate    as Export
+import Generate    as Export hiding (run)
 import Checked     as Export
 
-import Control.Monad.Catch as Export
-
 import Language.Haskell.TH.Syntax
+
+import qualified Control.Comonad.Trans.Cofree as Cofree
 
 instance (Lift (f b),Lift a) => Lift (FreeF f a b) where
   lift (Pure x) = [| Pure x |]
@@ -58,20 +65,69 @@ showF :: (Show (f b),Show a) => FreeF f a b -> String
 showF (Free fb) = show fb
 showF (Pure a) = show a
 
-object
-  :: (Monad m, Functor f, Pairing f g) =>
-     (Identity (a -> a) -> f (Identity (a -> a))) -> FreeT g m r -> m r
-object = pairEffect (\_ b -> b) . flip coiterT (Identity id)
+run :: (Cofree.ComonadCofree f w,Pairing f g)
+     => w a -> Free g b -> (w a,b)
+run w m = case runFree m of
+  Pure x -> (w,x)
+  Free gs -> pair run (unwrap w) gs
 
-object'
-  :: (Monad m, Functor f, Pairing f g) =>
-     (Identity (m ()) -> f (Identity (m ()))) -> FreeT g m r -> m r
-object' = pairEffect' (\_ b -> b) . flip coiterT (Identity (return ()))
-{-
+exec :: (Cofree.ComonadCofree f w, Pairing f g)
+     => w a -> Free g b -> a
+exec w = extract . fst . run w
 
-data CoA k = CoA (String -> k)
-data CoB k = CoB k
-data CoC k = CoC (String,k)
-data CoD s k = CoD (s -> (String,k))
-type CoAlg s = CoA :*: CoB :*: CoC :*: CoD s
--}
+eval :: (Cofree.ComonadCofree f w,Pairing f g)
+     => w a -> Free g b -> b
+eval w = snd . run w
+
+
+
+runM :: (Monad m,Cofree.ComonadCofree f w,Pairing f g)
+      => w (m a) -> Free g b -> m (w (m a),b)
+runM w m = do
+  _ <- extract w
+  case runFree m of
+    Pure x -> return (w,x)
+    Free gs -> pair runM (unwrap w) gs
+
+execM :: (Monad m, Cofree.ComonadCofree f w, Pairing f g)
+      => w (m a) -> Free g b -> m a
+execM w = (extract . fst) <=< runM w
+
+evalM :: (Monad m, Cofree.ComonadCofree f w, Pairing f g)
+      => w (m a) -> Free g b -> m b
+evalM w = fmap snd . runM w
+
+
+runT :: (Monad m,Cofree.ComonadCofree f w,Pairing f g)
+     => w a -> FreeT g m b -> m (w a,b)
+runT w m = do
+  mb <- runFreeT m
+  case mb of
+    Pure x -> return (w,x)
+    Free gs -> pair runT (unwrap w) gs
+
+execT :: (Monad m, Cofree.ComonadCofree f w, Pairing f g)
+      => w a -> FreeT g m b -> m a
+execT w = fmap (extract . fst) . runT w
+
+evalT :: (Monad m, Cofree.ComonadCofree f w, Pairing f g)
+      => w a -> FreeT g m b -> m b
+evalT w = fmap snd . runT w
+
+
+runMT :: (Monad m,Cofree.ComonadCofree f w,Pairing f g)
+      => w (m a) -> FreeT g m b -> m (w (m a),b)
+runMT w m = do
+  mb <- runFreeT m
+  _ <- extract w
+  case mb of
+    Pure x -> return (w,x)
+    Free gs -> pair runMT (unwrap w) gs
+
+execMT :: (Monad m, Cofree.ComonadCofree f w, Pairing f g)
+       => w (m a) -> FreeT g m b -> m a
+execMT w = (extract . fst) <=< runMT w
+
+evalMT :: (Monad m, Cofree.ComonadCofree f w, Pairing f g)
+       => w (m a) -> FreeT g m b -> m b
+evalMT w = fmap snd . runMT w
