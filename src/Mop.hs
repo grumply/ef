@@ -1,15 +1,12 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE IncoherentInstances #-}
 {-
 Product and Pairing were largely the work of Dave Laing and his cofun
 series on github at https://github.com/dalaing/cofun and Swierstra's
@@ -18,7 +15,14 @@ had a wonderful post about a weaker version of compdata's subsumption/
 dependency injection type families that was largely integrated.
 -}
 
-module Mop (module Export,showFT,showF) where
+module Mop
+  ( module Export
+  , showFT, showF
+  , run,   eval,   exec
+  , runT,  evalT,  execT
+  , runM,  evalM,  execM
+  , runMT, evalMT, execMT
+  ) where
 
 import Control.Monad.Fix
 
@@ -51,6 +55,8 @@ import qualified Control.Comonad.Cofree as Cofree
 
 import Language.Haskell.TH.Syntax
 
+import qualified Control.Comonad.Trans.Cofree as Cofree
+
 instance (Lift (f b),Lift a) => Lift (FreeF f a b) where
   lift (Pure x) = [| Pure x |]
   lift (Free fb) = [| Free fb |]
@@ -67,108 +73,69 @@ showFT f = show $ runIdentity $ runFreeT f
 showF :: (Show (f b),Show a) => FreeF f a b -> String
 showF (Free fb) = show fb
 showF (Pure a) = show a
+run :: (Cofree.ComonadCofree f w,Pairing f g)
+     => w a -> Free g b -> (w a,b)
+run w m = case runFree m of
+  Pure x -> (w,x)
+  Free gs -> pair run (unwrap w) gs
 
--- because why not
-class Comonad w => ComonadCofix w where
-  wfix :: (w a -> a) -> w a
-  wfix = cfix
+exec :: (Cofree.ComonadCofree f w, Pairing f g)
+     => w a -> Free g b -> a
+exec w = extract . fst . run w
 
-instance (MonadFix m,Functor f,Algebra f m)
-  => MonadFix (FreeT f m)
-  where
-    mfix = Trans.lift . mfix . (run .)
-    -- this monadfix instance is the reason for the following classes
+eval :: (Cofree.ComonadCofree f w,Pairing f g)
+     => w a -> Free g b -> b
+eval w = snd . run w
 
-class (Monad m,Functor f) => Algebra f m where
-  wrap :: f (m a) -> m a
-  run :: FreeT f m a -> m a
-  run = iterT Mop.wrap
-instance (Functor f,MonadFree f m) => Algebra f m where
-  wrap = Free.wrap
 
-class (Comonad w,Functor f) => Coalgebra f w where
-  unwrap :: w a -> f (w a)
-  corun :: w a -> CofreeT f w a
-  corun = coiterT Mop.unwrap
-instance (Cofree.ComonadCofree f w) => Coalgebra f w where
-  unwrap = Cofree.unwrap
 
-eval :: (ComonadCofree g w,MonadFree f m,Algebra f m,Coalgebra g w,Pairing g f)
-     => (a -> b -> m r) -> w a -> FreeT f m b -> m r
-eval p cofree free = do
-  mf <- runFreeT free
-  case mf of
-    Pure x -> p (extract cofree) x
-    Free ms -> pair (eval p) (Mop.unwrap cofree) ms
+runM :: (Monad m,Cofree.ComonadCofree f w,Pairing f g)
+      => w (m a) -> Free g b -> m (w (m a),b)
+runM w m = do
+  _ <- extract w
+  case runFree m of
+    Pure x -> return (w,x)
+    Free gs -> pair runM (unwrap w) gs
 
-eval' :: (ComonadCofree g w,MonadFree f m,Algebra f m,Coalgebra g w,Pairing g f)
-      => (a -> b -> m r) -> w (m a) -> FreeT f m b -> m r
-eval' p cofree free = do
-  mf <- runFreeT free
-  a <- extract cofree
-  case mf of
-    Pure x -> p a x
-    Free ms -> pair (eval' p) (Mop.unwrap $ corun cofree) ms
+execM :: (Monad m, Cofree.ComonadCofree f w, Pairing f g)
+      => w (m a) -> Free g b -> m a
+execM w = (extract . fst) <=< runM w
 
-evalC :: (MonadFree f m, ComonadCofree g w, Algebra f m, Coalgebra g w, Pairing g f)
-      => (a -> b -> m r) -> CofreeT g w a -> FreeT f m b -> m r
-evalC p cofree free = do
-  mf <- runFreeT free
-  case mf of
-    Pure x -> p (extract cofree) x
-    Free ms -> pair (evalC p) (Mop.unwrap cofree) ms
+evalM :: (Monad m, Cofree.ComonadCofree f w, Pairing f g)
+      => w (m a) -> Free g b -> m b
+evalM w = fmap snd . runM w
 
-evalC' :: (MonadFree f m, ComonadCofree g w, Algebra f m, Coalgebra g w, Pairing g f)
-      => (a -> b -> m r) -> CofreeT g w (m a) -> FreeT f m b -> m r
-evalC' p cofree free = do
-  mf <- runFreeT free
-  a <- extract cofree
-  case mf of
-    Pure x -> p a x
-    Free ms -> pair (evalC' p) (Mop.unwrap $ corun cofree) ms
 
-data A k = A k deriving Functor
-a = liftF (inj (A ()))
-data B k = B Int k deriving Functor
-b i = liftF (inj (B i ()))
-data C k = C (Int -> k) deriving Functor
-c = liftF (inj (C id))
+runT :: (Monad m,Cofree.ComonadCofree f w,Pairing f g)
+     => w a -> FreeT g m b -> m (w a,b)
+runT w m = do
+  mb <- runFreeT m
+  case mb of
+    Pure x -> return (w,x)
+    Free gs -> pair runT (unwrap w) gs
 
-type ABC = A :+: B :+: C
+execT :: (Monad m, Cofree.ComonadCofree f w, Pairing f g)
+      => w a -> FreeT g m b -> m a
+execT w = fmap (extract . fst) . runT w
 
-data CoA k = CoA k deriving Functor
-data CoB k = CoB (Int -> k) deriving Functor
-data CoC k = CoC (Int,k) deriving Functor
-instance Pairing CoA A where
-  pair p (CoA cok) (A k) = p cok k
-instance Pairing CoB B where
-  pair p (CoB ik) (B i k) = p (ik i) k
-instance Pairing CoC C where
-  pair p (CoC (i,k)) (C ik) = p k (ik i)
+evalT :: (Monad m, Cofree.ComonadCofree f w, Pairing f g)
+      => w a -> FreeT g m b -> m b
+evalT w = fmap snd . runT w
 
-type CoABC = CoA :*: CoB :*: CoC
 
-coabcCoalgebra :: Comonad w => w a -> CoABC (w a)
-coabcCoalgebra = coA *:* coB *:* coC
-  where
-    coA wa = CoA wa
-    coB wa = CoB (\i -> wa)
-    coC wa = CoC (1,wa)
+runMT :: (Monad m,Cofree.ComonadCofree f w,Pairing f g)
+      => w (m a) -> FreeT g m b -> m (w (m a),b)
+runMT w m = do
+  mb <- runFreeT m
+  _ <- extract w
+  case mb of
+    Pure x -> return (w,x)
+    Free gs -> pair runMT (unwrap w) gs
 
-type CoABCT = CofreeT CoABC
+execMT :: (Monad m, Cofree.ComonadCofree f w, Pairing f g)
+       => w (m a) -> FreeT g m b -> m a
+execMT w = (extract . fst) <=< runMT w
 
-mkCoABC :: CofreeT CoABC Identity ()
-mkCoABC = coiterT coabcCoalgebra (Identity ())
-
-test :: (MonadFree f m, A :<: f, B :<: f, C :<: f) => m Int
-test = do
- a
- b 3
- c
-
-x :: (Pairing CoABC f,MonadFree f m,ABC :<: f) => FreeT f m a -> m a
-x = eval (\a b -> return b) mkCoABC
-
-main = do
-  i <- x test
-  print i
+evalMT :: (Monad m, Cofree.ComonadCofree f w, Pairing f g)
+       => w (m a) -> FreeT g m b -> m b
+evalMT w = fmap snd . runMT w

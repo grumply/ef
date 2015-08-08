@@ -8,7 +8,9 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE BangPatterns #-}
-module Generate where
+module Generate
+  (mop,expand,Verbosity(..))
+  where
 
 import qualified Calypso.Static as C
 
