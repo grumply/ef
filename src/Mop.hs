@@ -19,7 +19,7 @@ module Mop
   ( module Export
   , showFT, showF
   , run,   eval,   exec
-  , run', run'', run''', run''''
+  , runM, runM'
   ) where
 
 import Control.Monad.Fix
@@ -55,6 +55,8 @@ import Language.Haskell.TH.Syntax
 
 import qualified Control.Comonad.Trans.Cofree as Cofree
 
+import qualified Debug.Trace as Debug
+
 instance (Lift (f b),Lift a) => Lift (FreeF f a b) where
   lift (Pure x) = [| Pure x |]
   lift (Free fb) = [| Free fb |]
@@ -86,46 +88,27 @@ eval :: (Cofree.ComonadCofree f w,Pairing f g)
      => w a -> Free g b -> b
 eval w = snd . run w
 
-
-run' :: (Functor f,Cofree.ComonadCofree f w,Pairing f g)
-     => CofreeT f w a -> Free g b -> (CofreeT f w a,b)
-run' w m =
-  case runCofreeT w of
-    ws -> case runFree m of
-            Pure b -> (coiterT unwrap (fmap headF ws),b)
-            Free fs -> pair run' (tailF $ extract ws) fs
-
-run'':: (Monad m,Functor f,Cofree.ComonadCofree f w,Pairing f g)
-     => CofreeT f w a -> FreeT g m b -> m (CofreeT f w a,b)
-run'' w m = do
+runM :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
+     => w (m a) -> FreeT g m b -> m (CofreeT f w (m a), (a, b))
+runM w m = do
+  a <- extract w
   mb <- runFreeT m
-  case runCofreeT w of
-    ws -> case mb of
-            Pure b -> return (coiterT unwrap (fmap headF ws),b)
-            Free fs -> pair run'' (tailF $ extract ws) fs
+  case mb of
+    Free fs -> pair runM (unwrap w) fs
+    Pure b -> return $ (CofreeT $ fmap (\t -> (return a) :< tailF t)
+                                               -- ^ remove effects
+                                    $ runCofreeT
+                                    $ coiterT unwrap w
+                       ,(a,b))
 
-run''' :: (Monad m,Functor f,Cofree.ComonadCofree f w,Pairing f g)
-       => CofreeT f w (m a) -> Free g b -> m (CofreeT f w (m a),b)
-run''' w m = do
-  case runCofreeT w of
-    ws -> case runFree m of
-            Pure b -> return (coiterT unwrap (fmap headF ws),b)
-            Free fs -> pair run''' (tailF $ extract ws) fs
+execM :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
+      => w (m a) -> FreeT g m b -> m a
+execM w = fmap (fst . snd) . runM w
 
-data Hole
+evalM :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
+      => w (m a) -> FreeT g m b -> m b
+evalM w = fmap (snd . snd) . runM w
 
-run'''' :: forall f g m w a b.
-           (Functor g,Functor f,Monad m,Comonad w,Pairing f g)
-        => CofreeT f w (m a) -> FreeT g m b -> m (CofreeT f w (m a),(a,b))
-run'''' w m =
-  case runCofreeT w of
-    ws -> do
-      mb <- runFreeT m
-      a <- headF $ extract ws
-      case mb of
-            Pure b -> return (CofreeT $ f ws,(a,b))
-            Free fs -> pair run'''' (tailF $ extract ws) fs
-  where
-    f :: w (CofreeF f (m a) (CofreeT f w (m a)))
-      -> w (CofreeF f (m a) (CofreeT f w (m a)))
-    f x = _ x
+interpM :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
+        => w (m a) -> FreeT g m b -> m (CofreeT f w (m a))
+interpM w = fmap fst . runM w
