@@ -96,10 +96,6 @@ class (Functor g,Monad m) => Interpreter g m where
 instance (MonadFix m,Interpreter f m) => MonadFix (FreeT f m) where
   mfix = Trans.lift . mfix . (int .)
 
-
--- take a w (m a) and return a (FreeT g m b -> m (CofreeT f w (m a),(a,b)))
-build = run
-
 exec :: (Monad m, Pairing f g, ComonadCofree f w) => w (m a) -> FreeT g m b -> m a
 exec w = fmap (fst . snd) . run w
 
@@ -110,8 +106,6 @@ interp :: (Monad m, Pairing f g, ComonadCofree f w)
        => w (m a) -> FreeT g m b -> m (CofreeT f w (m a))
 interp w = fmap fst . run w
 
-
--- useful because Free.Free has an instance of MonadFix where FreeT cannot.
 run' :: (Monad m, Pairing f g, ComonadCofree f w)
      => w (m a) -> Free.Free g b -> m (CofreeT f w (m a),(a,b))
 run' w m = do
