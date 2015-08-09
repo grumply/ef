@@ -18,8 +18,9 @@ dependency injection type families that was largely integrated.
 module Mop
   ( module Export
   , showFT, showF
-  , run,   eval,   exec
-  , runM, runM'
+  , run, eval, exec, interp
+  , run', eval', exec', interp'
+  , Free.toFreeT
   ) where
 
 import Control.Monad.Fix
@@ -74,41 +75,52 @@ showF :: (Show (f b),Show a) => FreeF f a b -> String
 showF (Free fb) = show fb
 showF (Pure a) = show a
 
-run :: (Cofree.ComonadCofree f w,Pairing f g)
-     => w a -> Free g b -> (w a,b)
-run w m = case runFree m of
-  Pure x -> (w,x)
-  Free gs -> pair run (unwrap w) gs
-
-exec :: (Cofree.ComonadCofree f w, Pairing f g)
-     => w a -> Free g b -> a
-exec w = extract . fst . run w
-
-eval :: (Cofree.ComonadCofree f w,Pairing f g)
-     => w a -> Free g b -> b
-eval w = snd . run w
-
-runM :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
+run :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
      => w (m a) -> FreeT g m b -> m (CofreeT f w (m a), (a, b))
-runM w m = do
+run w m = do
   a <- extract w
   mb <- runFreeT m
   case mb of
-    Free fs -> pair runM (unwrap w) fs
-    Pure b -> return $ (CofreeT $ fmap (\t -> (return a) :< tailF t)
-                                               -- ^ remove effects
-                                    $ runCofreeT
-                                    $ coiterT unwrap w
-                       ,(a,b))
+    Free fs -> pair run (unwrap w) fs
+    Pure b -> return
+      (CofreeT $ fmap ((:<) (return a) . tailF) $ runCofreeT $ coiterT unwrap w
+      ,(a,b)
+      )
 
-execM :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
+exec :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
       => w (m a) -> FreeT g m b -> m a
-execM w = fmap (fst . snd) . runM w
+exec w = fmap (fst . snd) . run w
 
-evalM :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
+eval :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
       => w (m a) -> FreeT g m b -> m b
-evalM w = fmap (snd . snd) . runM w
+eval w = fmap (snd . snd) . run w
 
-interpM :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
+interp :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
         => w (m a) -> FreeT g m b -> m (CofreeT f w (m a))
-interpM w = fmap fst . runM w
+interp w = fmap fst . run w
+
+
+run' :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
+     => w (m a) -> Free.Free g b -> m (CofreeT f w (m a),(a,b))
+run' w m = do
+  a <- extract w
+  case m of
+    Free.Free fs -> pair run' (unwrap w) fs
+    Free.Pure b -> return
+      (CofreeT $ fmap ((:<) (return a) . tailF) $ runCofreeT $ coiterT unwrap w
+      ,(a,b)
+      )
+
+exec' :: (Monad m, Functor g, ComonadCofree f w, Pairing f g)
+      => w (m b) -> Free.Free g b -> m b
+exec'   w = fmap (fst . snd) . run' w
+
+
+eval' :: (Monad m, Functor g, ComonadCofree f w, Pairing f g)
+      => w (m a) -> Free.Free g b -> m b
+eval'   w = fmap (snd . snd) . run' w
+
+
+interp' :: (Monad m, Functor g, ComonadCofree f w, Pairing f g)
+        => w (m a) -> Free.Free g b -> m (CofreeT f w (m a))
+interp' w = fmap fst . run' w
