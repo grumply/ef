@@ -108,9 +108,9 @@ interp w = fmap fst . run w
 
 run' :: (Monad m, Pairing f g, ComonadCofree f w)
      => w (m a) -> Free.Free g b -> m (CofreeT f w (m a),(a,b))
-run' w m = do
+run' w m = w `par` do
   a <- extract w
-  w `par` a `pseq`
+  a `par`
     case m of
       Free.Free fs -> pair run' (unwrap w) fs
       Free.Pure b -> return
