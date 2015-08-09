@@ -75,7 +75,7 @@ showF :: (Show (f b),Show a) => FreeF f a b -> String
 showF (Free fb) = show fb
 showF (Pure a) = show a
 
-run :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
+run :: (Monad m, Pairing f g, ComonadCofree f w)
      => w (m a) -> FreeT g m b -> m (CofreeT f w (m a), (a, b))
 run w m = do
   a <- extract w
@@ -87,20 +87,20 @@ run w m = do
       ,(a,b)
       )
 
-exec :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
+exec :: (Monad m, Pairing f g, ComonadCofree f w)
       => w (m a) -> FreeT g m b -> m a
 exec w = fmap (fst . snd) . run w
 
-eval :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
+eval :: (Monad m, Pairing f g, ComonadCofree f w)
       => w (m a) -> FreeT g m b -> m b
 eval w = fmap (snd . snd) . run w
 
-interp :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
+interp :: (Monad m, Pairing f g, ComonadCofree f w)
         => w (m a) -> FreeT g m b -> m (CofreeT f w (m a))
 interp w = fmap fst . run w
 
 
-run' :: (Monad m, Functor g, Pairing f g, ComonadCofree f w)
+run' :: (Monad m, Pairing f g, ComonadCofree f w)
      => w (m a) -> Free.Free g b -> m (CofreeT f w (m a),(a,b))
 run' w m = do
   a <- extract w
@@ -111,16 +111,16 @@ run' w m = do
       ,(a,b)
       )
 
-exec' :: (Monad m, Functor g, ComonadCofree f w, Pairing f g)
+exec' :: (Monad m, ComonadCofree f w, Pairing f g)
       => w (m b) -> Free.Free g b -> m b
 exec'   w = fmap (fst . snd) . run' w
 
 
-eval' :: (Monad m, Functor g, ComonadCofree f w, Pairing f g)
+eval' :: (Monad m, ComonadCofree f w, Pairing f g)
       => w (m a) -> Free.Free g b -> m b
 eval'   w = fmap (snd . snd) . run' w
 
 
-interp' :: (Monad m, Functor g, ComonadCofree f w, Pairing f g)
+interp' :: (Monad m, ComonadCofree f w, Pairing f g)
         => w (m a) -> Free.Free g b -> m (CofreeT f w (m a))
 interp' w = fmap fst . run' w

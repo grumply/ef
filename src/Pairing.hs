@@ -11,7 +11,7 @@ import           Data.Functor.Identity        (Identity (..))
 import           Sum
 import           Product
 
-class Pairing f g | f -> g, g -> f where
+class (Functor f,Functor g) => Pairing f g | f -> g, g -> f where
   pair :: (a -> b -> r) -> f a -> g b -> r
 
 instance {-# OVERLAPPABLE #-} Pairing f g => Pairing g f where
