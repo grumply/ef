@@ -17,6 +17,7 @@ dependency injection type families that was largely integrated.
 
 module Mop
   ( module Export
+  , Interpreter(..)
   , showFT, showF
   , run, eval, exec, interp
   , run', eval', exec', interp'
@@ -56,7 +57,7 @@ import Language.Haskell.TH.Syntax
 
 import qualified Control.Comonad.Trans.Cofree as Cofree
 
-import qualified Debug.Trace as Debug
+import Control.Parallel
 
 instance (Lift (f b),Lift a) => Lift (FreeF f a b) where
   lift (Pure x) = [| Pure x |]
@@ -77,49 +78,57 @@ showF (Pure a) = show a
 
 run :: (Monad m, Pairing f g, ComonadCofree f w)
      => w (m a) -> FreeT g m b -> m (CofreeT f w (m a), (a, b))
-run w m = do
+run w m = w `par` do
   a <- extract w
   mb <- runFreeT m
-  case mb of
-    Free fs -> pair run (unwrap w) fs
-    Pure b -> return
-      (CofreeT $ fmap ((:<) (return a) . tailF) $ runCofreeT $ coiterT unwrap w
-      ,(a,b)
-      )
+  a `par` mb `pseq`
+    case mb of
+      Free fs -> pair run (unwrap w) fs
+      Pure b ->
+        return
+          (CofreeT $ fmap ((:<) (return a) . tailF) $ runCofreeT $ coiterT unwrap w
+          ,(a,b)
+          )
 
-exec :: (Monad m, Pairing f g, ComonadCofree f w)
-      => w (m a) -> FreeT g m b -> m a
+class (Functor g,Monad m) => Interpreter g m where
+  int :: FreeT g m a -> m a
+
+instance (MonadFix m,Interpreter f m) => MonadFix (FreeT f m) where
+  mfix = Trans.lift . mfix . (int .)
+
+
+-- take a w (m a) and return a (FreeT g m b -> m (CofreeT f w (m a),(a,b)))
+build = run
+
+exec :: (Monad m, Pairing f g, ComonadCofree f w) => w (m a) -> FreeT g m b -> m a
 exec w = fmap (fst . snd) . run w
 
-eval :: (Monad m, Pairing f g, ComonadCofree f w)
-      => w (m a) -> FreeT g m b -> m b
+eval :: (Monad m, Pairing f g, ComonadCofree f w) => w (m a) -> FreeT g m b -> m b
 eval w = fmap (snd . snd) . run w
 
 interp :: (Monad m, Pairing f g, ComonadCofree f w)
-        => w (m a) -> FreeT g m b -> m (CofreeT f w (m a))
+       => w (m a) -> FreeT g m b -> m (CofreeT f w (m a))
 interp w = fmap fst . run w
 
 
+-- useful because Free.Free has an instance of MonadFix where FreeT cannot.
 run' :: (Monad m, Pairing f g, ComonadCofree f w)
      => w (m a) -> Free.Free g b -> m (CofreeT f w (m a),(a,b))
 run' w m = do
   a <- extract w
-  case m of
-    Free.Free fs -> pair run' (unwrap w) fs
-    Free.Pure b -> return
-      (CofreeT $ fmap ((:<) (return a) . tailF) $ runCofreeT $ coiterT unwrap w
-      ,(a,b)
-      )
+  w `par` a `pseq`
+    case m of
+      Free.Free fs -> pair run' (unwrap w) fs
+      Free.Pure b -> return
+        (CofreeT $ fmap ((:<) (return a) . tailF) $ runCofreeT $ coiterT unwrap w
+        ,(a,b)
+        )
 
-exec' :: (Monad m, ComonadCofree f w, Pairing f g)
-      => w (m b) -> Free.Free g b -> m b
+exec' :: (Monad m, ComonadCofree f w, Pairing f g) => w (m b) -> Free.Free g b -> m b
 exec'   w = fmap (fst . snd) . run' w
 
-
-eval' :: (Monad m, ComonadCofree f w, Pairing f g)
-      => w (m a) -> Free.Free g b -> m b
+eval' :: (Monad m, ComonadCofree f w, Pairing f g) => w (m a) -> Free.Free g b -> m b
 eval'   w = fmap (snd . snd) . run' w
-
 
 interp' :: (Monad m, ComonadCofree f w, Pairing f g)
         => w (m a) -> Free.Free g b -> m (CofreeT f w (m a))
