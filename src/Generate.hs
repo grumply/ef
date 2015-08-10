@@ -104,7 +104,7 @@ data MopState = MopState
   , currentPackageDesc  :: GenericPackageDescription
   , cabalFile           :: FilePath
   , currentModule       :: HSE.Module
-  , deletes             :: Map.Map FilePath [Int]
+  , changes             :: Map.Map FilePath [(Int,Either Int Int)]
   } deriving (Show,Read,Eq,Data,Typeable)
 
 data Log
@@ -166,16 +166,102 @@ liftTH f = Mop $ lift $ lift $ lift f
 io :: IO a -> Mop a
 io = liftTH . TH.runIO
 
-insertDelete :: FilePath -> Int -> Mop ()
-insertDelete fp x = do
+safeInit :: [a] -> [a]
+safeInit [] = []
+safeInit xs = init xs
+
+logDelete :: FilePath -> Int -> Int -> Mop ()
+logDelete fp atLine deleted = do
   ms@MopState{..} <- get
-  put ms { deletes = Map.insertWith (++) fp [x] deletes }
+  put ms { changes = Map.insertWith (++) fp [(atLine,Left deleted)] changes }
 
+logInsert :: FilePath -> Int -> Int -> Mop ()
+logInsert fp atLine inserted = do
+  ms@MopState{..} <- get
+  put ms { changes = Map.insertWith (++) fp [(atLine,Right inserted)] changes }
 
-calculateDeleteOffset :: FilePath -> Int -> Mop Int
-calculateDeleteOffset fp x = do
+calculateOffset :: FilePath -> Int -> Mop Int
+calculateOffset fp x = do
   MopState _ _ _ _ (maybe [] reverse . Map.lookup fp -> ds) <- get
-  return (foldr (\a st -> if a < st then pred st else st) x ds)
+  return (foldr (\(at,lr) st -> either
+                    (\d -> if at < st then st + d else st)
+                    (\i -> if at < st then st - i else st)
+                    lr
+                ) x ds)
+
+spliceWith :: HSE.Pretty a => (String -> String) -> SrcLoc -> a -> Mop [String]
+spliceWith alter (SrcLoc fn ln _) a = do
+  let rendered = HSE.prettyPrint a
+      altered = alter rendered
+      as = lines altered
+      count = length as
+  insertLinesInFile ln count as fn
+  return as
+
+splice :: HSE.Pretty a => SrcLoc -> a -> Mop [String]
+splice (SrcLoc fn ln _) a = do
+  let rendered = HSE.prettyPrint a
+      rs = lines rendered ++ [""]
+      count = length rs
+  insertLinesInFile ln count rs fn
+  return rs
+
+
+insertLinesInFile :: Int -> Int -> [String] -> FilePath -> Mop ()
+insertLinesInFile at count ls fp = do
+  off <- calculateOffset fp at
+  io $ do
+    cs <- lines <$> readFile fp
+    cs `seq` do
+      let cs' = unlines $ insertRange at ls cs
+      length cs' `seq` writeFile fp cs'
+  logInsert fp off count
+
+insertRange :: Int -> [a] -> [a] -> [a]
+insertRange _ [] = id
+insertRange at ins = C.eval go 0
+  where
+    go = do
+      (i,a) <- C.view
+      case compare i at of
+        LT -> C.put (succ i) >> C.yield a
+        GT -> C.yield a
+        EQ -> C.yields ins >> C.put (succ i) >> C.yield a
+
+deleteLine :: Int -> FilePath -> Mop String
+deleteLine at fp = do
+  strs <- unsplice at 1 fp
+  case strs of
+    (x:_) -> return x
+    [] -> do log Warning $ "Generate.deleteLine from "
+                           ++ fp ++ " at " ++ show at
+                           ++ ": File too short."
+             return ""
+
+unsplice :: Int -> Int -> FilePath -> Mop [String]
+unsplice at count fp = do
+  off <- calculateOffset fp at
+  ls <- io $ do
+    cs <- lines <$> readFile fp
+    cs `seq` do
+      let (ls,cs') = deleteRange off count cs
+      length cs' `seq` writeFile fp $ unlines cs'
+      return ls
+  logDelete fp off count
+  return ls
+
+deleteRange :: Int -> Int -> [a] -> ([a],[a])
+deleteRange at count = first (either (const []) reverse . snd) . C.accum go (count,Left 1)
+  where
+    go = do
+      (i,a) <- C.view
+      case i of
+        (0,_) -> C.yield a
+        (n,Right ds) -> C.put (n-1,Right (a:ds))
+        (n,Left l) -> let l' = succ l in
+          if l' == at
+          then C.put (n,Right [])
+          else C.yield a >> C.put (n,Left l')
 
 --------------------------------------------------------------------------------
 
@@ -218,7 +304,8 @@ run ctxt st f = do
 
 expandAlgebra :: Mop [TH.Dec]
 expandAlgebra = do
-  alg <- createAlgebra
+  (slc,alg) <- createAlgebra
+  spliceWith (filter (not . flip elem "`()")) slc (algebraType alg)
   -- writeCoalgebra    (createCoalgebra    alg)
   -- writeInstructions (createInstructions alg)
   -- writeInterpreters (createInterpreters alg)
@@ -226,43 +313,84 @@ expandAlgebra = do
   -- renderAlgebra alg
   return []
 
-createAlgebra :: Mop Algebra
+-- create an algebraic type from a series of functorial instructions.
+-- This method assumes that the variables are similarly named. Bypassing
+-- this method will be common in the case of a highly variable free variable
+-- configuration.
+createAlgebra :: Mop (SrcLoc,Algebra)
 createAlgebra = do
   MopContext{..} <- ask
-  let m@(Module _ _ _ _ _ _ decls) = originalModule
+  let f = TH.loc_filename location
+      m@(Module _ _ _ _ _ _ decls) = originalModule
   (algebraName,start) <- findExpand m
   let stop = findStop m
       instructions = [ x | x@(DataDecl (SrcLoc _ l _) _ _ _ _ _ _) <- decls
                          , l > start, l < stop ]
       namesAndVars = [ (n,vs) | DataDecl _ _ _ n vs _ _ <- instructions ]
-      tyVars = foldr1 (\x@(_,xvs) y@(_,yvs)-> if length xvs > length yvs
-                                              then x
-                                              else y
-                      ) namesAndVars
-      ty = error "ty"
-  io $ mapM_ putStrLn [ show algebraName
-                      , show start
-                      , show stop
-                      , unlines $ map show instructions
-                      , "\n"
-                      , unlines $ map show namesAndVars
-                      , show tyVars
-                      ]
+      tyVars = mergeTypeVars $ gatherTypeVars instructions
+      lrty = buildInstructionsType location start algebraName instructions
   if null instructions
   then errorAt "Could not find instructions" start stop
   else do
-    l <- unsplice start
+    l <- deleteLine start f
     log Notify ("Unspliced expand (line " ++ show start ++ "): " ++ show l)
-    l' <- unsplice stop
+    l' <- deleteLine stop f
     log Notify ("Unspliced stop (line" ++  show stop ++ "): " ++ show l)
 
-    return (Algebra (HSE.Ident algebraName) ty instructions)
+    either
+      (\str -> errorAt str start stop >> io exitFailure)
+      (\ty@(TypeDecl s _ _ _) -> return $
+          (s,Algebra (Ident algebraName) ty instructions)
+      )
+      lrty
 
 errorAt :: String -> Int -> Int -> Mop a
 errorAt err beg end = do
   log Error $
     err ++ " between lines " ++ show beg ++ " and " ++ show end ++ "."
   io exitFailure
+
+buildInstructionsType :: TH.Loc -> Int -> String -> [Decl] -> Either String Decl
+buildInstructionsType TH.Loc{..} srcLoc nm ds =
+  let c = mergeContexts     $ gatherContexts     ds
+      t = mergeTypeVars     $ gatherTypeVars     ds
+      a = mergeInstructions $ gatherInstructions ds
+      s = SrcLoc loc_filename srcLoc 0
+      n = Ident nm
+      y = TyForall Nothing c
+  in either Left (\ty -> Right (TypeDecl s n t (y ty))) a
+
+gatherContexts :: [Decl] -> [Context]
+gatherContexts ds = [ c | (DataDecl _ _ c _ _ _ _) <- ds ]
+
+mergeContexts :: [Context] -> Context
+mergeContexts = nub . concat
+
+gatherTypeVars :: [Decl] -> [[TyVarBind]]
+gatherTypeVars ds = [ tyvs | (DataDecl _ _ _ _ (safeInit -> tyvs) _ _) <- ds ]
+
+mergeTypeVars :: [[TyVarBind]] -> [TyVarBind]
+mergeTypeVars = nub . concat
+
+gatherInstructions :: [Decl] -> [(Name,[TyVarBind])]
+gatherInstructions ds = [ (nm,tyvs) | (DataDecl _ _ _ nm tyvs _ _) <- ds ]
+
+mergeInstructions :: [(Name,[TyVarBind])] -> Either String Type
+mergeInstructions [] = Left "Generate.mergeInstructions: empty list"
+mergeInstructions (d:ds) =
+  let combine nmtys cont fixr = cont $ fix $ fixr $ uncurry build nmtys
+      start = fix (uncurry build d)
+      fix l r = TyInfix l (UnQual (Ident ":+:")) r
+      build nm [] = error $ show nm ++ " has no free variables; not a functor."
+      build nm (safeInit -> []) = TyCon (UnQual nm)
+      build nm (safeInit -> tyvs) =
+        TyCon (UnQual nm) `TyApp` (foldl1 TyApp $ map makeVar tyvs)
+      makeVar (KindedVar nm _) = TyVar nm
+      makeVar (UnkindedVar nm) = TyVar nm
+      finish f =
+        case f undefined of
+          TyInfix l _ _ -> l
+  in Right $ foldr combine finish ds start
 
 
 -- renderAlgebra      :: Algebra -> Mop [TH.Dec]
@@ -295,32 +423,6 @@ errorAt err beg end = do
 -- algebraic components up to a 'stop' splice if one exists.
 
 
-unsplice :: Int -> Mop (Maybe String)
-unsplice n = do
-  TH.Loc{..} <- asks location
-  x <- calculateDeleteOffset loc_filename n
-  mstr <- deleteLineFromFile x loc_filename
-  insertDelete loc_filename x
-  return mstr
-
-deleteLineFromFile :: Int -> FilePath -> Mop (Maybe String)
-deleteLineFromFile n fp = io $ do
-  cs <- lines <$> readFile fp
-  cs `seq` do
-    let (ln,c') = deleteAt n cs
-    length c' `seq` writeFile fp $ unlines c'
-    return ln
-
-deleteAt :: Int -> [a] -> (Maybe a,[a])
-deleteAt n = first fst . C.accum go (Nothing,Just 1)
-  where
-    go = do
-      ((_,mi),a) <- C.view
-      case mi of
-        Nothing       -> C.yield a
-        Just i
-          | i == n    -> C.put (Just a,Nothing)
-          | otherwise -> C.yield a >> C.put (Nothing,Just (i + 1))
 
 --------------------------------------------------------------------------------
 -- DSL
