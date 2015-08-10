@@ -9,7 +9,9 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE BangPatterns #-}
 module Generate
-  (mop,expand,stop,Verbosity(..))
+  (mop,expand,stop,Verbosity(..)
+  ,deleteRange, insertRange
+  )
   where
 
 import qualified Calypso.Static as C
@@ -184,8 +186,8 @@ calculateOffset :: FilePath -> Int -> Mop Int
 calculateOffset fp x = do
   MopState _ _ _ _ (maybe [] reverse . Map.lookup fp -> ds) <- get
   return (foldr (\(at,lr) st -> either
-                    (\d -> if at < st then st + d else st)
-                    (\i -> if at < st then st - i else st)
+                    (\d -> if at < st then st - d else st)
+                    (\i -> if at < st then st + i else st)
                     lr
                 ) x ds)
 
@@ -334,8 +336,8 @@ createAlgebra = do
   else do
     l <- deleteLine start f
     log Notify ("Unspliced expand (line " ++ show start ++ "): " ++ show l)
-    l' <- deleteLine stop f
-    log Notify ("Unspliced stop (line" ++  show stop ++ "): " ++ show l)
+    -- l' <- deleteLine stop f
+    -- log Notify ("Unspliced stop (line" ++  show stop ++ "): " ++ show l)
 
     either
       (\str -> errorAt str start stop >> io exitFailure)
