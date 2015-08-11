@@ -81,6 +81,8 @@ instance forall instructions symbols context actions state.
                            s t'
         in Machine (t',c)
 
+build c = Machine (return (),Computer c)
+
 delta :: forall instructions symbols context actions state result.
          (Pairing instructions  symbols
          ,Comonad context,Monad actions
