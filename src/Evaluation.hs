@@ -1,60 +1,70 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Evaluation where
 
 import           Pairing
 
-import           Data.Functor.Identity
-
-import qualified Control.Monad.Free as Free
-
 import           Control.Monad.Trans.Free
 import           Control.Comonad.Trans.Cofree
 
-import           Control.Parallel
-
 import           Control.Comonad
 
-run :: (Monad m, Pairing f g, ComonadCofree f w)
-     => w (m a) -> FreeT g m b -> m (CofreeT f w (m a), (a, b))
-run w m = w `par` do
-  a <- extract w
-  mb <- runFreeT m
-  a `par` mb `pseq`
-    case mb of
-      Free fs -> pair run (unwrap w) fs
-      Pure b ->
-        return
-          (CofreeT $ fmap ((:<) (return a) . tailF) $ runCofreeT $ coiterT unwrap w
-          ,(a,b)
-          )
+import           Data.Bifunctor
+import           Data.Coerce
 
-exec :: (Monad m, Pairing f g, ComonadCofree f w) => w (m a) -> FreeT g m b -> m a
-exec w = fmap (fst . snd) . run w
 
-eval :: (Monad m, Pairing f g, ComonadCofree f w) => w (m a) -> FreeT g m b -> m b
-eval w = fmap (snd . snd) . run w
+newtype Tape symbols actions result
+  = Tape { s :: FreeT symbols actions result
+         } deriving (Functor,Applicative,Monad)
 
-interp :: (Monad m, Pairing f g, ComonadCofree f w)
-       => w (m a) -> FreeT g m b -> m (CofreeT f w (m a))
-interp w = fmap fst . run w
+newtype Computer instructions context actions state
+  = Computer { q0 :: CofreeT instructions context (actions state)
+             } deriving (Functor)
 
-run' :: (Monad m, Pairing f g, ComonadCofree f w)
-     => w (m a) -> Free.Free g b -> m (CofreeT f w (m a),(a,b))
-run' w m = w `par` do
-  a <- extract w
-  a `par`
-    case m of
-      Free.Free fs -> pair run' (unwrap w) fs
-      Free.Pure b -> return
-        (CofreeT $ fmap ((:<) (return a) . tailF) $ runCofreeT $ coiterT unwrap w
-        ,(a,b)
-        )
+newtype Machine symbols instructions context state actions result
+  = Machine { m :: ( Tape     symbols              actions result
+                   , Computer instructions context actions state
+                   )
+            } deriving (Functor)
 
-exec' :: (Monad m, ComonadCofree f w, Pairing f g) => w (m b) -> Free.Free g b -> m b
-exec'   w = fmap (fst . snd) . run' w
+instance (Pairing instructions symbols
+         ,Monad actions
+         ,ComonadCofree symbols context
+         ,Monoid (context (actions state))
+         )
+  => Applicative (Machine instructions symbols context state actions)
+  where
+    pure a = Machine (Tape $ return a
+                     ,Computer $ coiterT unwrap mempty)
+    (<*>) _ _ = _
 
-eval' :: (Monad m, ComonadCofree f w, Pairing f g) => w (m a) -> Free.Free g b -> m b
-eval'   w = fmap (snd . snd) . run' w
+instance (Pairing instructions symbols
+         ,Monad actions
+         ,ComonadCofree symbols context
+         ,Monoid (context (actions state))
+         )
+  => Monad (Machine instructions symbols context state actions)
+  where
+    return = pure
 
-interp' :: (Monad m, ComonadCofree f w, Pairing f g)
-        => w (m a) -> Free.Free g b -> m (CofreeT f w (m a))
-interp' w = fmap fst . run' w
+
+delta :: forall instructions symbols context actions state result.
+         (Pairing instructions  symbols
+         ,Comonad context,Monad actions
+         )
+      => Computer instructions context actions state
+      -> Tape     symbols              actions result
+      -> actions (Computer instructions context actions state,result)
+delta computer tape = do
+  let from = coerce :: CofreeT f w a -> w (CofreeF f a (CofreeT f w a))
+      to = coerce :: w (CofreeF f (m a) (CofreeT f w (m a))) -> Computer f w m a
+
+  state <- extract (q0 computer)
+  symbols <- runFreeT $ s tape
+  case symbols of
+    Free symbols' -> pair delta (fmap coerce $ unwrap $ q0 computer)
+                                (fmap coerce symbols')
+    Pure result -> return
+      (to $ fmap (bimap (const (return state)) id) $ from $ q0 computer,result)
