@@ -6,6 +6,7 @@ module Generate.Splice where
 import Generate.Monad
 import Generate.Utils
 
+import Data.Char
 import qualified Data.Map as Map
 import Data.Maybe
 
@@ -26,43 +27,39 @@ logInsert fp atLine inserted = do
 calculateOffset :: FilePath -> Int -> Mop Int
 calculateOffset fp x = do
   MopState _ _ _ (maybe [] reverse . Map.lookup fp -> ds) <- get
-  return $ pred
-         (foldr (\(at,lr) st -> either
-                    (\d -> if at < st then st - d else st)
-                    (\i -> if at < st then st + i else st)
-                    lr
-                ) x ds)
+  return $ (foldr (\(at,lr) st ->
+                     either
+                       (\d -> if at < st then st - d else st)
+                       (\i -> if at < st then st + i else st)
+                       lr
+                  )
+                  (pred x)
+                  ds
+           )
 
 place :: Pretty a => SrcLoc -> (SrcLoc -> a) -> Mop [String]
 place sl f = splice sl (f sl)
 
+placeWith sl f p = spliceWith p sl (f sl)
+
 splice :: Pretty a => SrcLoc -> a -> Mop [String]
-splice (SrcLoc fn ln _) a = do
-  let rendered = prettyPrint a
-      rs = lines rendered
-      count = length rs
-  insertLinesInFile ln count rs fn
-  return rs
+splice = spliceWith id
 
 spliceWith :: Pretty a => (String -> String) -> SrcLoc -> a -> Mop [String]
 spliceWith alter (SrcLoc fn ln _) a = do
   let rendered = prettyPrint a
       altered = alter rendered
-      as = lines altered
+      as = dropWhile (\x -> null x || all isSpace x) $ lines altered
       count = length as
-  insertLinesInFile ln count as fn
-  return as
-
-insertLinesInFile :: Int -> Int -> [String] -> FilePath -> Mop ()
-insertLinesInFile at count ls fp = do
-  off <- calculateOffset fp at
+  off <- calculateOffset fn ln
   io $ do
-    cs <- lines <$> readFile fp
+    cs <- lines <$> readFile fn
     cs `seq` do
-      let cs' = unlines $ insertRange at ls cs
-      length cs' `seq` writeFile fp cs'
-  logInsert fp off count
-
+      let cs' = insertRange off as cs
+      length cs' `seq` writeFile fn $ unlines cs'
+  logInsert fn off count
+  log Notify ("Generate.Splice.splice: " ++ fn ++ "(" ++ show off ++ "):\n\t" ++ unlines as)
+  return as
 
 deleteLine :: Int -> FilePath -> Mop String
 deleteLine at fp = do
@@ -77,7 +74,6 @@ deleteLine at fp = do
 unsplice :: Int -> Int -> FilePath -> Mop [String]
 unsplice at count fp = do
   off <- calculateOffset fp at
-  io (putStrLn $ "Unsplicing at " ++ show at ++ " in " ++ fp ++ " of "++ show count ++ " lines.")
   ls <- io $ do
     cs <- lines <$> readFile fp
     cs `seq` do

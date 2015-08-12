@@ -15,17 +15,16 @@ guaranteeImport :: (SrcLoc -> ImportDecl) -> FilePath -> Mop ()
 guaranteeImport slid fp = do
   pm <- io (parseFile fp)
   case pm of
-    ParseOk m@(Module _ _ _ _ _ importDecls _) ->
-      unless (doesImport slid importDecls)
-             (addImport slid $ findImportAppendPoint importDecls)
+    ParseOk m -> unless (doesImport slid m) (addImport slid $ findImportAppendPoint m)
     ParseFailed loc str -> fail $
       "Mop.Generate.guaranteeImport: Could not parse module at "
         ++ show loc
         ++ "\nError:\n\t"
         ++ str
 
-doesImport :: (SrcLoc -> ImportDecl) -> [ImportDecl] -> Bool
-doesImport (($ undefined) -> ImportDecl _ mn _ _ _ _ _ _) importDecls =
+doesImport :: (SrcLoc -> ImportDecl) -> Module -> Bool
+doesImport (($ undefined) -> ImportDecl _ mn _ _ _ _ _ _)
+           (Module _ _ _ _ _ importDecls  _) =
   not $ null $
     [ x | x@(ImportDecl _ mn' _ _ _ _ _ _) <- importDecls
         , mn' == mn
@@ -43,10 +42,8 @@ mopComputer     = simpleImport (ModuleName "Mop.Computer")
 mopInstructions = simpleImport (ModuleName "Mop.Instructions")
 mopSymbols      = simpleImport (ModuleName "Mop.Symbols")
 
-findImportAppendPoint :: [ImportDecl] -> SrcLoc
-findImportAppendPoint [] = error
-  "findImportAppendPoint: Cannot determine append point from empty list of import declarations."
-findImportAppendPoint decls =
-  nextLine $ maximum [ sl | (ImportDecl sl _ _ _ _ _ _ _) <- decls ]
+findImportAppendPoint :: Module -> SrcLoc
+findImportAppendPoint (Module _ _ _ _ _ importDecls _) =
+  nextLine $ maximum [ sl | (ImportDecl sl _ _ _ _ _ _ _) <- importDecls ]
   where
     nextLine (SrcLoc fp l c) = SrcLoc fp (succ l) c

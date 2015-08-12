@@ -2,9 +2,11 @@
 {-# LANGUAGE ViewPatterns #-}
 module Generate.DSL.Expand where
 
+import Generate.DSL.Helpers
 import Generate.Monad
 import Generate.Representation
 import Generate.Splice
+import Generate.Splice.Import
 import Generate.Utils
 
 import Data.List
@@ -73,11 +75,10 @@ findStop (Module _ _ _ _ _ _ decls) =
         _                           -> Nothing
     getStopSplice _                  = Nothing
 
-
 expandSymbols :: Mop [TH.Dec]
 expandSymbols = do
-  (slc,alg) <- createSymbols
-  spliceWith (filter (/= '`')) slc (symbolSetType alg)
+  createSymbols
+
   -- writeCosymbols    (createCosymbols    alg)
   -- writeInstructions (createInstructions alg)
   -- writeInterpreters (createInterpreters alg)
@@ -85,65 +86,43 @@ expandSymbols = do
   -- renderSymbols alg
   return []
 
--- create an symbolsic type from a series of functorial instructions.
--- This method assumes that the variables are similarly named. Bypassing
--- this method will be common in the case of a highly variable free variable
--- configuration.
-createSymbols :: Mop (SrcLoc,SymbolSet)
+createSymbols :: Mop ()
 createSymbols = do
   MopContext{..} <- ask
   let f = TH.loc_filename location
       m@(Module _ _ _ _ _ _ decls) = originalModule
   (symbolsName,start) <- findExpand m
-  let stop = findStop m
-      instructions = [ x | x@(DataDecl (SrcLoc _ l _) _ _ _ _ _ _) <- decls
-                         , l > start, l < stop ]
-      namesAndVars = [ (n,vs) | DataDecl _ _ _ n vs _ _ <- instructions ]
-      tyVars = mergeTypeVars $ gatherTypeVars instructions
-      lrty = buildInstructionsType location start symbolsName instructions
+  let stop         = findStop m
+      instructions = boundedDecls start stop decls
+      namesAndVars = dataNamesAndVars instructions
+      lrty         = buildInstructionsType location stop symbolsName instructions
+  guaranteeImport mopSymbols f
   if null instructions
   then errorAt "Could not find instructions" start stop
   else do
-    -- l <- deleteLine start f
-    --log Notify ("Unspliced expand (line " ++ show start ++ "): " ++ show l)
-    -- l' <- deleteLine stop f
-    -- log Notify ("Unspliced stop (line" ++  show stop ++ "): " ++ show l)
+    l <- deleteLine start f
+    log Notify ("Unspliced expand in " ++ f ++ " (line " ++ show start ++ "):\n\t " ++ l)
+    l' <- deleteLine stop f
 
-    either
-      (\str -> errorAt str start stop >> io exitFailure)
-      (\ty@(TypeDecl s _ _ _) -> return $
-          (s,SymbolSet (Ident symbolsName) ty instructions)
-      )
-      lrty
+    log Notify ("Unspliced stop in " ++ f ++ " (line" ++  show stop ++ "):\n\t " ++ l')
+
+    case lrty of
+      Left str -> errorAt str start stop
+      Right ty@(TypeDecl s _ _ _) -> void $ spliceWith (filter (/= '`')) s ty
 
 buildInstructionsType :: TH.Loc -> Int -> String -> [Decl] -> Either String Decl
 buildInstructionsType TH.Loc{..} srcLoc nm ds =
-  let c = mergeContexts     $ gatherContexts     ds
-      t = mergeTypeVars     $ gatherTypeVars     ds
-      a = mergeInstructions $ gatherInstructions ds
+  let c = nub . concat $ gatherContexts  ds
+      t = nub . concat . map safeInit $ gatherTypeVars ds
+      a = symbolSumFromTypeHeads $ gatherTypeHeads ds
       s = SrcLoc loc_filename srcLoc 0
       n = Ident nm
       y = TyForall Nothing c
   in either Left (\ty -> Right (TypeDecl s n t (y ty))) a
 
-gatherContexts :: [Decl] -> [Context]
-gatherContexts ds = [ c | (DataDecl _ _ c _ _ _ _) <- ds ]
-
-mergeContexts :: [Context] -> Context
-mergeContexts = nub . concat
-
-gatherTypeVars :: [Decl] -> [[TyVarBind]]
-gatherTypeVars ds = [ tyvs | (DataDecl _ _ _ _ (safeInit -> tyvs) _ _) <- ds ]
-
-mergeTypeVars :: [[TyVarBind]] -> [TyVarBind]
-mergeTypeVars = nub . concat
-
-gatherInstructions :: [Decl] -> [(Name,[TyVarBind])]
-gatherInstructions ds = [ (nm,tyvs) | (DataDecl _ _ _ nm tyvs _ _) <- ds ]
-
-mergeInstructions :: [(Name,[TyVarBind])] -> Either String Type
-mergeInstructions [] = Left "Generate.mergeInstructions: empty list"
-mergeInstructions (d:ds) =
+symbolSumFromTypeHeads :: [(Name,[TyVarBind])] -> Either String Type
+symbolSumFromTypeHeads [] = Left "Generate.DSL.Expand.symbolSetFromTypeHeads: empty list"
+symbolSumFromTypeHeads (d:ds) =
   let fix l r = TyInfix l (UnQual (Ident ":+:")) r
 
       build nm tyvs =

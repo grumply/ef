@@ -32,6 +32,7 @@ deleteRange at count = first (either (const []) reverse . snd)
           C.yield a
           C.put (n,if l == at then Right [] else Left (succ l))
 
+-- | 1-indexed splicing
 insertRange :: Int -> [a] -> [a] -> [a]
 insertRange _ [] = id
 insertRange at ins = C.eval go 0

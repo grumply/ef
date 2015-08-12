@@ -67,7 +67,17 @@ data Log
   | Notify   String
   | Info     String
   | Debug    String
-  deriving (Show,Ord,Eq,Data,Typeable)
+  deriving (Ord,Eq,Data,Typeable)
+instance Show Log where
+  show x =
+    case x of
+      Alert a    -> "Alert: "    ++ a
+      Critical c -> "Critical: " ++ c
+      Error e    -> "Error: "    ++ e
+      Warning w  -> "Warning: "  ++ w
+      Notify n   -> "Notify: "   ++ n
+      Info i     -> "Info: "     ++ i
+      Debug d    -> "Debug: "    ++ d
 
 data Verbosity
   = ReallySilent -- ^   Nothing
