@@ -1,5 +1,6 @@
 module Mop (module Export,toFreeT) where
 
+import Generate.DSL as Export
 import Generate as Export
 import Evaluation as Export
 

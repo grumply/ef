@@ -1,8 +1,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-module Derives where
--- split out to improve recompilation times
+module Generate.Derives where
 
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Syntax as TH
@@ -11,12 +10,7 @@ import qualified Language.Haskell.Exts as HSE
 
 import Data.Typeable
 
-import Distribution.Package
 import Distribution.PackageDescription
-import Distribution.PackageDescription.Configuration
-import Distribution.PackageDescription.Parse
-import Distribution.Verbosity
-import Distribution.Version
 
 deriving instance Read TH.Loc
 deriving instance Read TH.Module

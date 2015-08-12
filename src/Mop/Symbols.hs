@@ -1,4 +1,4 @@
-module Mop.Algebra (module Export) where
+module Mop.Symbols (module Export) where
 
 import Sum         as Export
 import Subsumption as Export

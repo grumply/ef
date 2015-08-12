@@ -1,4 +1,4 @@
-module Mop.Coalgebra (module Export) where
+module Mop.Instructions (module Export) where
 
 import Product     as Export
 import Pairing     as Export

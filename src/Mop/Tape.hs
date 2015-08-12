@@ -1,4 +1,4 @@
-module Mop.Instruction (module Export,toFreeT) where
+module Mop.Tape (module Export,toFreeT) where
 
 import Control.Monad            as Export
 import Control.Monad.Catch      as Export

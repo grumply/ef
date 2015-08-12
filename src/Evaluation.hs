@@ -42,6 +42,7 @@ delta computer tape = do
   current <- runFreeT tape    -- get next symbol on tape effectfully
 
   case current of
+
     Free symbol ->            -- continue symbol
 
       pair delta              -- use delta to pair instruction table with symbol
