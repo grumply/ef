@@ -1,3 +1,6 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 module Generate.Utils where
 
 import Generate.Monad
@@ -15,6 +18,28 @@ import System.Posix.Files
 import System.Posix.IO
 
 import Language.Haskell.Exts
+
+class TranslationalEq a b where
+  (~==) :: a -> b -> Bool
+
+-- instance TranslationalEq a b => TranslationalEq (SrcLoc -> a) (SrcLoc -> b) where
+--   (~==) x y = (x undefined) ~== (y undefined)
+
+instance {-# OVERLAPPABLE #-} TranslationalEq a b => TranslationalEq (SrcLoc -> a) b where
+  (~==) x y = (x undefined) ~== y
+
+instance {-# OVERLAPPABLE #-} TranslationalEq a b => TranslationalEq a (SrcLoc -> b) where
+  (~==) x y = x ~== (y undefined)
+
+instance {-# OVERLAPPABLE #-} TranslationalEq a b => TranslationalEq b a where
+  (~==) a b = b ~== a
+
+class Locatable a where
+  locate :: a -> SrcLoc
+  relocate :: SrcLoc -> a -> a
+
+lineAfter :: SrcLoc -> SrcLoc
+lineAfter (SrcLoc fp l c) = SrcLoc fp (succ l) c
 
 -- | 0-indexed deletion of a given number of elements `count` starting at `at`.
 --

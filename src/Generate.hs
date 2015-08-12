@@ -31,17 +31,17 @@ mop vbosity mentry = do
     pm      <- parseFile l
 
     cf      <- findCabalFile d
-    c       <- readCabalFile cf
+    c       <- readCabalFileIO cf
 
     return (pm,c,cf)
-
   case pm of
     ParseOk m           -> do
       if hasExpand entry
       then run (MopContext (TH.Module pn (TH.ModName mn)) TH.Loc{..} m vbosity)
                (MopState c cf m mempty)
-               expandSymbols
+               (expandSymbols >> writeCabalFile >> return [])
       else return []
+
     ParseFailed loc str -> fail $
       "Mop.Generate: Could not parse module at " ++ show loc ++ "\nError:\n\t" ++ str
 

@@ -1,15 +1,21 @@
 {-# LANGUAGE ViewPatterns #-}
-module Generate.Splice.Import
-  (guaranteeImport
-  ,doesImport
-  ,addImport
-  ,simpleImport
-  ,mopTape,mopComputer,mopInstructions,mopSymbols
-  ,findImportAppendPoint
-  ) where
+{-# LANGUAGE MultiParamTypeClasses #-}
+module Generate.Splice.Import where
 
 import Generate.Monad
 import Generate.Splice
+import Generate.Utils
+
+instance TranslationalEq ImportDecl ImportDecl where
+  (~==) (ImportDecl _ mn0 qual0 src0 safe0 pkg0 as0 specs0)
+        (ImportDecl _ mn1 qual1 src1 safe1 pkg1 as1 specs1)
+    = mn0       == mn1
+      && qual0  == qual1
+      && src0   == src1
+      && safe0  == safe1
+      && pkg0   == pkg1
+      && as0    == as1
+      && specs0 == specs1
 
 guaranteeImport :: (SrcLoc -> ImportDecl) -> FilePath -> Mop ()
 guaranteeImport slid fp = do
@@ -17,18 +23,14 @@ guaranteeImport slid fp = do
   case pm of
     ParseOk m -> unless (doesImport slid m) (addImport slid $ findImportAppendPoint m)
     ParseFailed loc str -> fail $
-      "Mop.Generate.guaranteeImport: Could not parse module at "
+      "Generate.Splice.Import.guaranteeImport: Could not parse module at "
         ++ show loc
         ++ "\nError:\n\t"
         ++ str
 
 doesImport :: (SrcLoc -> ImportDecl) -> Module -> Bool
-doesImport (($ undefined) -> ImportDecl _ mn _ _ _ _ _ _)
-           (Module _ _ _ _ _ importDecls  _) =
-  not $ null $
-    [ x | x@(ImportDecl _ mn' _ _ _ _ _ _) <- importDecls
-        , mn' == mn
-        ]
+doesImport iDecl0 (Module _ _ _ _ _ iDecls  _) =
+  not $ null [ iDecl1 | iDecl1 <- iDecls, iDecl1 ~== iDecl0]
 
 addImport :: (SrcLoc -> ImportDecl) -> SrcLoc -> Mop ()
 addImport f sl = void (splice sl (f sl))
@@ -44,6 +46,4 @@ mopSymbols      = simpleImport (ModuleName "Mop.Symbols")
 
 findImportAppendPoint :: Module -> SrcLoc
 findImportAppendPoint (Module _ _ _ _ _ importDecls _) =
-  nextLine $ maximum [ sl | (ImportDecl sl _ _ _ _ _ _ _) <- importDecls ]
-  where
-    nextLine (SrcLoc fp l c) = SrcLoc fp (succ l) c
+  lineAfter $ maximum [ sl | (ImportDecl sl _ _ _ _ _ _ _) <- importDecls ]

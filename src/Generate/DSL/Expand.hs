@@ -2,11 +2,13 @@
 {-# LANGUAGE ViewPatterns #-}
 module Generate.DSL.Expand where
 
+import Generate.Cabal
 import Generate.DSL.Helpers
 import Generate.Monad
 import Generate.Representation
 import Generate.Splice
 import Generate.Splice.Import
+import Generate.Splice.Pragma
 import Generate.Utils
 
 import Data.List
@@ -78,7 +80,6 @@ findStop (Module _ _ _ _ _ _ decls) =
 expandSymbols :: Mop [TH.Dec]
 expandSymbols = do
   createSymbols
-
   -- writeCosymbols    (createCosymbols    alg)
   -- writeInstructions (createInstructions alg)
   -- writeInterpreters (createInterpreters alg)
@@ -94,20 +95,16 @@ createSymbols = do
   (symbolsName,start) <- findExpand m
   let stop         = findStop m
       instructions = boundedDecls start stop decls
-      namesAndVars = dataNamesAndVars instructions
       lrty         = buildInstructionsType location stop symbolsName instructions
   guaranteeImport mopSymbols f
+  transitionExtension typeOperatorsPragma f
   if null instructions
   then errorAt "Could not find instructions" start stop
   else do
-    l <- deleteLine start f
-    log Notify ("Unspliced expand in " ++ f ++ " (line " ++ show start ++ "):\n\t " ++ l)
-    l' <- deleteLine stop f
-
-    log Notify ("Unspliced stop in " ++ f ++ " (line" ++  show stop ++ "):\n\t " ++ l')
-
+    deleteLine start f
+    when (stop /= maxBound) $ void $ deleteLine stop f
     case lrty of
-      Left str -> errorAt str start stop
+      Left str -> errorAt str start (if stop == maxBound then (-1) else stop)
       Right ty@(TypeDecl s _ _ _) -> void $ spliceWith (filter (/= '`')) s ty
 
 buildInstructionsType :: TH.Loc -> Int -> String -> [Decl] -> Either String Decl
@@ -121,9 +118,9 @@ buildInstructionsType TH.Loc{..} srcLoc nm ds =
   in either Left (\ty -> Right (TypeDecl s n t (y ty))) a
 
 symbolSumFromTypeHeads :: [(Name,[TyVarBind])] -> Either String Type
-symbolSumFromTypeHeads [] = Left "Generate.DSL.Expand.symbolSetFromTypeHeads: empty list"
+symbolSumFromTypeHeads [] = Left "Generate.DSL.Expand.symbolSumFromTypeHeads: empty list"
 symbolSumFromTypeHeads (d:ds) =
-  let fix l r = TyInfix l (UnQual (Ident ":+:")) r
+  let fixl l r = TyInfix l (UnQual (Ident ":+:")) r
 
       build nm tyvs =
         case tyvs of
@@ -138,12 +135,12 @@ symbolSumFromTypeHeads (d:ds) =
           KindedVar nm _ -> TyVar nm
           UnkindedVar nm -> TyVar nm
 
-      combine nmtys cont fixr = cont $ fix $ fixr $ uncurry build nmtys
+      combine nmtys cont fixr = cont $ fixl $ fixr $ uncurry build nmtys
 
       finish f =
         case f undefined of
           TyInfix l _ _ -> l
 
-      start = fix (uncurry build d)
+      start = fixl (uncurry build d)
 
   in Right $ foldr combine finish ds start
