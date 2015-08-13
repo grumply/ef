@@ -122,8 +122,16 @@ io = liftTH . TH.runIO
 
 log :: (String -> Log) -> String -> Mop ()
 log x str = do
-  when (x str < Info str) (io (print (x str)))
-  tell [x str]
+  MopContext{..} <- ask
+  let p = io (print (x str))
+      w = tell [x str]
+      l f = if x str < f str then p else w
+  case verbosity of
+    ReallySilent -> return ()
+    Silent       -> w
+    Quiet        -> l Warning
+    Normal       -> l Notify
+    Loud         -> p
 
 errorAt :: String -> Int -> Int -> Mop a
 errorAt err beg end = do

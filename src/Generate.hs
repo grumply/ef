@@ -18,8 +18,8 @@ import System.FilePath
 
 import Prelude hiding (log)
 
-mop :: Verbosity -> TH.Q [TH.Dec] -> TH.Q [TH.Dec]
-mop vbosity mentry = do
+mop :: TH.Q [TH.Dec] -> TH.Q [TH.Dec]
+mop mentry = do
   entry <- mentry
 
   TH.Module pn (TH.ModName mn) <- TH.thisModule
@@ -37,7 +37,7 @@ mop vbosity mentry = do
     return (pm,c,cf)
   case pm of
     ParseOk m           -> do
-      run (MopContext (TH.Module pn (TH.ModName mn)) TH.Loc{..} m vbosity)
+      run (MopContext (TH.Module pn (TH.ModName mn)) TH.Loc{..} m Loud)
           (MopState c cf m mempty)
           $ case () of
               _ | hasExpand entry  -> expandSymbols    >> writeCabalFile
@@ -53,5 +53,8 @@ run ctxt st f = do
                . flip runReaderT ctxt
                .      runWriterT
                $      runMop     f
+
+  -- comment out
   TH.runIO (mapM_ print [ x | x <- s, x > Info ""])
+
   return a
