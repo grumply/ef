@@ -63,7 +63,7 @@ deleteRange at count = first (either (const []) reverse . snd)
 -- | 1-indexed splicing
 insertRange :: Int -> [a] -> [a] -> [a]
 insertRange _ [] = id
-insertRange at ins = C.eval go 0
+insertRange at ins = C.eval go 1
   where
     go = do
       (i,a) <- C.view

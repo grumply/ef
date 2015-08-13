@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE RankNTypes #-}
-module Generate.Splice (splice,unsplice,deleteLine,place,placeWith,spliceWith) where
+module Generate.Splice (splice,unsplice,deleteLine,place,placeWith,spliceWith,nextLine) where
 
 import Generate.Monad
 import Generate.Utils
@@ -29,8 +29,8 @@ calculateOffset fp x = do
   MopState _ _ _ (maybe [] reverse . Map.lookup fp -> ds) <- get
   return $ (foldr (\(at,lr) st ->
                      either
-                       (\d -> if at <= st then st - d else st)
-                       (\i -> if at <= st then st + i else st)
+                       (\d -> if at < st then st - d else st)
+                       (\i -> if at < st then st + i else st)
                        lr -- might need to change to (at < st)
                   )
                   x
@@ -59,7 +59,11 @@ spliceWith alter sl@(SrcLoc fn ln _) a = do
     cs <- lines <$> readFile fn
     cs `seq` do
       let cs' = insertRange off as cs
-      length cs' `seq` writeFile fn $ unlines cs'
+          lcs' = length cs'
+      lcs' `seq`
+        if lcs' == length cs
+         then writeFile fn $ unlines $ cs' ++ as
+         else writeFile fn $ unlines cs'
 
   logInsert fn off count
   log Notify ("Generate.Splice.splice: " ++ show sl ++ " (" ++ show ln ++ " => " ++ show off ++ "):\n\t" ++ unlines as)
@@ -88,3 +92,6 @@ unsplice at count fp = do
   logDelete fp off count
   log Notify ("Generate.Splice.unsplice: " ++ show (SrcLoc fp at 1) ++ " (" ++ show at ++ " => " ++ show off ++ "):\n\t" ++ unlines ls)
   return ls
+
+nextLine :: SrcLoc -> SrcLoc
+nextLine (SrcLoc fp l c) = SrcLoc fp (succ l) c

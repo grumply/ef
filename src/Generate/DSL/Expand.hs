@@ -54,13 +54,11 @@ findExpand (Module _ _ _ _ _ _ decls) =
   where
     getExpandSplice (SpliceDecl (SrcLoc _ l _) e) =
       case e of
-        App (App (Var (UnQual (Ident "mop")))
-                  (Con (UnQual (Ident _)))
-             )
-             (Paren (App (Var (UnQual (Ident "expand")))
-                         (Lit (String x))
-                    )
-             )       -> Just (x,l)
+        App (Var (UnQual (Ident "mop")))
+            (Paren (App (Var (UnQual (Ident "expand")))
+                        (Lit (String x))
+                   )
+            )        -> Just (x,l)
         _            -> Nothing
     getExpandSplice _ = Nothing
 
