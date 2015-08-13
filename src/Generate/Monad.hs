@@ -104,6 +104,9 @@ data MopState = MopState
   , changes             :: Map.Map FilePath [(Int,Either Int Int)]
   } deriving (Show,Read,Eq,Data,Typeable)
 
+
+-- Add EitherT for bailing and use WriterT for logging splices/unsplices rather
+-- than log messages.
 newtype Mop a = Mop
   { runMop :: WriterT [Log] (ReaderT MopContext (StateT MopState TH.Q)) a
   } deriving ( Functor

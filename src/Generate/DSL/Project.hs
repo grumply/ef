@@ -11,6 +11,8 @@ import Generate.Splice.Import
 import Generate.Splice.Pragma
 import Generate.Utils
 
+import Control.Arrow
+
 import Data.List
 import Data.Maybe
 import System.Exit
@@ -48,13 +50,9 @@ findProject (Module _ _ _ _ _ _ decls) =
   where
     getProjectSplice (SpliceDecl sl@(SrcLoc _ l _) e) =
       case e of
-        App (Var (UnQual (Ident "mop")))
-            (Paren (App (Var (UnQual (Ident "project")))
-                        (Lit (String x))
-                   )
-            )         -> Just (x,sl)
-        _             -> Nothing
-    getProjectSplice _ = Nothing
+        App (VUI "mop") (PA (VUI "project") (Str x)) -> Just (x,sl)
+        _                                            -> Nothing
+    getProjectSplice _                                = Nothing
 
 projectSymbols :: Mop [TH.Dec]
 projectSymbols = do
@@ -82,28 +80,46 @@ createProjection = do
 
   symbols <- gatherTypes symbolNames decls imprts
 
-  mapM (splice at <=< createSymbol) symbols
+  sequence $ foldr ((>>>) . (:) . (splice at <=< createSymbol)) id symbols []
 
   return ()
 
 breakSymbolSetDecl :: Decl -> Mop [Name]
-breakSymbolSetDecl ~(TypeDecl _ _ _ ty) = breakSymbolSetType ty
+breakSymbolSetDecl ~(TypeType ty) = breakSymbolSetType ty
 
 breakSymbolSetType :: Type -> Mop [Name]
-breakSymbolSetType = return . go []
+breakSymbolSetType ty = go [] ty
   where
-    go acc (TyApp x _) = reverse (getTyCon x:acc)
-    go acc (TyInfix (TyApp x _) (UnQual (Symbol ":+:")) r) = go ((getTyCon x):acc) r
-    go acc (TyInfix (TyCon (UnQual nm)) (UnQual (Symbol ":+:")) r) = go (nm:acc) r
-    getTyCon (TyCon (UnQual nm)) = nm
-    getTyCon (TyApp x _) = getTyCon x
+    go acc     (TA x _)                = return $ reverse (getTyCon x:acc)
+    go acc (TI (TA x _) (Sym ":+:") r) = go ((getTyCon x):acc) r
+    go acc (TI (TC nm ) (Sym ":+:") r) = go (nm:acc) r
+    go acc _                           = do
+      let racc = reverse acc
+      log Error $ "Generate.DSL.Project.breakSymbolSetType:"
+                   ++ "\n\tBad type: "        ++ prettyPrint ty
+                   ++ "\n\tContinuing with: " ++ unlines (map prettyPrint racc)
+      return racc
+
+    getTyCon (TC nm)  = nm
+    getTyCon (TA x _) = getTyCon x
 
 gatherTypes :: [Name] -> [Decl] -> [ImportDecl] -> Mop [Decl]
-gatherTypes symbols decls imprts = undefined
+gatherTypes symbols decls imprts = do
+  let localSymbols = [ d | d@(DataName nm) <- decls
+                         , nm `elem` symbols
+                         ]
+  if length localSymbols == length symbols
+  then return localSymbols
+  else do
+    pkgModules <- parsePackageLocalModules
+    let ds = [ ds | Decls ds <- pkgModules ]
+    mapM gatherTypes symbols
+    modules <- findModules imprts
+
 
 createSymbol :: Decl -> Mop Decl
-createSymbol d@(DataDecl _ _ _ _ _ cons _) =
-  if length cons > 1
+createSymbol d@(DataCons cs) =
+  if length cs > 1
   then createClosedSymbol d
   else createOpenSymbol d
 

@@ -52,15 +52,11 @@ findExpand (Module _ _ _ _ _ _ decls) =
     _ -> do log Error "No expand splice found in module decls."
             io exitFailure
   where
-    getExpandSplice (SpliceDecl (SrcLoc _ l _) e) =
+    getExpandSplice (Splice l e) =
       case e of
-        App (Var (UnQual (Ident "mop")))
-            (Paren (App (Var (UnQual (Ident "expand")))
-                        (Lit (String x))
-                   )
-            )        -> Just (x,l)
-        _            -> Nothing
-    getExpandSplice _ = Nothing
+        App (VUI "mop") (PA (VUI "expand") (Str x)) -> Just (x,l)
+        _                                           -> Nothing
+    getExpandSplice _                                = Nothing
 
 findStop :: Module -> Int
 findStop (Module _ _ _ _ _ _ decls) =
@@ -69,11 +65,11 @@ findStop (Module _ _ _ _ _ _ decls) =
      then maxBound
      else head ss
   where
-    getStopSplice s@(SpliceDecl (SrcLoc _ l _) e) =
+    getStopSplice (Splice l e) =
       case e of
-        Var (UnQual (Ident "stop")) -> Just l
-        _                           -> Nothing
-    getStopSplice _                  = Nothing
+        VUI "stop" -> Just l
+        _          -> Nothing
+    getStopSplice _ = Nothing
 
 expandSymbols :: Mop [TH.Dec]
 expandSymbols = do
@@ -84,7 +80,7 @@ createSymbols :: Mop ()
 createSymbols = do
   MopContext{..} <- ask
   let f = TH.loc_filename location
-      m@(Module _ _ _ _ _ _ decls) = originalModule
+      m@(Decls decls) = originalModule
   (symbolsName,start) <- findExpand m
   let stop         = findStop m
       instructions = boundedDecls start stop decls
@@ -113,26 +109,24 @@ buildInstructionsType TH.Loc{..} srcLoc nm ds =
 symbolSumFromTypeHeads :: [(Name,[TyVarBind])] -> Either String Type
 symbolSumFromTypeHeads [] = Left "Generate.DSL.Expand.symbolSumFromTypeHeads: empty list"
 symbolSumFromTypeHeads (d:ds) =
-  let fixl l r = TyInfix l (UnQual (Ident ":+:")) r
+  let fixl l r = TI l (UI ":+:") r
 
       build nm tyvs =
         case tyvs of
           [] -> error $ show nm ++ " has no free variables; not a functor."
-          xs -> foldr (\a cont st -> cont (TyApp (st (makeVar a))))
-                      (\f -> case f undefined of (TyApp l _) -> l)
+          xs -> foldr (\a cont st -> cont (TA (st (makeVar a))))
+                      (\f -> case f undefined of (TA l _) -> l)
                       (safeInit xs)
-                      (TyApp (TyCon (UnQual nm)))
+                      (TA (TC nm))
 
       makeVar ukv =
         case ukv of
-          KindedVar nm _ -> TyVar nm
-          UnkindedVar nm -> TyVar nm
+          KV nm -> TV nm
+          UV nm -> TV nm
 
       combine nmtys cont fixr = cont $ fixl $ fixr $ uncurry build nmtys
 
-      finish f =
-        case f undefined of
-          TyInfix l _ _ -> l
+      finish (($ undefined) -> TIL l) = l
 
       start = fixl (uncurry build d)
 
