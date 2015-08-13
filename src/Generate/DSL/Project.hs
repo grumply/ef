@@ -39,20 +39,20 @@ hasProject [] = False
 hasProject (TH.FunD (TH.nameBase -> "project") _:_) = True
 hasProject (_:xs) = hasProject xs
 
-findProject :: Module -> Mop (String,Int)
+findProject :: Module -> Mop (String,SrcLoc)
 findProject (Module _ _ _ _ _ _ decls) =
   case mapMaybe getProjectSplice decls of
     (x:_) -> return x
     _ -> do log error "No project splice found in module decls."
             io exitFailure
   where
-    getProjectSplice (SpliceDecl (SrcLoc _ l _) e) =
+    getProjectSplice (SpliceDecl sl@(SrcLoc _ l _) e) =
       case e of
         App (Var (UnQual (Ident "mop")))
             (Paren (App (Var (UnQual (Ident "project")))
                         (Lit (String x))
                    )
-            )         -> Just (x,l)
+            )         -> Just (x,sl)
         _             -> Nothing
     getProjectSplice _ = Nothing
 
@@ -66,17 +66,23 @@ createProjection = do
   log Debug "Creating projection"
   MopContext{..} <- ask
   let f = TH.loc_filename location
-      m@(Module _ _ _ _ _ _ decls) = originalModule
+      m@(Module _ _ _ _ _ imprts decls) = originalModule
 
   (symbolsName,at) <- findProject m
 
-  let tys = getTypeByName symbolsName decls
+  let ty = getTypeByName symbolsName decls
 
-  when (null tys) $ do
-      log Error $ "Generate.DSL.Project.createProjection: Could not find \
-                  \symbol set with name " ++ symbolsName
+  when (null ty) $
+      log Error $ "Generate.DSL.Project.createProjection: Could not find " ++ symbolsName
 
-  symbols <- breakSymbolSetDecl (head tys)
+  when (length ty > 1) $
+      log Error $ "Generate.DSL.Project.createProjection: Found multiple types for " ++ symbolsName
+
+  symbolNames <- breakSymbolSetDecl (head ty)
+
+  symbols <- gatherTypes symbolNames decls imprts
+
+  mapM (splice at <=< createSymbol) symbols
 
   return ()
 
@@ -91,3 +97,9 @@ breakSymbolSetType = return . go []
     go acc (TyInfix (TyCon (UnQual nm)) (UnQual (Symbol ":+:")) r) = go (nm:acc) r
     getTyCon (TyCon (UnQual nm)) = nm
     getTyCon (TyApp x _) = getTyCon x
+
+gatherTypes :: [Name] -> [Decl] -> [ImportDecl] -> Mop [Decl]
+gatherTypes symbols decls imprts = undefined
+
+createSymbol :: Decl -> Mop Decl
+createSymbol (DataDecl _ _ _ nm tyVars _ _) = undefined
