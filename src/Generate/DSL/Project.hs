@@ -102,4 +102,11 @@ gatherTypes :: [Name] -> [Decl] -> [ImportDecl] -> Mop [Decl]
 gatherTypes symbols decls imprts = undefined
 
 createSymbol :: Decl -> Mop Decl
-createSymbol (DataDecl _ _ _ nm tyVars _ _) = undefined
+createSymbol d@(DataDecl _ _ _ _ _ cons _) =
+  if length cons > 1
+  then createClosedSymbol d
+  else createOpenSymbol d
+
+createClosedSymbol _ = undefined
+
+createOpenSymbol _ = undefined
