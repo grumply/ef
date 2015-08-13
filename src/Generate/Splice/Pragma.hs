@@ -51,7 +51,7 @@ transitionExtension f fp = do
     ParseOk m -> do
       let psl = getPragmaSrcLoc f m
       mapM_ (\sl -> unsplice (srcLine sl) 1 fp) psl
-      guaranteeOtherExtension (extension f)
+      guaranteeDefaultExtension (extension f)
     ParseFailed loc str -> fail $
       "Mop.Generate.Splice.Pragma.transitionExtension: Could not parse module at "
         ++ show loc

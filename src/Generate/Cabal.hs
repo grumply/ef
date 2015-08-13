@@ -1,12 +1,16 @@
 {-# LANGUAGE RecordWildCards #-}
 module Generate.Cabal where
 
-import Generate.Monad hiding (ModuleName(..))
+import Generate.Monad
+import Generate.Splice
+import Generate.Splice.Import
+
+import Data.List
 
 import System.Directory
 import System.FilePath
 
-import Distribution.ModuleName as Dist
+import qualified Distribution.ModuleName as Dist
 
 import Distribution.PackageDescription hiding (Var,Lit)
 import Distribution.PackageDescription.Parse
@@ -17,7 +21,8 @@ import Distribution.PackageDescription.Configuration
 import Distribution.Package
 import Distribution.Version
 
-import Language.Haskell.Extension as Ext
+import qualified Language.Haskell.Extension as Ext
+import qualified Language.Haskell.Exts.Syntax as Ext
 
 import Prelude hiding (log)
 
@@ -81,12 +86,20 @@ modifyLibBuildInfo f = modifyCondLibrary $ \lib -> do
   bi <- f (libBuildInfo lib)
   return $ lib { libBuildInfo = bi }
 
+modifySourceDirs :: ([FilePath] -> Mop [FilePath]) -> Mop ()
+modifySourceDirs f = modifyLibBuildInfo $ \lbi -> do
+  sds <- f (hsSourceDirs lbi)
+  return $ lbi { hsSourceDirs = sds }
+guaranteeSourceDir :: FilePath -> Mop ()
+guaranteeSourceDir fp = modifySourceDirs $ \sds ->
+  return $ if fp `elem` sds then sds else fp:sds
+
 modifyBuildDepends :: ([Dependency] -> Mop [Dependency]) -> Mop ()
 modifyBuildDepends f = modifyPD $ \pd -> do
   bd <- f (buildDepends pd)
   return $ pd { buildDepends = bd }
 
-modifyOtherModules :: ([ModuleName] -> Mop [ModuleName]) -> Mop ()
+modifyOtherModules :: ([Dist.ModuleName] -> Mop [Dist.ModuleName]) -> Mop ()
 modifyOtherModules f = modifyLibBuildInfo $ \lbi -> do
   om <- f (otherModules lbi)
   return $ lbi { otherModules = om }
@@ -115,29 +128,29 @@ incrementPatch (Version [v0,v1] ts) = return (Version [v0,v1,0,1] ts)
 incrementPatch (Version [v0,v1,v2] ts) = return (Version [v0,v1,v2,1] ts)
 incrementPatch (Version (v0:v1:v2:patch:vs) ts) = return (Version (v0:v1:v2:succ patch:vs) ts)
 
-guaranteeOtherModule :: ModuleName -> Mop ()
+guaranteeOtherModule :: Dist.ModuleName -> Mop ()
 guaranteeOtherModule m = modifyOtherModules $ \oms ->
   if m `elem` oms then return oms else return (m:oms)
 
-addOtherModule :: ModuleName -> Mop ()
+addOtherModule :: Dist.ModuleName -> Mop ()
 addOtherModule m = modifyOtherModules (return . (m:))
 
-removeOtherModule :: ModuleName -> Mop ()
+removeOtherModule :: Dist.ModuleName -> Mop ()
 removeOtherModule m = modifyOtherModules (return . filter (/=m))
 
-modifyExposedModules :: ([ModuleName] -> Mop [ModuleName]) -> Mop ()
+modifyExposedModules :: ([Dist.ModuleName] -> Mop [Dist.ModuleName]) -> Mop ()
 modifyExposedModules f = modifyCondLibrary $ \l -> do
   em <- f (exposedModules l)
   return $ l { exposedModules = em }
 
-guaranteeExposedModule :: ModuleName -> Mop ()
+guaranteeExposedModule :: Dist.ModuleName -> Mop ()
 guaranteeExposedModule m = modifyExposedModules $ \ems ->
   return $ if m `elem` ems then ems else m:ems
 
-addExposedModule :: ModuleName -> Mop ()
+addExposedModule :: Dist.ModuleName -> Mop ()
 addExposedModule m = modifyExposedModules (return . (m:))
 
-removeExposedModule :: ModuleName -> Mop ()
+removeExposedModule :: Dist.ModuleName -> Mop ()
 removeExposedModule m = modifyExposedModules (return . filter (/=m))
 
 --------------------------------------------------------------------------------
@@ -178,3 +191,14 @@ addOtherExtension e = modifyOtherExtensions (return . (e:))
 
 removeOtherExtension :: Ext.Extension -> Mop ()
 removeOtherExtension e = modifyDefaultExtensions (return . filter (/=e))
+
+writeModule :: Module -> Mop ()
+writeModule  m@(Module sl@(SrcLoc fp _ _) _ _ _ _ _ _) = do
+  io (createDirectoryIfMissing True $ takeDirectory fp)
+  void (splice sl m)
+
+createEmptyModule :: Dist.ModuleName -> Mop Module
+createEmptyModule mn = do
+  d <- gets (takeDirectory . cabalFile)
+  let f = d </> Dist.toFilePath mn <.> "hs"
+  return (Module (SrcLoc f 1 1) (Ext.ModuleName (intercalate "." $ Dist.components mn)) [] Nothing Nothing [simpleImport (ModuleName "Mop") (SrcLoc f 2 1)] [])

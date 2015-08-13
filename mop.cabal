@@ -26,6 +26,7 @@ library
                        Generate.DSL,
                        Generate.DSL.Expand,
                        Generate.DSL.Helpers,
+                       Generate.DSL.Project,
                        Generate.Derives,
                        Generate.Monad,
                        Generate.Module,

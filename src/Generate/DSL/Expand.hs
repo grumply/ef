@@ -20,10 +20,10 @@ import qualified Language.Haskell.TH as TH
 import Prelude hiding (log)
 
 expand :: String -> TH.Q [TH.Dec]
-expand str = return [expandFunSplice str]
+expand str = return [expandExpandSplice str]
 
-expandFunSplice :: String -> TH.Dec
-expandFunSplice str =
+expandExpandSplice :: String -> TH.Dec
+expandExpandSplice str =
   TH.FunD
     (TH.mkName "expand")
     [TH.Clause
@@ -80,11 +80,6 @@ findStop (Module _ _ _ _ _ _ decls) =
 expandSymbols :: Mop [TH.Dec]
 expandSymbols = do
   createSymbols
-  -- writeCosymbols    (createCosymbols    alg)
-  -- writeInstructions (createInstructions alg)
-  -- writeInterpreters (createInterpreters alg)
-  -- writePairings     (createPairings     alg)
-  -- renderSymbols alg
   return []
 
 createSymbols :: Mop ()
@@ -97,7 +92,7 @@ createSymbols = do
       instructions = boundedDecls start stop decls
       lrty         = buildInstructionsType location stop symbolsName instructions
   guaranteeImport mopSymbols f
-  transitionExtension typeOperatorsPragma f
+  guaranteeModulePragma typeOperatorsPragma f
   if null instructions
   then errorAt "Could not find instructions" start stop
   else do
@@ -112,7 +107,7 @@ buildInstructionsType TH.Loc{..} srcLoc nm ds =
   let c = nub . concat $ gatherContexts  ds
       t = nub . concat . map safeInit $ gatherTypeVars ds
       a = symbolSumFromTypeHeads $ gatherTypeHeads ds
-      s = SrcLoc loc_filename srcLoc 0
+      s = SrcLoc loc_filename srcLoc 1
       n = Ident nm
       y = TyForall Nothing c
   in either Left (\ty -> Right (TypeDecl s n t (y ty))) a

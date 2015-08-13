@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE RankNTypes #-}
-module Generate.Splice where
+module Generate.Splice (splice,unsplice,deleteLine,place,placeWith,spliceWith) where
 
 import Generate.Monad
 import Generate.Utils
@@ -29,11 +29,11 @@ calculateOffset fp x = do
   MopState _ _ _ (maybe [] reverse . Map.lookup fp -> ds) <- get
   return $ (foldr (\(at,lr) st ->
                      either
-                       (\d -> if at < st then st - d else st)
-                       (\i -> if at < st then st + i else st)
-                       lr
+                       (\d -> if at <= st then st - d else st)
+                       (\i -> if at <= st then st + i else st)
+                       lr -- might need to change to (at < st)
                   )
-                  (pred x)
+                  x
                   ds
            )
 
@@ -47,7 +47,7 @@ splice :: Pretty a => SrcLoc -> a -> Mop [String]
 splice = spliceWith id
 
 spliceWith :: Pretty a => (String -> String) -> SrcLoc -> a -> Mop [String]
-spliceWith alter (SrcLoc fn ln _) a = do
+spliceWith alter sl@(SrcLoc fn ln _) a = do
   let rendered = prettyPrint a
       altered = alter rendered
       dropEmpty = dropWhile (\x -> null x || all isSpace x)
@@ -59,13 +59,10 @@ spliceWith alter (SrcLoc fn ln _) a = do
     cs <- lines <$> readFile fn
     cs `seq` do
       let cs' = insertRange off as cs
-          fin = if length cs == length cs'
-                then cs' ++ as
-                else cs'
-      length fin `seq` writeFile fn (unlines fin)
+      length cs' `seq` writeFile fn $ unlines cs'
 
   logInsert fn off count
-  log Notify ("Generate.Splice.splice: " ++ fn ++ "(" ++ show off ++ "):\n\t" ++ unlines as)
+  log Notify ("Generate.Splice.splice: " ++ show sl ++ " (" ++ show ln ++ " => " ++ show off ++ "):\n\t" ++ unlines as)
   return as
 
 deleteLine :: Int -> FilePath -> Mop String
@@ -87,6 +84,7 @@ unsplice at count fp = do
       let (ls,cs') = deleteRange off count cs
       length cs' `seq` writeFile fp $ unlines cs'
       return ls
+
   logDelete fp off count
-  log Notify ("Generate.Splice.unsplice: " ++ fp ++ "(" ++ show off ++ "):\n\t" ++ unlines ls)
+  log Notify ("Generate.Splice.unsplice: " ++ show (SrcLoc fp at 1) ++ " (" ++ show at ++ " => " ++ show off ++ "):\n\t" ++ unlines ls)
   return ls

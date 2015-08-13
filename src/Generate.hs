@@ -3,6 +3,7 @@ module Generate where
 
 import Generate.Cabal
 import Generate.DSL.Expand
+import Generate.DSL.Project
 import Generate.Monad
 
 import Data.Function
@@ -36,12 +37,13 @@ mop vbosity mentry = do
     return (pm,c,cf)
   case pm of
     ParseOk m           -> do
-      if hasExpand entry
-      then run (MopContext (TH.Module pn (TH.ModName mn)) TH.Loc{..} m vbosity)
-               (MopState c cf m mempty)
-               (expandSymbols >> writeCabalFile >> return [])
-      else return []
-
+      run (MopContext (TH.Module pn (TH.ModName mn)) TH.Loc{..} m vbosity)
+          (MopState c cf m mempty)
+          $ case () of
+              _ | hasExpand entry  -> expandSymbols    >> writeCabalFile
+                | hasProject entry -> createProjection >> writeCabalFile
+                | otherwise        -> return ()
+      return []
     ParseFailed loc str -> fail $
       "Mop.Generate: Could not parse module at " ++ show loc ++ "\nError:\n\t" ++ str
 
