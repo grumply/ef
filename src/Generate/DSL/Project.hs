@@ -61,7 +61,6 @@ projectSymbols = do
 
 createProjection :: Mop ()
 createProjection = do
-  log Debug "Creating projection"
   MopContext{..} <- ask
   let f = TH.loc_filename location
       m@(Module _ _ _ _ _ imprts decls) = originalModule
@@ -78,9 +77,11 @@ createProjection = do
 
   symbolNames <- breakSymbolSetDecl (head ty)
 
-  symbols <- gatherTypes symbolNames decls imprts
+  symbols <- gatherSymbols symbolNames decls
 
-  sequence $ foldr ((>>>) . (:) . (splice at <=< createSymbol)) id symbols []
+  spliced <- sequence $ foldr ((>>>) . (:) . (splice at <=< createSymbol)) id symbols []
+
+  io (print spliced)
 
   return ()
 
@@ -91,31 +92,44 @@ breakSymbolSetType :: Type -> Mop [Name]
 breakSymbolSetType ty = go [] ty
   where
     go acc     (TA x _)                = return $ reverse (getTyCon x:acc)
+    go acc     (TC nm)                 = return $ reverse (nm:acc)
     go acc (TI (TA x _) (Sym ":+:") r) = go ((getTyCon x):acc) r
     go acc (TI (TC nm ) (Sym ":+:") r) = go (nm:acc) r
-    go acc _                           = do
-      let racc = reverse acc
+    go (reverse -> acc) ty             = do
       log Error $ "Generate.DSL.Project.breakSymbolSetType:"
                    ++ "\n\tBad type: "        ++ prettyPrint ty
-                   ++ "\n\tContinuing with: " ++ unlines (map prettyPrint racc)
-      return racc
+                   ++ "\n\tContinuing with: " ++ unlines (map prettyPrint acc)
+      return acc
 
     getTyCon (TC nm)  = nm
     getTyCon (TA x _) = getTyCon x
 
-gatherTypes :: [Name] -> [Decl] -> [ImportDecl] -> Mop [Decl]
-gatherTypes symbols decls imprts = do
-  let localSymbols = [ d | d@(DataName nm) <- decls
-                         , nm `elem` symbols
-                         ]
+-- The problem here is the only way to get constructor information for a symbol
+-- is by reifying it through TH, including all sub-symbols.
+gatherSymbols :: [Name] -> [Decl] -> Mop [Decl]
+gatherSymbols symbols decls = do
+  let localSymbols = [ (d,nm) | d@(DataName nm) <- decls
+                              , nm `elem` symbols
+                              ]
+  io (print localSymbols)
   if length localSymbols == length symbols
-  then return localSymbols
+  then return $ map fst localSymbols
   else do
-    pkgModules <- parsePackageLocalModules
-    let ds = [ ds | Decls ds <- pkgModules ]
-    mapM gatherTypes symbols
-    modules <- findModules imprts
+    nonlocals <- fmap catMaybes $ mapM (convertSymbolInfo <=< reifyHSE)
+                                       (map snd localSymbols \\ symbols)
+    return (localSymbols ++ nonlocals)
 
+reifyHSE :: Name -> Mop TH.Info
+reifyHSE (Ident str)  = liftTH . TH.reify . TH.mkName $ str
+reifyHSE (Symbol str) = liftTH . TH.reify . TH.mkName $ str
+
+convertSymbolInfo :: TH.Info -> Mop (Maybe Decl)
+convertSymbolInfo (TH.TyConI tci) = do
+  io $ putStrLn $ "Generate.DSL.Project.convertSymbolInfo: got TyConI: " ++ show tci
+  return Nothing
+convertSymbolInfo i = do
+  io $ putStrLn $ "Generate.DSL.Project.convertSymbolInfo: expecting TH.TyConI; got: " ++ show i
+  return Nothing
 
 createSymbol :: Decl -> Mop Decl
 createSymbol d@(DataCons cs) =
