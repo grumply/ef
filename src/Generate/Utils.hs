@@ -41,6 +41,9 @@ class Locatable a where
 lineAfter :: SrcLoc -> SrcLoc
 lineAfter (SrcLoc fp l c) = SrcLoc fp (succ l) c
 
+lineAfterIndented :: SrcLoc -> SrcLoc
+lineAfterIndented (SrcLoc fp l c) = SrcLoc fp (succ l) (c + 4)
+
 -- | 0-indexed deletion of a given number of elements `count` starting at `at`.
 --
 -- deleteRange 3 3 [1..9] == ([4,5,6],[1,2,3,7,8,9])
