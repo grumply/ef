@@ -77,14 +77,9 @@ createProjection = do
 
   symbolNames <- breakSymbolSetDecl (head ty)
 
-  io (print "symbolNames")
-
   symbols <- gatherSymbols at symbolNames decls
 
-  io (print "symbols")
-  io (mapM_ print symbols)
-
-  sequence_ (foldr ((>>>) . (:) . (splice at <=< createSymbol)) id symbols [])
+  sequence_ (foldr ((>>>) . (:) . (mapM (splice at) <=< createSymbol)) id symbols [])
 
   io (print "sequence_")
 
@@ -111,7 +106,6 @@ breakSymbolSetType ty = go [] ty
 
 gatherSymbols :: SrcLoc -> [Name] -> [Decl] -> Mop [Decl]
 gatherSymbols at symbols@(length -> symbolCount) decls = do
-  io (print (symbolCount,"symbolCount"))
   let localSymbols = [ (d,nm) | d@(DataName nm) <- decls
                               , nm `elem` symbols
                               ]
@@ -126,170 +120,8 @@ reifyHSE :: Name -> Mop TH.Info
 reifyHSE (Ident str)  = liftTH . TH.reify . TH.mkName $ str
 reifyHSE (Symbol str) = liftTH . TH.reify . TH.mkName $ str
 
-{-
-
-DataD
-  []
-
-  GHC.Base.Maybe
-
-  [KindedTV a_1627397280 StarT]
-
-  [NormalC GHC.Base.Nothing []
-  ,NormalC GHC.Base.Just [(NotStrict,VarT a_1627397280)]
-  ]
-
-  []
-
-DataD Cxt Name [TyVarBndr] [Con] [Name] => data Cxt x => T x = A x | B (T x) deriving (Z,W)
-
-DataD
-  []
-
-  Other.E
-
-  [KindedTV s_1627391301 StarT
-  ,KindedTV k_1627391302 StarT
-  ]
-
-  [ForallC [] [AppT (ConT GHC.Classes.Eq) (VarT s_1627391301)]
-              (NormalC Other.E
-                 [(NotStrict,VarT s_1627391301),(NotStrict,VarT k_1627391302)]
-              )
-  ]
-
-  []
-
-Module
-  (SrcLoc "/media/sean/Server/Sean/mop-test/src/Other.hs" 1 1)
-  (ModuleName "Other")
-  [LanguagePragma
-     (SrcLoc "/media/sean/Server/Sean/mop-test/src/Other.hs" 1 1)
-     [Ident "TypeFamilies"]
-  ,LanguagePragma
-     (SrcLoc "/media/sean/Server/Sean/mop-test/src/Other.hs" 2 1)
-     [Ident "ExistentialQuantification"]
-  ,LanguagePragma
-     (SrcLoc "/media/sean/Server/Sean/mop-test/src/Other.hs" 3 1)
-     [Ident "MultiParamTypeClasses"]
-  ]
-  Nothing
-  Nothing
-  []
-  [ClassDecl
-     (SrcLoc "/media/sean/Server/Sean/mop-test/src/Other.hs" 6 1)
-     []
-     (Ident "Multi")
-     [KindedVar (Ident "x") (KindFn KindStar KindStar)
-     ,UnkindedVar (Ident "y")
-     ]
-     []
-     [ClsDecl
-        (TypeSig
-           (SrcLoc "/media/sean/Server/Sean/mop-test/src/Other.hs" 7 3)
-           [Ident "multi"]
-           (TyFun
-              (TyVar (Ident "y"))
-              (TyApp (TyVar (Ident "x")) (TyVar (Ident "y")))
-           )
-        )
-     ]
-  ,DataDecl
-     (SrcLoc "/media/sean/Server/Sean/mop-test/src/Other.hs" 9 1)
-     DataType
-     []
-     (Ident "E")
-     [UnkindedVar (Ident "s")
-     ,UnkindedVar (Ident "k")
-     ]
-     [QualConDecl
-        (SrcLoc "/media/sean/Server/Sean/mop-test/src/Other.hs" 9 24)
-        []
-        [ParenA
-           (ClassA
-              (UnQual (Ident "Eq"))
-              [TyVar (Ident "s")]
-           )
-        ]
-        (ConDecl
-           (Ident "E")
-           [TyVar (Ident "s")
-           ,TyVar (Ident "k")
-           ]
-        )
-     ]
-     []
-  ,DataDecl
-     (SrcLoc "/media/sean/Server/Sean/mop-test/src/Other.hs" 11 1)
-     DataType
-     []
-     (Ident "F")
-     [UnkindedVar (Ident "t")
-     ,UnkindedVar (Ident "m")
-     ,UnkindedVar (Ident "k")
-     ]
-     [QualConDecl
-        (SrcLoc "/media/sean/Server/Sean/mop-test/src/Other.hs" 11 31)
-        []
-        [ParenA
-           (ClassA
-              (UnQual (Ident "Multi"))
-              [TyVar (Ident "t")
-              ,TyVar (Ident "m")
-              ]
-           )
-        ]
-        (ConDecl
-           (Ident "F")
-           [TyParen
-              (TyApp
-                 (TyVar (Ident "t"))
-                 (TyVar (Ident "m"))
-              )
-           ,TyVar (Ident "k")
-           ]
-         )
-     ]
-     []
-  ,DataDecl
-     (SrcLoc "/media/sean/Server/Sean/mop-test/src/Other.hs" 13 1)
-     DataType
-     []
-     (Ident "G")
-     [UnkindedVar (Ident "r")
-     ,UnkindedVar (Ident "s")
-     ,UnkindedVar (Ident "k")
-     ]
-     [QualConDecl
-        (SrcLoc "/media/sean/Server/Sean/mop-test/src/Other.hs" 13 31)
-        []
-        [ParenA
-           (EqualP
-              (TyVar (Ident "r"))
-              (TyApp
-                 (TyApp
-                    (TyCon (UnQual (Ident "E")))
-                    (TyVar (Ident "s"))
-                 )
-                 (TyVar (Ident "k"))
-              )
-           )
-        ]
-        (ConDecl
-           (Ident "G")
-           [TyVar (Ident "r")
-           ,TyVar (Ident "s")
-           ,TyVar (Ident "k")
-           ]
-        )
-     ]
-     []
-  ]
--}
-
 convertSymbolInfo :: SrcLoc -> TH.Info -> Mop (Maybe Decl)
 convertSymbolInfo sl (TH.TyConI tci) = do
-  io (print tci)
   case tci of
     TH.DataD _ nm tvars cons _ -> do
       return $ Just $
@@ -338,9 +170,12 @@ convertConstructors sl0 = reverse . snd . foldr go (lineAfterIndented sl0,[])
                            (map convertStrictType sts)
                   )
       in (sl',qcd:qcds)
-    go (TH.RecC    _ _   ) (sl,qcds) = undefined
-    go (TH.InfixC  _ _ _ ) (sl,qcds) = undefined
-    go (TH.ForallC _ _ _ ) (sl,qcds) = undefined
+    go (TH.RecC    _ _   ) (sl,qcds) = error
+      "Generate.DSL.Project.convertConstructors: convertConstructors got RecC."
+    go (TH.InfixC  _ _ _ ) (sl,qcds) = error
+      "Generate.DSL.Project.convertConstructors: convertConstructors got InfixC."
+    go (TH.ForallC _ _ _ ) (sl,qcds) = error
+      "Generate.DSL.Project.convertConstructors: convertConstructors got ForallC."
 
 convertStrictType :: (TH.Strict,TH.Type) -> Type
 convertStrictType (TH.IsStrict,ty)  = TyBang BangedTy   (convertType ty)
@@ -352,8 +187,6 @@ convertType (TH.ForallT tyVarBndrs cxt ty)    = TyForall
   (if null tyVarBndrs then Nothing else Just (convertTVars tyVarBndrs))
   (map convertTypeToAssertion cxt)
   (convertType ty)
-convertType (TH.AppT TH.ArrowT (TH.AppT l r)) = TyFun (convertType l) (convertType r)
-convertType (TH.AppT TH.ListT ty)             = TyList (convertType ty)
 convertType (TH.AppT tyl tyr)                 = TyApp (convertType tyl) (convertType tyr)
 convertType (TH.VarT nm)                      = TyVar (convertName nm)
 convertType (TH.ConT nm)                      = TyCon (convertNameToQName nm)
@@ -368,22 +201,47 @@ convertType (TH.SigT ty k)   = error
   "Generate.DSL.Project.convertType: convertType does not yet handle signature conversion."
 convertType (TH.StarT)       = error
   "Generate.DSL.Project.convertType: convertType got an unexpected TH.StarT value."
-convertType _                = error
-  "Generate.DSL.Project.convertType: convertType does not yet handle promoted types."
+-- convertType _                = error
+--   "Generate.DSL.Project.convertType: convertType does not yet handle promoted types."
+
+convertType ty = error ("Generate.DSL.Project.convertType: " ++ show ty)
 
 convertTypeList :: TH.Type -> [Type]
 convertTypeList (TH.AppT l r) = convertTypeList l ++ convertTypeList r
 convertTypeList t = [convertType t]
 
 convertTypeToAssertion :: TH.Type -> Asst
-convertTypeToAssertion _ = undefined
+convertTypeToAssertion _ = error "Generate.DSL.Project.convertTypeToAssertion"
 
-createSymbol :: Decl -> Mop Decl
-createSymbol d@(DataCons cs) =
+createSymbol :: Decl -> Mop [Decl]
+createSymbol d@(DataCons cs) = do
+  io (print d)
   if length cs > 1
   then createClosedSymbol d
   else createOpenSymbol d
 
-createClosedSymbol _ = undefined
+{-
+DataDecl
+  (SrcLoc "src/Main.hs" 23 1)
+  DataType
+  []
+  (Ident "Maybe")
+  [KindedVar (Ident "a") KindStar]
+  [QualConDecl
+    (SrcLoc "src/Main.hs" 25 9)
+    []
+    []
+    (ConDecl (Ident "Just") [TyVar (Ident "a")])
+  ,QualConDecl
+    (SrcLoc "src/Main.hs" 26 13)
+    []
+    []
+    (ConDecl (Ident "Nothing") [])
+  ]
+  []
+-}
+
+createClosedSymbol (DataDecl sl DataType _ nm tyvars cons _) = do
+  mapM createClosedSymbolsFromCon cons
 
 createOpenSymbol _ = undefined
