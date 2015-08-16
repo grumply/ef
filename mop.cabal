@@ -26,6 +26,8 @@ library
                        Generate.DSL,
                        Generate.DSL.Expand,
                        Generate.DSL.Helpers,
+                       Generate.DSL.Helpers.TH,
+                       Generate.DSL.Helpers.HSE,
                        Generate.DSL.Project,
                        Generate.Derives,
                        Generate.Monad,

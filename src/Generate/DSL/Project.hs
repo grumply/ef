@@ -63,7 +63,7 @@ createProjection :: Mop ()
 createProjection = do
   MopContext{..} <- ask
   let f = TH.loc_filename location
-      m@(Module _ _ _ _ _ imprts decls) = originalModule
+      m@(Module _ _ _ _ _ _ decls) = originalModule
 
   (symbolsName,at) <- findProject m
 
@@ -75,188 +75,49 @@ createProjection = do
   when (length ty > 1) $
       log Error $ "Generate.DSL.Project.createProjection: Found multiple types for " ++ symbolsName
 
-  symbolNames <- breakSymbolSetDecl (head ty)
+  symbolNames <- breakSymbolSet (head ty)
 
-  symbols <- gatherSymbols at symbolNames decls
+  symbols <- gatherSymbols at symbolNames
 
-  sequence_ (foldr ((>>>) . (:) . (mapM (splice at) <=< createSymbol)) id symbols [])
-
-  io (print "sequence_")
+  sequence_ (foldr ((>>>) . (:) . splice at) id symbols [])
 
   return ()
 
-breakSymbolSetDecl :: Decl -> Mop [Name]
-breakSymbolSetDecl ~(TypeType ty) = breakSymbolSetType ty
-
-breakSymbolSetType :: Type -> Mop [Name]
-breakSymbolSetType ty = go [] ty
+breakSymbolSet :: Decl -> Mop [Name]
+breakSymbolSet ~(TypeType ty) = go [] ty
   where
     go acc     (TA x _)                = return $ reverse (getTyCon x:acc)
     go acc     (TC nm)                 = return $ reverse (nm:acc)
     go acc (TI (TA x _) (Sym ":+:") r) = go ((getTyCon x):acc) r
     go acc (TI (TC nm ) (Sym ":+:") r) = go (nm:acc) r
-    go (reverse -> acc) ty             = do
+    go (reverse -> acc) ty'            = do
       log Error $ "Generate.DSL.Project.breakSymbolSetType:"
-                   ++ "\n\tBad type: "        ++ prettyPrint ty
+                   ++ "\n\tBad type: "        ++ prettyPrint ty'
                    ++ "\n\tContinuing with: " ++ unlines (map prettyPrint acc)
       return acc
 
     getTyCon (TC nm)  = nm
     getTyCon (TA x _) = getTyCon x
 
-gatherSymbols :: SrcLoc -> [Name] -> [Decl] -> Mop [Decl]
-gatherSymbols at symbols@(length -> symbolCount) decls = do
-  let localSymbols = [ (d,nm) | d@(DataName nm) <- decls
-                              , nm `elem` symbols
-                              ]
-  if length localSymbols == symbolCount
-  then return (map fst localSymbols)
-  else do
-    nonlocals <- fmap catMaybes $ mapM (convertSymbolInfo at <=< reifyHSE)
-                                       (symbols \\ map snd localSymbols)
-    return (map fst localSymbols ++ nonlocals)
+gatherSymbols :: SrcLoc -> [Name] -> Mop [Decl]
+gatherSymbols at = mapM (synthesize at <=< typeInfo <=< reify) . map convertNm
 
-reifyHSE :: Name -> Mop TH.Info
-reifyHSE (Ident str)  = liftTH . TH.reify . TH.mkName $ str
-reifyHSE (Symbol str) = liftTH . TH.reify . TH.mkName $ str
+synthesize :: SrcLoc -> (TH.Name,[TH.Name],[(TH.Name,Int)],[(TH.Name,[(Maybe TH.Name,TH.Type)])]) -> Mop Decl
+synthesize sl (nm,params,cons,terms) = do
+  let symbolNm = Ident (uncapitalize (TH.nameBase nm))
+      instantiable = safeInit params
+      cont = last params
+  io (mapM_ putStrLn [show symbolNm,show instantiable,show nm,show params,show cons,show terms])
+  let rhs = App (Var (UnQual (Ident "liftF")))
+                (Paren (App (Var (UnQual (Ident "inj")))
+                            (Paren buildSymbol)
+                       )
+                )
+      conApp = App (Con (UnQual (Ident (TH.nameBase nm))))
+      buildSymbol = foldr build finish conApp instantiable
+      build _ _ _ = undefined
+      finish _ = undefined
+  return $ FunBind [Match sl symbolNm (map makeVar instantiable) Nothing (UnGuardedRhs rhs) []]
 
-convertSymbolInfo :: SrcLoc -> TH.Info -> Mop (Maybe Decl)
-convertSymbolInfo sl (TH.TyConI tci) = do
-  case tci of
-    TH.DataD _ nm tvars cons _ -> do
-      return $ Just $
-        DataDecl
-          sl
-          DataType
-          []
-          (convertName nm)
-          (convertTVars tvars)
-          (convertConstructors sl cons)
-          []
-    _ -> do
-      log Error ("Generate.DSL.Project.convertSymbolInfo: got non-DataD in TyConI: " ++ show tci)
-      return Nothing
-convertSymbolInfo _ i = do
-  io $ putStrLn $ "Generate.DSL.Project.convertSymbolInfo: expecting TH.TyConI; got: " ++ show i
-  return Nothing
-
-convertName :: TH.Name -> Name
-convertName = Ident . TH.nameBase
-
-convertNameToQName :: TH.Name -> QName
-convertNameToQName = UnQual . convertName
-
-convertTVars :: [TH.TyVarBndr] -> [TyVarBind]
-convertTVars = map convertTyVarBndr
-  where
-    convertTyVarBndr (TH.PlainTV nm) = UnkindedVar (convertName nm)
-    convertTyVarBndr (TH.KindedTV nm k) = KindedVar (convertName nm) (convertKind k)
-      where
-        convertKind :: TH.Kind -> Kind
-        convertKind (TH.AppT TH.StarT r) = KindApp KindStar (convertKind r)
-        convertKind TH.StarT = KindStar
-        convertKind _ = error $
-          "Generate.DSL.Project.convertTVars: \
-          \Kind not understood (only handles (* [-> *])): "
-            ++ show k
-
-convertConstructors :: SrcLoc -> [TH.Con] -> [QualConDecl]
-convertConstructors sl0 = reverse . snd . foldr go (lineAfterIndented sl0,[])
-  where
-    go (TH.NormalC nm sts) (sl,qcds) =
-      let sl' = lineAfterIndented sl
-          qcd = QualConDecl sl' [] []
-                  (ConDecl (convertName nm)
-                           (map convertStrictType sts)
-                  )
-      in (sl',qcd:qcds)
-    go (TH.RecC    _ _   ) (sl,qcds) = error
-      "Generate.DSL.Project.convertConstructors: convertConstructors got RecC."
-    go (TH.InfixC  _ _ _ ) (sl,qcds) = error
-      "Generate.DSL.Project.convertConstructors: convertConstructors got InfixC."
-    go (TH.ForallC _ _ _ ) (sl,qcds) = error
-      "Generate.DSL.Project.convertConstructors: convertConstructors got ForallC."
-
-convertStrictType :: (TH.Strict,TH.Type) -> Type
-convertStrictType (TH.IsStrict,ty)  = TyBang BangedTy   (convertType ty)
-convertStrictType (TH.Unpacked,ty)  = TyBang UnpackedTy (convertType ty)
-convertStrictType (TH.NotStrict,ty) =                    convertType ty
-
-convertType :: TH.Type -> Type
-convertType (TH.ForallT tyVarBndrs cxt ty)    = TyForall
-  (if null tyVarBndrs then Nothing else Just (convertTVars tyVarBndrs))
-  (map convertTypeToAssertion cxt)
-  (convertType ty)
-convertType (TH.AppT tyl tyr)                 = TyApp (convertType tyl) (convertType tyr)
-convertType (TH.VarT nm)                      = TyVar (convertName nm)
-convertType (TH.ConT nm)                      = TyCon (convertNameToQName nm)
-
-convertType (TH.ListT)       = error
-  "Generate.DSL.Project.convertType: convertType got an unexpected TH.ListT value."
-convertType (TH.ConstraintT) = error
-  "Generate.DSL.Project.convertType: convertType does not yet handle constraint types."
-convertType (TH.EqualityT)   = error
-  "Generate.DSL.Project.convertType: convertType does not yet handle equality constraints."
-convertType (TH.SigT ty k)   = error
-  "Generate.DSL.Project.convertType: convertType does not yet handle signature conversion."
-convertType (TH.StarT)       = error
-  "Generate.DSL.Project.convertType: convertType got an unexpected TH.StarT value."
--- convertType _                = error
---   "Generate.DSL.Project.convertType: convertType does not yet handle promoted types."
-
-convertType ty = error ("Generate.DSL.Project.convertType: " ++ show ty)
-
-convertTypeList :: TH.Type -> [Type]
-convertTypeList (TH.AppT l r) = convertTypeList l ++ convertTypeList r
-convertTypeList t = [convertType t]
-
-convertTypeToAssertion :: TH.Type -> Asst
-convertTypeToAssertion _ = error "Generate.DSL.Project.convertTypeToAssertion"
-
-createSymbol :: Decl -> Mop [Decl]
-createSymbol d@(DataCons cs) = do
-  io (print d)
-  if length cs > 1
-  then createClosedSymbol d
-  else createOpenSymbol d
-
-{-
-DataDecl
-  (SrcLoc "src/Main.hs" 23 1)
-  DataType
-  []
-  (Ident "Maybe")
-  [KindedVar (Ident "a") KindStar]
-  [QualConDecl
-    (SrcLoc "src/Main.hs" 25 9)
-    []
-    []
-    (ConDecl (Ident "Just") [TyVar (Ident "a")])
-  ,QualConDecl
-    (SrcLoc "src/Main.hs" 26 13)
-    []
-    []
-    (ConDecl (Ident "Nothing") [])
-  ]
-  []
--}
-
-createClosedSymbol (DataDecl _ DataType _ _ _ cons _) = do
-  mapM (createOpenSymbolFromCon <=< logSymbolCreation) cons
-
-createOpenSymbol (DataDecl _ DataType _ _ _ [con] _) = do
-  logSymbolCreation con
-  fmap (:[]) (createOpenSymbolFromCon con)
-
-logSymbolCreation :: QualConDecl -> Mop QualConDecl
-logSymbolCreation qcd = do
-  log Debug $ "Creating symbol from QualConDecl: " ++ show qcd
-  return qcd
-
-createSymbolFromCon (QualConDecl sl _ _ (ConDecl nm tys)) =
-  return $ FunBind [Match sl (toSymbolName nm) _ Nothing (UnGuardedRhs _) (BDecls [])]
-
-toSymbolName _ = _
-
-createSymbolFromCon (QualConDecl _ _ _ cons) =
-  log Error $ "Generate.DSL.Project.createSymbolFromCon: unable to yet handle non-simply Constructor Declarations. Got: " ++ show cons
+makeVar :: TH.Name -> Pat
+makeVar (TH.nameBase -> nm) = PVar (Ident nm)

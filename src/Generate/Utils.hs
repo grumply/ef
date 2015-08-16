@@ -10,6 +10,7 @@ import Calypso.Static as C
 import Control.Arrow
 import Control.Monad
 
+import Data.Char
 import Data.List
 
 import System.Directory
@@ -78,6 +79,10 @@ insertRange at ins = C.eval go 1
 safeInit :: [a] -> [a]
 safeInit [] = []
 safeInit xs = init xs
+
+uncapitalize :: String -> String
+uncapitalize [] = []
+uncapitalize (x:xs) = toLower x:xs
 
 moduleDirectory :: String -> String
 moduleDirectory = foldl1 (</>) . break [] []
