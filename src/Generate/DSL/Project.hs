@@ -241,7 +241,22 @@ DataDecl
   []
 -}
 
-createClosedSymbol (DataDecl sl DataType _ nm tyvars cons _) = do
-  mapM createClosedSymbolsFromCon cons
+createClosedSymbol (DataDecl _ DataType _ _ _ cons _) = do
+  mapM (createOpenSymbolFromCon <=< logSymbolCreation) cons
 
-createOpenSymbol _ = undefined
+createOpenSymbol (DataDecl _ DataType _ _ _ [con] _) = do
+  logSymbolCreation con
+  fmap (:[]) (createOpenSymbolFromCon con)
+
+logSymbolCreation :: QualConDecl -> Mop QualConDecl
+logSymbolCreation qcd = do
+  log Debug $ "Creating symbol from QualConDecl: " ++ show qcd
+  return qcd
+
+createSymbolFromCon (QualConDecl sl _ _ (ConDecl nm tys)) =
+  return $ FunBind [Match sl (toSymbolName nm) _ Nothing (UnGuardedRhs _) (BDecls [])]
+
+toSymbolName _ = _
+
+createSymbolFromCon (QualConDecl _ _ _ cons) =
+  log Error $ "Generate.DSL.Project.createSymbolFromCon: unable to yet handle non-simply Constructor Declarations. Got: " ++ show cons
