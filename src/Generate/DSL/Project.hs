@@ -100,24 +100,37 @@ breakSymbolSet ~(TypeType ty) = go [] ty
     getTyCon (TA x _) = getTyCon x
 
 gatherSymbols :: SrcLoc -> [Name] -> Mop [Decl]
-gatherSymbols at = mapM (synthesize at <=< typeInfo <=< reify) . map convertNm
+gatherSymbols at = fmap concat <$> mapM (synthesize at <=< typeInfo <=< reify) . map convertNm
 
-synthesize :: SrcLoc -> (TH.Name,[TH.Name],[(TH.Name,Int)],[(TH.Name,[(Maybe TH.Name,TH.Type)])]) -> Mop Decl
+synthesize :: SrcLoc -> (TH.Name,[TH.Name],[(TH.Name,Int)],[(TH.Name,[(Maybe TH.Name,TH.Type)])]) -> Mop [Decl]
 synthesize sl (nm,params,cons,terms) = do
   let symbolNm = Ident (uncapitalize (TH.nameBase nm))
-      instantiable = safeInit params
-      cont = last params
-  io (mapM_ putStrLn [show symbolNm,show instantiable,show nm,show params,show cons,show terms])
-  let rhs = App (Var (UnQual (Ident "liftF")))
-                (Paren (App (Var (UnQual (Ident "inj")))
-                            (Paren buildSymbol)
-                       )
-                )
-      conApp = App (Con (UnQual (Ident (TH.nameBase nm))))
-      buildSymbol = foldr build finish conApp instantiable
-      build _ _ _ = undefined
-      finish _ = undefined
-  return $ FunBind [Match sl symbolNm (map makeVar instantiable) Nothing (UnGuardedRhs rhs) []]
+  -- let rhs = App (Var (UnQual (Ident "liftF")))
+  --               (Paren (App (Var (UnQual (Ident "inj")))
+  --                           (Paren buildSymbol)
+  --                      )
+  --               )
+  --     buildSymbol = foldr (\a cont st -> cont (App (st (mkVar a))))
+  --                         (\res -> if isFun
+  --                                  then res (Var (UnQual (Ident "id")))
+  --                                  else res (Var (Special UnitCon)))
+  --                         (safeInit params)
+  --                         (App (Con (UnQual (Ident (TH.nameBase nm)))))
+  --     mkVar = Var . UnQual . Ident . TH.nameBase
+  --     mkMatch nm _ =
+  --       [Match sl (Ident (uncapitalize (TH.nameBase nm)))
+  --                 (map makeVar (safeInit undefined))
+  --                 Nothing
+  --                 (UnGuardedRhs rhs)
+  --                 (BDecls [])
+  --       ]
+  -- return $ map (FunBind . uncurry mkMatch) terms
+  flip mapM terms $ \(con,ts) -> do
+    io (print (con,ts))
+    return undefined
+
+
+isFun = const True
 
 makeVar :: TH.Name -> Pat
 makeVar (TH.nameBase -> nm) = PVar (Ident nm)
