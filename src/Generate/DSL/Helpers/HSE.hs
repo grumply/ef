@@ -4,7 +4,35 @@ module Generate.DSL.Helpers.HSE where
 
 import Generate.Monad
 
+import Data.List
+
 import qualified Language.Haskell.TH as TH
+
+varNames :: [Name]
+varNames =
+  let strings = [c:s | s <- "":strings, c <- ['a'..]]
+  in map Ident strings
+
+deduplicateNames :: [Name] -> [Name]
+deduplicateNames ns = renameDuplicates ns (findDuplicates ns)
+  where
+    findDuplicates :: [Name] -> [Name]
+    findDuplicates = concat . map snd . filter ((> 1) . fst) . map (\x -> (length x,x)) . groupBy (==)
+    renameDuplicates :: [Name] -> [Name] -> [Name]
+    renameDuplicates orig [] = orig
+    renameDuplicates orig (dup:dups) = renameDuplicates (renameDuplicate orig dup) dups
+    renameDuplicate :: [Name] -> Name -> [Name]
+    renameDuplicate orig dup = foldr (\a cont (n,dup,acc) -> cont $
+                                        if dup == a
+                                        then (succ n,dup,rename n a:acc)
+                                        else (n,dup,a:acc)
+                                     )
+                                     (\(_,_,acc) -> acc)
+                                     orig
+                                     (0,dup,[])
+    rename :: Int -> Name -> Name
+    rename n (Ident nm) = Ident (nm ++ show n)
+
 
 convertNm :: Name -> TH.Name
 convertNm (Ident nm) = TH.mkName nm

@@ -41,11 +41,12 @@ addImport f sl = void (splice sl (f sl))
 simpleImport :: ModuleName -> SrcLoc -> ImportDecl
 simpleImport mn sl = ImportDecl sl mn False False False Nothing Nothing Nothing
 
-mopTape,mopComputer,mopInstructions,mopSymbols :: SrcLoc -> ImportDecl
+mopTape,mopComputer,mopInstructions,mopSymbols,mopPairings :: SrcLoc -> ImportDecl
 mopTape         = simpleImport (ModuleName "Mop.Tape")
 mopComputer     = simpleImport (ModuleName "Mop.Computer")
 mopInstructions = simpleImport (ModuleName "Mop.Instructions")
 mopSymbols      = simpleImport (ModuleName "Mop.Symbols")
+mopPairings     = simpleImport (ModuleName "Mop.Pairings")
 
 findImportAppendPoint :: Module -> SrcLoc
 findImportAppendPoint (Module _ _ _ _ _ importDecls _) =

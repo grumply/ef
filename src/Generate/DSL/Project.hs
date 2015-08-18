@@ -96,6 +96,10 @@ createProjection = do
       instructionsModule     = Dist.toFilePath instructionsModuleName
       absInstructionsModule  = md </> instructionsModule <.> "hs"
 
+      pairingsModuleName     = Dist.fromString ("Pairings." ++ symbolsName)
+      pairingsModule         = Dist.toFilePath pairingsModuleName
+      absPairingsModule      = md </> pairingsModule <.> "hs"
+
       computerModuleName     = Dist.fromString ("Computer." ++ symbolsName)
       computerModule         = Dist.toFilePath computerModuleName
       absComputerModule      = md </> computerModule <.> "hs"
@@ -111,22 +115,26 @@ createProjection = do
   guaranteeImport mopComputer     absComputerModule
   guaranteeImport mopInstructions absInstructionsModule
   guaranteeImport mopSymbols      absSymbolsModule
+  guaranteeImport mopPairings     absPairingsModule
 
   tapesl         <- findEnd absTapeModule
   computersl     <- findEnd absComputerModule
   instructionssl <- findEnd absInstructionsModule
   symbolssl      <- findEnd absSymbolsModule
+  pairingssl     <- findEnd absPairingsModule
 
   tape_splices         <- synthesizeTape tapesl symbolNames
   computer_splices     <- return []
   instructions_splices <- return []
   symbols_splices      <- return []
+  pairings_splices     <- return []
 
   mapM_ addExposedModule
     [ symbolsModuleName
     , tapeModuleName
     , instructionsModuleName
     , computerModuleName
+    , pairingsModuleName
     ]
 
   mapM_ (\(sl,spls) -> mapM_ (spliceAtEnd sl) spls)
@@ -134,6 +142,7 @@ createProjection = do
     , (computersl    ,computer_splices     )
     , (instructionssl,instructions_splices )
     , (symbolssl     ,symbols_splices      )
+    , (pairingssl    ,pairings_splices     )
     ]
 
   mapM_ (flip transitionExtension absTapeModule)
@@ -164,19 +173,11 @@ breakSymbolSet ~(TypeType ty) = go [] ty
     getTyCon (TA x _) = getTyCon x
 
 synthesizeTape :: SrcLoc -> [Name] -> Mop [Decl]
-synthesizeTape at = fmap concat <$> mapM (synthesize at <=< typeInfo <=< reify)
+synthesizeTape at = fmap concat <$> mapM (createTape at <=< typeInfo <=< reify)
                   . map convertNm
 
-synthesize :: SrcLoc -> THInfo -> Mop [Decl]
-synthesize sl THInfo{..} = do
-    symbols   <- createSymbols      sl THInfo{..}
-    instrs    <- createInstructions sl THInfo{..}
-    pairings  <- createPairings     sl THInfo{..} instrs
-    computers <- createComputers    sl instrs
-    return (symbols ++ instrs ++ pairings ++ computers)
-
-createSymbols :: SrcLoc -> THInfo -> Mop [Decl]
-createSymbols sl THInfo{..} = fmap concat <$>
+createTape :: SrcLoc -> THInfo -> Mop [Decl]
+createTape sl THInfo{..} = fmap concat <$>
     flip mapM (zip [0..] infoTerms) $ \(n,(con,map snd -> ts)) -> do
       let vs = safeInit (deduplicateNames $ map smartName ts)
           buildSymbol = foldr (\nm cont st -> cont (App (st (Var (UnQual nm)))))
@@ -204,109 +205,3 @@ createSymbols sl THInfo{..} = fmap concat <$>
                      (BDecls [])
                   ]
                ]
-
-{-
-THInfo
-  { infoName = A
-  , infoParams = [s_1627411019,k_1627411020]
-  , infoConstructors = [(Nothing,(A,2))]
-  , infoTerms = [(Main.A,[(Nothing,AppT (AppT ArrowT (VarT s_1627411019)) (VarT k_1627411020))
-                         ,(Nothing,VarT k_1627411020)
-                         ]
-                 )
-                ]
-  }
-
-[FunBind
-  [Match
-    (SrcLoc "src/Main.hs" 17 1)
-    (Ident "a")
-    [PVar (Ident "sk")]
-    Nothing
-    (UnGuardedRhs
-      (App (Var (UnQual (Ident "liftF")))
-           (Paren (App (Var (UnQual (Ident "inj")))
-                       (Paren (App (App (Con (UnQual (Ident "A")))
-                                        (Var (UnQual (Ident "sk")))
-                                   )
-                                   (Var (Special UnitCon))
-                              )
-                       )
-                  )
-           )
-      )
-    )
-    (BDecls [])
-  ]
-]
-
-DataDecl SrcLoc DataOrNew Context Name [TyVarBind] [QualConDecl] [Deriving]
-
--}
-
-createInstructions :: SrcLoc -> THInfo -> Mop [Decl]
-createInstructions sl THInfo{..} = return []
-
-createPairings :: SrcLoc -> THInfo -> [Decl] -> Mop [Decl]
-createPairings sl THInfo{..} instrs = return []
-
-createComputers :: SrcLoc -> [Decl] -> Mop [Decl]
-createComputers sl instrs = return []
-
-buildContext :: (Maybe ([TH.TyVarBndr],TH.Cxt),(TH.Name,Int)) -> Context
-buildContext _ = undefined
-
-buildTyVars :: (Maybe ([TH.TyVarBndr],TH.Cxt),(TH.Name,Int)) -> [TyVarBind]
-buildTyVars _ = undefined
-
-buildCoConstructors :: TH.Name -> [TH.Type] -> [QualConDecl]
-buildCoConstructors _ _ = undefined
-
-coConstructorDerives :: [Deriving]
-coConstructorDerives = []
-
-isHigherKinded (TH.AppT _ _) = True
-isHigherKinded _ = False
-
-varNames :: [Name]
-varNames =
-  let strings = [c:s | s <- "":strings, c <- ['a'..]]
-  in map Ident strings
-
-smartName :: TH.Type -> Name
-smartName = Ident . go []
-  where
-    go acc (TH.AppT l r) =
-      let accl = go [] l
-          accr = go [] r
-      in acc ++ accl ++ accr
-    go acc (TH.VarT nm) = acc ++ (TH.nameBase nm)
-    go acc (TH.ConT nm) = acc ++ (uncapitalize (TH.nameBase nm))
-    go acc _ = acc
-
-deduplicateNames :: [Name] -> [Name]
-deduplicateNames ns = renameDuplicates ns (findDuplicates ns)
-  where
-    findDuplicates :: [Name] -> [Name]
-    findDuplicates = concat . map snd . filter ((> 1) . fst) . map (\x -> (length x,x)) . groupBy (==)
-    renameDuplicates :: [Name] -> [Name] -> [Name]
-    renameDuplicates orig [] = orig
-    renameDuplicates orig (dup:dups) = renameDuplicates (renameDuplicate orig dup) dups
-    renameDuplicate :: [Name] -> Name -> [Name]
-    renameDuplicate orig dup = foldr (\a cont (n,dup,acc) -> cont $
-                                        if dup == a
-                                        then (succ n,dup,rename n a:acc)
-                                        else (n,dup,a:acc)
-                                     )
-                                     (\(_,_,acc) -> acc)
-                                     orig
-                                     (0,dup,[])
-    rename :: Int -> Name -> Name
-    rename n (Ident nm) = Ident (nm ++ show n)
-
-makeVar :: TH.Name -> Pat
-makeVar (TH.nameBase -> nm) = PVar (Ident nm)
-
-coize :: String -> String
-coize [] = error "Could not coize empty string."
-coize str@(x:_) = if isLower x then "co" ++ str else "Co" ++ str

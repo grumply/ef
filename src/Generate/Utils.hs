@@ -93,6 +93,10 @@ uncapitalize :: String -> String
 uncapitalize [] = []
 uncapitalize (x:xs) = toLower x:xs
 
+coize :: String -> String
+coize [] = error "Could not coize empty string."
+coize str@(x:_) = if isLower x then "co" ++ str else "Co" ++ str
+
 moduleDirectory :: String -> String
 moduleDirectory = foldl1 (</>) . break [] []
   where
