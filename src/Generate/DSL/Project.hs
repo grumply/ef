@@ -79,6 +79,8 @@ createProjection = do
 
   symbols <- gatherSymbols at symbolNames
 
+  io (print symbols)
+
   sequence_ (foldr ((>>>) . (:) . splice at) id symbols [])
 
   return ()
@@ -100,43 +102,57 @@ breakSymbolSet ~(TypeType ty) = go [] ty
     getTyCon (TA x _) = getTyCon x
 
 gatherSymbols :: SrcLoc -> [Name] -> Mop [Decl]
-gatherSymbols at = fmap concat <$> mapM (synthesize at <=< typeInfo <=< reify) . map convertNm
+gatherSymbols at = fmap concat <$> mapM (synthesize at <=< typeInfo <=< reify)
+                 . map convertNm
 
-synthesize :: SrcLoc -> (TH.Name,[TH.Name],[(TH.Name,Int)],[(TH.Name,[(Maybe TH.Name,TH.Type)])]) -> Mop [Decl]
-synthesize sl (nm,params,cons,terms) = do
-  flip mapM terms $ \(con,ts) -> do
-    let mkVar = Var . UnQual . Ident . TH.nameBase
-        rhs = App (Var (UnQual (Ident "liftF")))
-                  (Paren (App (Var (UnQual (Ident "inj")))
-                              (Paren buildSymbol)
-                         )
-                  )
-        cont = snd $ last ts
-        buildSymbol = foldr (\a cont st -> cont (_))
-                            (\res -> if _ cont
-                                     then _
-                                     else _
+synthesize :: SrcLoc -> THInfo -> Mop [Decl]
+synthesize sl THInfo{..} = do
+  flip mapM infoTerms $ \(con,map snd -> ts) -> do
+    let vs = safeInit (map smartName ts)
+        buildSymbol = foldr (\nm cont st -> cont (App (st (Var (UnQual nm)))))
+                            (\res -> if null ts
+                                     then case res undefined of App l _ -> l
+                                     else if isHigherKinded (last ts)
+                                          then res (Var (UnQual (Ident "id")))
+                                          else res (Var (Special UnitCon))
                             )
-                            (safeInit _)
-                            (_)
+                            vs
+                            (App (Con (UnQual (Ident (TH.nameBase con)))))
     return (FunBind
               [Match
                  sl
                  (Ident (uncapitalize (TH.nameBase con)))
-                 ()
+                 (map PVar vs)
                  Nothing
-                 (UnGuardedRhs rhs)
+                 (UnGuardedRhs (App (Var (UnQual (Ident "liftF")))
+                                    (Paren (App (Var (UnQual (Ident "inj")))
+                                                (Paren buildSymbol)
+                                           )
+                                    )
+                               )
+                 )
                  (BDecls [])
               ]
            )
 
-isFun (TH.AppT TH.ArrowT _) = True
-isFun _ = False
+isHigherKinded (TH.AppT _ _) = True
+isHigherKinded _ = False
 
 varNames :: [Name]
 varNames =
   let strings = [c:s | s <- "":strings, c <- ['a'..]]
   in map Ident strings
+
+smartName :: TH.Type -> Name
+smartName = Ident . go []
+  where
+    go acc (TH.AppT l r) =
+      let accl = go [] l
+          accr = go [] r
+      in acc ++ accl ++ accr
+    go acc (TH.VarT nm) = acc ++ (TH.nameBase nm)
+    go acc (TH.ConT nm) = acc ++ (uncapitalize (TH.nameBase nm))
+    go acc _ = acc
 
 makeVar :: TH.Name -> Pat
 makeVar (TH.nameBase -> nm) = PVar (Ident nm)
