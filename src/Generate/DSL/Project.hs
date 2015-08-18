@@ -13,6 +13,7 @@ import Generate.Utils
 
 import Control.Arrow
 
+import Data.Char
 import Data.List
 import Data.Maybe
 import System.Exit
@@ -107,33 +108,62 @@ gatherSymbols at = fmap concat <$> mapM (synthesize at <=< typeInfo <=< reify)
 
 synthesize :: SrcLoc -> THInfo -> Mop [Decl]
 synthesize sl THInfo{..} = do
-  flip mapM infoTerms $ \(con,map snd -> ts) -> do
-    let vs = safeInit (map smartName ts)
-        buildSymbol = foldr (\nm cont st -> cont (App (st (Var (UnQual nm)))))
-                            (\res -> if null ts
-                                     then case res undefined of App l _ -> l
-                                     else if isHigherKinded (last ts)
-                                          then res (Var (UnQual (Ident "id")))
-                                          else res (Var (Special UnitCon))
-                            )
-                            vs
-                            (App (Con (UnQual (Ident (TH.nameBase con)))))
-    return (FunBind
-              [Match
-                 sl
-                 (Ident (uncapitalize (TH.nameBase con)))
-                 (map PVar vs)
-                 Nothing
-                 (UnGuardedRhs (App (Var (UnQual (Ident "liftF")))
-                                    (Paren (App (Var (UnQual (Ident "inj")))
-                                                (Paren buildSymbol)
-                                           )
-                                    )
-                               )
-                 )
-                 (BDecls [])
-              ]
-           )
+    symbols   <- createSymbols      sl THInfo{..}
+    instrs    <- createInstructions sl THInfo{..}
+    pairings  <- createPairings     sl THInfo{..} instrs
+    computers <- createComputers    sl instrs
+    return (symbols ++ instrs ++ pairings ++ computers)
+
+createSymbols :: SrcLoc -> THInfo -> Mop [Decl]
+createSymbols sl THInfo{..} = fmap concat <$>
+    flip mapM (zip [0..] infoTerms) $ \(n,(con,map snd -> ts)) -> do
+      let vs = safeInit (deduplicateNames $ map smartName ts)
+          buildSymbol = foldr (\nm cont st -> cont (App (st (Var (UnQual nm)))))
+                              (\res -> if null ts
+                                       then case res undefined of App l _ -> l
+                                       else if isHigherKinded (last ts)
+                                            then res (Var (UnQual (Ident "id")))
+                                            else res (Var (Special UnitCon))
+                              )
+                              vs
+                              (App (Con (UnQual (Ident (TH.nameBase con)))))
+      return $ [FunBind
+                  [Match
+                     sl
+                     (Ident (uncapitalize (TH.nameBase con)))
+                     (map PVar vs)
+                     Nothing
+                     (UnGuardedRhs (App (Var (UnQual (Ident "liftF")))
+                                        (Paren (App (Var (UnQual (Ident "inj")))
+                                                    (Paren buildSymbol)
+                                               )
+                                        )
+                                   )
+                     )
+                     (BDecls [])
+                  ]
+               ]
+
+createInstructions :: SrcLoc -> THInfo -> Mop [Decl]
+createInstructions sl THInfo{..} = return []
+
+createPairings :: SrcLoc -> THInfo -> [Decl] -> Mop [Decl]
+createPairings sl THInfo{..} instrs = return []
+
+createComputers :: SrcLoc -> [Decl] -> Mop [Decl]
+createComputers sl instrs = return []
+
+buildContext :: (Maybe ([TH.TyVarBndr],TH.Cxt),(TH.Name,Int)) -> Context
+buildContext _ = undefined
+
+buildTyVars :: (Maybe ([TH.TyVarBndr],TH.Cxt),(TH.Name,Int)) -> [TyVarBind]
+buildTyVars _ = undefined
+
+buildCoConstructors :: TH.Name -> [TH.Type] -> [QualConDecl]
+buildCoConstructors _ _ = undefined
+
+coConstructorDerives :: [Deriving]
+coConstructorDerives = []
 
 isHigherKinded (TH.AppT _ _) = True
 isHigherKinded _ = False
@@ -154,5 +184,29 @@ smartName = Ident . go []
     go acc (TH.ConT nm) = acc ++ (uncapitalize (TH.nameBase nm))
     go acc _ = acc
 
+deduplicateNames :: [Name] -> [Name]
+deduplicateNames ns = renameDuplicates ns (findDuplicates ns)
+  where
+    findDuplicates :: [Name] -> [Name]
+    findDuplicates = concat . map snd . filter ((> 1) . fst) . map (\x -> (length x,x)) . groupBy (==)
+    renameDuplicates :: [Name] -> [Name] -> [Name]
+    renameDuplicates orig [] = orig
+    renameDuplicates orig (dup:dups) = renameDuplicates (renameDuplicate orig dup) dups
+    renameDuplicate :: [Name] -> Name -> [Name]
+    renameDuplicate orig dup = foldr (\a cont (n,dup,acc) -> cont $
+                                        if dup == a
+                                        then (succ n,dup,rename n a:acc)
+                                        else (n,dup,a:acc)
+                                     )
+                                     (\(_,_,acc) -> acc)
+                                     orig
+                                     (0,dup,[])
+    rename :: Int -> Name -> Name
+    rename n (Ident nm) = Ident (nm ++ show n)
+
 makeVar :: TH.Name -> Pat
 makeVar (TH.nameBase -> nm) = PVar (Ident nm)
+
+coize :: String -> String
+coize [] = error "Could not coize empty string."
+coize str@(x:_) = if isLower x then "co" ++ str else "Co" ++ str
