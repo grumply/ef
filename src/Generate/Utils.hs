@@ -39,11 +39,20 @@ class Locatable a where
   locate :: a -> SrcLoc
   relocate :: SrcLoc -> a -> a
 
+lineBefore :: SrcLoc -> SrcLoc
+lineBefore (SrcLoc fp l c) = SrcLoc fp (pred l) c
+
 lineAfter :: SrcLoc -> SrcLoc
 lineAfter (SrcLoc fp l c) = SrcLoc fp (succ l) c
 
 lineAfterIndented :: SrcLoc -> SrcLoc
 lineAfterIndented (SrcLoc fp l c) = SrcLoc fp (succ l) (c + 4)
+
+findEnd :: FilePath -> Mop SrcLoc
+findEnd fp = do
+  cntnt <- io (readFile fp)
+  let l = length $ lines cntnt
+  l `seq` return (SrcLoc fp l 1)
 
 -- | 0-indexed deletion of a given number of elements `count` starting at `at`.
 --

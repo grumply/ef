@@ -1,16 +1,18 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE RankNTypes #-}
-module Generate.Splice (splice,unsplice,deleteLine,place,placeWith,spliceWith,nextLine) where
+module Generate.Splice (splice,unsplice,deleteLine,place,placeWith,spliceWith,nextLine,spliceInReverseOrder,spliceAtEnd,spliceInReverseOrderAtEnd) where
 
 import Generate.Monad
 import Generate.Utils
+
+import Control.Category
 
 import Data.Char
 import qualified Data.Map as Map
 import Data.Maybe
 
-import Prelude hiding (log)
+import Prelude hiding (log,id,(.))
 
 import System.IO
 
@@ -45,6 +47,16 @@ placeWith sl f p = spliceWith p sl (f sl)
 
 splice :: Pretty a => SrcLoc -> a -> Mop [String]
 splice = spliceWith id
+
+spliceInReverseOrder :: Pretty a => SrcLoc -> [a] -> Mop [String]
+spliceInReverseOrder sl splicable
+  = concat <$> sequence (foldr ((>>>) . (:) . splice sl) id splicable [])
+
+spliceAtEnd :: Pretty a => SrcLoc -> a -> Mop [String]
+spliceAtEnd sl = spliceWith id sl { srcLine = maxBound }
+
+spliceInReverseOrderAtEnd :: Pretty a => SrcLoc -> [a] -> Mop [String]
+spliceInReverseOrderAtEnd sl = spliceInReverseOrder sl { srcLine = maxBound }
 
 spliceWith :: Pretty a => (String -> String) -> SrcLoc -> a -> Mop [String]
 spliceWith alter sl@(SrcLoc fn ln _) a = do

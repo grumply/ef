@@ -9,6 +9,7 @@ import Data.List
 
 import System.Directory
 import System.FilePath
+import System.IO
 
 import qualified Distribution.ModuleName as Dist
 
@@ -29,6 +30,9 @@ import Prelude hiding (log)
 thisMopDependency :: Dependency
 thisMopDependency = Dependency (PackageName "mop")
                                (orLaterVersion (Version [0,2,1] []))
+
+mopDirectory :: FilePath
+mopDirectory = "mop"
 
 findCabalFile :: FilePath -> IO FilePath
 findCabalFile d
@@ -91,8 +95,10 @@ modifySourceDirs f = modifyLibBuildInfo $ \lbi -> do
   sds <- f (hsSourceDirs lbi)
   return $ lbi { hsSourceDirs = sds }
 guaranteeSourceDir :: FilePath -> Mop ()
-guaranteeSourceDir fp = modifySourceDirs $ \sds ->
-  return $ if fp `elem` sds then sds else fp:sds
+guaranteeSourceDir fp = do
+  io (createDirectoryIfMissing True fp)
+  modifySourceDirs $ \sds ->
+    return $ if fp `elem` sds then sds else fp:sds
 
 modifyBuildDepends :: ([Dependency] -> Mop [Dependency]) -> Mop ()
 modifyBuildDepends f = modifyPD $ \pd -> do
@@ -162,17 +168,24 @@ templateHaskell = Ext.EnableExtension Ext.TemplateHaskell
 
 typeOperators = Ext.EnableExtension Ext.TypeOperators
 
+noMonomorphismRestriction = Ext.UnknownExtension "NoMonomorphismRestriction"
+
+flexibleContexts = Ext.EnableExtension Ext.FlexibleContexts
+
+deriveFunctor = Ext.EnableExtension Ext.DeriveFunctor
+
+patternSynonyms = Ext.EnableExtension Ext.PatternSynonyms
+
 modifyDefaultExtensions :: ([Ext.Extension] -> Mop [Ext.Extension]) -> Mop ()
 modifyDefaultExtensions f = modifyLibBuildInfo $ \lbi -> do
   de <- f (defaultExtensions lbi)
   return $ lbi { defaultExtensions = de }
 
 guaranteeDefaultExtension :: Ext.Extension -> Mop ()
-guaranteeDefaultExtension e = modifyDefaultExtensions $ \es ->
-  return $ if e `elem` es then es else e:es
+guaranteeDefaultExtension e = modifyDefaultExtensions $ \es -> return $ nub (e:es)
 
 addDefaultExtension :: Ext.Extension -> Mop ()
-addDefaultExtension e = modifyDefaultExtensions (return . (e:))
+addDefaultExtension e = modifyDefaultExtensions (return . nub . (e:))
 
 removeDefaultExtension :: Ext.Extension -> Mop ()
 removeDefaultExtension e = modifyDefaultExtensions (return . filter (/=e))
@@ -184,21 +197,32 @@ modifyOtherExtensions f = modifyLibBuildInfo $ \lbi -> do
 
 guaranteeOtherExtension :: Ext.Extension -> Mop ()
 guaranteeOtherExtension e = modifyOtherExtensions $ \es ->
-  return $ if e `elem` es then es else e:es
+  return $ nub (e:es)
 
 addOtherExtension :: Ext.Extension -> Mop ()
-addOtherExtension e = modifyOtherExtensions (return . (e:))
+addOtherExtension e = modifyOtherExtensions (return . nub . (e:))
 
 removeOtherExtension :: Ext.Extension -> Mop ()
 removeOtherExtension e = modifyDefaultExtensions (return . filter (/=e))
 
 writeModule :: Module -> Mop ()
 writeModule  m@(Module sl@(SrcLoc fp _ _) _ _ _ _ _ _) = do
-  io (createDirectoryIfMissing True $ takeDirectory fp)
+  io $ do
+    createDirectoryIfMissing True $ takeDirectory fp
+    h <- openFile fp WriteMode
+    hClose h
+
   void (splice sl m)
 
-createEmptyModule :: Dist.ModuleName -> Mop Module
-createEmptyModule mn = do
+createEmptyModule :: Dist.ModuleName -> FilePath -> Mop Module
+createEmptyModule mn dir = do
   d <- gets (takeDirectory . cabalFile)
-  let f = d </> Dist.toFilePath mn <.> "hs"
-  return (Module (SrcLoc f 1 1) (Ext.ModuleName (intercalate "." $ Dist.components mn)) [] Nothing Nothing [simpleImport (ModuleName "Mop") (SrcLoc f 2 1)] [])
+  let f = d </> dir </> Dist.toFilePath mn <.> "hs"
+      m = Module (SrcLoc f 1 1)
+                 (Ext.ModuleName (intercalate "." $ Dist.components mn))
+                 []
+                 Nothing
+                 Nothing
+                 [simpleImport (ModuleName "Mop") (SrcLoc f 2 1)]
+                 []
+  return m

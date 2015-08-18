@@ -10,7 +10,7 @@ data THInfo = THInfo
   , infoParams :: [TH.Name]
   , infoConstructors :: [(Maybe ([TyVarBndr],TH.Cxt),(TH.Name,Int))]
   , infoTerms :: [(TH.Name,[(Maybe TH.Name,TH.Type)])]
-  }
+  } deriving Show
 
 reify = Mop.liftTH . TH.runQ . TH.reify
 

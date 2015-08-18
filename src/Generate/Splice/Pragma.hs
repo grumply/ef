@@ -89,10 +89,30 @@ simpleLanguagePragma :: [Name] -> SrcLoc -> ModulePragma
 simpleLanguagePragma ns sl = LanguagePragma sl ns
 
 templateHaskellPragma :: Pragma
-templateHaskellPragma = combine templateHaskell $ simpleLanguagePragma [Ident "TemplateHaskell"]
+templateHaskellPragma = combine templateHaskell
+  $ simpleLanguagePragma [Ident "TemplateHaskell"]
 
 quasiQuotePragma :: Pragma
-quasiQuotePragma = combine quasiQuotes $ simpleLanguagePragma [Ident "QuasiQuotes"]
+quasiQuotePragma = combine quasiQuotes
+  $ simpleLanguagePragma [Ident "QuasiQuotes"]
 
 typeOperatorsPragma :: Pragma
-typeOperatorsPragma = combine typeOperators $ simpleLanguagePragma [Ident "TypeOperators"]
+typeOperatorsPragma = combine typeOperators
+  $ simpleLanguagePragma [Ident "TypeOperators"]
+
+noMonomorphismRestrictionPragma :: Pragma
+noMonomorphismRestrictionPragma =
+  combine noMonomorphismRestriction
+  $ simpleLanguagePragma [Ident "NoMonomorphismRestriction"]
+
+flexibleContextsPragma :: Pragma
+flexibleContextsPragma = combine flexibleContexts
+  $ simpleLanguagePragma [Ident "FlexibleContexts"]
+
+deriveFunctorPragma :: Pragma
+deriveFunctorPragma = combine deriveFunctor
+  $ simpleLanguagePragma [Ident "DeriveFunctor"]
+
+patternSynonymsPragma :: Pragma
+patternSynonymsPragma = combine patternSynonyms
+  $ simpleLanguagePragma [Ident "PatternSynonyms"]

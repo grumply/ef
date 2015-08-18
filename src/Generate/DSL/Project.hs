@@ -16,9 +16,13 @@ import Control.Arrow
 import Data.Char
 import Data.List
 import Data.Maybe
+import System.Directory
+import System.FilePath
 import System.Exit
 
 import qualified Language.Haskell.TH as TH
+
+import qualified Distribution.ModuleName as Dist
 
 import Prelude hiding (log)
 
@@ -62,9 +66,9 @@ projectSymbols = do
 
 createProjection :: Mop ()
 createProjection = do
+  MopState{..} <- get
   MopContext{..} <- ask
-  let f = TH.loc_filename location
-      m@(Module _ _ _ _ _ _ decls) = originalModule
+  let m@(Module _ _ _ _ _ _ decls) = originalModule
 
   (symbolsName,at) <- findProject m
 
@@ -78,13 +82,70 @@ createProjection = do
 
   symbolNames <- breakSymbolSet (head ty)
 
-  symbols <- gatherSymbols at symbolNames
+  let md = takeDirectory cabalFile </> mopDirectory
 
-  io (print symbols)
+  let symbolsModuleName      = Dist.fromString ("Symbols." ++ symbolsName)
+      symbolsModule          = Dist.toFilePath symbolsModuleName
+      absSymbolsModule       = md </> symbolsModule <.> "hs"
 
-  sequence_ (foldr ((>>>) . (:) . splice at) id symbols [])
+      tapeModuleName         = Dist.fromString ("Tape." ++ symbolsName)
+      tapeModule             = Dist.toFilePath tapeModuleName
+      absTapeModule          = md </> tapeModule <.> "hs"
 
-  return ()
+      instructionsModuleName = Dist.fromString ("Instructions." ++ symbolsName)
+      instructionsModule     = Dist.toFilePath instructionsModuleName
+      absInstructionsModule  = md </> instructionsModule <.> "hs"
+
+      computerModuleName     = Dist.fromString ("Computer." ++ symbolsName)
+      computerModule         = Dist.toFilePath computerModuleName
+      absComputerModule      = md </> computerModule <.> "hs"
+
+  guaranteeSourceDir mopDirectory
+
+  createEmptyModule symbolsModuleName      mopDirectory >>= writeModule
+  createEmptyModule tapeModuleName         mopDirectory >>= writeModule
+  createEmptyModule instructionsModuleName mopDirectory >>= writeModule
+  createEmptyModule computerModuleName     mopDirectory >>= writeModule
+
+  guaranteeImport mopTape         absTapeModule
+  guaranteeImport mopComputer     absComputerModule
+  guaranteeImport mopInstructions absInstructionsModule
+  guaranteeImport mopSymbols      absSymbolsModule
+
+  tapesl         <- findEnd absTapeModule
+  computersl     <- findEnd absComputerModule
+  instructionssl <- findEnd absInstructionsModule
+  symbolssl      <- findEnd absSymbolsModule
+
+  tape_splices         <- synthesizeTape tapesl symbolNames
+  computer_splices     <- return []
+  instructions_splices <- return []
+  symbols_splices      <- return []
+
+  mapM_ addExposedModule
+    [ symbolsModuleName
+    , tapeModuleName
+    , instructionsModuleName
+    , computerModuleName
+    ]
+
+  mapM_ (\(sl,spls) -> mapM_ (spliceAtEnd sl) spls)
+    [ (tapesl        ,tape_splices         )
+    , (computersl    ,computer_splices     )
+    , (instructionssl,instructions_splices )
+    , (symbolssl     ,symbols_splices      )
+    ]
+
+  mapM_ (flip transitionExtension absTapeModule)
+    [ noMonomorphismRestrictionPragma
+    , deriveFunctorPragma
+    , flexibleContextsPragma
+    , typeOperatorsPragma
+    ]
+
+  modifyVersion incrementMinor -- only adding: minor
+
+  void (unsplice (srcLine at) 1 (srcFilename at))
 
 breakSymbolSet :: Decl -> Mop [Name]
 breakSymbolSet ~(TypeType ty) = go [] ty
@@ -102,9 +163,9 @@ breakSymbolSet ~(TypeType ty) = go [] ty
     getTyCon (TC nm)  = nm
     getTyCon (TA x _) = getTyCon x
 
-gatherSymbols :: SrcLoc -> [Name] -> Mop [Decl]
-gatherSymbols at = fmap concat <$> mapM (synthesize at <=< typeInfo <=< reify)
-                 . map convertNm
+synthesizeTape :: SrcLoc -> [Name] -> Mop [Decl]
+synthesizeTape at = fmap concat <$> mapM (synthesize at <=< typeInfo <=< reify)
+                  . map convertNm
 
 synthesize :: SrcLoc -> THInfo -> Mop [Decl]
 synthesize sl THInfo{..} = do
@@ -143,6 +204,45 @@ createSymbols sl THInfo{..} = fmap concat <$>
                      (BDecls [])
                   ]
                ]
+
+{-
+THInfo
+  { infoName = A
+  , infoParams = [s_1627411019,k_1627411020]
+  , infoConstructors = [(Nothing,(A,2))]
+  , infoTerms = [(Main.A,[(Nothing,AppT (AppT ArrowT (VarT s_1627411019)) (VarT k_1627411020))
+                         ,(Nothing,VarT k_1627411020)
+                         ]
+                 )
+                ]
+  }
+
+[FunBind
+  [Match
+    (SrcLoc "src/Main.hs" 17 1)
+    (Ident "a")
+    [PVar (Ident "sk")]
+    Nothing
+    (UnGuardedRhs
+      (App (Var (UnQual (Ident "liftF")))
+           (Paren (App (Var (UnQual (Ident "inj")))
+                       (Paren (App (App (Con (UnQual (Ident "A")))
+                                        (Var (UnQual (Ident "sk")))
+                                   )
+                                   (Var (Special UnitCon))
+                              )
+                       )
+                  )
+           )
+      )
+    )
+    (BDecls [])
+  ]
+]
+
+DataDecl SrcLoc DataOrNew Context Name [TyVarBind] [QualConDecl] [Deriving]
+
+-}
 
 createInstructions :: SrcLoc -> THInfo -> Mop [Decl]
 createInstructions sl THInfo{..} = return []

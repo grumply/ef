@@ -6,6 +6,9 @@ import Generate.Monad
 import Generate.Splice
 import Generate.Utils
 
+import Data.List
+import Data.Ord
+
 instance TranslationalEq ImportDecl ImportDecl where
   (~==) (ImportDecl _ mn0 qual0 src0 safe0 pkg0 as0 specs0)
         (ImportDecl _ mn1 qual1 src1 safe1 pkg1 as1 specs1)
@@ -46,4 +49,6 @@ mopSymbols      = simpleImport (ModuleName "Mop.Symbols")
 
 findImportAppendPoint :: Module -> SrcLoc
 findImportAppendPoint (Module _ _ _ _ _ importDecls _) =
-  lineAfter $ maximum [ sl | (ImportDecl sl _ _ _ _ _ _ _) <- importDecls ]
+  head $
+    sortBy (\(SrcLoc _ ln0 _) (SrcLoc _ ln1 _) -> compare ln0 ln1)
+      [ sl | (ImportDecl sl _ _ _ _ _ _ _) <- importDecls ]
