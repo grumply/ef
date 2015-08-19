@@ -116,3 +116,11 @@ deriveFunctorPragma = combine deriveFunctor
 patternSynonymsPragma :: Pragma
 patternSynonymsPragma = combine patternSynonyms
   $ simpleLanguagePragma [Ident "PatternSynonyms"]
+
+existentialQuantificationPragma :: Pragma
+existentialQuantificationPragma = combine existentialQuantification
+  $ simpleLanguagePragma [Ident "ExistentialQuantification"]
+
+kindSignaturesPragma :: Pragma
+kindSignaturesPragma = combine kindSignatures
+  $ simpleLanguagePragma [Ident "KindSignatures"]

@@ -2,6 +2,8 @@ module Generate.DSL.Helpers.TH where
 
 import qualified Generate.Monad as Mop
 
+import Data.List
+
 import Language.Haskell.TH as TH
 import Language.Haskell.TH.Syntax as TH
 
@@ -56,6 +58,15 @@ simpleName nm =
         _:[]        -> TH.mkName s
         _:t         -> TH.mkName t
 
+baseName :: Name -> Name
+baseName = go . simpleName
+  where
+    go nm =
+      let s = TH.nameBase nm
+          is = findIndices (=='.') s
+      in case is of
+           [] -> TH.mkName s
+           xs -> TH.mkName (drop (maximum xs) s)
 
 
 --------------------------------------------------------------------------------

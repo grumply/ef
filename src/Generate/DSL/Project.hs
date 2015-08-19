@@ -85,37 +85,50 @@ createProjection = do
   let md = takeDirectory cabalFile </> mopDirectory
 
   let symbolsModuleName      = Dist.fromString ("Symbols." ++ symbolsName)
-      symbolsModule          = Dist.toFilePath symbolsModuleName
-      absSymbolsModule       = md </> symbolsModule <.> "hs"
+      absSymbolsModule       = md </> Dist.toFilePath symbolsModuleName <.> "hs"
 
       tapeModuleName         = Dist.fromString ("Tape." ++ symbolsName)
-      tapeModule             = Dist.toFilePath tapeModuleName
-      absTapeModule          = md </> tapeModule <.> "hs"
+      absTapeModule          = md </> Dist.toFilePath tapeModuleName <.> "hs"
 
       instructionsModuleName = Dist.fromString ("Instructions." ++ symbolsName)
-      instructionsModule     = Dist.toFilePath instructionsModuleName
-      absInstructionsModule  = md </> instructionsModule <.> "hs"
+      absInstructionsModule  = md </> Dist.toFilePath instructionsModuleName <.> "hs"
 
       pairingsModuleName     = Dist.fromString ("Pairings." ++ symbolsName)
-      pairingsModule         = Dist.toFilePath pairingsModuleName
-      absPairingsModule      = md </> pairingsModule <.> "hs"
+      absPairingsModule      = md </> Dist.toFilePath pairingsModuleName <.> "hs"
 
       computerModuleName     = Dist.fromString ("Computer." ++ symbolsName)
-      computerModule         = Dist.toFilePath computerModuleName
-      absComputerModule      = md </> computerModule <.> "hs"
+      absComputerModule      = md </> Dist.toFilePath computerModuleName <.> "hs"
 
   guaranteeSourceDir mopDirectory
 
-  createEmptyModule symbolsModuleName      mopDirectory >>= writeModule
-  createEmptyModule tapeModuleName         mopDirectory >>= writeModule
-  createEmptyModule instructionsModuleName mopDirectory >>= writeModule
-  createEmptyModule computerModuleName     mopDirectory >>= writeModule
+  mapM_ (\x -> createEmptyModule x mopDirectory >>= writeModule)
+    [ symbolsModuleName
+    , tapeModuleName
+    , instructionsModuleName
+    , computerModuleName
+    , pairingsModuleName
+    ]
 
-  guaranteeImport mopTape         absTapeModule
-  guaranteeImport mopComputer     absComputerModule
-  guaranteeImport mopInstructions absInstructionsModule
-  guaranteeImport mopSymbols      absSymbolsModule
-  guaranteeImport mopPairings     absPairingsModule
+  mapM_ (uncurry guaranteeImport)
+    [ (mopTape                       ,absTapeModule)
+    , (symbolsModule symbolsName     ,absTapeModule)
+    , (prelude                       ,absTapeModule)
+
+    , (mopComputer                   ,absComputerModule)
+    , (instructionsModule symbolsName,absComputerModule)
+    , (prelude                       ,absComputerModule)
+
+    , (mopInstructions               ,absInstructionsModule)
+    , (prelude                       ,absInstructionsModule)
+
+    , (mopSymbols                    ,absSymbolsModule)
+    , (prelude                       ,absSymbolsModule)
+
+    , (mopPairings                   ,absPairingsModule)
+    , (instructionsModule symbolsName,absPairingsModule)
+    , (symbolsModule symbolsName     ,absPairingsModule)
+    , (prelude                       ,absPairingsModule)
+    ]
 
   tapesl         <- findEnd absTapeModule
   computersl     <- findEnd absComputerModule
@@ -123,11 +136,11 @@ createProjection = do
   symbolssl      <- findEnd absSymbolsModule
   pairingssl     <- findEnd absPairingsModule
 
-  tape_splices         <- synthesizeTape tapesl symbolNames
-  computer_splices     <- return []
-  instructions_splices <- return []
-  symbols_splices      <- return []
-  pairings_splices     <- return []
+  symbols_splices      <- transferSymbols                       symbolNames
+  tape_splices         <- synthesizeTape         tapesl         symbolNames
+  computer_splices     <- synthesizeComputer     computersl     symbolNames
+  instructions_splices <- synthesizeInstructions instructionssl symbolNames
+  pairings_splices     <- synthesizePairings     pairingssl     symbolNames
 
   mapM_ addExposedModule
     [ symbolsModuleName
@@ -141,8 +154,11 @@ createProjection = do
     [ (tapesl        ,tape_splices         )
     , (computersl    ,computer_splices     )
     , (instructionssl,instructions_splices )
-    , (symbolssl     ,symbols_splices      )
     , (pairingssl    ,pairings_splices     )
+    ]
+
+  mapM_ (\(sl,spls) -> mapM_ (spliceTHAtEnd sl) spls)
+    [ (symbolssl, symbols_splices)
     ]
 
   mapM_ (flip transitionExtension absTapeModule)
@@ -150,9 +166,11 @@ createProjection = do
     , deriveFunctorPragma
     , flexibleContextsPragma
     , typeOperatorsPragma
+    , existentialQuantificationPragma
+    , kindSignaturesPragma
     ]
 
-  modifyVersion incrementMinor -- only adding: minor
+  modifyVersion incrementMinor
 
   void (unsplice (srcLine at) 1 (srcFilename at))
 
@@ -205,3 +223,67 @@ createTape sl THInfo{..} = fmap concat <$>
                      (BDecls [])
                   ]
                ]
+
+synthesizePairings :: SrcLoc -> [Name] -> Mop [Decl]
+synthesizePairings at =
+  fmap concat <$> mapM (createPairings at <=< typeInfo <=< reify)
+  . map convertNm
+
+createPairings :: SrcLoc -> THInfo -> Mop [Decl]
+createPairings at THInfo{..} = return []
+
+synthesizeInstructions :: SrcLoc -> [Name] -> Mop [Decl]
+synthesizeInstructions at =
+  fmap concat <$> mapM (createInstructions at <=< typeInfo <=< reify)
+  . map convertNm
+
+createInstructions :: SrcLoc -> THInfo -> Mop [Decl]
+createInstructions sl THInfo{..} = return []
+
+transferSymbols :: [Name] -> Mop [TH.Dec]
+transferSymbols nms = do
+  infos <- mapM reify (map convertNm nms)
+  return $ map addFunctorDeriving [ d | (TH.TyConI d) <- infos ]
+  where
+    addFunctorDeriving (TH.DataD cxt nm tvs cons ds) =
+      TH.DataD
+        (map simplifyType cxt)
+        (baseName nm)
+        tvs
+        (map simplifyConName cons)
+        (nub (TH.mkName "Functor":ds))
+    addFunctorDeriving (TH.NewtypeD cxt nm tvs con ds) =
+      TH.NewtypeD
+        (map simplifyType cxt)
+        (baseName nm)
+        tvs
+        (simplifyConName con)
+        (nub (TH.mkName "Functor":ds))
+    addFunctorDeriving dec =
+      error $ "Generate.DSL.Project.transferSymbols.addFunctorDeriving: not a data type declaration: " ++ show dec
+
+    simplifyConName (TH.NormalC nm ts)       =
+      TH.NormalC (baseName nm) (map (second simplifyType) ts)
+    simplifyConName (TH.RecC nm vsts)        =
+      TH.RecC (baseName nm) (map (\(x,y,z) -> (baseName x,y,simplifyType z)) vsts)
+    simplifyConName (TH.InfixC stl nm str)   =
+      TH.InfixC (second simplifyType stl) (baseName nm) (second simplifyType str)
+    simplifyConName (TH.ForallC tvs cxt con) =
+      TH.ForallC tvs (map simplifyType cxt) (simplifyConName con)
+
+    simplifyType (TH.VarT nm)      = TH.VarT nm
+    simplifyType (TH.ConT nm)      = TH.ConT (baseName nm)
+    simplifyType (TH.PromotedT nm) = TH.PromotedT (baseName nm)
+    simplifyType (TH.AppT l r)     = TH.AppT (simplifyType l) (simplifyType r)
+    simplifyType (TH.ForallT tvs cxt ty) = TH.ForallT tvs (map simplifyType cxt) (simplifyType ty)
+    simplifyType x = x
+
+
+
+synthesizeComputer :: SrcLoc -> [Name] -> Mop [Decl]
+synthesizeComputer at =
+  fmap concat <$> mapM (createComputer at <=< typeInfo <=< reify)
+  . map convertNm
+
+createComputer :: SrcLoc -> THInfo -> Mop [Decl]
+createComputer sl THInfo{..} = return []

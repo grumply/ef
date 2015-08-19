@@ -97,8 +97,7 @@ modifySourceDirs f = modifyLibBuildInfo $ \lbi -> do
 guaranteeSourceDir :: FilePath -> Mop ()
 guaranteeSourceDir fp = do
   io (createDirectoryIfMissing True fp)
-  modifySourceDirs $ \sds ->
-    return $ if fp `elem` sds then sds else fp:sds
+  modifySourceDirs (return . nub . (fp:))
 
 modifyBuildDepends :: ([Dependency] -> Mop [Dependency]) -> Mop ()
 modifyBuildDepends f = modifyPD $ \pd -> do
@@ -135,11 +134,10 @@ incrementPatch (Version [v0,v1,v2] ts) = return (Version [v0,v1,v2,1] ts)
 incrementPatch (Version (v0:v1:v2:patch:vs) ts) = return (Version (v0:v1:v2:succ patch:vs) ts)
 
 guaranteeOtherModule :: Dist.ModuleName -> Mop ()
-guaranteeOtherModule m = modifyOtherModules $ \oms ->
-  if m `elem` oms then return oms else return (m:oms)
+guaranteeOtherModule m = modifyOtherModules (return . nub . (m:))
 
 addOtherModule :: Dist.ModuleName -> Mop ()
-addOtherModule m = modifyOtherModules (return . (m:))
+addOtherModule = guaranteeOtherModule
 
 removeOtherModule :: Dist.ModuleName -> Mop ()
 removeOtherModule m = modifyOtherModules (return . filter (/=m))
@@ -150,11 +148,10 @@ modifyExposedModules f = modifyCondLibrary $ \l -> do
   return $ l { exposedModules = em }
 
 guaranteeExposedModule :: Dist.ModuleName -> Mop ()
-guaranteeExposedModule m = modifyExposedModules $ \ems ->
-  return $ if m `elem` ems then ems else m:ems
+guaranteeExposedModule m = modifyExposedModules (return . nub . (m:))
 
 addExposedModule :: Dist.ModuleName -> Mop ()
-addExposedModule m = modifyExposedModules (return . (m:))
+addExposedModule = guaranteeExposedModule
 
 removeExposedModule :: Dist.ModuleName -> Mop ()
 removeExposedModule m = modifyExposedModules (return . filter (/=m))
@@ -175,6 +172,10 @@ flexibleContexts = Ext.EnableExtension Ext.FlexibleContexts
 deriveFunctor = Ext.EnableExtension Ext.DeriveFunctor
 
 patternSynonyms = Ext.EnableExtension Ext.PatternSynonyms
+
+existentialQuantification = Ext.EnableExtension Ext.ExistentialQuantification
+
+kindSignatures = Ext.EnableExtension Ext.KindSignatures
 
 modifyDefaultExtensions :: ([Ext.Extension] -> Mop [Ext.Extension]) -> Mop ()
 modifyDefaultExtensions f = modifyLibBuildInfo $ \lbi -> do
