@@ -155,12 +155,14 @@ createProjection = do
   mapM_ (\(sl,spls) -> mapM_ (spliceAtEnd sl) spls)
     [ (tapesl        ,tape_splices         )
     , (computersl    ,computer_splices     )
-    , (instructionssl,instructions_splices )
+
     , (pairingssl    ,pairings_splices     )
     ]
 
-
-  mapM_ (spliceTHAtEndWith symbolssl convertExistentialFunctor) symbols_splices
+  mapM_ (\(sl,ss) -> mapM_ (spliceTHAtEndWith sl convertExistentialFunctor) ss)
+    [ (symbolssl     ,symbols_splices     )
+    , (instructionssl,instructions_splices)
+    ]
 
   mapM_ (flip transitionExtension absTapeModule)
     [ noMonomorphismRestrictionPragma
@@ -175,102 +177,6 @@ createProjection = do
   modifyVersion incrementMinor
 
   void (unsplice (srcLine at) 1 (srcFilename at))
-
-replaceStr :: String -> String -> String -> String
-replaceStr old@(length -> n) new = go
-  where
-    go [] = []
-    go (splitAt n -> ((==) old -> True,rest)) = new ++ go rest
-    go str = head str : go (tail str)
-
-getDataHead :: String -> String
-getDataHead str =
-  let dh = takeWhile (\x -> x /= '\n' && x /= '=') str
-      is = findIndices (=='(') dh
-  in case is of
-       [] -> error "Generate.DSL.Project.getDataHead: Unexpectedly small Data head."
-       xs -> fst (splitAt (pred (last xs)) dh)
-
-convertExistentialFunctor :: String -> String
-convertExistentialFunctor str =
-  if "forall . " `isInfixOf` str
-  then let stripped = replaceStr "forall . " "" str
-           dataHead = getDataHead stripped
-           funcHead = drop 5 -- remove 'data '
-                    $ exhaust ( replaceStr " ->)" ")"
-                              . replaceStr " *)" ")"
-                              . replaceStr ":: *" ""
-                              ) dataHead
-       in replaceStr "\n    deriving (Functor)"
-                     ("\nderiving instance Functor (" ++ funcHead ++ ")")
-                     stripped
-  else str
-
-breakSymbolSet :: Decl -> Mop [Name]
-breakSymbolSet ~(TypeType ty) = go [] ty
-  where
-    go acc     (TA x _)                = return $ reverse (getTyCon x:acc)
-    go acc     (TC nm)                 = return $ reverse (nm:acc)
-    go acc (TI (TA x _) (Sym ":+:") r) = go ((getTyCon x):acc) r
-    go acc (TI (TC nm ) (Sym ":+:") r) = go (nm:acc) r
-    go (reverse -> acc) ty'            = do
-      log Error $ "Generate.DSL.Project.breakSymbolSetType:"
-                   ++ "\n\tBad type: "        ++ prettyPrint ty'
-                   ++ "\n\tContinuing with: " ++ unlines (map prettyPrint acc)
-      return acc
-
-    getTyCon (TC nm)  = nm
-    getTyCon (TA x _) = getTyCon x
-
-synthesizeTape :: SrcLoc -> [Name] -> Mop [Decl]
-synthesizeTape at = fmap concat <$> mapM (createTape at <=< typeInfo <=< reify)
-                  . map convertNm
-
-createTape :: SrcLoc -> THInfo -> Mop [Decl]
-createTape sl THInfo{..} = fmap concat <$>
-    flip mapM (zip [0..] infoTerms) $ \(n,(con,map snd -> ts)) -> do
-      let vs = safeInit (deduplicateNames $ map smartName ts)
-          buildSymbol = foldr (\nm cont st -> cont (App (st (Var (UnQual nm)))))
-                              (\res -> if null ts
-                                       then case res undefined of App l _ -> l
-                                       else if isHigherKinded (last ts)
-                                            then res (Var (UnQual (Ident "id")))
-                                            else res (Var (Special UnitCon))
-                              )
-                              vs
-                              (App (Con (UnQual (Ident (TH.nameBase con)))))
-      return $ [FunBind
-                  [Match
-                     sl
-                     (Ident (uncapitalize (TH.nameBase con)))
-                     (map PVar vs)
-                     Nothing
-                     (UnGuardedRhs (App (Var (UnQual (Ident "liftF")))
-                                        (Paren (App (Var (UnQual (Ident "inj")))
-                                                    (Paren buildSymbol)
-                                               )
-                                        )
-                                   )
-                     )
-                     (BDecls [])
-                  ]
-               ]
-
-synthesizePairings :: SrcLoc -> [Name] -> Mop [Decl]
-synthesizePairings at =
-  fmap concat <$> mapM (createPairings at <=< typeInfo <=< reify)
-  . map convertNm
-
-createPairings :: SrcLoc -> THInfo -> Mop [Decl]
-createPairings at THInfo{..} = return []
-
-synthesizeInstructions :: SrcLoc -> [Name] -> Mop [Decl]
-synthesizeInstructions at =
-  fmap concat <$> mapM (createInstructions at <=< typeInfo <=< reify)
-  . map convertNm
-
-createInstructions :: SrcLoc -> THInfo -> Mop [Decl]
-createInstructions sl THInfo{..} = return []
 
 -- Most symbol sets will be written in a development module and
 -- automatically transferred to a properly namespace-d module
@@ -315,6 +221,127 @@ transferSymbols nms = do
     simplifyType (TH.ForallT tvs cxt ty) = TH.ForallT tvs (map simplifyType cxt) (simplifyType ty)
     simplifyType x = x
 
+synthesizeTape :: SrcLoc -> [Name] -> Mop [Decl]
+synthesizeTape at = fmap concat <$> mapM (createTape at <=< typeInfo <=< reify)
+                  . map convertNm
+
+createTape :: SrcLoc -> THInfo -> Mop [Decl]
+createTape sl THInfo{..} = fmap concat <$>
+    flip mapM (zip [0..] infoTerms) $ \(n,(con,map snd -> ts)) -> do
+      let vs = safeInit (deduplicateNames $ map smartName ts)
+          buildSymbol = foldr (\nm cont st -> cont (App (st (Var (UnQual nm)))))
+                              (\res -> if null ts
+                                       then case res undefined of App l _ -> l
+                                       else if isHigherKinded (last ts)
+                                            then res (Var (UnQual (Ident "id")))
+                                            else res (Var (Special UnitCon))
+                              )
+                              vs
+                              (App (Con (UnQual (Ident (TH.nameBase con)))))
+      return $ [FunBind
+                  [Match
+                     sl
+                     (Ident (uncapitalize (TH.nameBase con)))
+                     (map PVar vs)
+                     Nothing
+                     (UnGuardedRhs (App (Var (UnQual (Ident "liftF")))
+                                        (Paren (App (Var (UnQual (Ident "inj")))
+                                                    (Paren buildSymbol)
+                                               )
+                                        )
+                                   )
+                     )
+                     (BDecls [])
+                  ]
+               ]
+
+
+synthesizeInstructions :: SrcLoc -> [Name] -> Mop [TH.Dec]
+synthesizeInstructions at =
+  fmap concat <$> mapM (createInstructions at <=< typeInfo <=< reify)
+  . map convertNm
+
+createInstructions :: SrcLoc -> THInfo -> Mop [TH.Dec]
+createInstructions sl THInfo{..} =
+  if length infoConstructors > 1
+  then createClosedSymbol sl THInfo{..}
+  else createOpenSymbol sl THInfo{..}
+
+{-
+Note that existential context must be propagated to the individual paired
+fields, not the entire instruction:
+
+data FG s k = Eq s => F s k
+            | G s Int k
+
+data CoFG s k = CoFG
+  { coF :: Eq s => s -> k
+  , coG :: (s,Int) -> k
+  }
+-}
+
+{-
+
+THInfo
+  { infoName = CD
+  , infoParams = [k_1627400489]
+  , infoConstructors = [(Nothing,(C,1)),(Nothing,(D,1))]
+  , infoTerms = [(Main.C,[(Nothing,AppT (AppT ArrowT (ConT GHC.Types.Int)) (VarT k_1627400489))])
+                ,(Main.D,[(Nothing,VarT k_1627400489)])
+                ]
+  }
+
+THInfo
+  { infoName = FG
+  , infoParams = [s_1627412001,k_1627412002]
+  , infoConstructors = [(Just ([],[AppT (ConT GHC.Classes.Eq) (VarT s_1627412001)]),(F,2))
+                       ,(Nothing,(G,2))]
+  , infoTerms = [(Main.F,[(Nothing,VarT s_1627412001)
+                         ,(Nothing,VarT k_1627412002)]
+                 )
+                ,(Main.G,[(Nothing,ConT GHC.Types.Int)
+                         ,(Nothing,VarT k_1627412002)
+                         ]
+                 )
+                ]
+  }
+-}
+
+createClosedSymbol :: SrcLoc -> THInfo -> Mop [TH.Dec]
+createClosedSymbol sl THInfo{..} = do
+  log Debug (show THInfo{..})
+  return [TH.DataD cxt nm tvs cons derives]
+  where
+    cxt = undefined
+    nm = TH.mkName . coize . TH.nameBase $ infoName
+    recnm = nm
+    tvs = []
+    cons =
+      let vsts = flip map infoConstructors $ \(mayCxt,(nm,_)) -> undefined
+      in [TH.RecC recnm vsts]
+    derives = [TH.mkName "Functor"]
+
+createOpenSymbol :: SrcLoc -> THInfo -> Mop [TH.Dec]
+createOpenSymbol sl THInfo{..} = do
+  log Debug (show THInfo{..})
+  return [TH.DataD cxt nm tvs con derives]
+  where
+    cxt = undefined
+    nm = TH.mkName . coize . TH.nameBase $ infoName
+    tvs = []
+    con =
+      let sts = []
+      in [TH.NormalC nm sts]
+    derives = [TH.mkName "Functor"]
+
+synthesizePairings :: SrcLoc -> [Name] -> Mop [Decl]
+synthesizePairings at =
+  fmap concat <$> mapM (createPairings at <=< typeInfo <=< reify)
+  . map convertNm
+
+createPairings :: SrcLoc -> THInfo -> Mop [Decl]
+createPairings at THInfo{..} = return []
+
 synthesizeComputer :: SrcLoc -> [Name] -> Mop [Decl]
 synthesizeComputer at =
   fmap concat <$> mapM (createComputer at <=< typeInfo <=< reify)
@@ -322,3 +349,42 @@ synthesizeComputer at =
 
 createComputer :: SrcLoc -> THInfo -> Mop [Decl]
 createComputer sl THInfo{..} = return []
+
+getDataHead :: String -> String
+getDataHead str =
+  let dh = takeWhile (\x -> x /= '\n' && x /= '=') str
+      is = findIndices (=='(') dh
+  in case is of
+       [] -> error "Generate.DSL.Project.getDataHead: Unexpectedly small Data head."
+       xs -> fst (splitAt (pred (last xs)) dh)
+
+breakSymbolSet :: Decl -> Mop [Name]
+breakSymbolSet ~(TypeType ty) = go [] ty
+  where
+    go acc     (TA x _)                = return $ reverse (getTyCon x:acc)
+    go acc     (TC nm)                 = return $ reverse (nm:acc)
+    go acc (TI (TA x _) (Sym ":+:") r) = go ((getTyCon x):acc) r
+    go acc (TI (TC nm ) (Sym ":+:") r) = go (nm:acc) r
+    go (reverse -> acc) ty'            = do
+      log Error $ "Generate.DSL.Project.breakSymbolSetType:"
+                   ++ "\n\tBad type: "        ++ prettyPrint ty'
+                   ++ "\n\tContinuing with: " ++ unlines (map prettyPrint acc)
+      return acc
+
+    getTyCon (TC nm)  = nm
+    getTyCon (TA x _) = getTyCon x
+
+convertExistentialFunctor :: String -> String
+convertExistentialFunctor str =
+  if "forall . " `isInfixOf` str
+  then let stripped = replace "forall . " "" str
+           dataHead = getDataHead stripped
+           funcHead = drop 5 -- remove 'data '
+                    $ exhaust ( replace " ->)" ")"
+                              . replace " *)" ")"
+                              . replace " :: *" ""
+                              ) dataHead
+       in replace "\n    deriving (Functor)"
+                  ("\nderiving instance Functor (" ++ funcHead ++ ")")
+                  stripped
+  else str

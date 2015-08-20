@@ -117,7 +117,6 @@ spliceTHWith alter sl@(SrcLoc fn ln _) a = do
       as = trimLines $ lines altered
       count = length as
   off <- calculateOffset fn ln
-  log Debug ("Original: " ++ rendered ++ "\nAltered: " ++ altered)
   io $ do
     cs <- lines <$> readFile fn
     cs `seq` do

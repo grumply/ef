@@ -98,6 +98,13 @@ coize :: String -> String
 coize [] = error "Could not coize empty string."
 coize str@(x:_) = if isLower x then "co" ++ str else "Co" ++ str
 
+replace :: Eq a => [a] -> [a] -> [a] -> [a]
+replace old@(length -> n) new = go
+  where
+    go [] = []
+    go (splitAt n -> ((==) old -> True,rest)) = new ++ go rest
+    go str = head str : go (tail str)
+
 exhaust :: ([a] -> [a]) -> [a] -> [a]
 exhaust f = go
   where
