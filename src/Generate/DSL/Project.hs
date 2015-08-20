@@ -26,6 +26,8 @@ import qualified Distribution.ModuleName as Dist
 
 import Prelude hiding (log)
 
+import Debug.Trace
+
 project :: String -> TH.Q [TH.Dec]
 project str = return [expandProjectSplice str]
 
@@ -157,9 +159,8 @@ createProjection = do
     , (pairingssl    ,pairings_splices     )
     ]
 
-  mapM_ (\(sl,spls) -> mapM_ (spliceTHAtEnd sl) spls)
-    [ (symbolssl, symbols_splices)
-    ]
+
+  mapM_ (spliceTHAtEndWith symbolssl convertExistentialFunctor) symbols_splices
 
   mapM_ (flip transitionExtension absTapeModule)
     [ noMonomorphismRestrictionPragma
@@ -168,11 +169,42 @@ createProjection = do
     , typeOperatorsPragma
     , existentialQuantificationPragma
     , kindSignaturesPragma
+    , standaloneDerivingPragma
     ]
 
   modifyVersion incrementMinor
 
   void (unsplice (srcLine at) 1 (srcFilename at))
+
+replaceStr :: String -> String -> String -> String
+replaceStr old@(length -> n) new = go
+  where
+    go [] = []
+    go (splitAt n -> ((==) old -> True,rest)) = new ++ go rest
+    go str = head str : go (tail str)
+
+getDataHead :: String -> String
+getDataHead str =
+  let dh = takeWhile (\x -> x /= '\n' && x /= '=') str
+      is = findIndices (=='(') dh
+  in case is of
+       [] -> error "Generate.DSL.Project.getDataHead: Unexpectedly small Data head."
+       xs -> fst (splitAt (pred (last xs)) dh)
+
+convertExistentialFunctor :: String -> String
+convertExistentialFunctor str =
+  if "forall . " `isInfixOf` str
+  then let stripped = replaceStr "forall . " "" str
+           dataHead = getDataHead stripped
+           funcHead = drop 5 -- remove 'data '
+                    $ exhaust ( replaceStr " ->)" ")"
+                              . replaceStr " *)" ")"
+                              . replaceStr ":: *" ""
+                              ) dataHead
+       in replaceStr "\n    deriving (Functor)"
+                     ("\nderiving instance Functor (" ++ funcHead ++ ")")
+                     stripped
+  else str
 
 breakSymbolSet :: Decl -> Mop [Name]
 breakSymbolSet ~(TypeType ty) = go [] ty
@@ -240,6 +272,11 @@ synthesizeInstructions at =
 createInstructions :: SrcLoc -> THInfo -> Mop [Decl]
 createInstructions sl THInfo{..} = return []
 
+-- Most symbol sets will be written in a development module and
+-- automatically transferred to a properly namespace-d module
+-- upon projection. This function will strip unnecessary type
+-- namespace qualifications as well as add a functor deriving
+-- instance if one does not exist.
 transferSymbols :: [Name] -> Mop [TH.Dec]
 transferSymbols nms = do
   infos <- mapM reify (map convertNm nms)
@@ -277,8 +314,6 @@ transferSymbols nms = do
     simplifyType (TH.AppT l r)     = TH.AppT (simplifyType l) (simplifyType r)
     simplifyType (TH.ForallT tvs cxt ty) = TH.ForallT tvs (map simplifyType cxt) (simplifyType ty)
     simplifyType x = x
-
-
 
 synthesizeComputer :: SrcLoc -> [Name] -> Mop [Decl]
 synthesizeComputer at =

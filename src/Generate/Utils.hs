@@ -1,6 +1,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ViewPatterns #-}
 module Generate.Utils where
 
 import Generate.Monad
@@ -96,6 +97,20 @@ uncapitalize (x:xs) = toLower x:xs
 coize :: String -> String
 coize [] = error "Could not coize empty string."
 coize str@(x:_) = if isLower x then "co" ++ str else "Co" ++ str
+
+exhaust :: ([a] -> [a]) -> [a] -> [a]
+exhaust f = go
+  where
+    go xs@(f -> xs') = if sameLength xs xs' then xs else go xs'
+
+sameLength :: [a] -> [b] -> Bool
+sameLength = go
+  where
+    go [] [] = True
+    go [] _  = False
+    go _  [] = False
+
+    go (tail -> x) (tail -> y) = go x y
 
 moduleDirectory :: String -> String
 moduleDirectory = foldl1 (</>) . break [] []

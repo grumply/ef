@@ -124,3 +124,11 @@ existentialQuantificationPragma = combine existentialQuantification
 kindSignaturesPragma :: Pragma
 kindSignaturesPragma = combine kindSignatures
   $ simpleLanguagePragma [Ident "KindSignatures"]
+
+gadtsPragma :: Pragma
+gadtsPragma = combine gadts
+  $ simpleLanguagePragma [Ident "GADTs"]
+
+standaloneDerivingPragma :: Pragma
+standaloneDerivingPragma = combine standaloneDeriving
+  $ simpleLanguagePragma [Ident "StandaloneDeriving"]

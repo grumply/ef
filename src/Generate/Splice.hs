@@ -72,8 +72,14 @@ spliceTHInReverseOrder sl splicable
 spliceAtEnd :: Pretty a => SrcLoc -> a -> Mop [String]
 spliceAtEnd sl = spliceWith id sl { srcLine = maxBound }
 
+spliceAtEndWith :: Pretty a => SrcLoc -> (String -> String) -> a -> Mop [String]
+spliceAtEndWith sl p = spliceWith p sl { srcLine = maxBound }
+
 spliceTHAtEnd :: TH.Ppr a => SrcLoc -> a -> Mop [String]
 spliceTHAtEnd sl = spliceTHWith id sl { srcLine = maxBound }
+
+spliceTHAtEndWith :: TH.Ppr a => SrcLoc -> (String -> String) -> a -> Mop [String]
+spliceTHAtEndWith sl p = spliceTHWith p sl { srcLine = maxBound }
 
 spliceInReverseOrderAtEnd :: Pretty a => SrcLoc -> [a] -> Mop [String]
 spliceInReverseOrderAtEnd sl = spliceInReverseOrder sl { srcLine = maxBound }
@@ -111,6 +117,7 @@ spliceTHWith alter sl@(SrcLoc fn ln _) a = do
       as = trimLines $ lines altered
       count = length as
   off <- calculateOffset fn ln
+  log Debug ("Original: " ++ rendered ++ "\nAltered: " ++ altered)
   io $ do
     cs <- lines <$> readFile fn
     cs `seq` do

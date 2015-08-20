@@ -177,6 +177,10 @@ existentialQuantification = Ext.EnableExtension Ext.ExistentialQuantification
 
 kindSignatures = Ext.EnableExtension Ext.KindSignatures
 
+gadts = Ext.EnableExtension Ext.GADTs
+
+standaloneDeriving = Ext.EnableExtension Ext.StandaloneDeriving
+
 modifyDefaultExtensions :: ([Ext.Extension] -> Mop [Ext.Extension]) -> Mop ()
 modifyDefaultExtensions f = modifyLibBuildInfo $ \lbi -> do
   de <- f (defaultExtensions lbi)
