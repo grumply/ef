@@ -28,6 +28,8 @@ import Prelude hiding (log)
 
 import Debug.Trace
 
+-- Wyverns soon become dragons.
+
 project :: String -> TH.Q [TH.Dec]
 project str = return [expandProjectSplice str]
 
@@ -312,25 +314,51 @@ createClosedSymbol sl THInfo{..} = do
   log Debug (show THInfo{..})
   return [TH.DataD cxt nm tvs cons derives]
   where
-    cxt = undefined
+    ict = zip infoConstructors infoTerms
+    cxt = []
     nm = TH.mkName . coize . TH.nameBase $ infoName
     recnm = nm
     tvs = []
     cons =
-      let vsts = flip map infoConstructors $ \(mayCxt,(nm,_)) -> undefined
-      in [TH.RecC recnm vsts]
+      let vsts = flip map ict $ \((mayCxt,(nm',_)),(_,ts)) ->
+                   (TH.mkName $ uncapitalize $ coize $ TH.nameBase nm'
+                   ,TH.NotStrict
+                   ,buildRecordField mayCxt $ map snd ts
+                   )
+                 -- (Name,Strict,Types)
+          vsts' = if length ict == 1 then [_ ] else vsts
+      in [TH.RecC recnm vsts']
     derives = [TH.mkName "Functor"]
+
+buildRecordField :: Maybe ([TH.TyVarBndr],TH.Cxt) -> [TH.Type] -> TH.Type
+buildRecordField (Just (tvs',cxt')) vars = TH.ForallT tvs' cxt' (buildRecordField Nothing vars)
+buildRecordField _ vars =
+  case vars of
+    [] -> TH.TupleT 0
+    [x] -> x
+    _ -> TH.AppT (TH.AppT TH.ArrowT (tuplize (init vars))) (last vars)
+  where
+    tuplize :: [TH.Type] -> TH.Type
+    tuplize xs =
+      let n = length xs
+      in foldr (\a cont st -> cont (TH.AppT st a))
+               (\(TH.AppT l _) -> l)
+               (tail xs)
+               (TH.AppT (TH.TupleT n) (head xs))
 
 createOpenSymbol :: SrcLoc -> THInfo -> Mop [TH.Dec]
 createOpenSymbol sl THInfo{..} = do
   log Debug (show THInfo{..})
   return [TH.DataD cxt nm tvs con derives]
   where
-    cxt = undefined
+    ict = zip infoConstructors infoTerms
+    cxt = []
     nm = TH.mkName . coize . TH.nameBase $ infoName
     tvs = []
     con =
-      let sts = []
+      let sts = flip map ict $ \((mayCxt,_),(_,ts)) ->
+                  (TH.NotStrict,buildRecordField mayCxt $ map snd ts)
+          sts' = if length ict == 1 then [] else sts
       in [TH.NormalC nm sts]
     derives = [TH.mkName "Functor"]
 
@@ -352,11 +380,14 @@ createComputer sl THInfo{..} = return []
 
 getDataHead :: String -> String
 getDataHead str =
-  let dh = takeWhile (\x -> x /= '\n' && x /= '=') str
-      is = findIndices (=='(') dh
-  in case is of
-       [] -> error "Generate.DSL.Project.getDataHead: Unexpectedly small Data head."
-       xs -> fst (splitAt (pred (last xs)) dh)
+  let dh = takeWhile (/= '\n') str
+  in if length (words dh) > 2
+     then case findIndices (=='(') dh of
+            [] -> error $ "Generate.DSL.Project.getDataHead: Unexpectedly small Data head in:\n" ++ str
+            xs -> fst (splitAt (pred (last xs)) dh)
+     else case findIndices (=='\n') str of
+            [] -> error $ "Generate.DSL.Project.getDataHead: Unexpectedly small Data head in:\n" ++ str
+            (_x:y:_) -> fst (splitAt (pred y) str)
 
 breakSymbolSet :: Decl -> Mop [Name]
 breakSymbolSet ~(TypeType ty) = go [] ty
