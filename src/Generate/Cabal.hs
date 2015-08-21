@@ -181,6 +181,8 @@ gadts = Ext.EnableExtension Ext.GADTs
 
 standaloneDeriving = Ext.EnableExtension Ext.StandaloneDeriving
 
+rankNTypes = Ext.EnableExtension Ext.RankNTypes
+
 modifyDefaultExtensions :: ([Ext.Extension] -> Mop [Ext.Extension]) -> Mop ()
 modifyDefaultExtensions f = modifyLibBuildInfo $ \lbi -> do
   de <- f (defaultExtensions lbi)

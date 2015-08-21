@@ -155,3 +155,19 @@ unsplice at count fp = do
 
 nextLine :: SrcLoc -> SrcLoc
 nextLine (SrcLoc fp l c) = SrcLoc fp (succ l) c
+
+
+addPragma :: String -> FilePath -> Mop String
+addPragma prag fp = do
+  let rendered = prettyPrint (LanguagePragma (SrcLoc fp 1 1) [Ident prag])
+  io $ do
+    cs <- lines <$> readFile fp
+    cs `seq` do
+      let cs' = insertRange 1 [rendered] cs
+          lcs' = length cs'
+      lcs' `seq` writeFile fp $ unlines $
+        if lcs' == length cs then cs' ++ [rendered] else cs'
+
+  logInsert fp 1 1
+  log Notify ("Generate.Splice.addPragma: add pragma:" ++ rendered)
+  return rendered

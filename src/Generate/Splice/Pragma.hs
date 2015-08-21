@@ -132,3 +132,7 @@ gadtsPragma = combine gadts
 standaloneDerivingPragma :: Pragma
 standaloneDerivingPragma = combine standaloneDeriving
   $ simpleLanguagePragma [Ident "StandaloneDeriving"]
+
+rankNTypesPragma :: Pragma
+rankNTypesPragma = combine rankNTypes
+  $ simpleLanguagePragma [Ident "RankNTypes"]

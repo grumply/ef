@@ -162,8 +162,11 @@ createProjection = do
     ]
 
   mapM_ (\(sl,ss) -> mapM_ (spliceTHAtEndWith sl convertExistentialFunctor) ss)
-    [ (symbolssl     ,symbols_splices     )
-    , (instructionssl,instructions_splices)
+    [ (symbolssl,symbols_splices)
+    ]
+
+  mapM_ (\(sl,ss) -> mapM_ (spliceTHAtEndWith sl convertExistentialFunctorCo) ss)
+    [(instructionssl,map simplify instructions_splices)
     ]
 
   mapM_ (flip transitionExtension absTapeModule)
@@ -173,8 +176,10 @@ createProjection = do
     , typeOperatorsPragma
     , existentialQuantificationPragma
     , kindSignaturesPragma
-    , standaloneDerivingPragma
     ]
+
+  addPragma "StandaloneDeriving" absInstructionsModule
+  addPragma "RankNTypes" absInstructionsModule
 
   modifyVersion incrementMinor
 
@@ -188,40 +193,38 @@ createProjection = do
 transferSymbols :: [Name] -> Mop [TH.Dec]
 transferSymbols nms = do
   infos <- mapM reify (map convertNm nms)
-  return $ map addFunctorDeriving [ d | (TH.TyConI d) <- infos ]
-  where
-    addFunctorDeriving (TH.DataD cxt nm tvs cons ds) =
-      TH.DataD
-        (map simplifyType cxt)
-        (baseName nm)
-        tvs
-        (map simplifyConName cons)
-        (nub (TH.mkName "Functor":ds))
-    addFunctorDeriving (TH.NewtypeD cxt nm tvs con ds) =
-      TH.NewtypeD
-        (map simplifyType cxt)
-        (baseName nm)
-        tvs
-        (simplifyConName con)
-        (nub (TH.mkName "Functor":ds))
-    addFunctorDeriving dec =
-      error $ "Generate.DSL.Project.transferSymbols.addFunctorDeriving: not a data type declaration: " ++ show dec
+  return $ map (addFunctorDeriving . simplify) [ d | (TH.TyConI d) <- infos ]
 
-    simplifyConName (TH.NormalC nm ts)       =
-      TH.NormalC (baseName nm) (map (second simplifyType) ts)
-    simplifyConName (TH.RecC nm vsts)        =
-      TH.RecC (baseName nm) (map (\(x,y,z) -> (baseName x,y,simplifyType z)) vsts)
-    simplifyConName (TH.InfixC stl nm str)   =
-      TH.InfixC (second simplifyType stl) (baseName nm) (second simplifyType str)
-    simplifyConName (TH.ForallC tvs cxt con) =
-      TH.ForallC tvs (map simplifyType cxt) (simplifyConName con)
+simplify :: TH.Dec -> TH.Dec
+simplify (TH.DataD cxt nm tvs cons ds) =
+  TH.DataD (map simplifyType cxt) (baseName nm) tvs (map simplifyConName cons) ds
+simplify (TH.NewtypeD cxt nm tvs con ds) =
+  TH.NewtypeD (map simplifyType cxt) (baseName nm) tvs (simplifyConName con) ds
+simplify dec =
+  error $ "Generate.DSL.Project.simplify: not a data type decalaration: " ++ show dec
 
-    simplifyType (TH.VarT nm)      = TH.VarT nm
-    simplifyType (TH.ConT nm)      = TH.ConT (baseName nm)
-    simplifyType (TH.PromotedT nm) = TH.PromotedT (baseName nm)
-    simplifyType (TH.AppT l r)     = TH.AppT (simplifyType l) (simplifyType r)
-    simplifyType (TH.ForallT tvs cxt ty) = TH.ForallT tvs (map simplifyType cxt) (simplifyType ty)
-    simplifyType x = x
+addFunctorDeriving (TH.DataD cxt nm tvs cons ds) =
+  TH.DataD cxt nm tvs cons (nub (TH.mkName "Functor":ds))
+addFunctorDeriving (TH.NewtypeD cxt nm tvs con ds) =
+  TH.NewtypeD cxt nm tvs con (nub (TH.mkName "Functor":ds))
+addFunctorDeriving dec =
+  error $ "Generate.DSL.Project.addFunctorDeriving: not a data type declaration: " ++ show dec
+
+simplifyConName (TH.NormalC nm ts)       =
+  TH.NormalC (baseName nm) (map (second simplifyType) ts)
+simplifyConName (TH.RecC nm vsts)        =
+  TH.RecC (baseName nm) (map (\(x,y,z) -> (baseName x,y,simplifyType z)) vsts)
+simplifyConName (TH.InfixC stl nm str)   =
+  TH.InfixC (second simplifyType stl) (baseName nm) (second simplifyType str)
+simplifyConName (TH.ForallC tvs cxt con) =
+  TH.ForallC tvs (map simplifyType cxt) (simplifyConName con)
+
+simplifyType (TH.VarT nm)      = TH.VarT nm
+simplifyType (TH.ConT nm)      = TH.ConT (baseName nm)
+simplifyType (TH.PromotedT nm) = TH.PromotedT (baseName nm)
+simplifyType (TH.AppT l r)     = TH.AppT (simplifyType l) (simplifyType r)
+simplifyType (TH.ForallT tvs cxt ty) = TH.ForallT tvs (map simplifyType cxt) (simplifyType ty)
+simplifyType x = x
 
 synthesizeTape :: SrcLoc -> [Name] -> Mop [Decl]
 synthesizeTape at = fmap concat <$> mapM (createTape at <=< typeInfo <=< reify)
@@ -318,16 +321,16 @@ createClosedSymbol sl THInfo{..} = do
     cxt = []
     nm = TH.mkName . coize . TH.nameBase $ infoName
     recnm = nm
-    tvs = []
+    tvs = map TH.PlainTV infoParams
     cons =
       let vsts = flip map ict $ \((mayCxt,(nm',_)),(_,ts)) ->
                    (TH.mkName $ uncapitalize $ coize $ TH.nameBase nm'
                    ,TH.NotStrict
-                   ,buildRecordField mayCxt $ map snd ts
+                   ,case mayCxt of
+                      Nothing        -> buildDual $ map snd ts
+                      Just (tvs,cxt) -> TH.ForallT tvs cxt (buildDual $ map snd ts)
                    )
-                 -- (Name,Strict,Types)
-          vsts' = if length ict == 1 then [_ ] else vsts
-      in [TH.RecC recnm vsts']
+      in [TH.RecC recnm vsts]
     derives = [TH.mkName "Functor"]
 
 buildRecordField :: Maybe ([TH.TyVarBndr],TH.Cxt) -> [TH.Type] -> TH.Type
@@ -351,16 +354,28 @@ createOpenSymbol sl THInfo{..} = do
   log Debug (show THInfo{..})
   return [TH.DataD cxt nm tvs con derives]
   where
-    ict = zip infoConstructors infoTerms
     cxt = []
     nm = TH.mkName . coize . TH.nameBase $ infoName
-    tvs = []
+    tvs = map TH.PlainTV infoParams
     con =
-      let sts = flip map ict $ \((mayCxt,_),(_,ts)) ->
-                  (TH.NotStrict,buildRecordField mayCxt $ map snd ts)
-          sts' = if length ict == 1 then [] else sts
+      let sts = flip map (zip infoConstructors infoTerms) $ \((mayCxt,_),(_,ts)) ->
+                  case mayCxt of
+                    Nothing        -> (TH.NotStrict,buildDual $ map snd ts)
+                    Just (tvs,cxt) -> (TH.NotStrict,TH.ForallT tvs cxt (buildDual $ map snd ts))
       in [TH.NormalC nm sts]
     derives = [TH.mkName "Functor"]
+
+buildDual :: [TH.Type] -> TH.Type
+buildDual ts =
+  let l = length ts
+  in case l of
+       0 -> error "Empty constructors not yet supported."
+       1 -> head ts
+       2 -> TH.AppT (TH.AppT TH.ArrowT (head ts)) (last ts)
+       _ -> foldr (\a cont st -> cont (TH.AppT st a))
+                  (\x -> TH.AppT (TH.AppT TH.ArrowT x) (last ts))
+                  (tail $ init ts)
+                  (TH.AppT (TH.TupleT (pred l)) (head ts))
 
 synthesizePairings :: SrcLoc -> [Name] -> Mop [Decl]
 synthesizePairings at =
@@ -378,16 +393,26 @@ synthesizeComputer at =
 createComputer :: SrcLoc -> THInfo -> Mop [Decl]
 createComputer sl THInfo{..} = return []
 
+-- getDataHead :: String -> String
+-- getDataHead str =
+--   let dd = lines str
+--   in if "=>" `isInfixOf` (head dd)
+--      then case findIndices (=='(') (head dd) of
+--             [] -> error $ "Generate.DSL.Project.getDataHead: Unexpectedly small Data head in:\n" ++ str
+--             xs -> fst (splitAt (pred (last xs)) (head dd))
+--      else if length dd > 1
+--           then case findIndices (=='(') (head (tail dd)) of
+--                  [] -> error $ "Generate.DSL.Project.getDataHead: Unexpectedly small Data head in:\n" ++ str
+--                  xs -> fst (splitAt (pred (last xs)) (head (tail dd)))
+--           else error $ "Generate.DSL.Project.getDataHead: Unexpectedly small Data head in:\n" ++ str
+
 getDataHead :: String -> String
 getDataHead str =
   let dh = takeWhile (/= '\n') str
-  in if length (words dh) > 2
-     then case findIndices (=='(') dh of
-            [] -> error $ "Generate.DSL.Project.getDataHead: Unexpectedly small Data head in:\n" ++ str
-            xs -> fst (splitAt (pred (last xs)) dh)
-     else case findIndices (=='\n') str of
-            [] -> error $ "Generate.DSL.Project.getDataHead: Unexpectedly small Data head in:\n" ++ str
-            (_x:y:_) -> fst (splitAt (pred y) str)
+      is = findIndices (=='(') dh
+  in case is of
+       [] -> error "Generate.DSL.Project.getDataHead: Unexpectedly small Data head."
+       xs -> fst (splitAt (pred (last xs)) dh)
 
 breakSymbolSet :: Decl -> Mop [Name]
 breakSymbolSet ~(TypeType ty) = go [] ty
@@ -419,3 +444,17 @@ convertExistentialFunctor str =
                   ("\nderiving instance Functor (" ++ funcHead ++ ")")
                   stripped
   else str
+
+convertExistentialFunctorCo str =
+  let strs = lines str
+      funcHead = drop 5
+               $ exhaust ( replace " ->)" ")"
+                         . replace " *)" ")"
+                         . replace " :: *" ""
+                         ) (head strs)
+  in replace "forall . " "" $
+       if any ("=>" `isInfixOf`) strs
+       then replace "\n    deriving (Functor)"
+                    ("\nderiving instance Functor (" ++ funcHead ++ ")")
+                    str
+       else str
