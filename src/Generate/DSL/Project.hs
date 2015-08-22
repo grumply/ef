@@ -142,9 +142,9 @@ createProjection = do
 
   symbols_splices      <- transferSymbols                       symbolNames
   tape_splices         <- synthesizeTape         tapesl         symbolNames
-  computer_splices     <- synthesizeComputer     computersl     symbolNames
   instructions_splices <- synthesizeInstructions instructionssl symbolNames
-  pairings_splices     <- synthesizePairings     pairingssl     symbolNames
+  pairings_splices     <- synthesizePairings     pairingssl     symbolNames $ map ti instructions_splices
+  computer_splices     <- synthesizeComputer     computersl     symbolNames
 
   mapM_ addExposedModule
     [ symbolsModuleName
@@ -156,9 +156,6 @@ createProjection = do
 
   mapM_ (\(sl,spls) -> mapM_ (spliceAtEnd sl) spls)
     [ (tapesl        ,tape_splices         )
-    , (computersl    ,computer_splices     )
-
-    , (pairingssl    ,pairings_splices     )
     ]
 
   mapM_ (\(sl,ss) -> mapM_ (spliceTHAtEndWith sl convertExistentialFunctor) ss)
@@ -167,6 +164,11 @@ createProjection = do
 
   mapM_ (\(sl,ss) -> mapM_ (spliceTHAtEndWith sl convertExistentialFunctorCo) ss)
     [(instructionssl,map simplify instructions_splices)
+    ]
+
+  mapM_ (\(sl,ss) -> mapM_ (spliceTHAtEnd sl) ss)
+    [ (computersl    ,computer_splices)
+    , (pairingssl    ,pairings_splices)
     ]
 
   mapM_ (flip transitionExtension absTapeModule)
@@ -185,11 +187,6 @@ createProjection = do
 
   void (unsplice (srcLine at) 1 (srcFilename at))
 
--- Most symbol sets will be written in a development module and
--- automatically transferred to a properly namespace-d module
--- upon projection. This function will strip unnecessary type
--- namespace qualifications as well as add a functor deriving
--- instance if one does not exist.
 transferSymbols :: [Name] -> Mop [TH.Dec]
 transferSymbols nms = do
   infos <- mapM reify (map convertNm nms)
@@ -272,46 +269,6 @@ createInstructions sl THInfo{..} =
   then createClosedSymbol sl THInfo{..}
   else createOpenSymbol sl THInfo{..}
 
-{-
-Note that existential context must be propagated to the individual paired
-fields, not the entire instruction:
-
-data FG s k = Eq s => F s k
-            | G s Int k
-
-data CoFG s k = CoFG
-  { coF :: Eq s => s -> k
-  , coG :: (s,Int) -> k
-  }
--}
-
-{-
-
-THInfo
-  { infoName = CD
-  , infoParams = [k_1627400489]
-  , infoConstructors = [(Nothing,(C,1)),(Nothing,(D,1))]
-  , infoTerms = [(Main.C,[(Nothing,AppT (AppT ArrowT (ConT GHC.Types.Int)) (VarT k_1627400489))])
-                ,(Main.D,[(Nothing,VarT k_1627400489)])
-                ]
-  }
-
-THInfo
-  { infoName = FG
-  , infoParams = [s_1627412001,k_1627412002]
-  , infoConstructors = [(Just ([],[AppT (ConT GHC.Classes.Eq) (VarT s_1627412001)]),(F,2))
-                       ,(Nothing,(G,2))]
-  , infoTerms = [(Main.F,[(Nothing,VarT s_1627412001)
-                         ,(Nothing,VarT k_1627412002)]
-                 )
-                ,(Main.G,[(Nothing,ConT GHC.Types.Int)
-                         ,(Nothing,VarT k_1627412002)
-                         ]
-                 )
-                ]
-  }
--}
-
 createClosedSymbol :: SrcLoc -> THInfo -> Mop [TH.Dec]
 createClosedSymbol sl THInfo{..} = do
   log Debug (show THInfo{..})
@@ -369,7 +326,8 @@ buildDual :: [TH.Type] -> TH.Type
 buildDual ts =
   let l = length ts
   in case l of
-       0 -> error "Empty constructors not yet supported."
+       0 -> error "Empty constructors are not valid symbols. \
+                  \Try adding an optional continuation parameter."
        1 -> head ts
        2 -> TH.AppT (TH.AppT TH.ArrowT (head ts)) (last ts)
        _ -> foldr (\a cont st -> cont (TH.AppT st a))
@@ -377,34 +335,21 @@ buildDual ts =
                   (tail $ init ts)
                   (TH.AppT (TH.TupleT (pred l)) (head ts))
 
-synthesizePairings :: SrcLoc -> [Name] -> Mop [Decl]
-synthesizePairings at =
-  fmap concat <$> mapM (createPairings at <=< typeInfo <=< reify)
-  . map convertNm
+synthesizePairings :: SrcLoc -> [Name] -> [THInfo] -> Mop [TH.Dec]
+synthesizePairings at syms cosymsTI = do
+  symsTI <- mapM (typeInfo <=< reify) $ map convertNm syms
+  concat <$> mapM (createPairings at) (zip symsTI cosymsTI)
 
-createPairings :: SrcLoc -> THInfo -> Mop [Decl]
-createPairings at THInfo{..} = return []
+createPairings :: SrcLoc -> (THInfo,THInfo) -> Mop [TH.Dec]
+createPairings at (sym,instr) = return []
 
-synthesizeComputer :: SrcLoc -> [Name] -> Mop [Decl]
+synthesizeComputer :: SrcLoc -> [Name] -> Mop [TH.Dec]
 synthesizeComputer at =
   fmap concat <$> mapM (createComputer at <=< typeInfo <=< reify)
   . map convertNm
 
-createComputer :: SrcLoc -> THInfo -> Mop [Decl]
+createComputer :: SrcLoc -> THInfo -> Mop [TH.Dec]
 createComputer sl THInfo{..} = return []
-
--- getDataHead :: String -> String
--- getDataHead str =
---   let dd = lines str
---   in if "=>" `isInfixOf` (head dd)
---      then case findIndices (=='(') (head dd) of
---             [] -> error $ "Generate.DSL.Project.getDataHead: Unexpectedly small Data head in:\n" ++ str
---             xs -> fst (splitAt (pred (last xs)) (head dd))
---      else if length dd > 1
---           then case findIndices (=='(') (head (tail dd)) of
---                  [] -> error $ "Generate.DSL.Project.getDataHead: Unexpectedly small Data head in:\n" ++ str
---                  xs -> fst (splitAt (pred (last xs)) (head (tail dd)))
---           else error $ "Generate.DSL.Project.getDataHead: Unexpectedly small Data head in:\n" ++ str
 
 getDataHead :: String -> String
 getDataHead str =
@@ -452,9 +397,98 @@ convertExistentialFunctorCo str =
                          . replace " *)" ")"
                          . replace " :: *" ""
                          ) (head strs)
+      funcHead' =
+        case findIndices (==' ') funcHead of
+          [] -> funcHead
+          xs -> fst (splitAt (last xs) funcHead)
   in replace "forall . " "" $
        if any ("=>" `isInfixOf`) strs
        then replace "\n    deriving (Functor)"
-                    ("\nderiving instance Functor (" ++ funcHead ++ ")")
+                    ("\nderiving instance Functor (" ++ funcHead' ++ ")")
                     str
        else str
+
+
+{-
+pairs_ti :: THInfo -> THInfo -> Q [Dec]
+pairs_ti co_ti ti = do
+   let (nm,params,_,instr_terms) = fromTHI ti
+       (co_nm,co_params,_,_) = fromTHI co_ti
+       isClosed = length instr_terms > 1
+   pairings <- if isClosed then createClosedPairing else createOpenPairing
+   when (length co_params /= length params) $
+     error $ "Variable parameter count must match between Instruction and Interpreter to automatically pair.\nParameters: (instruction,interpreter)\n\t"
+             ++ show (params,co_params)
+   let co_con = if length co_params <= 1
+                then TH.ConT co_nm
+                else foldl (\st a -> TH.AppT st (VarT a)) (ConT co_nm) $ init co_params
+       con = if length params <= 1
+             then ConT nm
+             else foldl (\st a -> AppT st (VarT a)) (ConT nm) $ init co_params
+       inst_head = ConT (mkName "Pairing") `AppT` co_con `AppT` con
+   return [ InstanceD [] inst_head pairings ]
+   where
+     createOpenPairing = do
+       let (co_nm,co_params0,_,_) = co_ti
+       let (nm,params0,_,_) = ti
+       let rename = newName . nameBase
+       params <- mapM rename params0
+       co_params <- mapM rename co_params0
+       return
+        [ FunD (mkName "pair")
+            [ Clause
+                [ VarP (mkName "p")
+                , ConP co_nm [VarP $ head co_params]
+                , ConP nm (map VarP params)
+                ]
+                (NormalB (VarE (mkName "p")
+                          `AppE` foldl (\st a -> AppE st (VarE a))
+                                       (VarE (head co_params))
+                                       (init params)
+                          `AppE` (VarE $ last params)
+                         )
+                )
+                []
+            ]
+        ]
+     createClosedPairing = do
+       let (co_nm,co_params,co_cons,co_terms) = co_ti
+           (nm,params,cons,terms) = ti
+           (co_con,co_recs) = head co_terms
+       when (length co_cons > 1) $ error $
+         "Closed pairing does not yet support interpreter variants.\nIf you have a use for this, please suggest it on:\n\tgithub.com/grumply/mop/issues"
+       when (snd (head co_cons) /= length cons) $ error $
+         "Closed interpreter expected to have " ++
+            show (length cons) ++ " records, but found " ++
+            show (snd (head co_cons))
+       let recPs = map (fromJust . fst) co_recs
+       forM (zip (zip [0 :: Int ..] $ map fst cons) terms) $ \((tc,tcon),(_,ts)) -> do
+         ts' <- map fst <$> nameTerms ts
+         let ps = reverse $ snd $
+                    foldl
+                      (\(i,st) a -> if i == tc
+                                    then (i+1,VarP a:st)
+                                    else (i+1,WildP:st)
+                      )
+                      (0,[])
+                      recPs
+         return $
+          FunD (mkName "pair")
+          [ Clause
+              [ VarP (mkName "p")
+              , ConP co_nm ps
+              , ConP tcon $ map VarP ts'
+              ]
+              (NormalB $
+                (VarE $ mkName "p")
+                `AppE`
+                foldl AppE
+                      (VarE $ recPs !! tc)
+                      (init $ map VarE ts')
+                `AppE`
+                VarE (last ts')
+              )
+              []
+          ]
+
+-}
