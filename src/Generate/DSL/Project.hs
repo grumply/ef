@@ -143,7 +143,7 @@ createProjection = do
   symbols_splices      <- transferSymbols                       symbolNames
   tape_splices         <- synthesizeTape         tapesl         symbolNames
   instructions_splices <- synthesizeInstructions instructionssl symbolNames
-  pairings_splices     <- synthesizePairings     pairingssl     symbolNames $ map ti instructions_splices
+  pairings_splices     <- synthesizePairings                    symbolNames $ map ti instructions_splices
   computer_splices     <- synthesizeComputer     computersl     symbolNames
 
   mapM_ addExposedModule
@@ -182,6 +182,8 @@ createProjection = do
 
   addPragma "StandaloneDeriving" absInstructionsModule
   addPragma "RankNTypes" absInstructionsModule
+
+  addPragma "MultiParamTypeClasses" absPairingsModule
 
   modifyVersion incrementMinor
 
@@ -335,13 +337,79 @@ buildDual ts =
                   (tail $ init ts)
                   (TH.AppT (TH.TupleT (pred l)) (head ts))
 
-synthesizePairings :: SrcLoc -> [Name] -> [THInfo] -> Mop [TH.Dec]
-synthesizePairings at syms cosymsTI = do
+synthesizePairings :: [Name] -> [THInfo] -> Mop [TH.Dec]
+synthesizePairings syms cosymsTI = do
   symsTI <- mapM (typeInfo <=< reify) $ map convertNm syms
-  concat <$> mapM (createPairings at) (zip symsTI cosymsTI)
+  concat <$> mapM createPairings (zip symsTI cosymsTI)
 
-createPairings :: SrcLoc -> (THInfo,THInfo) -> Mop [TH.Dec]
-createPairings at (sym,instr) = return []
+createPairings :: (THInfo,THInfo) -> Mop [TH.Dec]
+createPairings = liftTH . uncurry (flip pairs_ti)
+
+  -- if length cons > 1
+  -- then createClosedPairing (zip (snd (head coterms)) terms)
+  -- else createOpenPairing coterms terms
+
+-- createClosedPairing [] = do
+--   log Error "Empty Data Decls are not valid symbols."
+--   return []
+-- createClosedPairing xs = return [TH.InstanceD cxt ty ps]
+--   where
+--     cxt = []
+--     ty = undefined
+--     ps = []
+
+-- createOpenPairing cots ts =
+--   if null cots || null ts
+--   then do log Error "Empty Data Decls are not valid symbols."
+--           return []
+--   else return [TH.InstanceD cxt ty ps]
+--   where
+--     cxt = []
+--     inst_head = undefined
+--     ty = TH.AppT (TH.ConT (TH.mkName "Pairing"))
+--                  ()
+--     ps = []
+
+{-
+[ FunD (mkName "pair")
+    [ Clause
+        [ VarP (mkName "p")
+        , ConP co_nm [VarP $ head co_params]
+        , ConP nm (map VarP params)
+        ]
+        (NormalB (VarE (mkName "p")
+                  `AppE` foldl (\st a -> AppE st (VarE a))
+                               (VarE (head co_params))
+                               (init params)
+                  `AppE` (VarE $ last params)
+                 )
+        )
+        []
+    ]
+]
+-}
+
+{-
+THInfo
+  { infoName = A
+  , infoParams = [k_1627399629]
+  , infoConstructors = [(Nothing,(A1,1)),(Nothing,(A2,1))]
+  , infoTerms = [(Main.A1,[(Nothing,VarT k_1627399629)])
+                ,(Main.A2,[(Nothing,AppT (ConT GHC.Base.Maybe) (VarT k_1627399629))])
+                ]
+  }
+
+THInfo
+  { infoName = CoA
+  , infoParams = [k_1627399629]
+  , infoConstructors = [(Nothing,(CoA,2))]
+  , infoTerms = [(CoA,[(Just coA1,VarT k_1627399629)
+                      ,(Just coA2,AppT (ConT GHC.Base.Maybe) (VarT k_1627399629))
+                      ]
+                 )
+                ]
+  }
+-}
 
 synthesizeComputer :: SrcLoc -> [Name] -> Mop [TH.Dec]
 synthesizeComputer at =
@@ -409,11 +477,10 @@ convertExistentialFunctorCo str =
        else str
 
 
-{-
-pairs_ti :: THInfo -> THInfo -> Q [Dec]
+pairs_ti :: THInfo -> THInfo -> TH.Q [TH.Dec]
 pairs_ti co_ti ti = do
-   let (nm,params,_,instr_terms) = fromTHI ti
-       (co_nm,co_params,_,_) = fromTHI co_ti
+   let THInfo nm params _ instr_terms = ti
+       THInfo co_nm co_params _ _ = co_ti
        isClosed = length instr_terms > 1
    pairings <- if isClosed then createClosedPairing else createOpenPairing
    when (length co_params /= length params) $
@@ -421,74 +488,80 @@ pairs_ti co_ti ti = do
              ++ show (params,co_params)
    let co_con = if length co_params <= 1
                 then TH.ConT co_nm
-                else foldl (\st a -> TH.AppT st (VarT a)) (ConT co_nm) $ init co_params
+                else foldl (\st a -> TH.AppT st (TH.VarT a)) (TH.ConT co_nm) $ init co_params
        con = if length params <= 1
-             then ConT nm
-             else foldl (\st a -> AppT st (VarT a)) (ConT nm) $ init co_params
-       inst_head = ConT (mkName "Pairing") `AppT` co_con `AppT` con
-   return [ InstanceD [] inst_head pairings ]
+             then TH.ConT nm
+             else foldl (\st a -> TH.AppT st (TH.VarT a)) (TH.ConT nm) $ init co_params
+       inst_head = TH.ConT (TH.mkName "Pairing") `TH.AppT` co_con `TH.AppT` con
+   return [ TH.InstanceD [] (simplifyType inst_head) pairings ]
    where
+     createOpenPairing :: TH.Q [TH.Dec]
      createOpenPairing = do
-       let (co_nm,co_params0,_,_) = co_ti
-       let (nm,params0,_,_) = ti
-       let rename = newName . nameBase
+       let THInfo co_nm co_params0 _ _ = co_ti
+       let THInfo nm params0 _ _ = ti
+       let rename = TH.newName . TH.nameBase
        params <- mapM rename params0
        co_params <- mapM rename co_params0
        return
-        [ FunD (mkName "pair")
-            [ Clause
-                [ VarP (mkName "p")
-                , ConP co_nm [VarP $ head co_params]
-                , ConP nm (map VarP params)
+        [ TH.FunD (TH.mkName "pair")
+            [ TH.Clause
+                [ TH.VarP (TH.mkName "p")
+                , TH.ConP (simpleName co_nm) [TH.VarP $ head co_params]
+                , TH.ConP (simpleName nm) (map TH.VarP params)
                 ]
-                (NormalB (VarE (mkName "p")
-                          `AppE` foldl (\st a -> AppE st (VarE a))
-                                       (VarE (head co_params))
-                                       (init params)
-                          `AppE` (VarE $ last params)
+                (TH.NormalB (TH.VarE (TH.mkName "p")
+                          `TH.AppE` foldl (\st a -> TH.AppE st (TH.VarE a))
+                                          (TH.VarE (head co_params))
+                                          (init params)
+                          `TH.AppE` (TH.VarE $ last params)
                          )
                 )
                 []
             ]
         ]
+     createClosedPairing :: TH.Q [TH.Dec]
      createClosedPairing = do
-       let (co_nm,co_params,co_cons,co_terms) = co_ti
-           (nm,params,cons,terms) = ti
+       let THInfo co_nm co_params co_cons co_terms = co_ti
+           THInfo nm params cons terms = ti
            (co_con,co_recs) = head co_terms
        when (length co_cons > 1) $ error $
          "Closed pairing does not yet support interpreter variants.\nIf you have a use for this, please suggest it on:\n\tgithub.com/grumply/mop/issues"
-       when (snd (head co_cons) /= length cons) $ error $
+       when (snd (snd (head co_cons)) /= length cons) $ error $
          "Closed interpreter expected to have " ++
             show (length cons) ++ " records, but found " ++
             show (snd (head co_cons))
        let recPs = map (fromJust . fst) co_recs
-       forM (zip (zip [0 :: Int ..] $ map fst cons) terms) $ \((tc,tcon),(_,ts)) -> do
+       forM (zip (zip [0 :: Int ..] $ map fst cons) terms) $ \((tc,tcon),(x,ts)) -> do
          ts' <- map fst <$> nameTerms ts
          let ps = reverse $ snd $
                     foldl
                       (\(i,st) a -> if i == tc
-                                    then (i+1,VarP a:st)
-                                    else (i+1,WildP:st)
+                                    then (i+1,TH.VarP a:st)
+                                    else (i+1,TH.WildP:st)
                       )
                       (0,[])
                       recPs
          return $
-          FunD (mkName "pair")
-          [ Clause
-              [ VarP (mkName "p")
-              , ConP co_nm ps
-              , ConP tcon $ map VarP ts'
+          TH.FunD (TH.mkName "pair")
+          [ TH.Clause
+              [ TH.VarP (TH.mkName "p")
+              , TH.ConP (simpleName co_nm) ps
+              , TH.ConP (simpleName x) $ map TH.VarP ts'
               ]
-              (NormalB $
-                (VarE $ mkName "p")
-                `AppE`
-                foldl AppE
-                      (VarE $ recPs !! tc)
-                      (init $ map VarE ts')
-                `AppE`
-                VarE (last ts')
+              (TH.NormalB $
+                (TH.VarE $ TH.mkName "p")
+                `TH.AppE`
+                foldl TH.AppE
+                      (TH.VarE $ recPs !! tc)
+                      (init $ map TH.VarE ts')
+                `TH.AppE`
+                TH.VarE (last ts')
               )
               []
           ]
 
--}
+nameTerms :: [(Maybe TH.Name,TH.Type)] -> TH.Q [(TH.Name,(Maybe TH.Name,TH.Type))]
+nameTerms ts = do
+  let varNames = [ c : s | s <- "":varNames, c <- ['a'..'z'] ]
+      prenamedTerms = zip varNames ts
+  mapM (\(nm,t) -> TH.newName nm >>= \n -> return (n,t)) prenamedTerms
