@@ -12,6 +12,7 @@ import Control.Monad.Except     as Export
 import Control.Monad.Identity   as Export
 import Control.Monad.Cont       as Export
 
+import Has         as Export
 import Sum         as Export
 import Subsumption as Export
 import Pairing     as Export

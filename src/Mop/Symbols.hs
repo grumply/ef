@@ -1,5 +1,6 @@
 module Mop.Symbols (module Export) where
 
+import Has         as Export
 import Sum         as Export
 import Subsumption as Export
 import Pairing     as Export

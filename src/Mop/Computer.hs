@@ -7,6 +7,8 @@ import Control.Comonad.Env          as Export
 import Control.Comonad.Identity     as Export
 import Control.Comonad.Traced       as Export hiding (Sum(..),Product(..))
 
+import Instruction                  as Export
+import Has                          as Export
 import Product                      as Export
 import Optimize                     as Export
 import Generate                     as Export (mop)
