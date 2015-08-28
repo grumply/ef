@@ -11,7 +11,7 @@ import           Data.Functor.Identity        (Identity (..))
 import           Sum
 import           Product
 
-class (Functor f,Functor g) => Pairing f g | f -> g, g -> f where
+class (Functor f,Functor g) => Pairing f g | f -> g where
   pair :: (a -> b -> r) -> f a -> g b -> r
 
 instance Pairing Identity Identity where
