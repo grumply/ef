@@ -26,7 +26,6 @@ type Tape = FreeT
 -- Partial application represents a computer awaiting a tape.
 -- Flipped partial application represents a tape awaiting a computer.
 delta :: ( Pairing instructions symbols
-         , Build instructions context
          , Comonad context
          , Monad actions
          ) =>          Computer         instructions context actions state
