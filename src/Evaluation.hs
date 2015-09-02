@@ -14,44 +14,52 @@ import           Data.Bifunctor
 import           Data.Coerce
 import           Data.Proxy
 
-type Computer instructions context  actions state
-    = CofreeT instructions context (actions state)
+{-
+This implementation uses an approach that ties the computer and tape together
+in a way that allows the computer to place bounds on the tape/symbols it is
+willing to interpret. That is, at every iteration, a translation is extracted
+from the computer and applied to the tape before extracting a symbol from the
+tape. This allows the computer to affect the rest of the computation.
+
+In terms of Turing's 'computer,' this would be equivalent to a person
+manipulating the tape at the command of the instructions.
+-}
 
 type Tape = FreeT
 
--- | delta executes a Computer and Tape in their corresponding actions monad
--- by using the pairing instances for their instructions and symbols,
--- respectively.
---
--- Partial application represents a computer awaiting a tape.
--- Flipped partial application represents a tape awaiting a computer.
+type Translation symbols actions result
+  = Tape symbols actions result -> actions (Tape symbols actions result)
+
+type Computer instructions symbols context actions result
+    = CofreeT instructions context (actions (Translation symbols actions result))
+
 delta :: ( Pairing instructions symbols
          , Comonad context
          , Monad actions
-         ) =>          Computer         instructions context actions state
-           ->          Tape     symbols                      actions       result
-           -> actions (Computer         instructions context actions state,result)
+         ) => Computer instructions symbols context actions result
+           -> Tape symbols actions result
+           -> actions (Computer instructions symbols context actions result,result)
 delta comp tape = do
 
-  -- coercions to guarantee unwrapping/wrapping performance for computer
-  let from = coerce :: CofreeT f w (m a)
-                    -> w (CofreeF f (m a) (CofreeT f w (m a)))
-      to   = coerce :: w (CofreeF f (m a) (CofreeT f w (m a)))
-                    -> CofreeT f w (m a)
+  translate <- extract comp
 
-  state   <- extract comp     -- get current state of computer effectfully
-
-  current <- runFreeT tape    -- get next symbol on tape effectfully
+  current <- runFreeT (joinFree (translate tape))
 
   case current of
 
-    Free symbol ->            -- continue symbol
+    Free symbol ->
 
-      pair delta              -- use delta to pair instruction table with symbol
-           (unwrap comp)      -- get instruction table
-           symbol             -- continue symbol
+      pair delta
+           (unwrap comp)
+           symbol
 
-    Pure result ->            -- stop symbol
+    Pure result ->
 
-      return                  -- return computer with effects removed + result.
-        (to $ fmap (bimap (const (return state)) id) $ from comp,result)
+      return
+        (toComp $ fmap (bimap (const (return return)) id) $ fromComp comp,result)
+
+fromComp = coerce :: CofreeT f w (m a) -> w (CofreeF f (m a) (CofreeT f w (m a)))
+toComp = coerce :: w (CofreeF f (m a) (CofreeT f w (m a))) -> CofreeT f w (m a)
+
+joinFree :: (Monad m) => m (FreeT f m a) -> FreeT f m a
+joinFree = FreeT . join . fmap runFreeT
