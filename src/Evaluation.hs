@@ -76,7 +76,7 @@ reset = convert
 
 -- Given a pairing between instructions and symbols and instructions and
 -- symbols', 'convert' a computer, specifically the translation value in
--- context to work over the new symbol set. The default is simply
+-- context, to work over the new symbol set. The default is simply
 -- 'return return' which is an identity.
 convert :: forall instructions symbols symbols' context actions result.
            ( Pairing instructions symbols
