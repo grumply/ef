@@ -49,13 +49,12 @@ delta comp tape = do
 
     Free symbol ->
 
-      pair delta
-           (unwrap comp)
-           symbol
+      -- pair with delta after removing the head translation value in context.
+      pair delta (unwrap comp) symbol
 
     Pure result ->
 
-      return
+      return -- remove the effects from the translation value in context
         (toComp $ fmap (bimap (const (return translate)) id) $ fromComp comp,result)
 
 fromComp = coerce :: CofreeT f w (m a) -> w (CofreeF f (m a) (CofreeT f w (m a)))
@@ -63,3 +62,29 @@ toComp = coerce :: w (CofreeF f (m a) (CofreeT f w (m a))) -> CofreeT f w (m a)
 
 joinFree :: (Monad m) => m (FreeT f m a) -> FreeT f m a
 joinFree = FreeT . join . fmap runFreeT
+
+-- reset the translation value in context contained within a computer.
+-- This is a more restricted version of convert to guarantee that a
+-- Computer will not be converted to work with a different symbol set.
+reset :: ( Functor context
+         , Functor instructions
+         , Monad actions
+         , Pairing instructions symbols
+         ) => Computer instructions symbols context actions result
+           -> Computer instructions symbols context actions result
+reset = convert
+
+-- Given a pairing between instructions and symbols and instructions and
+-- symbols', 'convert' a computer, specifically the translation value in
+-- context to work over the new symbol set. The default is simply
+-- 'return return' which is an identity.
+convert :: forall instructions symbols symbols' context actions result.
+           ( Pairing instructions symbols
+           , Pairing instructions symbols'
+           , Functor context
+           , Monad actions
+           ) => CofreeT instructions context
+                  (actions (Translation symbols actions result))
+             -> CofreeT instructions context
+                  (actions (Translation symbols' actions result))
+convert = fmap (const (return return))
