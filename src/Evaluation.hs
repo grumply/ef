@@ -56,7 +56,7 @@ delta comp tape = do
     Pure result ->
 
       return
-        (toComp $ fmap (bimap (const (return return)) id) $ fromComp comp,result)
+        (toComp $ fmap (bimap (const (return translate)) id) $ fromComp comp,result)
 
 fromComp = coerce :: CofreeT f w (m a) -> w (CofreeF f (m a) (CofreeT f w (m a)))
 toComp = coerce :: w (CofreeF f (m a) (CofreeT f w (m a))) -> CofreeT f w (m a)
