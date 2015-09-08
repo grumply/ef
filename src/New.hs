@@ -41,7 +41,6 @@ import qualified Unsafe.Coerce as UNSAFE
 
 import           Data.Bifunctor
 import           Data.Coerce
-import           Data.Constraint
 import           Data.Functor.Identity
 import           Data.Proxy
 import           Data.Type.Equality
@@ -144,21 +143,6 @@ import           Data.Type.Equality
 --   where
 --     pair'' _ p (Other m) (More _ m') = pair'' (Index :: Index (IndexOf g gs')) p m m'
 
-{-
-X Model instructions as a type-level list of functors
-
-X - Model symbols as a type-level list of functors with no values - just a type-level concept.
-
-X - Model symbol as a value on the last element of a type-level list of functors.
-
-X - Pair instruction with symbol, uniquely => instruction -> symbol, symbol -> instruction
-
-[] - Guarantee (via a class + some type families?) that each element of the symbol list pairs with the instruction list.
-
-X - Have a way to push a symbol into a list of symbols and a way to attempt to pull a symbol from a list of symbols.
-
--}
-
 data Nat = Z | S Nat
 data Index (n :: Nat) = Index
 type family IndexOf (f :: * -> *) fs :: Nat where
@@ -247,222 +231,91 @@ delta cof f = do
 fromComp = coerce :: CofreeT f w (m a) -> w (CofreeF f (m a) (CofreeT f w (m a)))
 toComp = coerce :: w (CofreeF f (m a) (CofreeT f w (m a))) -> CofreeT f w (m a)
 
-data X st k = X (st -> k) deriving Functor
-x = liftF (inj (X id))
-data X2 st k = X2 st k deriving Functor
-x2 st = liftF (inj (X2 st ()))
+type Admits x xs m = (MonadFree (Symbols xs) m,Contains' x xs (IndexOf x xs))
 
-data CoX st k = CoX st k deriving Functor
-coX = CoX
-data CoX2 st k = CoX2 (st -> k) deriving Functor
-coX2 = CoX2 id
+-- data X st k = X (st -> k) deriving Functor
+-- x = liftF (inj (X id))
+-- data X2 st k = X2 st k deriving Functor
+-- x2 st = liftF (inj (X2 st ()))
 
-instance Pair (CoX st) (X st) where
-  pair p (CoX st k) (X stk) = pair p (st,k) stk
+-- data CoX st k = CoX st k deriving Functor
+-- coX = CoX
+-- data CoX2 st k = CoX2 (st -> k) deriving Functor
+-- coX2 = CoX2 id
 
-instance Pair (CoX2 st) (X2 st) where
-  pair p (CoX2 stk) (X2 st k) = pair p stk (st,k)
+-- instance Pair (CoX st) (X st) where
+--   pair p (CoX st k) (X stk) = pair p (st,k) stk
 
---computer :: (Monad m) => CofreeT (Instructions '[CoX Int,CoX2 Int]) Identity (m ())
+-- instance Pair (CoX2 st) (X2 st) where
+--   pair p (CoX2 stk) (X2 st k) = pair p stk (st,k)
 
-computer i = coiterT instructions valueInContext
-  where
-    instructions = (coX' *:* none) *++* (coX2' *:* none)
-    coX' = coX i
-    coX2' = CoX2 . const
-    valueInContext = Identity (return ())
+-- --computer :: (Monad m) => CofreeT (Instructions '[CoX Int,CoX2 Int]) Identity (m ())
 
+-- computer i = coiterT instructions valueInContext
+--   where
+--     instructions = (coX' *:* none) *++* (coX2' *:* none)
+--     coX' = coX i
+--     coX2' = CoX2 . const
+--     valueInContext = Identity (return ())
 
+--
 
-data Hole
+-- type XX2 st m a = Monad m => FreeT (Symbols '[X st,X2 st]) m a
 
-main :: IO ()
-main = do
-  let (comp,i::Int) = runIdentity $ delta (computer (1:: Int)) x
-  print i
-  return ()
+-- test :: XX2 Int m Int
+-- test = do
+--   _ <- x :: XX2 Int m Int
+--   x2 (2 :: Int)
+--   x
 
--- class NotElem (x :: * -> *) (ys :: [* -> *])
--- instance NotElem x '[]
--- instance ((x == y) ~ 'False,NotElem x ys) => NotElem x (y ': ys)
-
--- data Nat = Z | S Nat
-
--- data Index (n :: Nat) = Index
-
--- type family IndexOf (f :: * -> *) fs :: Nat where
---   IndexOf f (f ': fs) = Z
---   IndexOf f (any ': fs) = S (IndexOf f fs)
-
--- type family Extract (n :: Nat) (xs :: [* -> *]) :: (* -> *) where
---   Extract Z (x ': xs') = x
---   Extract (S n) (x ': xs') = Extract n xs'
-
--- class Contains (xs :: [* -> *]) (ys :: [* -> *])
--- instance (Elem x ys ~ 'True,Contains xs ys) => Contains (x ': xs) ys
--- instance Contains '[] ys
-
--- type family Elem (f :: * -> *) (fs :: [* -> *]) :: Bool where
---   Elem f '[] = False
---   Elem f (f ': fs') = True
---   Elem f (f' ': fs') = Elem f fs'
-
--- type family SubPath (xs :: [* -> *]) (ys :: [* -> *]) where
---   SubPath '[] ys = True
---   SubPath (x ': xs') '[] = False
---   SubPath (x ': xs') (x ': ys') = SubPath xs' ys'
-
--- class Pairing (f :: * -> *) (g :: * -> *) | f -> g, g -> f where
---   pair :: (a -> b -> r) -> f a -> g b -> r
-
--- instance Pairing Identity Identity where
---   pair f (Identity a) (Identity b) = f a b
-
--- instance Pairing ((->) a) ((,) a) where
---   pair p f g = uncurry (p . f) g
-
--- instance Pairing ((,) a) ((->) a) where
---   pair p (l,r) g = p r (g l)
-
--- class NotIn (x :: (* -> *)) (l :: [(* -> *)])
--- instance NotIn x '[]
--- instance (NotIn x t, (x == h) ~ 'False) => NotIn x (h ': t)
-
--- data ProductF (xs :: [(* -> *)]) (a :: *) where
---   POne  :: Functor h => h a -> ProductF (h ': '[]) a
---   PAdd  :: Functor h => h a -> ProductF t a -> ProductF (h ': t) a
--- deriving instance Functor (ProductF xs)
-
--- class PAppend (t :: [(* -> *)]) where
---     type I t :: * -> *
---     (*:*) :: Functor h => (a -> h a) -> (a -> (I t) a) -> a -> ProductF (h ': t) a
--- instance Functor h => PAppend (h ': '[]) where
---     type I (h ': '[]) = h
---     (*:*) f g a = PAdd (f a) (POne (g a))
--- instance PAppend (h ': (i ': j)) where
---     type I (h ': (i ': j)) = ProductF (h ': (i ': j))
---     (*:*) f g a = PAdd (f a) (g a)
-
--- data (:+:) f g a
---   = Inl (f a)
---   | Inr (g a)
---   deriving Functor
-
--- data Crumbs = Here | L Crumbs | R Crumbs
-
--- data Res = Found Crumbs | NotFound | Ambiguous
-
--- -- I suspect a 'type familiy Path l r' with :+: defined in terms of a
--- -- terminating Void type would get rid of the undecidable instances.
--- type family Path e f :: Res where
---   Path e e         = 'Found 'Here
---   Path e (l :+: r) = Choose (Path e l) (Path e r)
---   Path e f         = 'NotFound
-
--- type family Choose e f :: Res where
---   Choose ('Found x) ('Found y) = 'Ambiguous
---   Choose 'Ambiguous x = 'Ambiguous
---   Choose x 'Ambiguous = 'Ambiguous
---   Choose ('Found a) b = 'Found (L a)
---   Choose a ('Found b) = 'Found (R b)
---   Choose a b = 'NotFound
-
--- class (Functor f,Functor g) => Subsume (res :: Res) f g where
---   inj' :: Proxy res -> f a -> g a
---   prj' :: Proxy res -> g a -> Maybe (f a)
-
--- instance Functor f => Subsume ('Found 'Here) f f where
---   inj' _ = id
---   prj' _ = Just
-
--- instance (Functor f,Functor l,Functor r,Subsume ('Found p) f l)
---   => Subsume ('Found ('L p)) f (l :+: r) where
---   inj' _ = Inl . inj' (Proxy :: Proxy ('Found p))
---   prj' _ (Inl x) = prj' (Proxy :: Proxy ('Found p)) x
---   prj' _ _       = Nothing
-
--- instance (Functor f,Functor l,Functor r,Subsume ('Found p) f r)
---   => Subsume ('Found ('R p)) f (l :+: r) where
---   inj' _ = Inr . inj' (Proxy :: Proxy ('Found p))
---   prj' _ (Inr x) = prj' (Proxy :: Proxy ('Found p)) x
---   prj' _ _       = Nothing
-
--- inj :: forall f g a. (Functor f,Functor g,f :<: g) => f a -> g a
--- inj = inj' (Proxy :: Proxy (Path f g))
-
--- prj :: forall f g a. (Functor f,Functor g,f :<: g) => g a -> Maybe (f a)
--- prj = prj' (Proxy :: Proxy (Path f g))
-
--- type f :<: g = Subsume (Path f g) f g
-
--- infixl 5 :<:
-
--- class Pairs (fs :: [* -> *]) (x :: * -> *) where
---   pairs :: (a -> b -> r) -> ProductF fs a -> x b -> r
-
--- instance (Pairs' fs g (IndexOf f fs),Pairing f g) => Pairs fs g where
---   pairs = pairs' (Index :: Index (IndexOf f fs))
-
--- class Pairs' (fs :: [* -> *]) (x :: * -> *) (n :: Nat) where
---   pairs' :: Index n -> (a -> b -> r) -> ProductF fs a -> x b -> r
-
--- instance (Pairing f g,g :<: gs) => Pairs' (f ': fs) gs Z where
---   pairs' _ p (PAdd f fs) (prj -> Just g) = pair p f g
-
--- instance (Pairs' (f' ': fs) gs (IndexOf f fs)
---          ,Elem f fs ~ 'True
---          ,Pairing f g
---          ,g :<: gs
---          ) => Pairs' (f' ': fs) gs (S n)  where
---   pairs' _ = pairs' (Index :: Index (IndexOf f fs))
-
--- type Admits x xs m = (x :<: xs,MonadFree xs m)
+-- main :: IO ()
+-- main = do
+--   let (comp,i::Int) = runIdentity $ delta (computer (1:: Int)) test
+--   print i
+--   return ()
 
 -- --------------------------------------------------------------------------------
 -- -- Testing
 
--- data Get st k = Get (st -> k)
---   deriving Functor
--- data CoGet st k = CoGet st k
---   deriving Functor
--- instance Pairing (CoGet st) (Get st) where
---   pair p (CoGet st k) (Get stk) = pair p (st,k) stk
+data State st k
+  = Get (st -> k)
+  | Put st k
+  deriving Functor
+data Store st k = Store (st -> (st,k))
+  deriving Functor
+instance Pair (Store st) (State st) where
+  pair p (Store ststk) (Get stk) =
+    let (st,k) = ststk st
+    in p k (stk st)
+  pair p (Store ststk) (Put st k) =
+    let (st',k') = ststk st
+    in p k' k
 
--- get = liftF (inj (Get id))
+get = liftF (inj (Get id))
+put st = liftF (inj (Put st ()))
 
--- data Put st k = Put st k -- k ~ (() -> k)
---   deriving Functor
--- data CoPut st k = CoPut (st -> k)
---   deriving Functor
--- instance Pairing (CoPut st) (Put st) where
---   pair p (CoPut stk) (Put st k) = pair p stk (st,k)
+store :: k -> Instructions '[Store st] k
+store = single $ \wa -> Store $ \st' -> (st',wa)
 
--- put x = liftF (inj (Put x ()))
+state :: Monad m => CofreeT (Instructions '[Store st]) Identity (m ())
+state = coiterT store (Identity (return ()))
 
--- coGet st wa = CoGet st wa
+type ComputerT instructions w m a = CofreeT (Instructions instructions) w (m a)
+type Computer instructions m a = CofreeT (Instructions instructions) Identity (m a)
+type Pure instructions a = CofreeT (Instructions instructions) Identity (Identity a)
 
--- coPut wa = CoPut (const wa)
+type TapeT symbols m a = FreeT (Symbols symbols) m a
+type Tape symbols a = TapeT symbols Identity a
 
--- costate st = coGet st *:* coPut
+test :: Tape '[State Int] Int
+test = do
+  put (3 :: Int)
+  get
 
--- newtype St = St Int
--- incr (St i) = St (succ i)
-
--- test = put (St 2) >> get
-
--- computer = coiterT (costate (St 0)) (Identity (return ()))
-
--- tape = put (St 1)
-
--- type CoState st = ProductF '[CoGet st,CoPut st]
-
--- runState = delta computer
-
--- x = runState tape
-
--- main :: IO ()
--- main = do
---   return ()
+main = do
+  let (comp,i :: Int) = runIdentity $ delta state test
+  print i
+  return ()
 
 -- --------------------------------------------------------------------------------
 -- -- Constraints and utilities for type-level lists
