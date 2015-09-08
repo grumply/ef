@@ -45,109 +45,12 @@ import           Data.Functor.Identity
 import           Data.Proxy
 import           Data.Type.Equality
 
-
-
--- data Table (r :: [* -> *]) a where
---   Zero :: Table '[] a
---   More :: (Functor f,NotElem f r) => f a -> Table r a -> Table (f ': r) a
--- deriving instance Functor (Table r)
--- zero :: Table '[] a
--- zero = Zero
-
--- more :: (Functor f,NotElem f r) => f a -> Table r a -> Table (f ': r) a
--- more = More
-
--- class Build (xs :: [* -> *]) where
---   build :: Table xs a
--- instance Build '[] where
---   build = zero
--- instance (Build xs,Functor x,NotElem x xs) => Build (x ': xs) where
---   build = more undefined (build :: Table xs a)
-
--- class PrjTable' f r (n :: Nat) where
---   prjTable' :: Index n -> Table r a -> Maybe (f a)
-
--- instance (r ~ '[]) => PrjTable' f r n where
---   prjTable' _ _ = Nothing
-
--- instance (r ~ (f ': r')) => PrjTable' f r Z where
---   prjTable' _ (More x _) = Just x
-
--- instance (r ~ (f' ': r'),PrjTable' f r' (IndexOf f r')) => PrjTable' f r (S n) where
---   prjTable' _ (More _ m) = prjTable' (Index :: Index (IndexOf f r')) m
---   prjTable' _ _ = Nothing
-
--- class PrjTable f r where
---   prjTable :: Table r a -> Maybe (f a)
-
--- instance (PrjTable' f r (IndexOf f r)) => PrjTable f r where
---   prjTable = prjTable' (Index :: Index (IndexOf f r))
-
--- class InjTable' f r (n :: Nat) where
---   injTable' :: Index n -> f a -> Table r a -> Table r a
-
--- instance (r ~ (f ': r')) => InjTable' f r Z where
---   injTable' _ fa (More _ m) = More fa m
-
--- instance (r ~ (f' ': r'),InjTable' f r' (IndexOf f r')) => InjTable' f r (S n) where
---   injTable' _ fa (More x m) = More x (injTable' (Index :: Index (IndexOf f r')) fa m)
-
--- class InjTable f r where
---   injTable :: f a -> Table r a -> Table r a
-
--- instance (InjTable' f r (IndexOf f r)) => InjTable f r where
---   injTable = injTable' (Index :: Index (IndexOf f r))
-
--- class Pairing f g where
---   pair :: (a -> b -> r) -> f a -> g b -> r
-
--- instance Pairing Identity Identity where
---   pair f (Identity a) (Identity b) = f a b
-
--- instance Pairing ((->) a) ((,) a) where
---   pair p f g = uncurry (p . f) g
-
--- instance Pairing ((,) a) ((->) a) where
---   pair p (l,r) g = p r (g l)
-
--- instance (Pairing' f gs (IndexOf g gs),Pairing f g) => Pairing f (Table gs) where
---   pair = pair' (Index :: Index (IndexOf g gs))
-
--- instance (Pairing' f gs (IndexOf g gs),Pairing'' fs gs (IndexOf g gs),Pairing f g)
---   => Pairing (Table gs) (Pointer fs)
---   where
---     pair p = flip (pair'' (Index :: Index (IndexOf g gs)) (flip p))
-
--- class Pairing' (f :: * -> *) (gs :: [* -> *]) (n :: Nat) where
---   pair' :: Index n -> (a -> b -> r) -> f a -> Table gs b -> r
-
--- instance (Pairing f g,Pairing' f gs' (IndexOf g gs'),gs ~ (x ': gs'))
---   => Pairing' f gs (S n)
---   where
---     pair' _ abr f (More _ m) = pair' (Index :: Index (IndexOf g gs')) abr f m
-
--- instance (Pairing f g,gs ~ (g ': gs'),IndexOf g gs ~ Z)
---   => Pairing' f gs Z
---   where
---     pair' _ abr f (More x _) = pair abr f x
-
-
--- class Pairing'' (fs :: [* -> *]) (gs :: [* -> *]) (n :: Nat) | fs -> gs, gs -> fs where
---   pair'' :: Index n -> (a -> b -> r) -> Pointer fs a -> Table gs b -> r
-
--- instance (Pairing f g) => Pairing'' (f ': fs') (g ': gs') Z where
---   pair'' _ p (Exact symbol) (More instruction _) = pair p symbol instruction
-
--- instance (Pairing f g,Pairing'' fs' gs' (IndexOf g gs'))
---   => Pairing'' (f ': fs') (g' ': gs') (S n)
---   where
---     pair'' _ p (Other m) (More _ m') = pair'' (Index :: Index (IndexOf g gs')) p m m'
-
 data Nat = Z | S Nat
 data Index (n :: Nat) = Index
 type family IndexOf (f :: * -> *) fs :: Nat where
   IndexOf f (f ': fs) = Z
   IndexOf f (any ': fs) = S (IndexOf f fs)
+
 
 -- A table of zero or more instructions
 data Instructions (is :: [* -> *]) a where
@@ -176,6 +79,33 @@ instance (Concat ts (t' ': ts')) => Concat (t ': ts) (t' ': ts') where
   (*++*) f g a =
     case f a of
       Instruction (ta :: t a) (ts :: Instructions ts a) -> Instruction (ta :: t a) ((*++*) (const ts) g a)
+class Admits (x :: * -> *) (xs :: [* -> *]) where
+  draw :: Instructions xs a -> x a
+  push :: x a -> Instructions xs a -> Instructions xs a
+instance Admits' x xs (IndexOf x xs) => Admits x xs where
+  draw = draw' (Index :: Index (IndexOf x xs))
+  push = push' (Index :: Index (IndexOf x xs))
+class Admits' (x :: * -> *) (xs :: [* -> *]) (n :: Nat) where
+  draw' :: Index n -> Instructions xs a -> x a
+  push' :: Index n -> x a -> Instructions xs a -> Instructions xs a
+instance (xs ~ (x ': xs')) => Admits' x xs Z where
+  draw' _ (Instruction xa _) = xa
+  push' _ xa (Instruction _ xs) = Instruction xa xs
+instance (xs ~ (x' ': xs'),Admits' x xs' (IndexOf x xs')) => Admits' x xs (S n) where
+  draw' _ (Instruction _ xs') = draw' (Index :: Index (IndexOf x xs')) xs'
+  push' _ xa (Instruction xb xs') = Instruction xb (push' (Index :: Index (IndexOf x xs')) xa xs')
+
+class Rebuild (xs :: [* -> *]) (ys :: [* -> *]) where
+  rebuild :: Instructions xs a -> Instructions ys a
+instance Rebuild xs '[] where
+  rebuild _ = Empty
+instance (Functor y,Admits' y xs (IndexOf y xs),Rebuild xs ys') => Rebuild xs (y ': ys') where
+  rebuild is = Instruction (draw is) (rebuild is)
+
+
+adjust' :: (Admits' x xs (IndexOf x xs), Admits' x1 xs (IndexOf x1 xs))
+        => Instructions xs a -> (x1 a -> x a) -> Instructions xs a
+adjust' is f = flip push is $ f $ draw is
 
 
 data Symbols (symbols :: [* -> *]) a where
@@ -200,6 +130,7 @@ instance (Functor x,xs ~ (x ': xs')) => Contains' x xs Z where
   prj' _ (Symbol s) = Just s
   prj' _ _ = Nothing
 
+
 class Pair (x :: * -> *) (y :: * -> *) | x -> y, y -> x where
   pair :: (a -> b -> r) -> x a -> y b -> r
 instance Pair Identity Identity where
@@ -217,8 +148,9 @@ instance ( Pair i symbol
 instance Pair (Instructions '[]) (Symbols '[]) where
   pair _ _ _ = error "Pairing empty lists; why would this get run?"
 
--- delta :: (Monad m, Functor x, Comonad w, Pair x y)
---       => CofreeT x w (m a) -> FreeT y m t -> m (CofreeT x w (m a), t)
+
+delta :: (Monad m, Functor x, Comonad w, Pair x y)
+      => CofreeT x w (m a) -> FreeT y m t -> m (CofreeT x w (m a), t)
 delta cof f = do
   a <- extract cof
   s <- runFreeT f
@@ -231,51 +163,17 @@ delta cof f = do
 fromComp = coerce :: CofreeT f w (m a) -> w (CofreeF f (m a) (CofreeT f w (m a)))
 toComp = coerce :: w (CofreeF f (m a) (CofreeT f w (m a))) -> CofreeT f w (m a)
 
-type Admits x xs m = (MonadFree (Symbols xs) m,Contains' x xs (IndexOf x xs))
 
--- data X st k = X (st -> k) deriving Functor
--- x = liftF (inj (X id))
--- data X2 st k = X2 st k deriving Functor
--- x2 st = liftF (inj (X2 st ()))
+type ComputerT instructions w m a = (Comonad w, Monad m) => CofreeT (Instructions instructions) w (m a)
+type Computer instructions m a = Monad m => CofreeT (Instructions instructions) Identity (m a)
+type Pure instructions a = CofreeT (Instructions instructions) Identity (Identity a)
+type TapeT symbols m a = Monad m => FreeT (Symbols symbols) m a
+type Tape symbols a = TapeT symbols Identity a
 
--- data CoX st k = CoX st k deriving Functor
--- coX = CoX
--- data CoX2 st k = CoX2 (st -> k) deriving Functor
--- coX2 = CoX2 id
+type Instruction x xs = (Admits' x xs (IndexOf x xs))
 
--- instance Pair (CoX st) (X st) where
---   pair p (CoX st k) (X stk) = pair p (st,k) stk
-
--- instance Pair (CoX2 st) (X2 st) where
---   pair p (CoX2 stk) (X2 st k) = pair p stk (st,k)
-
--- --computer :: (Monad m) => CofreeT (Instructions '[CoX Int,CoX2 Int]) Identity (m ())
-
--- computer i = coiterT instructions valueInContext
---   where
---     instructions = (coX' *:* none) *++* (coX2' *:* none)
---     coX' = coX i
---     coX2' = CoX2 . const
---     valueInContext = Identity (return ())
-
---
-
--- type XX2 st m a = Monad m => FreeT (Symbols '[X st,X2 st]) m a
-
--- test :: XX2 Int m Int
--- test = do
---   _ <- x :: XX2 Int m Int
---   x2 (2 :: Int)
---   x
-
--- main :: IO ()
--- main = do
---   let (comp,i::Int) = runIdentity $ delta (computer (1:: Int)) test
---   print i
---   return ()
-
--- --------------------------------------------------------------------------------
--- -- Testing
+--------------------------------------------------------------------------------
+-- Testing
 
 data State st k
   = Get (st -> k)
@@ -294,37 +192,21 @@ instance Pair (Store st) (State st) where
 get = liftF (inj (Get id))
 put st = liftF (inj (Put st ()))
 
-store :: k -> Instructions '[Store st] k
-store = single $ \wa -> Store $ \st' -> (st',wa)
+-- store = single $ \wa ->
+--   let wa' = adjust wa $ \(Store store') -> undefined
+--   in Store $ \st' -> (st',wa')
 
-state :: Monad m => CofreeT (Instructions '[Store st]) Identity (m ())
-state = coiterT store (Identity (return ()))
+-- state = coiterT store (Identity (return ()))
 
-type ComputerT instructions w m a = CofreeT (Instructions instructions) w (m a)
-type Computer instructions m a = CofreeT (Instructions instructions) Identity (m a)
-type Pure instructions a = CofreeT (Instructions instructions) Identity (Identity a)
+-- test :: TapeT '[State Int] m Int
+-- test = do
+--   put (3 :: Int)
+--   get
 
-type TapeT symbols m a = FreeT (Symbols symbols) m a
-type Tape symbols a = TapeT symbols Identity a
-
-test :: Tape '[State Int] Int
-test = do
-  put (3 :: Int)
-  get
-
-main = do
-  let (comp,i :: Int) = runIdentity $ delta state test
-  print i
-  return ()
-
--- --------------------------------------------------------------------------------
--- -- Constraints and utilities for type-level lists
-
-
--- --------------------------------------------------------------------------------
--- -- Linear type-level union of functors
-
-
+-- main = do
+--   let (comp,i :: Int) = runIdentity $ delta state test
+--   print i
+--   return ()
 
 --------------------------------------------------------------------------------
 -- Pattern synonyms for working with free monads
