@@ -52,11 +52,11 @@ type family IndexOf (f :: * -> *) fs :: Nat where
   IndexOf f (any ': fs) = S (IndexOf f fs)
 
 
--- A table of zero or more instructions
 data Instructions (is :: [* -> *]) a where
   Empty :: Instructions '[] a
   Instruction :: Functor f => f a -> Instructions is' a -> Instructions (f ': is') a
 deriving instance Functor (Instructions is)
+
 type family (:++:) (x :: [* -> *]) (y :: [* -> *]) :: [* -> *] where
   (:++:) a '[] = a
   (:++:) '[] b = b
@@ -80,32 +80,53 @@ instance (Concat ts (t' ': ts')) => Concat (t ': ts) (t' ': ts') where
     case f a of
       Instruction (ta :: t a) (ts :: Instructions ts a) -> Instruction (ta :: t a) ((*++*) (const ts) g a)
 class Admits (x :: * -> *) (xs :: [* -> *]) where
-  draw :: Instructions xs a -> x a
+  pull :: Instructions xs a -> x a
   push :: x a -> Instructions xs a -> Instructions xs a
 instance Admits' x xs (IndexOf x xs) => Admits x xs where
-  draw = draw' (Index :: Index (IndexOf x xs))
+  pull = pull' (Index :: Index (IndexOf x xs))
   push = push' (Index :: Index (IndexOf x xs))
 class Admits' (x :: * -> *) (xs :: [* -> *]) (n :: Nat) where
-  draw' :: Index n -> Instructions xs a -> x a
+  pull' :: Index n -> Instructions xs a -> x a
   push' :: Index n -> x a -> Instructions xs a -> Instructions xs a
 instance (xs ~ (x ': xs')) => Admits' x xs Z where
-  draw' _ (Instruction xa _) = xa
+  pull' _ (Instruction xa _) = xa
   push' _ xa (Instruction _ xs) = Instruction xa xs
 instance (xs ~ (x' ': xs'),Admits' x xs' (IndexOf x xs')) => Admits' x xs (S n) where
-  draw' _ (Instruction _ xs') = draw' (Index :: Index (IndexOf x xs')) xs'
+  pull' _ (Instruction _ xs') = pull' (Index :: Index (IndexOf x xs')) xs'
   push' _ xa (Instruction xb xs') = Instruction xb (push' (Index :: Index (IndexOf x xs')) xa xs')
-
 class Rebuild (xs :: [* -> *]) (ys :: [* -> *]) where
   rebuild :: Instructions xs a -> Instructions ys a
 instance Rebuild xs '[] where
   rebuild _ = Empty
 instance (Functor y,Admits' y xs (IndexOf y xs),Rebuild xs ys') => Rebuild xs (y ': ys') where
-  rebuild is = Instruction (draw is) (rebuild is)
+  rebuild is = Instruction (pull is) (rebuild is)
 
+{-# INLINE alter #-}
+alter :: (Admits' x xs (IndexOf x xs), Admits' x1 xs (IndexOf x1 xs))
+      => Instructions xs a -> (x1 a -> x a) -> Instructions xs a
+alter is f = flip push is $ f $ pull is
 
-adjust' :: (Admits' x xs (IndexOf x xs), Admits' x1 xs (IndexOf x1 xs))
-        => Instructions xs a -> (x1 a -> x a) -> Instructions xs a
-adjust' is f = flip push is $ f $ draw is
+{-# INLINE alter1 #-}
+alter1 :: (Admits' x xs (IndexOf x xs)) => Instructions xs a -> (x a -> x a) -> Instructions xs a
+alter1 = alter
+
+{-# INLINE adjust #-}
+adjust :: (Comonad w, Admits' x1 xs (IndexOf x1 xs), Admits' x xs (IndexOf x xs))
+       => CofreeT (Instructions xs) w a
+       -> (x1 (CofreeT (Instructions xs) w a) -> x (CofreeT (Instructions xs) w a))
+       -> CofreeT (Instructions xs) w a
+adjust cf f =
+  let adjust' (a :< fb) = a :< ((flip alter f) fb)
+  in CofreeT $ extend (adjust' . extract) $ runCofreeT cf
+
+{-# INLINE adjust1 #-}
+adjust1 :: (Comonad w, Admits' x xs (IndexOf x xs))
+       => CofreeT (Instructions xs) w a
+       -> (x (CofreeT (Instructions xs) w a) -> x (CofreeT (Instructions xs) w a))
+       -> CofreeT (Instructions xs) w a
+adjust1 cf f =
+  let adjust' (a :< fb) = a :< ((flip alter1 f) fb)
+  in CofreeT $ extend (adjust' . extract) $ runCofreeT cf
 
 
 data Symbols (symbols :: [* -> *]) a where
@@ -148,7 +169,19 @@ instance ( Pair i symbol
 instance Pair (Instructions '[]) (Symbols '[]) where
   pair _ _ _ = error "Pairing empty lists; why would this get run?"
 
+toComp   = coerce :: w (CofreeF f a (CofreeT f w a)) -> CofreeT f w a
+fromComp = coerce :: CofreeT f w a -> w (CofreeF f a (CofreeT f w a))
 
+type ComputerT instructions w m a = (Comonad w, Monad m) => CofreeT (Instructions instructions) w (m a)
+type Computer  instructions   m a = ComputerT instructions Identity m        a
+type Pure      instructions     a = Computer  instructions          Identity a
+
+type TapeT symbols m a = Monad m => FreeT (Symbols symbols) m a
+type Tape  symbols   a = TapeT symbols Identity a
+
+type Instruction x xs = (Admits' x xs (IndexOf x xs))
+
+{-# INLINE delta #-}
 delta :: (Monad m, Functor x, Comonad w, Pair x y)
       => CofreeT x w (m a) -> FreeT y m t -> m (CofreeT x w (m a), t)
 delta cof f = do
@@ -160,17 +193,7 @@ delta cof f = do
     Pure result ->
       return
         (toComp $ fmap (bimap (const (return a)) id) $ fromComp cof,result)
-fromComp = coerce :: CofreeT f w (m a) -> w (CofreeF f (m a) (CofreeT f w (m a)))
-toComp = coerce :: w (CofreeF f (m a) (CofreeT f w (m a))) -> CofreeT f w (m a)
 
-
-type ComputerT instructions w m a = (Comonad w, Monad m) => CofreeT (Instructions instructions) w (m a)
-type Computer instructions m a = Monad m => CofreeT (Instructions instructions) Identity (m a)
-type Pure instructions a = CofreeT (Instructions instructions) Identity (Identity a)
-type TapeT symbols m a = Monad m => FreeT (Symbols symbols) m a
-type Tape symbols a = TapeT symbols Identity a
-
-type Instruction x xs = (Admits' x xs (IndexOf x xs))
 
 --------------------------------------------------------------------------------
 -- Testing
@@ -179,34 +202,23 @@ data State st k
   = Get (st -> k)
   | Put st k
   deriving Functor
-data Store st k = Store (st -> (st,k))
-  deriving Functor
+
+data Store st k = Store
+  { coGet :: (st,k)
+  , coPut :: st -> k
+  } deriving Functor
+
 instance Pair (Store st) (State st) where
-  pair p (Store ststk) (Get stk) =
-    let (st,k) = ststk st
-    in p k (stk st)
-  pair p (Store ststk) (Put st k) =
-    let (st',k') = ststk st
-    in p k' k
+  pair p (Store stk _) (Get stk') = pair p stk stk'
+  pair p (Store _ stk) (Put st k) = pair p stk (st,k)
 
 get = liftF (inj (Get id))
 put st = liftF (inj (Put st ()))
 
--- store = single $ \wa ->
---   let wa' = adjust wa $ \(Store store') -> undefined
---   in Store $ \st' -> (st',wa')
-
--- state = coiterT store (Identity (return ()))
-
--- test :: TapeT '[State Int] m Int
--- test = do
---   put (3 :: Int)
---   get
-
--- main = do
---   let (comp,i :: Int) = runIdentity $ delta state test
---   print i
---   return ()
+main = do
+  let x = single $ \wa -> Store (1 :: Int,wa) (const (_ wa))
+      y = runIdentity $ delta (coiterT x (Identity (return ()))) get
+  return ()
 
 --------------------------------------------------------------------------------
 -- Pattern synonyms for working with free monads
