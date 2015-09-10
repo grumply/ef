@@ -87,21 +87,21 @@ type family (:++:) (x :: [* -> *]) (y :: [* -> *]) :: [* -> *] where
   (:++:) a '[] = a
   (:++:) '[] b = b
   (:++:) (a ': as) b = a ': (as :++: b)
-none :: a -> Instructions '[] a
-none = const Empty
+none :: a -> Instructions '[Identity] a
+none a = Instruction (Identity a) Empty
 single :: Functor h => (a -> h a) -> (a -> Instructions '[h] a)
 single h = (\a -> Instruction (h a) Empty)
 (*:*) :: Functor h => (a -> h a) -> (a -> Instructions t a) -> (a -> Instructions (h ': t) a)
 (*:*) h g = (\a -> Instruction (h a) (g a))
-class Concat (t0 :: [* -> *]) (t1 :: [* -> *]) where
+class Append (t0 :: [* -> *]) (t1 :: [* -> *]) where
   (*++*) :: (ts ~ (t0 :++: t1)) => (a -> Instructions t0 a) -> (a -> Instructions t1 a) -> a -> Instructions ts a
-instance Concat '[] '[] where
-  (*++*) _ _ = none
-instance Concat '[] t' where
+instance Append '[] '[] where
+  (*++*) _ _ = const Empty
+instance Append '[] t' where
   (*++*) _ g = g
-instance Concat t' '[] where
+instance Append t' '[] where
   (*++*) f _ = f
-instance (Concat ts (t' ': ts')) => Concat (t ': ts) (t' ': ts') where
+instance (Append ts (t' ': ts')) => Append (t ': ts) (t' ': ts') where
   (*++*) f g a =
     case f a of
       Instruction (ta :: t a) (ts :: Instructions ts a) -> Instruction (ta :: t a) ((*++*) (const ts) g a)
@@ -153,7 +153,6 @@ adjust1 :: (Comonad w, Admits' x xs (IndexOf x xs))
 adjust1 cf f =
   let adjust' (a :< fb) = a :< ((flip alter1 f) fb)
   in CofreeT $ extend (adjust' . extract) $ runCofreeT cf
-
 
 data Symbols (symbols :: [* -> *]) a where
   Symbol :: Functor symbol => symbol a -> Symbols (symbol ': symbols) a
@@ -241,35 +240,56 @@ instance Pair (Store st) (State st) where
 get = liftF (inj (Get id))
 put st = liftF (inj (Put st ()))
 
-wrapComp :: Comonad w => (w a -> Instructions xs (w a)) -> (w a -> CofreeT (Instructions xs) w a)
-wrapComp is = coiterT is
+insert :: (Functor f, Admits Identity is)
+       => (a -> f a) -> Instructions is a -> Instructions (f ': is) a
+insert f is = let i = runIdentity $ pull is in Instruction (f i) is
 
-unwrapComp :: Comonad w => CofreeT (Instructions xs) w a -> Instructions xs (CofreeT (Instructions xs) w a)
-unwrapComp = unwrap
 
-extendComp :: Comonad w
-           => (w (CofreeF (Instructions f) a (CofreeT (Instructions f) w a))
-               -> CofreeF (Instructions g) b (CofreeT (Instructions g) w b))
-           -> CofreeT (Instructions f) w a -> CofreeT (Instructions g) w b
-extendComp f = CofreeT . extend f . runCofreeT
 
-extendComp' :: Comonad w
-            => (a -> b)
-            -> (Instructions f (CofreeT (Instructions f) w a) -> Instructions g (CofreeT (Instructions g) w b))
-            -> w (CofreeF (Instructions f) a (CofreeT (Instructions f) w a))
-            ->    CofreeF (Instructions g) b (CofreeT (Instructions g) w b)
-extendComp' conv f wcf =
-  let (a :< cfwa) = extract wcf
-  in (conv a) :< (f cfwa)
+-- wrap :: Build xs w a
+-- wrap is = coiterT is
 
-convertComp :: Comonad w
-  => (Instructions f (CofreeT (Instructions f) w a) -> Instructions g (CofreeT (Instructions g) w a))
-  -> CofreeT (Instructions f) w a -> CofreeT (Instructions g) w a
-convertComp f = extendComp (extendComp' id f)
+-- headI :: Instructions (x ': xs) a -> x a
+-- headI (Instruction xa _) = xa
 
-x :: (Instructions f                             a  -> Instructions g                             a )
-  -> (Instructions f (CofreeT (Instructions f) w a) -> Instructions g (CofreeT (Instructions g) w a))
-x f = _
+-- unwrapComp :: Comonad w => CofreeT (Instructions xs) w a -> Instructions xs (CofreeT (Instructions xs) w a)
+-- unwrapComp = unwrap
+
+-- extendComp :: Comonad w
+--            => (w (CofreeF (Instructions f) a (CofreeT (Instructions f) w a))
+--                -> CofreeF (Instructions g) b (CofreeT (Instructions g) w b))
+--            -> CofreeT (Instructions f) w a -> CofreeT (Instructions g) w b
+-- extendComp f = CofreeT . extend f . runCofreeT
+
+-- extendComp' :: Comonad w
+--             => (a -> b)
+--             -> (Instructions f (CofreeT (Instructions f) w a) -> Instructions g (CofreeT (Instructions g) w b))
+--             -> w (CofreeF (Instructions f) a (CofreeT (Instructions f) w a))
+--             ->    CofreeF (Instructions g) b (CofreeT (Instructions g) w b)
+-- extendComp' conv f wcf =
+--   let (a :< cfwa) = extract wcf
+--   in (conv a) :< (f cfwa)
+
+-- convertComp :: Comonad w
+--   => (Instructions f (CofreeT (Instructions f) w a) -> Instructions g (CofreeT (Instructions g) w a))
+--   -> CofreeT (Instructions f) w a -> CofreeT (Instructions g) w a
+-- convertComp f = extendComp (extendComp' id f)
+
+{-
+y is what we're working towards - the modification of a set of instructions lifted to the modification
+of a computer
+
+y + an empty computer will allow a compositional build-up of computers.
+-}
+
+-- x :: (Instructions f                             a  -> Instructions g                             a )
+--   -> (Instructions f (CofreeT (Instructions f) w a) -> Instructions g (CofreeT (Instructions g) w a))
+-- x f = _
+
+-- y :: (Instructions f a -> Instructions g a)
+--   -> CofreeT (Instructions f) w a
+--   -> CofreeT (Instructions g) w a
+-- y f c = _
 
 -- main = do
 
