@@ -41,6 +41,7 @@ import qualified Unsafe.Coerce as UNSAFE
 
 import           Data.Bifunctor
 import           Data.Coerce
+import           Data.Constraint
 import           Data.Functor.Identity
 import           Data.Proxy
 import           Data.Type.Equality
@@ -50,7 +51,32 @@ data Index (n :: Nat) = Index
 type family IndexOf (f :: * -> *) fs :: Nat where
   IndexOf f (f ': fs) = Z
   IndexOf f (any ': fs) = S (IndexOf f fs)
+type family Or (x :: Bool) (y :: Bool) :: Bool where
+  Or 'True x = 'True
+  Or x 'True = 'True
+  Or x y = 'False
+type family Is (x :: k) (y :: k) where
+  Is x x = 'True
+  Is x y = 'False
+type family Elem (x :: k) (xs :: [k]) :: Bool where
+  Elem x '[] = 'False
+  Elem x (y ': z) = Or (Is x y) (Elem x z)
+type family Indexes (x :: k) (xs :: [k]) (n :: Nat) :: Bool where
+  Indexes x (x ': ys) Z = 'True
+  Indexes x (y ': ys) (S n) = Indexes x ys n
+carriesElem :: Proxy x -> Proxy xs -> Proxy b -> (Elem x xs ~ 'True) :- (Elem x (b ': xs) ~ 'True)
+carriesElem p1 p2 p3 = Sub Dict
+carriesIndex :: Proxy x -> Proxy xs -> Proxy b -> (Indexes x xs n ~ 'True) :- (Indexes x (b ': xs) (S n) ~ 'True)
+carriesIndex p1 p2 p3 = Sub Dict
+carriesIndexElem :: Proxy x -> Proxy xs -> Proxy b
+                 ->    (Elem x xs        ~ 'True,Indexes x       xs     n  ~ 'True)
+                    :- (Elem x (b ': xs) ~ 'True,Indexes x (b ': xs) (S n) ~ 'True)
+carriesIndexElem p1 p2 p3 = Sub Dict
+{-
+(\\) :: a => (b => r) -> (a :- b) -> r
 
+Given that a :- b, derive something that needs a context b, using the context a
+-}
 
 data Instructions (is :: [* -> *]) a where
   Empty :: Instructions '[] a
@@ -215,10 +241,41 @@ instance Pair (Store st) (State st) where
 get = liftF (inj (Get id))
 put st = liftF (inj (Put st ()))
 
-main = do
-  let x = single $ \wa -> Store (1 :: Int,wa) (const (_ wa))
-      y = runIdentity $ delta (coiterT x (Identity (return ()))) get
-  return ()
+wrapComp :: Comonad w => (w a -> Instructions xs (w a)) -> (w a -> CofreeT (Instructions xs) w a)
+wrapComp is = coiterT is
+
+unwrapComp :: Comonad w => CofreeT (Instructions xs) w a -> Instructions xs (CofreeT (Instructions xs) w a)
+unwrapComp = unwrap
+
+extendComp :: Comonad w
+           => (w (CofreeF (Instructions f) a (CofreeT (Instructions f) w a))
+               -> CofreeF (Instructions g) b (CofreeT (Instructions g) w b))
+           -> CofreeT (Instructions f) w a -> CofreeT (Instructions g) w b
+extendComp f = CofreeT . extend f . runCofreeT
+
+extendComp' :: Comonad w
+            => (a -> b)
+            -> (Instructions f (CofreeT (Instructions f) w a) -> Instructions g (CofreeT (Instructions g) w b))
+            -> w (CofreeF (Instructions f) a (CofreeT (Instructions f) w a))
+            ->    CofreeF (Instructions g) b (CofreeT (Instructions g) w b)
+extendComp' conv f wcf =
+  let (a :< cfwa) = extract wcf
+  in (conv a) :< (f cfwa)
+
+convertComp :: Comonad w
+  => (Instructions f (CofreeT (Instructions f) w a) -> Instructions g (CofreeT (Instructions g) w a))
+  -> CofreeT (Instructions f) w a -> CofreeT (Instructions g) w a
+convertComp f = extendComp (extendComp' id f)
+
+x :: (Instructions f                             a  -> Instructions g                             a )
+  -> (Instructions f (CofreeT (Instructions f) w a) -> Instructions g (CofreeT (Instructions g) w a))
+x f = _
+
+-- main = do
+
+--   let x = computer $ \a -> Store (1 :: Int,a) (_ $ a)
+--       y = runIdentity $ delta _ get
+--   return ()
 
 --------------------------------------------------------------------------------
 -- Pattern synonyms for working with free monads
