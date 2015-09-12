@@ -48,30 +48,40 @@ import           Data.Type.Equality
 
 data Nat = Z | S Nat
 data Index (n :: Nat) = Index
-type family IndexOf (f :: * -> *) fs :: Nat where
+
+type family Foldr (f :: k -> k' -> k') (b :: k') (as :: [k]) :: k' where
+  Foldr f b '[] = b
+  Foldr f b (a ': as') = f b (Foldr f b as')
+
+type family Foldl (b :: k') (as :: [k]) (f :: k' -> k -> k') :: k' where
+  Foldl b '[] f = b
+  Foldl b (a ': as') f = Foldl (f b a) as' f
+
+type family IndexOf (f :: k) (fs :: [k]) :: Nat where
   IndexOf f (f ': fs) = Z
   IndexOf f (any ': fs) = S (IndexOf f fs)
+
 type family Or (x :: Bool) (y :: Bool) :: Bool where
   Or 'True x = 'True
   Or x 'True = 'True
   Or x y = 'False
-type family Is (x :: k) (y :: k) where
+
+type family Is (x :: k) (y :: k) :: Bool where
   Is x x = 'True
   Is x y = 'False
-type family Elem (x :: k) (xs :: [k]) :: Bool where
-  Elem x '[] = 'False
-  Elem x (y ': z) = Or (Is x y) (Elem x z)
+
 type family Indexes (x :: k) (xs :: [k]) (n :: Nat) :: Bool where
   Indexes x (x ': ys) Z = 'True
   Indexes x (y ': ys) (S n) = Indexes x ys n
-carriesElem :: Proxy x -> Proxy xs -> Proxy b -> (Elem x xs ~ 'True) :- (Elem x (b ': xs) ~ 'True)
-carriesElem p1 p2 p3 = Sub Dict
-carriesIndex :: Proxy x -> Proxy xs -> Proxy b -> (Indexes x xs n ~ 'True) :- (Indexes x (b ': xs) (S n) ~ 'True)
-carriesIndex p1 p2 p3 = Sub Dict
-carriesIndexElem :: Proxy x -> Proxy xs -> Proxy b
-                 ->    (Elem x xs        ~ 'True,Indexes x       xs     n  ~ 'True)
-                    :- (Elem x (b ': xs) ~ 'True,Indexes x (b ': xs) (S n) ~ 'True)
-carriesIndexElem p1 p2 p3 = Sub Dict
+
+-- carriesElem :: Proxy x -> Proxy xs -> Proxy b -> (Elem x xs ~ 'True) :- (Elem x (b ': xs) ~ 'True)
+-- carriesElem p1 p2 p3 = Sub Dict
+-- carriesIndex :: Proxy x -> Proxy xs -> Proxy b -> (Indexes x xs n ~ 'True) :- (Indexes x (b ': xs) (S n) ~ 'True)
+-- carriesIndex p1 p2 p3 = Sub Dict
+-- carriesIndexElem :: Proxy x -> Proxy xs -> Proxy b
+--                  ->    (Elem x xs        ~ 'True,Indexes x       xs     n  ~ 'True)
+--                     :- (Elem x (b ': xs) ~ 'True,Indexes x (b ': xs) (S n) ~ 'True)
+-- carriesIndexElem p1 p2 p3 = Sub Dict
 {-
 (\\) :: a => (b => r) -> (a :- b) -> r
 
@@ -120,12 +130,54 @@ instance (xs ~ (x ': xs')) => Admits' x xs Z where
 instance (xs ~ (x' ': xs'),Admits' x xs' (IndexOf x xs')) => Admits' x xs (S n) where
   pull' _ (Instruction _ xs') = pull' (Index :: Index (IndexOf x xs')) xs'
   push' _ xa (Instruction xb xs') = Instruction xb (push' (Index :: Index (IndexOf x xs')) xa xs')
+
+class Setish (xs :: [* -> *])
+instance Setish '[]
+instance (NotIn x xs ~ 'True,Setish xs) => Setish (x ': xs)
+
+type family NotIn (x :: * -> *) (xs :: [* -> *]) :: Bool where
+  NotIn x '[] = 'True
+  NotIn x (x ': xs') = 'False
+  NotIn x (y ': xs') = NotIn x xs'
+
+-- denies permits denying an instruction table a specific instruction
+class Denies (x :: * -> *) (xs :: [* -> *])
+instance Denies x '[]
+instance (Denies x ys,Not x y ~ 'True) => Denies x (y ': ys)
+type family Not (x :: k) (y :: k) :: Bool where
+  Not x x = 'False
+  Not x y = 'True
+
+-- rebuild permits reordering of an instruction table
 class Rebuild (xs :: [* -> *]) (ys :: [* -> *]) where
   rebuild :: Instructions xs a -> Instructions ys a
 instance Rebuild xs '[] where
   rebuild _ = Empty
 instance (Functor y,Admits' y xs (IndexOf y xs),Rebuild xs ys') => Rebuild xs (y ': ys') where
   rebuild is = Instruction (pull is) (rebuild is)
+
+class Draw (xs :: [* -> *]) (ys :: [* -> *]) where
+  draw :: Instructions ys a -> Instructions xs a
+instance Draw '[] ys where
+  draw _ = Empty
+instance (Functor x,Admits x ys,Draw xs ys) => Draw (x ': xs) ys where
+  draw ys = Instruction (pull ys) (draw ys)
+
+view :: Instructions (x ': xs) a -> (x a,Instructions xs a)
+view (Instruction xa xs) = (xa,xs)
+
+class Merge (xs :: [* -> *]) (ys :: [* -> *]) where
+  merge :: Instructions xs a -> Instructions ys a -> Instructions ys a
+instance Merge '[] ys where
+  merge _ ys = ys
+instance (Admits' x ys (IndexOf x ys),Merge xs ys) => Merge (x ': xs) ys where
+  merge xs ys =
+    let (x,xs') = view xs
+    in merge xs' (push x ys)
+
+
+
+
 
 {-# INLINE alter #-}
 alter :: (Admits' x xs (IndexOf x xs), Admits' x1 xs (IndexOf x1 xs))
@@ -240,11 +292,44 @@ instance Pair (Store st) (State st) where
 get = liftF (inj (Get id))
 put st = liftF (inj (Put st ()))
 
-insert :: (Functor f, Admits Identity is)
-       => (a -> f a) -> Instructions is a -> Instructions (f ': is) a
-insert f is = let i = runIdentity $ pull is in Instruction (f i) is
+-- we can push a functor into an instruction table if the instruction table contains
+-- the Identity functor
+-- insert :: (Functor f, Admits Identity is)
+--        => (a -> f a) -> Instructions is a -> Instructions (f ': is) a
+-- insert f is = let i = runIdentity $ pull is in Instruction (f i) is
 
+-- insertWith :: (Functor f,Admits Identity is,Draw xs is,Merge xs is)
+--            => (Instructions xs a -> a -> Instructions (f ': xs) a) -> Instructions is a -> Instructions (f ': is) a
+-- insertWith iafa is =
+--   let xs = draw is
+--       a = runIdentity $ pull is
+--       is' = iafa xs a
+--       (f,xs') = view is'
+--   in Instruction f (merge xs' is)
 
+-- return' :: a -> Instructions '[Identity] a
+-- return' = none
+
+-- bind' :: Admits Identity xs => Instructions xs a -> (a -> Instructions ys b) -> Instructions ys b
+-- bind' a f = _
+
+-- extract' :: Admits Identity xs => Instructions xs a -> a
+-- extract' = runIdentity . pull
+
+-- extend' :: (Instructions _ a -> b) -> Instructions _ a -> Instructions _ b
+-- extend' f a = _
+
+-- duplicate' :: Instructions _ a -> Instructions _ (Instructions _ a)
+-- duplicate' _ = _
+
+-- join' :: Instructions _ (Instructions _ a) -> Instructions _ a
+-- join' _ = _
+
+-- ap' :: Instructions _ (a -> b) -> Instructions _ a -> Instructions _ b
+-- ap' _ _ = _
+
+-- close :: (Denies Identity ys,ys ~ (Diff xs '[Identity])) => Instructions xs a -> Instructions ys a
+-- close _ = _
 
 -- wrap :: Build xs w a
 -- wrap is = coiterT is
