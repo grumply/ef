@@ -46,16 +46,10 @@ import           Data.Functor.Identity
 import           Data.Proxy
 import           Data.Type.Equality
 
+data Hole = Hole
+
 data Nat = Z | S Nat
 data Index (n :: Nat) = Index
-
-type family Foldr (f :: k -> k' -> k') (b :: k') (as :: [k]) :: k' where
-  Foldr f b '[] = b
-  Foldr f b (a ': as') = f b (Foldr f b as')
-
-type family Foldl (b :: k') (as :: [k]) (f :: k' -> k -> k') :: k' where
-  Foldl b '[] f = b
-  Foldl b (a ': as') f = Foldl (f b a) as' f
 
 type family IndexOf (f :: k) (fs :: [k]) :: Nat where
   IndexOf f (f ': fs) = Z
@@ -175,36 +169,18 @@ instance (Admits' x ys (IndexOf x ys),Merge xs ys) => Merge (x ': xs) ys where
     let (x,xs') = view xs
     in merge xs' (push x ys)
 
+type family Without (x :: * -> *) (xs :: [* -> *]) :: [* -> *] where
+  Without x '[] = '[]
+  Without x (x ': xs) = xs
+  Without x (x' ': xs) = x ': Without x xs
+remove :: (Draw ys xs,ys ~ Without x xs) => Proxy (x :: * -> *) -> Instructions xs a -> Instructions ys a
+remove _ = draw
 
-
-
-
-{-# INLINE alter #-}
-alter :: (Admits' x xs (IndexOf x xs), Admits' x1 xs (IndexOf x1 xs))
-      => Instructions xs a -> (x1 a -> x a) -> Instructions xs a
-alter is f = flip push is $ f $ pull is
-
-{-# INLINE alter1 #-}
-alter1 :: (Admits' x xs (IndexOf x xs)) => Instructions xs a -> (x a -> x a) -> Instructions xs a
-alter1 = alter
-
-{-# INLINE adjust #-}
-adjust :: (Comonad w, Admits' x1 xs (IndexOf x1 xs), Admits' x xs (IndexOf x xs))
-       => CofreeT (Instructions xs) w a
-       -> (x1 (CofreeT (Instructions xs) w a) -> x (CofreeT (Instructions xs) w a))
-       -> CofreeT (Instructions xs) w a
-adjust cf f =
-  let adjust' (a :< fb) = a :< ((flip alter f) fb)
-  in CofreeT $ extend (adjust' . extract) $ runCofreeT cf
-
-{-# INLINE adjust1 #-}
-adjust1 :: (Comonad w, Admits' x xs (IndexOf x xs))
-       => CofreeT (Instructions xs) w a
-       -> (x (CofreeT (Instructions xs) w a) -> x (CofreeT (Instructions xs) w a))
-       -> CofreeT (Instructions xs) w a
-adjust1 cf f =
-  let adjust' (a :< fb) = a :< ((flip alter1 f) fb)
-  in CofreeT $ extend (adjust' . extract) $ runCofreeT cf
+type family Diff (xs :: [* -> *]) (ys :: [* -> *]) where
+  Diff xs '[] = xs
+  Diff xs (y ': ys') = Diff (Without y xs) ys'
+diff :: (Draw ys xs,ys ~ Diff xs xs') => Proxy (xs' :: [* -> *]) -> Instructions xs a -> Instructions ys a
+diff _ = draw
 
 data Symbols (symbols :: [* -> *]) a where
   Symbol :: Functor symbol => symbol a -> Symbols (symbol ': symbols) a
@@ -292,89 +268,87 @@ instance Pair (Store st) (State st) where
 get = liftF (inj (Get id))
 put st = liftF (inj (Put st ()))
 
--- we can push a functor into an instruction table if the instruction table contains
--- the Identity functor
--- insert :: (Functor f, Admits Identity is)
---        => (a -> f a) -> Instructions is a -> Instructions (f ': is) a
--- insert f is = let i = runIdentity $ pull is in Instruction (f i) is
 
--- insertWith :: (Functor f,Admits Identity is,Draw xs is,Merge xs is)
---            => (Instructions xs a -> a -> Instructions (f ': xs) a) -> Instructions is a -> Instructions (f ': is) a
--- insertWith iafa is =
---   let xs = draw is
---       a = runIdentity $ pull is
---       is' = iafa xs a
---       (f,xs') = view is'
---   in Instruction f (merge xs' is)
+--------------------------------------------------------------------------------
 
--- return' :: a -> Instructions '[Identity] a
--- return' = none
+insert :: (Functor f, Admits Identity is)
+       => (a -> f a) -> Instructions is a -> Instructions (f ': is) a
+insert f is = let i = runIdentity $ pull is in Instruction (f i) is
 
--- bind' :: Admits Identity xs => Instructions xs a -> (a -> Instructions ys b) -> Instructions ys b
--- bind' a f = _
+insertWith :: (Functor f,Admits Identity is,Draw xs is,Merge xs is)
+           => (Instructions xs a -> a -> Instructions (f ': xs) a) -> Instructions is a -> Instructions (f ': is) a
+insertWith iafa is =
+  let xs = draw is
+      a = runIdentity $ pull is
+      is' = iafa xs a
+      (f,xs') = view is'
+  in Instruction f (merge xs' is)
 
--- extract' :: Admits Identity xs => Instructions xs a -> a
--- extract' = runIdentity . pull
+return' :: a -> Instructions '[Identity] a
+return' = none
 
--- extend' :: (Instructions _ a -> b) -> Instructions _ a -> Instructions _ b
--- extend' f a = _
+bind' :: Admits Identity xs => Instructions xs a -> (a -> Instructions ys b) -> Instructions ys b
+bind' a f = f (extract' a)
 
--- duplicate' :: Instructions _ a -> Instructions _ (Instructions _ a)
--- duplicate' _ = _
+extract' :: Admits Identity xs => Instructions xs a -> a
+extract' = runIdentity . pull
 
--- join' :: Instructions _ (Instructions _ a) -> Instructions _ a
--- join' _ = _
+extend' :: (Instructions xs a -> b) -> Instructions xs a -> Instructions xs b
+extend' f a = fmap (const (f a)) a
 
--- ap' :: Instructions _ (a -> b) -> Instructions _ a -> Instructions _ b
--- ap' _ _ = _
+duplicate' :: Instructions xs a -> Instructions xs (Instructions xs a)
+duplicate' a = fmap (const a) a
 
--- close :: (Denies Identity ys,ys ~ (Diff xs '[Identity])) => Instructions xs a -> Instructions ys a
--- close _ = _
+join' :: Admits Identity xs => Instructions xs (Instructions xs a) -> Instructions xs a
+join' = fmap extract'
 
--- wrap :: Build xs w a
--- wrap is = coiterT is
+ap' :: Admits Identity xs => Instructions xs (a -> b) -> Instructions ys a -> Instructions ys b
+ap' ab a = fmap (extract' ab) a
 
--- headI :: Instructions (x ': xs) a -> x a
--- headI (Instruction xa _) = xa
+close :: ( ys ~ Without Identity xs, Draw ys xs, Denies Identity ys, Admits Identity xs
+         ) => Instructions xs a -> Instructions ys a
+close = remove (Proxy :: Proxy Identity)
 
--- unwrapComp :: Comonad w => CofreeT (Instructions xs) w a -> Instructions xs (CofreeT (Instructions xs) w a)
--- unwrapComp = unwrap
+{-# INLINE alterWith #-}
+alterWith :: (Admits x xs, Admits x' xs) => Instructions xs a -> (x' a -> x a) -> Instructions xs a
+alterWith is f = flip push is $ f $ pull is
 
--- extendComp :: Comonad w
---            => (w (CofreeF (Instructions f) a (CofreeT (Instructions f) w a))
---                -> CofreeF (Instructions g) b (CofreeT (Instructions g) w b))
---            -> CofreeT (Instructions f) w a -> CofreeT (Instructions g) w b
--- extendComp f = CofreeT . extend f . runCofreeT
+{-# INLINE alter1With #-}
+alter1With :: (Admits x xs) => Instructions xs a -> (x a -> x a) -> Instructions xs a
+alter1With = alterWith
 
--- extendComp' :: Comonad w
---             => (a -> b)
---             -> (Instructions f (CofreeT (Instructions f) w a) -> Instructions g (CofreeT (Instructions g) w b))
---             -> w (CofreeF (Instructions f) a (CofreeT (Instructions f) w a))
---             ->    CofreeF (Instructions g) b (CofreeT (Instructions g) w b)
--- extendComp' conv f wcf =
---   let (a :< cfwa) = extract wcf
---   in (conv a) :< (f cfwa)
+{-# INLINE adjust #-}
+adjust :: (Comonad w, Admits' x1 xs (IndexOf x1 xs), Admits' x xs (IndexOf x xs))
+       => CofreeT (Instructions xs) w a
+       -> (x1 (CofreeT (Instructions xs) w a) -> x (CofreeT (Instructions xs) w a))
+       -> CofreeT (Instructions xs) w a
+adjust cf f =
+  let adjust' (a :< fb) = a :< ((flip alterWith f) fb)
+  in CofreeT $ extend (adjust' . extract) $ runCofreeT cf
 
--- convertComp :: Comonad w
---   => (Instructions f (CofreeT (Instructions f) w a) -> Instructions g (CofreeT (Instructions g) w a))
---   -> CofreeT (Instructions f) w a -> CofreeT (Instructions g) w a
--- convertComp f = extendComp (extendComp' id f)
+{-# INLINE adjust1 #-}
+adjust1 :: (Comonad w, Admits' x xs (IndexOf x xs))
+       => CofreeT (Instructions xs) w a
+       -> (x (CofreeT (Instructions xs) w a) -> x (CofreeT (Instructions xs) w a))
+       -> CofreeT (Instructions xs) w a
+adjust1 cf f =
+  let adjust' (a :< fb) = a :< ((flip alter1With f) fb)
+  in CofreeT $ extend (adjust' . extract) $ runCofreeT cf
 
-{-
-y is what we're working towards - the modification of a set of instructions lifted to the modification
-of a computer
 
-y + an empty computer will allow a compositional build-up of computers.
--}
+-- convert :: Comonad w
+--         => (forall a.
+--                Instructions f a
+--             -> Instructions g a
+--            )
+--         -> (forall b.
+--                Instructions f (CofreeT (Instructions f) w b)
+--             -> Instructions g (CofreeT (Instructions g) w b)
+--            )
+-- convert f is =
+--   let g = upd f
+--   in _ $ is
 
--- x :: (Instructions f                             a  -> Instructions g                             a )
---   -> (Instructions f (CofreeT (Instructions f) w a) -> Instructions g (CofreeT (Instructions g) w a))
--- x f = _
-
--- y :: (Instructions f a -> Instructions g a)
---   -> CofreeT (Instructions f) w a
---   -> CofreeT (Instructions g) w a
--- y f c = _
 
 -- main = do
 
