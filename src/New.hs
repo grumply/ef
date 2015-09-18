@@ -335,26 +335,44 @@ adjust1 cf f =
   let adjust' (a :< fb) = a :< ((flip alter1With f) fb)
   in CofreeT $ extend (adjust' . extract) $ runCofreeT cf
 
+buildWith :: (Comonad w,Monad m)
+          => (m a -> Instructions f (m a))
+          -> (w (m a) -> CofreeT (Instructions f) w (m a))
+buildWith f = coiterT (\wma -> fmap (const wma) $ f (extract wma))
 
--- convert :: Comonad w
---         => (forall a.
---                Instructions f a
---             -> Instructions g a
---            )
---         -> (forall b.
---                Instructions f (CofreeT (Instructions f) w b)
---             -> Instructions g (CofreeT (Instructions g) w b)
---            )
--- convert f is =
---   let g = upd f
---   in _ $ is
+modifyWith :: (Comonad w,Monad m)
+      => (m a -> m b)
+      -> (CofreeT (Instructions f) w (m a) -> CofreeT (Instructions f) w (m b))
+modifyWith f = CofreeT . f' . runCofreeT
+  where
+    f' = extend $ \cf ->
+           let (ma :< as) = extract cf
+           in (f ma) :< (fmap (modifyWith f) as)
 
+something :: (Comonad w,Monad m)
+  => (w (m a) -> Instructions g (w (m a)))
+  -> (CofreeT (Instructions f) w (m a) -> CofreeT (Instructions g) w (m a))
+something f = (\wcf ->
+         let a :< as = extract wcf
+         in coiterT f (extend (const a) wcf)
+      ) . runCofreeT
 
--- main = do
+-- the only way to implement this one is to rebuild the CofreeT; not sure if I
+-- maintained invariants. The idea is to use the above bind' and return' to
+-- build and modify a transformation of an instruction table and then lift
+-- that transformation into a function over computers.
+somethingElse :: (Comonad w,Monad m)
+  => (Instructions f (m a) -> Instructions g (m a))
+  -> (CofreeT (Instructions f) w (m a) -> CofreeT (Instructions g) w (m a))
+somethingElse f = (\wcf ->
+         let a :< as = extract wcf
+         in coiterT (\wma -> fmap (\ma -> extend (const ma) wma)
+                             $ f
+                             $ fmap (headF . extract . runCofreeT)
+                             $ as
+                    ) (extend (const a) wcf)
+      ) . runCofreeT
 
---   let x = computer $ \a -> Store (1 :: Int,a) (_ $ a)
---       y = runIdentity $ delta _ get
---   return ()
 
 --------------------------------------------------------------------------------
 -- Pattern synonyms for working with free monads
