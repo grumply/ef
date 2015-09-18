@@ -335,6 +335,19 @@ adjust1 cf f =
   let adjust' (a :< fb) = a :< ((flip alter1With f) fb)
   in CofreeT $ extend (adjust' . extract) $ runCofreeT cf
 
+{-
+Functionality desired:
+Build, from an empty instruction table (containing only the Identity functor).
+Modify an instruction table. Should the modification be:
+  (Instructions f a -> Instructions g a)
+  (Instructions f a -> Instructions g b)
+  (CofreeT (Instructions f) w (m a) -> CofreeT (Instructions g) w (m b))
+  (CofreeT (Instructions f) w (m a) -> CofreeT (Instructions g) w (m a))
+ The first seems simplest.
+
+
+
+-}
 
 -- convert :: Comonad w
 --         => (forall a.
