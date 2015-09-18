@@ -373,6 +373,20 @@ somethingElse f = (\wcf ->
                     ) (extend (const a) wcf)
       ) . runCofreeT
 
+{-
+Functionality desired:
+Build, from an empty instruction table (containing only the Identity functor).
+Modify an instruction table. Should the modification be:
+  (Instructions f a -> Instructions g a)
+  (Instructions f a -> Instructions g b)
+  (CofreeT (Instructions f) w (m a) -> CofreeT (Instructions g) w (m b))
+  (CofreeT (Instructions f) w (m a) -> CofreeT (Instructions g) w (m a))
+ The first seems simplest.
+
+
+
+-}
+
 
 --------------------------------------------------------------------------------
 -- Pattern synonyms for working with free monads
