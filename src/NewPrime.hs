@@ -83,12 +83,14 @@ instance Functor (Interpretation f) where
 type Computer fs m
   = forall x. Interpretation (Instructions fs) (m (Instructions fs x) -> m (Instructions fs x))
 
-hoistComputer :: Functor f
-              => (forall x. Instructions fs x -> Instructions gs x)
-              -> Computer fs m
-              -> Computer gs m
-hoistComputer f (Interpretation ba0 b0 rest0)
-  = Interpretation _ _ (_ (hoistComputer f) rest0)
+hoistComputer :: forall fs gs m.
+                 (forall x. m (Instructions fs x) -> m (Instructions gs x))
+              -> (forall x.
+                      Interpretation (Instructions fs) (m (Instructions fs x) -> m (Instructions fs x))
+                   -> Interpretation (Instructions gs) (m (Instructions gs x) -> m (Instructions gs x))
+                 )
+hoistComputer f
+  = \(Interpretation ba0 b0 rest0) -> Interpretation _ _ (hoistComputer f rest0)
 
 
 
