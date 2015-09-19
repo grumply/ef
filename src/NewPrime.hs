@@ -25,6 +25,11 @@ module Turing where
 import Data.Functor.Identity
 import Data.Proxy
 
+import Control.Comonad
+import Control.Comonad.Cofree
+
+data Hole = Hole
+
 data Get st k = Get (st -> k)
 get :: Allows (Get a) xs => Tape xs a
 get = symbol (Get id)
@@ -34,6 +39,58 @@ put a = symbol (Put a ())
 
 data CoGet st k = CoGet st k
 data CoPut st k = CoPut (st -> k)
+
+
+{-
+
+I chose (m (Instructions fs x) -> m (Instructions fs x)) because:
+
+  1. a functorial transformation may be lifted to this form:
+        (Functor m      =>   (a   ->   a) -> (m a -> m a)) : fmap
+  2. an applicative transformation may be lifted to this form:
+        (Applicative m  => m (a   ->   a) -> (m a -> m a)) : (<*>)
+  3. a comonadic transformation may be lifted to this form:
+        (Comonad m      =>   (m a ->   a) -> (m a -> m a)) : (<<=)
+  4. a monadic transformation may be lifted to this form:
+        (Monad m        =>   (a   -> m a) -> (m a -> m a)) : (>>=)
+
+All using the major operators from each of the corresponding classes.
+Surprisingly elegant, actually.
+-}
+
+{-
+section :: Comonad f => f a -> Cofree f a
+coiter :: Functor f => (a -> f a) -> a -> Cofree f a
+unfold :: Functor f => (b -> (a, f b)) -> b -> Cofree f a
+unfoldM :: (Traversable f, Monad m) => (b -> m (a, f b)) -> b -> m (Cofree f a)
+hoistCofree :: Functor f => (forall x. f x -> g x) -> Cofree f a -> Cofree g a
+hoistCofree f (x :< y) = x :< f (hoistCofree f <$> y)
+
+-}
+
+-- coGet :: Denies (CoGet st) fs
+--       => st -> Computer fs m -> Computer (CoGet st ': fs) m
+-- coGet st = hoistComputer (\is -> undefined)
+
+-- coPut :: (Denies (CoPut st) fs,Allows (CoGet st) fs)
+--       => Computer fs m -> Computer (CoPut st ': fs) m
+-- coPut = hoistComputer (\is -> undefined)
+
+data Interpretation f a where
+  Interpretation :: (b -> a) -> f b -> Interpretation fs a -> Interpretation fs a
+instance Functor (Interpretation f) where
+  fmap f (Interpretation ba b cs) = Interpretation (f . ba) b (fmap f cs)
+type Computer fs m
+  = forall x. Interpretation (Instructions fs) (m (Instructions fs x) -> m (Instructions fs x))
+
+hoistComputer :: Functor f
+              => (forall x. Instructions fs x -> Instructions gs x)
+              -> Computer fs m
+              -> Computer gs m
+hoistComputer f (Interpretation ba0 b0 rest0)
+  = Interpretation _ _ (_ (hoistComputer f) rest0)
+
+
 
 
 data Nat = Z | S Nat
@@ -122,10 +179,20 @@ sub _ = draw
 close :: (Admits Identity fs, Denies Identity fs', Draw fs' fs) => Instructions fs a -> Instructions fs' a
 close = sub (Proxy :: Proxy Identity)
 
-data Computer fs a where
-  (:<) :: a -> Instructions fs (Computer fs a) -> Computer fs a
-assemble :: Instructions fs a -> (forall x. Computer fs (Instructions fs x -> Instructions fs x))
-assemble f = id :< fmap (const (assemble f)) f
+
+{-
+data FEFree r a where
+  Pure :: a → FEFree r a
+  Impure :: Union r x → (x → FEFree r a) → FEFree r a
+-}
+
+
+-- consider this type for computer as well:
+-- type Computer fs gs w m a
+--   = forall x. CofreeT (Instructions fs) w
+--                 (m (Instructions fs x -> Instructions fs x)
+--                 ,FreeT (Symbols gs) m a)
+
 
 
 data Symbols (symbols :: [* -> *]) a where
@@ -154,20 +221,21 @@ instance Permits '[] ys
 instance (Allows x ys,Permits xs ys) => Permits (x ': xs) ys
 
 
-data Tape fs a where
-  Result :: a -> Tape fs a
-  Step :: Symbols fs (Tape fs a) -> Tape fs a
+data Tape (fs :: [* -> *]) a where
+  Result :: (b -> a) -> b -> Tape fs a
+  Step :: Symbols fs x -> (x -> Tape fs a) -> Tape fs a
 instance Functor (Tape fs) where
-  fmap f (Result a) = Result (f a)
-  fmap f (Step p) = Step (fmap (fmap f) p)
+  fmap f (Result ba b) = Result (f . ba) b
+  fmap f (Step syms g) = Step syms (fmap (fmap f) g)
 instance Applicative (Tape fs) where
-  pure = Result
-  (Result ab) <*> (Result a) = Result (ab a)
-  (Result ab) <*> (Step pth) = Step (fmap (fmap ab) pth)
-  (Step pth)  <*> step       = Step (fmap (<*> step) pth)
+  pure = Result id
+  (Result ba b) <*> (Result ba' b') = Result id ((ba b) (ba' b'))
+  (Result ba b) <*> (Step syms g) = Step syms (fmap (fmap (ba b)) g)
+  (Step syms g) <*> step = Step syms (fmap (<*> step) g)
 instance Monad (Tape fs) where
   return = pure
-  (Result a) >>= f = f a
-  (Step pth) >>= f = Step (fmap (>>= f) pth)
+  (Result ba b) >>= f = f (ba b)
+  (Step syms g) >>= f = Step syms (fmap (>>= f) g)
+
 symbol :: (Allows x xs) => x a -> Tape xs a
-symbol xa = Step (fmap return (inj xa))
+symbol xa = Step (inj xa) (Result id)
