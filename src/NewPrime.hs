@@ -25,38 +25,16 @@ module Turing where
 import Data.Functor.Identity
 import Data.Proxy
 
+import Data.Bifunctor
+import Data.Functor
+import Data.Monoid
+
+import Control.Applicative
+import Control.Category
 import Control.Comonad
-import Control.Comonad.Cofree
+import Control.Monad
 
-data Hole = Hole
-
-data Get st k = Get (st -> k)
-get :: Allows (Get a) xs => Tape xs a
-get = symbol (Get id)
-data Put st k = Put st k
-put :: Allows (Put a) xs => a -> Tape xs ()
-put a = symbol (Put a ())
-
-data CoGet st k = CoGet st k
-data CoPut st k = CoPut (st -> k)
-
-
-{-
-
-I chose (m (Instructions fs x) -> m (Instructions fs x)) because:
-
-  1. a functorial transformation may be lifted to this form:
-        (Functor m      =>   (a   ->   a) -> (m a -> m a)) : fmap
-  2. an applicative transformation may be lifted to this form:
-        (Applicative m  => m (a   ->   a) -> (m a -> m a)) : (<*>)
-  3. a comonadic transformation may be lifted to this form:
-        (Comonad m      =>   (m a ->   a) -> (m a -> m a)) : (<<=)
-  4. a monadic transformation may be lifted to this form:
-        (Monad m        =>   (a   -> m a) -> (m a -> m a)) : (>>=)
-
-All using the major operators from each of the corresponding classes.
-Surprisingly elegant, actually.
--}
+import Prelude hiding ((.),id)
 
 {-
 section :: Comonad f => f a -> Cofree f a
@@ -75,25 +53,6 @@ hoistCofree f (x :< y) = x :< f (hoistCofree f <$> y)
 -- coPut :: (Denies (CoPut st) fs,Allows (CoGet st) fs)
 --       => Computer fs m -> Computer (CoPut st ': fs) m
 -- coPut = hoistComputer (\is -> undefined)
-
-data Interpretation f a where
-  Interpretation :: (b -> a) -> f b -> Interpretation fs a -> Interpretation fs a
-instance Functor (Interpretation f) where
-  fmap f (Interpretation ba b cs) = Interpretation (f . ba) b (fmap f cs)
-type Computer fs m
-  = forall x. Interpretation (Instructions fs) (m (Instructions fs x) -> m (Instructions fs x))
-
-hoistComputer :: forall fs gs m.
-                 (forall x. m (Instructions fs x) -> m (Instructions gs x))
-              -> (forall x.
-                      Interpretation (Instructions fs) (m (Instructions fs x) -> m (Instructions fs x))
-                   -> Interpretation (Instructions gs) (m (Instructions gs x) -> m (Instructions gs x))
-                 )
-hoistComputer f
-  = \(Interpretation ba0 b0 rest0) -> Interpretation _ _ (hoistComputer f rest0)
-
-
-
 
 data Nat = Z | S Nat
 data Index (n :: Nat) = Index
@@ -222,22 +181,41 @@ class Permits xs ys
 instance Permits '[] ys
 instance (Allows x ys,Permits xs ys) => Permits (x ': xs) ys
 
-
 data Tape (fs :: [* -> *]) a where
   Result :: (b -> a) -> b -> Tape fs a
-  Step :: Symbols fs x -> (x -> Tape fs a) -> Tape fs a
+  Step :: (x -> Tape fs a) -> Symbols fs x -> Tape fs a
 instance Functor (Tape fs) where
   fmap f (Result ba b) = Result (f . ba) b
-  fmap f (Step syms g) = Step syms (fmap (fmap f) g)
+  fmap f (Step g syms) = Step (fmap f . g) syms
 instance Applicative (Tape fs) where
   pure = Result id
   (Result ba b) <*> (Result ba' b') = Result id ((ba b) (ba' b'))
-  (Result ba b) <*> (Step syms g) = Step syms (fmap (fmap (ba b)) g)
-  (Step syms g) <*> step = Step syms (fmap (<*> step) g)
+  (Result ba b) <*> (Step g syms) = Step (fmap (fmap (ba b)) g) syms
+  (Step g syms) <*> step = Step (fmap (<*> step) g) syms
 instance Monad (Tape fs) where
   return = pure
   (Result ba b) >>= f = f (ba b)
-  (Step syms g) >>= f = Step syms (fmap (>>= f) g)
+  (Step g syms) >>= f = Step (fmap (>>= f) g) syms
 
 symbol :: (Allows x xs) => x a -> Tape xs a
-symbol xa = Step (inj xa) (Result id)
+symbol = Step (Result id) . inj
+
+data Computer f m a where
+  Plan :: (b -> m a) -> b
+       -> (Instructions g (Computer g m b) -> Computer f m a)
+       -> Instructions g (Computer g m b)
+       -> Computer f m a
+
+
+-- data Get st k = Get (st -> k)
+-- get :: Allows (Get a) xs => Tape xs a
+-- get = symbol (Get id)
+-- data Put st k = Put st k
+-- put :: Allows (Put a) xs => a -> Tape xs ()
+-- put a = symbol (Put a ())
+
+-- data CoGet st k = CoGet st k
+-- data CoPut st k = CoPut (st -> k)
+
+-- coGet :: Admits Identity fs => st -> Computer fs m a -> Computer (CoGet st ': fs) m a
+-- coGet st = hoistComputer (_ (CoGet st _))
