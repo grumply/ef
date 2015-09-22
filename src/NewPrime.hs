@@ -20,6 +20,7 @@
 {-# LANGUAGE GADTs                     #-}
 {-# LANGUAGE StandaloneDeriving        #-}
 {-# LANGUAGE InstanceSigs              #-}
+{-# LANGUAGE DefaultSignatures #-}
 module Turing where
 
 import Data.Functor.Identity
@@ -29,10 +30,20 @@ import Data.Bifunctor
 import Data.Functor
 import Data.Monoid
 
+import Control.Arrow
 import Control.Applicative
 import Control.Category
 import Control.Comonad
+import Control.Comonad.Cofree
 import Control.Monad
+
+import Control.Comonad.Store.Class
+import Control.Comonad.Trans.Cofree
+import Control.Monad.Trans.Free
+
+import Control.Monad.Fix
+
+import Control.Monad.Trans
 
 import Prelude hiding ((.),id)
 
@@ -181,41 +192,159 @@ class Permits xs ys
 instance Permits '[] ys
 instance (Allows x ys,Permits xs ys) => Permits (x ': xs) ys
 
-data Tape (fs :: [* -> *]) a where
-  Result :: (b -> a) -> b -> Tape fs a
-  Step :: (x -> Tape fs a) -> Symbols fs x -> Tape fs a
-instance Functor (Tape fs) where
-  fmap f (Result ba b) = Result (f . ba) b
-  fmap f (Step g syms) = Step (fmap f . g) syms
-instance Applicative (Tape fs) where
-  pure = Result id
-  (Result ba b) <*> (Result ba' b') = Result id ((ba b) (ba' b'))
-  (Result ba b) <*> (Step g syms) = Step (fmap (fmap (ba b)) g) syms
-  (Step g syms) <*> step = Step (fmap (<*> step) g) syms
-instance Monad (Tape fs) where
-  return = pure
-  (Result ba b) >>= f = f (ba b)
-  (Step g syms) >>= f = Step (fmap (>>= f) g) syms
+symbol :: (MonadFree (Symbols xs) m,Allows x xs) => x a -> m a
+symbol = liftF . inj
 
-symbol :: (Allows x xs) => x a -> Tape xs a
-symbol = Step (Result id) . inj
+build :: Comonad w
+      => (w (Instructions fs a) -> Instructions fs (w (Instructions fs a)))
+      -> w (Instructions fs a)
+      -> Computer fs w a
+build = coiterT
 
-data Computer f m a where
-  Plan :: (b -> m a) -> b
-       -> (Instructions g (Computer g m b) -> Computer f m a)
-       -> Instructions g (Computer g m b)
-       -> Computer f m a
+embed :: (Comonad w,Functor f) => w (f a) -> f (w (f a))
+embed w = fmap (const w) (extract w)
+
+construct :: Comonad w => w (Instructions fs b) -> Computer fs w b
+construct = build embed
+
+deconstruct :: Comonad w => Computer fs w b -> w (Instructions fs b)
+deconstruct = extend (headF . extract) . runCofreeT
+
+decontextualize :: (Functor f,Comonad w) => f (w a) -> f a
+decontextualize = fmap extract
+
+look :: Comonad w => Computer fs w a -> w (Instructions fs (Computer fs w a))
+look = extend (tailF . extract) . runCofreeT
+
+inject :: (Comonad w, Admits f fs)
+       => (w (Instructions fs a) -> f (w (Instructions fs a)))
+       -> (w (Instructions fs a) -> Instructions fs (w (Instructions fs a)))
+inject f w = push (f w) (embed w)
+
+reconstruct :: (Comonad w, Admits x xs)
+        => (w (Instructions xs a) -> x a)
+        -> w (Instructions xs a)
+        -> w (Instructions xs a)
+reconstruct f w = fmap (push (f w)) w
+
+hm :: (Comonad w, Admits x xs, Transform (w (Instructions xs a1) -> w (Instructions xs a1)) w a)
+   => (w (Instructions xs a1) -> x a1) -> w a -> w a
+hm = trans . reconstruct
+
+untied :: Functor f => f a -> f a
+untied = fmap id
+
+tied :: (Functor f) => (f (f a -> a)) -> f a
+tied x = go where go = fmap ($ go) x
+
+refs :: (Functor f) => f (f (f a -> a) -> f a -> a) -> f a
+refs = tied . tied
+
+something :: (Applicative f, Comonad w) => w (f (f b -> b)) -> f (f b)
+something x = go where go = fmap (<*> go) (fmap extract $ embed x)
+
+somethingElse :: (Applicative f, Comonad w) => f (w (f (f b -> b))) -> f (f b)
+somethingElse x = go where go = fmap (<*> go) (fmap extract x)
+
+somethingOther :: (Applicative f, Monoid (f (f a))) => f (f (f a) -> f a) -> f (f (f a))
+somethingOther x = go where go = fmap (<*> go) (fmap embed x)
+
+other :: (Applicative f, Comonad w) => f (w (f (f b -> b))) -> f (f (f b))
+other = fmap something
 
 
--- data Get st k = Get (st -> k)
--- get :: Allows (Get a) xs => Tape xs a
--- get = symbol (Get id)
--- data Put st k = Put st k
--- put :: Allows (Put a) xs => a -> Tape xs ()
--- put a = symbol (Put a ())
+-- fix $ \xs -> fmap ($ xs) fs
 
--- data CoGet st k = CoGet st k
--- data CoPut st k = CoPut (st -> k)
+-- fix $ (<@> fs) . fmap (fmap . flip ($)) . duplicate
+
+
+y :: (Functor f, Comonad w) => f (w (f a -> a)) -> f a
+y = tied . decontextualize
+
+z :: (Functor f, Monoid (f (f a))) => (f (f a) -> f a) -> f (f a)
+z = tied . embed
+
+z'
+  :: Comonad w =>
+     ((w (Instructions fs a1) -> Computer fs w a1)
+      -> ((w (Instructions fs a1) -> Instructions fs (w (Instructions fs a1))) -> a)
+      -> a
+     )
+     -> (w (Instructions fs a1) -> Instructions fs (w (Instructions fs a1)))
+     -> a
+z' = tied . (. build)
+
+z'' :: (Comonad w, Admits' f fs (IndexOf f fs))
+    => ((w (Instructions fs a1) -> Instructions fs (w (Instructions fs a1)))
+         -> ((w (Instructions fs a1) -> f (w (Instructions fs a1))) -> a)
+         -> a
+       )
+       -> (w (Instructions fs a1) -> f (w (Instructions fs a1)))
+       -> a
+z'' = tied . (. inject)
+
+z'''
+  :: (Comonad w, Admits' x xs (IndexOf x xs)) =>
+     ((w (Instructions xs a1) -> w (Instructions xs a1))
+      -> ((w (Instructions xs a1) -> x a1) -> a) -> a)
+     -> (w (Instructions xs a1) -> x a1) -> a
+z''' = tied . (. reconstruct)
+
+data Get st k = Get (st -> k)
+get :: (MonadFree (Symbols xs) m, Allows' (Get a) xs (IndexOf (Get a) xs)) => m a
+get = symbol (Get id)
+data Put st k = Put st k
+put :: (MonadFree (Symbols xs) m,Allows' (Put st) xs (IndexOf (Put st) xs)) => st -> m ()
+put a = symbol (Put a ())
+
+data Store st k = Store st (st -> k)
+  deriving Functor
+
+type Computer fs w a = CofreeT (Instructions fs) w (Instructions fs a)
+-- type Computer fs w m a = CofreeT (Instructions fs) w (m (a,Instructions fs a))
+
+
+store :: (Comonad w, Admits' (Store st) fs (IndexOf (Store st) fs))
+      => st -> w (Instructions fs a) -> Store st (w (Instructions fs a))
+store st wa = Store st (\new -> _)
+
+x :: (Functor f, Transform (f a) f a) => f (f a -> a) -> f a -> f a
+x = trans . tied
+
+class Transform t c a where
+  trans :: t -> (c a -> c a)
+  default trans :: (c a -> c a) -> (c a -> c a)
+  trans = id
+instance Monoid (m a) => Transform (m a) m a where
+  trans = (<>)
+instance Alternative f => Transform (f a) f a where
+  trans = (<|>)
+instance Functor f     => Transform (a -> a) f a where
+  trans = fmap -- map
+instance Comonad w     => Transform (w a -> a) w a where
+  trans = (<<=) -- extend
+instance Monad m       => Transform (a -> m a) m a where
+  trans = (=<<) -- bind
+instance Applicative f => Transform (f (a -> a)) f a where
+  trans = (<*>) -- apply
+instance (Applicative f,Monad f) => Transform (f (a -> f a)) f a where
+  trans f fa = join (f <*> fa)
+instance (Applicative f,Comonad f) => Transform (f (f a -> a)) f a where
+  trans f fa = extract f <<= fa
+instance (Comonad w,Functor f) => Transform (w (f a -> f a)) f a where
+  trans = extract
+instance Category c    => Transform (c a a) (c a) a where
+  trans = (.) -- compose
+
+-- store :: (Comonad w,Admits (Store st) fs)
+--       => st
+--       -> (Instructions fs a -> w (m (Instructions fs a)))
+--       -> Store st (w (m (Instructions fs a)))
+-- store st wa = Store st (\st' -> extend (\wa' -> let fs = extract wa'
+--                                                     Store _ k = pull fs
+--                                                 in push (Store st' k) fs
+--                                        ) wa)
+
 
 -- coGet :: Admits Identity fs => st -> Computer fs m a -> Computer (CoGet st ': fs) m a
 -- coGet st = hoistComputer (_ (CoGet st _))
