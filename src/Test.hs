@@ -19,32 +19,54 @@
 {-# OPTIONS_GHC -fno-warn-missing-methods #-}
 module Main where
 
-import Control.Monad.Trans.Free
-import Control.Monad.Trans.Free.Church
+-- import Control.Monad.Trans.Free
+-- import Control.Monad.Trans.Free.Church
+
+-- delta :: (Pair (Instrs is) (Symbol ss),Monad m)
+--       => Instructions is m
+--       -> FreeT (Symbol ss) m r
+--       -> m (Instructions is m,r)
+-- delta is ss = do
+--   s <- runFreeT ss
+--   let instrs = getInstructions is
+--   case s of
+--     Free sym -> do
+--       (trans,nxt) <- pair (curry return) instrs sym
+--       is' <- trans is
+--       delta is' nxt
+--     Pure result -> return (is,result)
+
+-- symbol :: (MonadFree (Symbol xs) m,Allows x xs) => x a -> m a
+-- symbol = liftF . inj
+
+-- using :: (Monad m, Pair (Instrs is) (Symbol ss),Functor (Symbol ss))
+--     => Instructions is m -> FT (Symbol ss) m r -> m (Instructions is m, r)
+-- using is ss = delta is (fromFT ss)
+
+-- type Has f fs m = (MonadFree (Symbol fs) m,Allows' f fs (IndexOf f fs))
+
+data Nat = Z | S Nat
+data Index (n :: Nat)= Index
+type family IndexOf (f :: k) (fs :: [k]) :: Nat where
+  IndexOf f (f ': fs) = 'Z
+  IndexOf f (any ': fs) = 'S (IndexOf f fs)
 
 type family Not (x :: k) (y :: k) :: Bool where
   Not x x = 'False
   Not x y = 'True
-
-data Nat = Z | S Nat
-data Index (n :: Nat)= Index
-
-type family IndexOf (f :: k) (fs :: [k]) :: Nat where
-  IndexOf f (f ': fs) = 'Z
-  IndexOf f (any ': fs) = 'S (IndexOf f fs)
 class Denies (x :: * -> *) (ys :: [* -> *])
 instance Denies x '[]
 instance (Denies x ys,Not x y ~ 'True) => Denies x (y ': ys)
 
 data Instrs (is :: [* -> *]) a where
   Empty :: Instrs '[] a
-  Instr :: f a -> Instrs fs a -> Instrs (f ': fs) a
-instance Functor (Instrs '[]) where
-  fmap _ Empty = Empty
-instance (Functor f,Functor (Instrs fs)) => Functor (Instrs (f ': fs)) where
-  fmap f (Instr fa fs) = Instr (fmap f fa) (fmap f fs)
+  Instr :: Denies f fs => f a -> Instrs fs a -> Instrs (f ': fs) a
+-- instance Functor (Instrs '[]) where
+--   fmap _ Empty = Empty
+-- instance (Functor f,Functor (Instrs fs)) => Functor (Instrs (f ': fs)) where
+--   fmap f (Instr fa fs) = Instr (fmap f fa) (fmap f fs)
 
-add :: f a -> Instrs fs a -> Instrs (f ': fs) a
+add :: (Denies f fs) => f a -> Instrs fs a -> Instrs (f ': fs) a
 add fa Empty = Instr fa Empty
 add fa i = Instr fa i
 
@@ -70,7 +92,7 @@ instance (Admits' x xs' (IndexOf x xs')) => Admits' x (x' ': xs') ('S n) where
 newtype Instructions fs m = Instructions
   { getInstructions :: Instrs fs (Instructions fs m -> m (Instructions fs m)) }
 
-(*:*) :: f a -> Instrs fs a -> Instrs (f ': fs) a
+(*:*) :: Denies f fs => f a -> Instrs fs a -> Instrs (f ': fs) a
 (*:*) = add
 infixr 5 *:*
 
@@ -83,14 +105,14 @@ instr :: (Uses x fs m)
 instr x = return . Instructions . push x . getInstructions
 
 data Symbol (symbols :: [* -> *]) a where
-  Symbol :: (Denies s ss,Functor s) => s a -> Symbol (s ': ss) a
+  Symbol :: (Denies s ss) => s a -> Symbol (s ': ss) a
   Further :: Denies s ss => Symbol ss a -> Symbol (s ': ss) a
-instance Functor (Symbol ss) where
-  fmap f (Symbol sb) = Symbol (fmap f sb)
-  fmap f (Further ss) = Further (fmap f ss)
+-- instance Functor (Symbol ss) where
+--   fmap f (Symbol ba sb) = Symbol (f . ba) sb
+--   fmap f (Further ss) = Further (fmap f ss)
 class Allows x xs where
   inj :: x a -> Symbol xs a
-  prj :: Symbol xs a -> Maybe (x a)
+  prj :: Functor x => Symbol xs a -> Maybe (x a)
 instance (Allows' x xs (IndexOf x xs)) => Allows x xs where
   inj = inj' (Index :: Index (IndexOf x xs))
   prj = prj' (Index :: Index (IndexOf x xs))
@@ -100,16 +122,14 @@ class Allows' x xs (n :: Nat) where
 instance (Denies x' xs',xs ~ (x' ': xs'),Allows' x xs' (IndexOf x xs')) => Allows' x xs ('S n) where
   inj' _ = Further . inj' (Index :: Index (IndexOf x xs'))
   prj' _ (Further ss) = prj' (Index :: Index (IndexOf x xs')) ss
-instance (Functor x,Denies x xs',xs ~ (x ': xs')) => Allows' x xs 'Z where
+instance (Denies x xs',xs ~ (x ': xs')) => Allows' x xs 'Z where
   inj' _ = Symbol
-  prj' _ (Symbol sb) = Just sb
+  prj' _ (Symbol sa) = Just sa
   prj' _ (Further _) = Nothing
 class Permits xs ys
 instance Permits '[] ys
 instance (Allows x ys,Permits xs ys) => Permits (x ': xs) ys
 
-symbol :: (MonadFree (Symbol xs) m,Allows x xs) => x a -> m a
-symbol = liftF . inj
 
 class Pair f g | f -> g, g -> f where
   pair :: (a -> b -> r) -> f a -> g b -> r
@@ -118,53 +138,50 @@ instance Pair ((->) a) ((,) a) where
 instance Pair ((,) a) ((->) a) where
   pair p (l,r) g = p r (g l)
 instance Pair (Instrs '[]) (Symbol '[])
-instance (Functor i,Functor s
-         ,Pair i s
+instance (Pair i s
          ,Pair (Instrs is) (Symbol ss)
          ) => Pair (Instrs (i ': is)) (Symbol (s ': ss)) where
-  pair p (Instr ia _) (Symbol sb) = pair p ia sb
+  pair p (Instr ia _) (Symbol sa) = pair p ia sa
   pair p (Instr _ is) (Further ss) = pair p is ss
 
-delta :: (Pair (Instrs is) (Symbol ss),Monad m)
-      => Instructions is m
-      -> FreeT (Symbol ss) m r
-      -> m (Instructions is m,r)
-delta is ss = do
-  s <- runFreeT ss
-  let instrs = getInstructions is
-  case s of
-    Free sym -> do
-      (trans,nxt) <- pair (curry return) instrs sym
-      is' <- trans is
-      delta is' nxt
-    Pure result -> return (is,result)
+data Freer symbols m a where
+  Purer :: a -> Freer symbols m a
+  Impure :: Symbol symbols x -> (x -> m (Freer symbols m a)) -> Freer symbols m a
+instance Functor m => Functor (Freer symbols m) where
+  fmap f (Purer a) = Purer (f a)
+  fmap f (Impure symbols k) = Impure symbols (fmap (fmap f) . k)
+instance Functor m => Applicative (Freer symbols m) where
+  pure = Purer
+  (Purer ab) <*> (Purer a) = Purer (ab a)
+  (Purer ab) <*> (Impure symbols k) = Impure symbols (fmap (fmap ab) <$> k)
+  (Impure symbols mab) <*> b = Impure symbols $ fmap (<*> b) <$> mab
+instance Functor m => Monad (Freer symbols m) where
+  return = Purer
+  Purer a >>= k = k a
+  Impure symbols k' >>= k = Impure symbols (fmap (>>= k) . k')
 
-using :: (Monad m, Pair (Instrs is) (Symbol ss))
-    => Instructions is m -> FT (Symbol ss) m r -> m (Instructions is m, r)
-using is ss = delta is (fromFT ss)
+sym :: (Allows x symbols,Monad m) => x a -> Freer symbols m a
+sym xa = Impure (inj xa) (return . Purer)
+
+delta' :: (Pair (Instrs is) (Symbol symbols),Monad m)
+       => Instructions is m
+       -> Freer symbols m r
+       -> m (Instructions is m,r)
+delta' is fs =
+  let instrs = getInstructions is
+  in case fs of
+       Purer result -> return (is,result)
+       Impure symbols k -> do
+         (trans,nxt) <- pair (curry return) instrs symbols
+         is' <- trans is
+         nxt' <- k nxt
+         delta' is' nxt'
+
 
 build = Instructions
 empty = Empty
 single = (*:* empty)
 simple = build . single
-
-type Uses f fs m = (Admits' f fs (IndexOf f fs),Monad m)
-type Has f fs m = (MonadFree (Symbol fs) m,Allows' f fs (IndexOf f fs))
-type Instruction f fs m = f (Instructions fs m -> m (Instructions fs m))
-
-data State st k  = Get    (st -> k) | Put (st  , k) deriving Functor
-data Store st k  = Store  (st  , k)       (st -> k) deriving Functor
-data Store' st k = Store' !st k           (st -> k) deriving Functor
-
-get :: Has (State st) fs m => m st
-get = symbol (Get id)
-put :: Has (State st) fs m => st -> m ()
-put st = symbol (Put (st,()))
-modify :: Has (State st) fs m => (st -> st) -> m ()
-modify f = get >>= (put . f)
-
-store :: (Uses (Store st) fs m) => st -> Instruction (Store st) fs m
-store st = Store (st,return) (instr . store)
 
 also :: Functor (Instrs fs)
      => (  (Instructions fs m -> m (Instructions fs m))
@@ -183,6 +200,25 @@ also' f fs0 = do
   fs' <- f fs
   return (Instructions fs')
 
+type Uses f fs m = (Admits' f fs (IndexOf f fs),Monad m)
+type Has f fs m = (Functor m,Allows' f fs (IndexOf f fs))
+type Instruction f fs m = f (Instructions fs m -> m (Instructions fs m))
+
+data State st k  = Get    (st -> k) | Put (st  , k)
+data Store st k  = Store  (st  , k)       (st -> k)
+
+get :: (Monad m,Allows (State st) fs) => Freer fs m st
+get = sym (Get id)
+
+put :: (Monad m,Allows (State st) fs) => st -> Freer fs m ()
+put st = sym (Put (st,()))
+
+modify :: (Monad m,Allows (State st) fs) => (st -> st) -> Freer fs m ()
+modify f = get >>= (put . f)
+
+store :: Uses (Store st) fs m => st -> Instruction (Store st) fs m
+store st = Store (st,return) (instr . store)
+
 instance Pair (Store st) (State st) where
   pair p (Store pos _) (Get stk)  = pair p pos stk
   pair p (Store _ seek) (Put stk) = pair p seek stk
@@ -190,13 +226,9 @@ instance Pair (Store st) (State st) where
 newtype I = I Int
 succI (I n) = I (succ n)
 
-addN :: Has (State I) fs m => Int -> m I
-addN = go
-  where
-    go 0 = get
-    go n = modify succI >> go (n - 1)
-
 main = do
   let st = simple $ store (I 0)
-  (c,I ci) <- using st (addN 100000)
+  (c,ci) <- delta' st $ do
+                I x <- get
+                return (x + 1)
   print ci
