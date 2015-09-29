@@ -21,22 +21,6 @@ module Main where
 import Control.Monad
 import Data.Coerce
 
--- data CC k
---   = Set k
---   | Call k
--- data Reify k = Reify k k
-
--- instance Pair Reify CC where
---   pair p (Reify kl _) (Set k) = p kl k
---   pair p (Reify _ kr) (Call k) = p kr k
-
--- reify :: Uses Reify fs m => Instruction Reify fs m
--- reify = Reify setter pure
---   where
---     setter fs = pure $ Instructions $ push (Reify setter (caller fs)) $ getInstructions fs
---     caller fs = pure . const fs
-
-
 data Nat = Z | S Nat
 data Index (n :: Nat)= Index
 type family IndexOf (f :: k) (fs :: [k]) :: Nat where
@@ -147,13 +131,16 @@ instance (Allows x ys,Permits xs ys) => Permits (x ': xs) ys
 class Pair f g | f -> g, g -> f where
   pair :: (a -> b -> r) -> f a -> g b -> r
 instance Pair ((->) a) ((,) a) where
+  {-# INLINE pair #-}
   pair p f g = uncurry (\x -> p (f x)) g
 instance Pair ((,) a) ((->) a) where
+  {-# INLINE pair #-}
   pair p (l,r) g = p r (g l)
 instance Pair (Instrs '[]) (Symbol '[])
 instance (Pair i s,Pair (Instrs is) (Symbol ss))
     => Pair (Instrs (i ': is)) (Symbol (s ': ss))
   where
+    {-# INLINE pair #-}
     pair p (Instr ia _) (Symbol  sa) = pair p ia sa
     pair p (Instr _ is) (Further ss) = pair p is ss
 
@@ -170,6 +157,7 @@ coerceFromPlanT :: PlanT symbols m a -> m (Plan symbols a (PlanT symbols m a))
 coerceFromPlanT = coerce
 
 instance (Functor m,Monad m) => Functor (PlanT symbols m) where
+  {-# INLINE fmap #-}
   fmap f (coerceFromPlanT -> mp) =
     coerceToPlanT (flip liftM mp $ \x -> case x of
       Stop a -> Stop (f a)
@@ -177,11 +165,15 @@ instance (Functor m,Monad m) => Functor (PlanT symbols m) where
      )
 
 instance Monad m => Applicative (PlanT symbols m) where
+  {-# INLINE pure #-}
   pure a = coerceToPlanT (pure (Stop a))
+  {-# INLINE (<*>) #-}
   (<*>) = ap
 
 instance (Functor m,Monad m) => Monad (PlanT symbols m) where
+  {-# INLINE return #-}
   return a = coerceToPlanT (pure (Stop a))
+  {-# INLINE (>>=) #-}
   (coerce -> ma) >>= f = coerce $ ma >>= \a -> case a of
     Stop v -> coerceFromPlanT (f v)
     Step symbols xb -> pure (Step symbols (fmap (>>= f) xb))
@@ -226,7 +218,7 @@ instance Pair (Store st) (State st) where
   pair p (Store st k _  ) (Get stk ) = pair p (st,k) stk
   pair p (Store _  _ stk) (Put st k) = pair p stk (st,k)
 
-store :: Uses (Store st) fs m => st -> Instruction (Store st) fs m
+-- store :: Uses (Store st) fs m => st -> Instruction (Store st) fs m
 store st = Store st pure (instr . store)
 
 modify :: Has (State st) fs m => (st -> st) -> PlanT fs m ()
@@ -234,25 +226,61 @@ modify f = do
   st <- get
   put $ f st
 
-
 modify' :: Has (State st) fs m => (st -> st) -> PlanT fs m ()
 modify' f = do
   st <- get
   put $! f st
 
-isLazy :: Has (State Int) fs m => PlanT fs m Int
-isLazy = go 10000000
+isLazy :: Has (State [Int]) fs m => PlanT fs m ()
+isLazy = do
+      modify ((1 :: Int):)
+      isLazy
+
+countdown :: Has (State Int) fs m => PlanT fs m Int
+countdown = go (10000000 :: Int)
   where
-    go (0 :: Int) = get
+    go 0 = get
     go n = do
       modify' (+ (1 :: Int))
       go (n - 1)
 
+-- data CC k' k
+--   = Checkpoint (k' -> k)
+--   | Recall k' k
+-- data Reify k' k = Reify (k',k) (k' -> k)
+
+-- checkpoint :: Has (CC k) fs m => PlanT fs m k
+-- checkpoint = sym (Checkpoint id)
+
+-- recall :: Has (CC k) fs m => k -> PlanT fs m ()
+-- recall plan = sym (Recall plan ())
+
+-- instance Pair (Reify k) (CC k) where
+--   pair p (Reify kl _) (Checkpoint k) = pair p kl k
+--   pair p (Reify _ kr) (Recall k' k) = pair p kr (k',k)
+
+-- reify :: Uses (Reify k) fs m => Instruction (Reify k) fs m
+-- reify = Reify setter pure
+--   where
+--     setter fs = instr (Reify setter (caller fs)) fs
+--     caller fs = pure . const fs
+
+-- x :: (Has (State [Int]) fs IO,Has (CC (PlanT fs IO [Int])) fs IO) => PlanT fs IO [Int]
+-- x = do
+--   let one = 1 :: Int
+--   checkpoint
+--   ln <- lift getLine
+--   modify (one:)
+--   st :: [Int] <- get
+--   lift (putStrLn $ "Current: " ++ show st)
+--   case ln of
+--     "y" -> x
+--     "n" -> do
+--       recall
+--       get
+
 main :: IO ()
 main = do
-  (c,i :: Int) <- delta (build $ store (1 :: Int) *:* empty) $ do
-                    replicateM_ 10000000 $ modify' (+ (1 :: Int))
-                    lift (putStrLn "Yay")
-                    get
+  (c,i :: Int) <- delta (build $ store (0 :: Int) *:* empty) countdown
   print i
   return ()
