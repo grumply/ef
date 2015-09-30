@@ -19,7 +19,55 @@
 module Main where
 
 import Control.Monad
+import Control.Monad.Fix
+
+import Data.Bifunctor
+
 import Data.Coerce
+
+--------------------------------------------------------------------------------
+-- Strict state
+
+data State st k
+  = Get (st -> k)
+  | Put st k
+get :: Has (State st) fs m => PlanT fs m st
+get = sym (Get id)
+put :: (Has (State st) fs m) => st -> PlanT fs m ()
+put st = sym (Put st ())
+
+data Store st k = Store st k (st -> k)
+store :: Uses (Store st) fs m => st -> Instruction (Store st) fs m
+store st = Store st pure (instr . store)
+
+instance Pair (Store st) (State st) where
+  pair p (Store st k _  ) (Get stk ) = pair p (st,k) stk
+  pair p (Store _  _ stk) (Put st k) = pair p stk (st,k)
+
+modify :: Has (State st) fs m => (st -> st) -> PlanT fs m ()
+modify f = do
+  st <- get
+  put $ f st
+
+modify' :: Has (State st) fs m => (st -> st) -> PlanT fs m ()
+modify' f = do
+  st <- get
+  put $! f st
+
+lazy :: Has (State Integer) fs m => PlanT fs m [Integer]
+lazy = mapM (\n -> modify' (n+) >> get) [1::Integer .. 5]
+
+main = do
+  (_,x :: Integer) <- delta (build $ store (0 :: Integer) *:* empty) $ (cutoff 10 lazy >> get)
+  print x
+  return ()
+
+cutoff :: Monad m => Integer -> PlanT fs m a -> PlanT fs m (Maybe a)
+cutoff n _ | n <= 0 = return Nothing
+cutoff n (PlanT m) = PlanT $ bimap Just (cutoff (n - 1)) `liftM` m
+
+--------------------------------------------------------------------------------
+-- Implementation
 
 data Nat = Z | S Nat
 data Index (n :: Nat)= Index
@@ -60,42 +108,8 @@ instance (Admits' x xs' (IndexOf x xs')) => Admits' x (x' ': xs') ('S n) where
   push' _ xa (Instr fa xs) = Instr fa (push' (Index :: Index (IndexOf x xs')) xa xs)
   pull' _ (Instr _ xs) = pull' (Index :: Index (IndexOf x xs')) xs
 
-add :: (Denies f fs) => f a -> Instrs fs a -> Instrs (f ': fs) a
-add fa Empty = Instr fa Empty
-add fa i = Instr fa i
-
-observe :: Instrs (f ': fs) a -> (f a,Instrs fs a)
-observe (Instr fa fs) = (fa,fs)
-
-(*:*) :: Denies f fs => f a -> Instrs fs a -> Instrs (f ': fs) a
-(*:*) = add
-infixr 5 *:*
-
 newtype Instructions fs m = Instructions
   { getInstructions :: Instrs fs (Instructions fs m -> m (Instructions fs m)) }
-
-build :: Instrs fs (Instructions fs m -> m (Instructions fs m)) -> Instructions fs m
-build = coerce
-
-unbuild :: Instructions fs m -> Instrs fs (Instructions fs m -> m (Instructions fs m))
-unbuild = coerce
-
-empty :: Instrs '[] a
-empty = Empty
-
-single :: f a -> Instrs '[f] a
-single = (*:* empty)
-
-simple :: f (Instructions '[f] m -> m (Instructions '[f] m)) -> Instructions '[f] m
-simple t = build $ single t
-
-view :: Uses x xs m => Instructions xs m -> x (Instructions xs m -> m (Instructions xs m))
-view xs = pull $ unbuild xs
-
-instr :: Uses x fs m
-      => Instruction x fs m
-      -> Instructions fs m -> m (Instructions fs m)
-instr x is = pure $ build $ push x $ unbuild is
 
 data Symbol (symbols :: [* -> *]) a where
   Symbol  :: Denies s ss => s a -> Symbol (s ': ss) a
@@ -148,6 +162,10 @@ data Plan symbols a b where
   Stop :: a -> Plan symbols a b
   Step :: Symbol symbols x -> (x -> b) -> Plan symbols a b
 
+instance Bifunctor (Plan symbols) where
+  bimap ab _ (Stop a) = Stop (ab a)
+  bimap _ bc (Step symbols xb) = Step symbols (fmap bc xb)
+
 newtype PlanT symbols m a = PlanT { runPlanT :: m (Plan symbols a (PlanT symbols m a)) }
 
 coerceToPlanT :: m (Plan symbols a (PlanT symbols m a)) -> PlanT symbols m a
@@ -178,6 +196,40 @@ instance (Functor m,Monad m) => Monad (PlanT symbols m) where
     Stop v -> coerceFromPlanT (f v)
     Step symbols xb -> pure (Step symbols (fmap (>>= f) xb))
 
+add :: (Denies f fs) => f a -> Instrs fs a -> Instrs (f ': fs) a
+add fa Empty = Instr fa Empty
+add fa i = Instr fa i
+
+observe :: Instrs (f ': fs) a -> (f a,Instrs fs a)
+observe (Instr fa fs) = (fa,fs)
+
+(*:*) :: Denies f fs => f a -> Instrs fs a -> Instrs (f ': fs) a
+(*:*) = add
+infixr 5 *:*
+
+build :: Instrs fs (Instructions fs m -> m (Instructions fs m)) -> Instructions fs m
+build = coerce
+
+unbuild :: Instructions fs m -> Instrs fs (Instructions fs m -> m (Instructions fs m))
+unbuild = coerce
+
+empty :: Instrs '[] a
+empty = Empty
+
+single :: f a -> Instrs '[f] a
+single = (*:* empty)
+
+simple :: f (Instructions '[f] m -> m (Instructions '[f] m)) -> Instructions '[f] m
+simple t = build $ single t
+
+view :: Uses x xs m => Instructions xs m -> x (Instructions xs m -> m (Instructions xs m))
+view xs = pull $ unbuild xs
+
+instr :: Uses x fs m
+      => Instruction x fs m
+      -> Instructions fs m -> m (Instructions fs m)
+instr x is = pure $ build $ push x $ unbuild is
+
 lift :: Monad m => m a -> PlanT symbols m a
 lift ma = coerceToPlanT (fmap Stop ma)
 
@@ -202,68 +254,23 @@ type Has f fs m = (Monad m,Allows' f fs (IndexOf f fs))
 
 type Instruction f fs m = f (Instructions fs m -> m (Instructions fs m))
 
-data State st k
-  = Get (st -> k)
-  | Put st k
+data CC k' k
+  = Checkpoint (k' -> k)
+  | Recall k' k
+data Reify k' k = Reify (k',k) (k' -> k)
 
-get :: Has (State st) fs m => PlanT fs m st
-get = sym (Get id)
+checkpoint :: Monad m => PlanT '[CC (Cont m a)] m (Cont m a)
+checkpoint = sym (Checkpoint id)
 
-put :: (Has (State st) fs m) => st -> PlanT fs m ()
-put st = sym (Put st ())
+recall :: Monad m => Cont m a -> PlanT '[CC (Cont m a)] m (Cont m a)
+recall plan = sym (Recall plan plan)
 
-data Store st k = Store st k (st -> k)
+instance Pair (Reify k) (CC k) where
+  pair p (Reify kl _) (Checkpoint k) = pair p kl k
+  pair p (Reify _ kr) (Recall k' k) = pair p kr (k',k)
 
-instance Pair (Store st) (State st) where
-  pair p (Store st k _  ) (Get stk ) = pair p (st,k) stk
-  pair p (Store _  _ stk) (Put st k) = pair p stk (st,k)
-
--- store :: Uses (Store st) fs m => st -> Instruction (Store st) fs m
-store st = Store st pure (instr . store)
-
-modify :: Has (State st) fs m => (st -> st) -> PlanT fs m ()
-modify f = do
-  st <- get
-  put $ f st
-
-modify' :: Has (State st) fs m => (st -> st) -> PlanT fs m ()
-modify' f = do
-  st <- get
-  put $! f st
-
-isLazy :: Has (State [Int]) fs m => PlanT fs m ()
-isLazy = do
-      modify ((1 :: Int):)
-      isLazy
-
-countdown :: Has (State Int) fs m => PlanT fs m Int
-countdown = go (10000000 :: Int)
-  where
-    go 0 = get
-    go n = do
-      modify' (+ (1 :: Int))
-      go (n - 1)
-
--- data CC k' k
---   = Checkpoint (k' -> k)
---   | Recall k' k
--- data Reify k' k = Reify (k',k) (k' -> k)
-
--- checkpoint :: Has (CC k) fs m => PlanT fs m k
--- checkpoint = sym (Checkpoint id)
-
--- recall :: Has (CC k) fs m => k -> PlanT fs m ()
--- recall plan = sym (Recall plan ())
-
--- instance Pair (Reify k) (CC k) where
---   pair p (Reify kl _) (Checkpoint k) = pair p kl k
---   pair p (Reify _ kr) (Recall k' k) = pair p kr (k',k)
-
--- reify :: Uses (Reify k) fs m => Instruction (Reify k) fs m
--- reify = Reify setter pure
---   where
---     setter fs = instr (Reify setter (caller fs)) fs
---     caller fs = pure . const fs
+reify :: Uses (Reify (Cont m a)) symbols m => Cont m a -> Instruction (Reify (Cont m a)) symbols m
+reify f = Reify (f,pure) (instr . reify)
 
 -- x :: (Has (State [Int]) fs IO,Has (CC (PlanT fs IO [Int])) fs IO) => PlanT fs IO [Int]
 -- x = do
@@ -279,8 +286,21 @@ countdown = go (10000000 :: Int)
 --       recall
 --       get
 
-main :: IO ()
-main = do
-  (c,i :: Int) <- delta (build $ store (0 :: Int) *:* empty) countdown
-  print i
-  return ()
+newtype Cont m a = Cont { getCont :: PlanT '[CC (Cont m a)] m a }
+
+-- cont :: Cont m a -> m (Instructions '[Reify (Cont m a)] m,a)
+-- cont c = delta (build $ reify c *:* empty) (getCont c)
+
+-- main :: IO ()
+-- main = do
+--   -- (c,i :: Int) <- delta (build $ store (0 :: Int) *:* empty) countdown
+--   -- print i
+--   (_,ln) <- cont $ Cont $ do
+--               p <- checkpoint
+--               ln <- lift getLine
+--               lift (putStrLn ln)
+--               case ln of
+--                 "y" -> _ $ recall p
+--                 "n" -> return ln
+--   print ln
+--   return ()
