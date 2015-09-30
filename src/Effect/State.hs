@@ -16,15 +16,15 @@ instance Pair (Store st) (State st) where
   pair p (Store _  _ stk) (Put st k) = pair p stk (st,k)
 
 {-# INLINABLE get #-}
-get :: (Has (State st) fs m) => PlanT fs m st
+get :: Has (State st) fs m => Plan fs m st
 get = symbol (Get id)
 
 {-# INLINABLE put #-}
-put :: (Has (State st) fs m) => st -> PlanT fs m ()
+put :: Has (State st) fs m => st -> Plan fs m ()
 put st = symbol (Put st ())
 
 {-# INLINABLE modify #-}
-modify :: Has (State st) fs m => (st -> st) -> PlanT fs m ()
+modify :: Has (State st) fs m => (st -> st) -> Plan fs m ()
 modify f = do
   st <- get
   put $ f st

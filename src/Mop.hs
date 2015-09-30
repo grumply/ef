@@ -19,8 +19,6 @@
 module Mop where
 
 import Control.Monad
-import Data.Bifunctor
-import Data.Coerce
 
 data Nat = Z | S Nat
 data Index (n :: Nat)= Index
@@ -108,38 +106,64 @@ instance (Pair i s,Pair (Instrs is) (Symbol ss))
     pair p (Instr ia _) (Symbol  sa) = {-# SCC "symbol_pairing" #-} pair p ia sa
     pair p (Instr _ is) (Further ss) = {-# SCC "further_pairing" #-} pair p is ss
 
-data Plan symbols a b where
-  Stop :: a -> Plan symbols a b
-  Step :: Symbol symbols x -> (x -> b) -> Plan symbols a b
+data Plan symbols m a
+  = Pure a
+  | M                       (m             (Plan symbols m a))
+  | forall b. Step (Symbol symbols b) (b -> Plan symbols m a)
 
-instance Bifunctor (Plan symbols) where
-  bimap ab _ (Stop a) = Stop (ab a)
-  bimap _ bc (Step symbols xb) = Step symbols (fmap bc xb)
+{-# INLINE delta #-}
+delta :: (Pair (Instrs is) (Symbol symbols),Monad m)
+       => Instructions is m
+       -> Plan symbols m a
+       -> m (Instructions is m,a)
+delta is p0 = go p0
+  where
+    go p =
+      case p of
+        Pure res -> pure (is,res)
+        M mp -> do
+          p' <- mp
+          go p'
+        Step symbols k -> do
+          (trans,nxt) <- fmap k <$> pair (curry pure) (getInstructions is) symbols
+          is' <- trans is
+          delta is' nxt
 
 type Uses f fs m = (Monad m,Admits' f fs (IndexOf f fs))
 type Has f fs m = (Monad m,Allows' f fs (IndexOf f fs))
 type Instruction f fs m = f (Instructions fs m -> m (Instructions fs m))
 
-newtype PlanT symbols m a = PlanT { runPlanT :: m (Plan symbols a (PlanT symbols m a)) }
+instance (Functor m,Monad m) => Functor (Plan symbols m) where
+  fmap f p0 = go p0 where
+    go p = case p of
+      Pure a -> Pure (f a)
+      M m -> M (m >>= \p' -> return (go p'))
+      Step symbols fa -> Step symbols (\b -> go (fa b))
 
-instance (Functor m,Monad m) => Functor (PlanT symbols m) where
-  fmap f mp = {-# SCC "plan_fmap" #-}
-     PlanT
-     (flip liftM (runPlanT mp) $ \x -> case x of
-      Stop a -> Stop (f a)
-      Step symbols mb -> Step symbols (\v -> fmap f (mb v))
-     )
-
-instance Monad m => Applicative (PlanT symbols m) where
-  pure a = PlanT (pure (Stop a))
+instance (Monad m) => Applicative (Plan symbols m) where
+  pure = Pure
   (<*>) = ap
 
-instance (Functor m,Monad m) => Monad (PlanT symbols m) where
-  return a = PlanT (pure (Stop a))
-  ma >>= f = {-# SCC "plan_bind" #-}
-    PlanT $ (runPlanT ma) >>= \a -> case a of
-               Stop v -> runPlanT (f v)
-               Step symbols xb -> pure (Step symbols (fmap (>>= f) xb))
+instance (Functor m,Monad m) => Monad (Plan symbols m) where
+  return = Pure
+  (>>=) = _bind
+
+{-# NOINLINE _bind #-}
+_bind :: Monad m => Plan symbols m a -> (a -> Plan symbols m a') -> Plan symbols m a'
+p0 `_bind` f = go p0 where
+  go p = case p of
+    Pure res -> f res
+    M m -> M (m >>= \p' -> return (go p'))
+    Step syms k -> Step syms (\r -> go (k r))
+
+{-# RULES
+    "_bind (Step syms k) f" forall syms k f .
+        _bind (Step syms k) f = Step syms (\a  -> _bind (k a) f);
+    "_bind (M          m) f" forall m    f .
+        _bind (M          m) f = M (m >>= \p -> return (_bind p f));
+    "_bind (Pure    r   ) f" forall r    f .
+        _bind (Pure    r   ) f = f r;
+  #-}
 
 add :: (Denies f fs) => f a -> Instrs fs a -> Instrs (f ': fs) a
 add fa Empty = Instr fa Empty
@@ -157,25 +181,16 @@ instruction :: forall fs x m. Uses x fs m
             -> Instructions fs m -> m (Instructions fs m)
 instruction x is = {-# SCC "instruction_building" #-} pure $ Instructions $ push x $ getInstructions $ is
 
-cutoff :: Monad m => Integer -> PlanT fs m a -> PlanT fs m (Maybe a)
+cutoff :: Monad m => Integer -> Plan fs m a -> Plan fs m (Maybe a)
 cutoff n _ | n <= 0 = return Nothing
-cutoff n (PlanT m) = PlanT $ bimap Just (cutoff (n - 1)) `liftM` m
+cutoff n p =
+  case p of
+    Pure a -> Pure (Just a)
+    M m -> M (cutoff (n - 1) `liftM` m)
+    Step sym k -> Step sym (cutoff (n - 1) . k)
 
-lift :: Monad m => m a -> PlanT symbols m a
-lift ma = PlanT (fmap Stop ma)
+lift :: Monad m => m a -> Plan symbols m a
+lift m = M (m >>= \r -> return (Pure r))
 
-symbol :: forall x symbols m a. (Has x symbols m) => x a -> PlanT symbols m a
-symbol xa = PlanT (return (Step ({-# SCC "symbol_injection" #-} inj xa) (\x -> PlanT (return (Stop x)))))
-
-delta :: (Pair (Instrs is) (Symbol symbols),Monad m)
-       => Instructions is m
-       -> PlanT symbols m r
-       -> m (Instructions is m,r)
-delta is (coerce -> ma) = {-# SCC "delta" #-} do
-  a <- ma
-  case a of
-    Stop result -> pure (is,result)
-    Step symbols k -> do
-      (trans,nxt) <- fmap k <$> pair (curry pure) (getInstructions is) symbols
-      is' <- trans is
-      delta is' nxt
+symbol :: Allows x symbols => x a -> Plan symbols m a
+symbol xa = Step (inj xa) Pure
