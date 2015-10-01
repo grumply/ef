@@ -133,7 +133,7 @@ type Uses f fs m = (Monad m,Admits' f fs (IndexOf f fs))
 type Has f fs m = (Monad m,Allows' f fs (IndexOf f fs))
 type Instruction f fs m = f (Instructions fs m -> m (Instructions fs m))
 
-instance (Functor m,Monad m) => Functor (Plan symbols m) where
+instance (Monad m) => Functor (Plan symbols m) where
   fmap f p0 = go p0 where
     go p = case p of
       Pure a -> Pure (f a)
@@ -144,7 +144,7 @@ instance (Monad m) => Applicative (Plan symbols m) where
   pure = Pure
   (<*>) = ap
 
-instance (Functor m,Monad m) => Monad (Plan symbols m) where
+instance (Monad m) => Monad (Plan symbols m) where
   return = Pure
   (>>=) = _bind
 
@@ -194,3 +194,25 @@ lift m = M (m >>= \r -> return (Pure r))
 
 symbol :: Allows x symbols => x a -> Plan symbols m a
 symbol xa = Step (inj xa) Pure
+
+-- foldP allows recovery of interpreter at every produced value
+{-# INLINE foldP #-}
+foldP :: (Foldable f,Pair (Instrs is) (Symbol symbols),Monad m)
+     => Instructions is m -> (a -> Plan symbols m b) -> f a -> m [(Instructions is m,b)]
+foldP i0 ap f = foldr accumulate (const (return [])) f i0
+  where
+    accumulate a cont is = do
+      (i,!b) <- delta is (ap a)
+      ~ibs <- cont i
+      return ((i,b):ibs)
+
+-- foldP_, unlike foldP, does not allow recovery of interpreter
+{-# INLINE foldP_ #-}
+foldP_ :: (Foldable f,Pair (Instrs is) (Symbol symbols),Monad m)
+     => Instructions is m -> (a -> Plan symbols m b) -> f a -> m [b]
+foldP_ i0 ap f = foldr accumulate (const (return [])) f i0
+  where
+    accumulate a cont is = do
+      (i,b) <- delta is (ap a)
+      bs <- cont i
+      return (b:bs)

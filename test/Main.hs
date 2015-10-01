@@ -1,26 +1,34 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DataKinds #-}
 module Main where
 
 import Mop
 import Effect.State
+import Effect.Reader
 
--- lazyState :: (Has (State Integer) fs m) => Plan fs m [Integer]
--- lazyState = mapM (\n -> modify (n+) >> get) [1 :: Integer ..]
+import Data.Functor.Identity
 
--- main' = do
---   (_,i :: Integer) <- delta (Instructions $ store (0 :: Integer) *:* Empty) (cutoff 15 lazyState >> get)
---   print (i == 15)
 
-{-# INLINE countdown #-}
-countdown :: Has (State Int) fs m => Int -> Plan fs m Int
-countdown = go
-  where
-    go 0 = get
-    go n = do
-      modify (+(1 :: Int))
-      go (n - 1)
+-- example taken from https://mail.haskell.org/pipermail/libraries/2011-September/016768.html
+lazy is = foldP is (\n -> modify' (n+) >> get) [1 :: Integer .. ]
 
-main = do
-  (_,i :: Int) <- delta (Instructions $ store (0 :: Int) *:* Empty) (countdown 10000000)
-  print i
+lazyTest = (snd . (!! 10000000) :: [(a,Integer)] -> Integer)
+         $ runIdentity
+         $ lazy
+         $ Instructions
+         $ store (0 :: Integer) *:* Empty
+
+stateReader = do
+  r <- ask
+  st <- get
+  return (r,st)
+
+stateReaderI = Instructions $ store (0 :: Int) *:* env (1 :: Int) *:* Empty
+
+stateReaderTest = snd
+                $ runIdentity
+                $ delta stateReaderI stateReader
+
+main :: IO ()
+main = print stateReaderTest
