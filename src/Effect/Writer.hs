@@ -1,5 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Effect.Writer
   ( Writer, tell
   , Tracer, tracer, writer, written
@@ -23,9 +24,19 @@ writer :: (Monoid w,Uses (Tracer w) fs m) => Instruction (Tracer w) fs m
 writer = tracer mempty (<>)
 
 tracer :: Uses (Tracer w) fs m => w -> (w -> w -> w) -> Instruction (Tracer w) fs m
-tracer w0 f = Tracer w0 $ \w' is ->
-  let Tracer w k = view is
-  in instruction (Tracer (f w w') k) is
+tracer w0 f = Tracer w0 $ \w' fs ->
+  let Tracer w k = view fs
+  in instruction (Tracer (f w w') k) fs
 
 written :: Uses (Tracer w) fs m => Instructions fs m -> w
 written fs = let Tracer w _ = view fs in w
+
+data Squelch w k = Squelch (w -> w -> w) k
+data Squelcher w k = Squelcher (w -> w -> w,k)
+
+squelcher :: forall fs w m.
+             (Uses (Tracer w) fs m,Uses (Squelcher w) fs m)
+          => Instruction (Squelcher w) fs m
+squelcher = Squelcher $ \fs ->
+  let t@(Tracer w k) = view fs
+  in instruction (Tracer w (\_ -> pure) :: Instruction (Tracer w) fs m) fs

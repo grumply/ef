@@ -25,14 +25,11 @@ instance Pair (Env r) (Reader r) where
 ask :: Has (Reader r) fs m => Plan fs m r
 ask = symbol (Reader id)
 
-reader :: Has (Reader r) fs m => (r -> a) -> Plan fs m a
-reader f = symbol (Reader f)
-
 asks :: Has (Reader r) fs m => (r -> a) -> Plan fs m a
-asks = reader
+asks f = symbol (Reader f)
 
-env :: Uses (Env r) fs m => r -> Instruction (Env r) fs m
-env r = Env r pure
+reader :: Uses (Env r) fs m => Instruction r (Env r) fs '[] m
+reader = instruction
 
 data Localize r k = Localize (r -> r) k
 data Localizer r k = Localizer ((r -> r) -> k)

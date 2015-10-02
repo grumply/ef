@@ -59,8 +59,17 @@ instance (Admits' x xs' (IndexOf x xs')) => Admits' x (x' ': xs') ('S n) where
   push' _ xa (Instr fa xs) = Instr fa (push' (Index :: Index (IndexOf x xs')) xa xs)
   pull' _ (Instr _ xs) = pull' (Index :: Index (IndexOf x xs')) xs
 
-newtype Instructions fs m = Instructions
-  { getInstructions :: Instrs fs (Instructions fs m -> m (Instructions fs m)) }
+class Subset (xs :: [* -> *]) (ys :: [* -> *]) where
+  pushSubset :: Instrs xs a -> Instrs ys a -> Instrs ys a
+  pullSubset :: Instrs ys a -> Instrs xs a
+instance Subset '[] ys where
+  pushSubset _ ys = ys
+  pullSubset _ = Empty
+instance (Denies x xs,Admits' x ys (IndexOf x ys),Subset xs ys) => Subset (x ': xs) ys where
+  pushSubset (Instr xa xs) ys = pushSubset xs (push xa ys)
+  pullSubset ys =
+    let xa = pull ys
+    in Instr xa (pullSubset ys)
 
 data Symbol (symbols :: [* -> *]) a where
   Symbol  :: Denies s ss => s a -> Symbol (s ': ss) a
@@ -112,10 +121,10 @@ data Plan symbols m a
   | forall b. Step (Symbol symbols b) (b -> Plan symbols m a)
 
 {-# INLINE delta #-}
-delta :: (Pair (Instrs is) (Symbol symbols),Monad m)
-       => Instructions is m
+delta :: (Subset is is,Pair (Instrs is) (Symbol symbols),Monad m)
+       => Context is m
        -> Plan symbols m a
-       -> m (Instructions is m,a)
+       -> m (Context is m,a)
 delta is p0 = go p0
   where
     go p =
@@ -125,13 +134,12 @@ delta is p0 = go p0
           p' <- mp
           go p'
         Step symbols k -> do
-          (trans,nxt) <- fmap k <$> pair (curry pure) (getInstructions is) symbols
-          is' <- trans is
+          (trans,nxt) <- fmap k <$> pair (curry pure) is symbols
+          is' <- (getTrans trans) is
           delta is' nxt
 
 type Uses f fs m = (Monad m,Admits' f fs (IndexOf f fs))
 type Has f fs m = (Monad m,Allows' f fs (IndexOf f fs))
-type Instruction f fs m = f (Instructions fs m -> m (Instructions fs m))
 
 instance (Monad m) => Functor (Plan symbols m) where
   fmap f p0 = go p0 where
@@ -173,13 +181,34 @@ add fa i = Instr fa i
 (*:*) = add
 infixr 5 *:*
 
-view :: forall x xs m. Uses x xs m => Instructions xs m -> x (Instructions xs m -> m (Instructions xs m))
-view xs = pull $ getInstructions xs
+class UnsafeBuild fs where
+  unsafeBuild :: Instrs fs a
+instance UnsafeBuild '[] where
+  unsafeBuild = Empty
+instance (Denies f fs,UnsafeBuild fs) => UnsafeBuild (f ': fs) where
+  unsafeBuild = Instr undefined unsafeBuild
 
-instruction :: forall fs x m. Uses x fs m
-            => Instruction x fs m
-            -> Instructions fs m -> m (Instructions fs m)
-instruction x is = {-# SCC "instruction_building" #-} pure $ Instructions $ push x $ getInstructions $ is
+build :: UnsafeBuild fs => Context fs m
+build = unsafeBuild
+
+-- An instruction table transformation, monadically.
+type Transform fs m a = Instrs fs a -> m (Instrs fs a)
+
+type Instruction f fs gs m = f (Transform gs m (Trans fs m))
+
+newtype Trans fs m = Trans { getTrans :: Transform fs m (Trans fs m) }
+
+type Context fs m = Instrs fs (Trans fs m)
+
+inject :: (Subset fs gs) => Instruction f fs gs m -> Context fs m -> Context fs m
+inject instr ctxt = _
+
+-- liftTrans :: forall fs gs m.
+--              (Subset fs gs,Monad m)
+--           => (Instructions fs m -> m (Instructions fs m))
+--           -> Instructions gs m
+--           -> m (Instructions gs m)
+-- liftTrans f gsI = _
 
 cutoff :: Monad m => Integer -> Plan fs m a -> Plan fs m (Maybe a)
 cutoff n _ | n <= 0 = return Nothing
@@ -197,8 +226,8 @@ symbol xa = Step (inj xa) Pure
 
 -- foldP allows recovery of interpreter at every produced value
 {-# INLINE foldP #-}
-foldP :: (Foldable f,Pair (Instrs is) (Symbol symbols),Monad m)
-     => Instructions is m -> (a -> Plan symbols m b) -> f a -> m [(Instructions is m,b)]
+foldP :: (Foldable f,Pair (Instrs is) (Symbol symbols),Monad m,Subset is is)
+     => Context is m -> (a -> Plan symbols m b) -> f a -> m [(Context is m,b)]
 foldP i0 ap f = foldr accumulate (const (return [])) f i0
   where
     accumulate a cont is = do
@@ -208,8 +237,8 @@ foldP i0 ap f = foldr accumulate (const (return [])) f i0
 
 -- foldP_, unlike foldP, does not allow recovery of interpreter
 {-# INLINE foldP_ #-}
-foldP_ :: (Foldable f,Pair (Instrs is) (Symbol symbols),Monad m)
-     => Instructions is m -> (a -> Plan symbols m b) -> f a -> m [b]
+foldP_ :: (Foldable f,Pair (Instrs is) (Symbol symbols),Monad m,Subset is is)
+     => Context is m -> (a -> Plan symbols m b) -> f a -> m [b]
 foldP_ i0 ap f = foldr accumulate (const (return [])) f i0
   where
     accumulate a cont is = do
