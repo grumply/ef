@@ -1,7 +1,7 @@
 {-
 Reader here has been partitioned into the default encapsulation effect, Reader,
-and the subcomputation localization effect, Localize. This division is explained
-in doc/Effect/Reader.hs
+and the subcomputation context localization effect, Localize. This division is
+explained in doc/Effect/Reader.hs
 -}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
