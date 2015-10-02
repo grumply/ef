@@ -1,8 +1,16 @@
+{-
+Reader here has been partitioned into the default encapsulation effect, Reader,
+and the subcomputation localization effect, Localize. This division is explained
+in doc/Effect/Reader.hs
+-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Effect.Reader
   ( Reader, ask, reader, asks
   , Env, env
+  , Localize, local
+  , Localizer, localizer
   ) where
 
 import Mop
@@ -25,3 +33,29 @@ asks = reader
 
 env :: Uses (Env r) fs m => r -> Instruction (Env r) fs m
 env r = Env r pure
+
+data Localize r k = Localize (r -> r) k
+data Localizer r k = Localizer ((r -> r) -> k)
+
+overwrite :: Has (Localize r) fs m => (r -> r) -> Plan fs m ()
+overwrite f = symbol (Localize f ())
+
+local :: forall r fs m a.
+         (Has (Localize r) fs m
+         ,Has (Reader r) fs m
+         ) => (r -> r) -> Plan fs m a -> Plan fs m a
+local f p = do
+  orig <- ask
+  overwrite f
+  a <- p
+  overwrite (const (orig :: r))
+  return a
+
+localizer :: (Uses (Localizer r) fs m, Uses (Env r) fs m)
+          => Instruction (Localizer r) fs m
+localizer = Localizer $ \f fs ->
+  let Env r k = view fs
+  in instruction (Env (f r) k) fs
+
+instance Pair (Localizer r) (Localize r) where
+  pair p (Localizer rrk) (Localize rr k) = pair p rrk (rr,k)
