@@ -1,23 +1,21 @@
+{-# LANGUAGE DeriveFunctor #-}
 {-
 Reader here has been partitioned into the default encapsulation effect, Reader,
-and the subcomputation context localization effect, Localize. This division is
-explained in doc/Effect/Reader.hs
+and the subcomputation localization effect, Localize. This division is explained
+in doc/Effect/Reader.hs
 -}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 module Effect.Reader
-  ( Reader, ask, reader, asks
-  , Env, env
+  ( Reader, ask, asks
+  , Env, reader
   , Localize, local
-  , Localizer, localizer
+  , Localizer, localizable
   ) where
 
 import Mop
 
-data Reader r k = Reader (r -> k)
+data Reader r k = Reader (r -> k) deriving Functor
 
-data Env r k = Env r k
+data Env r k = Env r k deriving Functor
 
 instance Pair (Env r) (Reader r) where
   pair p (Env r k) (Reader rk) = pair p (r,k) rk
@@ -28,25 +26,27 @@ ask = symbol (Reader id)
 asks :: Has (Reader r) fs m => (r -> a) -> Plan fs m a
 asks f = symbol (Reader f)
 
-reader :: Uses (Env r) fs m => Instruction r (Env r) fs '[] m
-reader = instruction
+reader :: Uses (Env r) fs m => r -> Instruction (Env r) fs m
+reader r = Env r pure
 
-data Localize r k = Localize (r -> r) k
-data Localizer r k = Localizer ((r -> r) -> k)
+data Localize r k = Localize (r -> r) k deriving Functor
+data Localizer r k = Localizer ((r -> r) -> k) deriving Functor
 
 overwrite :: Has (Localize r) fs m => (r -> r) -> Plan fs m ()
 overwrite f = symbol (Localize f ())
 
-local :: forall r fs m a.
-         (Has (Localize r) fs m
-         ,Has (Reader r) fs m
-         ) => (r -> r) -> Plan fs m a -> Plan fs m a
+local :: forall r fs m a. (Has (Localize r) fs m,Has (Reader r) fs m)
+      => (r -> r) -> Plan fs m a -> Plan fs m a
 local f p = do
   orig <- ask
   overwrite f
   a <- p
   overwrite (const (orig :: r))
   return a
+
+localizable :: forall fs m r. (Uses (Env r) fs m,Uses (Localizer r) fs m)
+            => r -> Build fs m
+localizable r = push (localizer :: Instruction (Localizer r) fs m) . push (reader r)
 
 localizer :: (Uses (Localizer r) fs m, Uses (Env r) fs m)
           => Instruction (Localizer r) fs m

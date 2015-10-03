@@ -21,7 +21,9 @@ library
                        Effect.Reader,
                        Effect.State,
                        Effect.Writer
-                       
+  extensions:          ScopedTypeVariables
+                       MultiParamTypeClasses
+                       FlexibleContexts
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.8 && <4.9
