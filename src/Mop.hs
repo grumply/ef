@@ -166,6 +166,13 @@ instance (Pair i s,Pair (Instrs is) (Symbol ss))
     pair p (Instr ia _) (Symbol  sa) = {-# SCC "symbol_pairing" #-} pair p ia sa
     pair p (Instr _ is) (Further ss) = {-# SCC "further_pairing" #-} pair p is ss
 
+pairs :: forall fs gs m b. (Pair (Instrs fs) (Symbol gs)) => Instructions (fs :: [* -> *]) m -> Proxy (Symbol (gs :: [* -> *]) ())
+pairs _ = Proxy :: Proxy (Symbol gs ())
+
+type family End (xs :: [k]) :: k where
+  End '[x] = x
+  End (x ': xs) = End xs
+
 data Plan symbols m a
   = Pure a
   | M                       (m             (Plan symbols m a))
