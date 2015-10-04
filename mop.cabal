@@ -24,6 +24,7 @@ library
   default-extensions:  ScopedTypeVariables
                        MultiParamTypeClasses
                        FlexibleContexts
+                       DataKinds
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.8 && <4.9

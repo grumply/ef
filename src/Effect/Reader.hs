@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveFunctor #-}
 {-
 Reader here has been partitioned into the default encapsulation effect, Reader,
 and the subcomputation localization effect, Localize. This division is explained
@@ -13,9 +12,9 @@ module Effect.Reader
 
 import Mop
 
-data Reader r k = Reader (r -> k) deriving Functor
+data Reader r k = Reader (r -> k)
 
-data Env r k = Env r k deriving Functor
+data Env r k = Env r k
 
 instance Pair (Env r) (Reader r) where
   pair p (Env r k) (Reader rk) = pair p (r,k) rk
@@ -29,8 +28,8 @@ asks f = symbol (Reader f)
 reader :: Uses (Env r) fs m => r -> Instruction (Env r) fs m
 reader r = Env r pure
 
-data Localize r k = Localize (r -> r) k deriving Functor
-data Localizer r k = Localizer ((r -> r) -> k) deriving Functor
+data Localize r k = Localize (r -> r) k
+data Localizer r k = Localizer ((r -> r) -> k)
 
 overwrite :: Has (Localize r) fs m => (r -> r) -> Plan fs m ()
 overwrite f = symbol (Localize f ())

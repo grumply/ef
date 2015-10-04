@@ -16,7 +16,11 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE InstanceSigs #-}
-{-# OPTIONS_GHC -fno-warn-missing-methods -fno-warn-redundant-constraints #-}
+{-# LANGUAGE CPP #-}
+{-# OPTIONS_GHC -fno-warn-missing-methods #-}
+#if __GLASGOW_HASKELL__ > 710
+{-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
+#endif
 module Mop where
 
 import Control.Monad
