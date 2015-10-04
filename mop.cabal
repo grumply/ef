@@ -21,7 +21,7 @@ library
                        Effect.Reader,
                        Effect.State,
                        Effect.Writer
-  extensions:          ScopedTypeVariables
+  default-extensions:  ScopedTypeVariables
                        MultiParamTypeClasses
                        FlexibleContexts
   -- other-modules:       

@@ -16,7 +16,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE InstanceSigs #-}
-{-# OPTIONS_GHC -fno-warn-missing-methods #-}
+{-# OPTIONS_GHC -fno-warn-missing-methods -fno-warn-redundant-constraints #-}
 module Mop where
 
 import Control.Monad
@@ -218,6 +218,16 @@ instance (Typeable f,Denies f fs,UnsafeBuild fs) => UnsafeBuild (f ': fs) where
 
 build :: (UnsafeBuild fs,Monad m) => Build fs m -> Instructions fs m
 build f = Instructions $ f unsafeBuild
+
+class UnsafeBuild' fs where
+  unsafeBuild' :: Instrs fs a
+instance UnsafeBuild' '[] where
+  unsafeBuild' = Empty
+instance (Denies f fs,UnsafeBuild' fs) => UnsafeBuild' (f ': fs) where
+  unsafeBuild' = Instr undefined unsafeBuild'
+
+build' :: (UnsafeBuild' fs,Monad m) => Build fs m -> Instructions fs m
+build' f = Instructions $ f unsafeBuild'
 
 instance (Monad m) => Functor (Plan symbols m) where
   fmap f p0 = go p0 where
