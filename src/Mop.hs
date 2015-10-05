@@ -32,39 +32,39 @@ type family (:++:) (xs :: [k]) (ys :: [k]) :: [k] where
   '[]       :++: ys  = ys
   (x ': xs) :++: ys  = x ': (xs :++: ys)
 
--- So this seems to work if append is done in the correct order, but I'm not sure
--- how to enact that correct order yet... Is typerep an instance of ord? I could
--- witness the ordering through that....
-append :: forall fs m xs ys.
-          ( Monad m
-          , (:++:) xs ys ~ fs
-          , UnsafeBuild fs
-          , Functor (Instrs ys)
-          , Functor (Instrs xs)
-          , AdmitsSubset xs fs
-          , AdmitsSubset ys fs
-          , AdmitsSubset ys ys
-          , AdmitsSubset fs fs
-          , AdmitsSubset xs xs
-          , Subset xs fs
-          , Subset ys fs
-          ) => Context xs m -> Context ys m -> Context fs m
-append xs ys =
-  let fs = unsafeBuild :: Instrs fs (Transformation fs m)
-      xs' = pushSubset (fmap liftTrans xs :: Instrs xs (Transformation fs m)) fs
-      ys' = pushSubset (fmap liftTrans ys :: Instrs ys (Transformation fs m)) xs'
-  in ys'
-  where
-    liftTrans :: forall fs gs m. (Subset fs gs,Monad m,AdmitsSubset gs gs,Functor (Instrs fs),AdmitsSubset fs gs,AdmitsSubset fs fs)
-              => (Instructions fs m -> m (Instructions fs m))
-              ->  Instructions gs m -> m (Instructions gs m)
-    liftTrans f gsI = do
-      let gs = getContext gsI
-          fs = pullSubset gs
-      fs' <- f (unsafeCoerce $ Instructions fs)
-      let fs'' = unsafeCoerce fs'
-      let gs' = pushSubset (getContext fs'') gs :: Instrs gs (Transformation gs m)
-      pure $ Instructions gs'
+-- -- So this seems to work if append is done in the correct order, but I'm not sure
+-- -- how to enact that correct order yet... Is typerep an instance of ord? I could
+-- -- witness the ordering through that....
+-- append :: forall fs m xs ys.
+--           ( Monad m
+--           , (:++:) xs ys ~ fs
+--           , UnsafeBuild fs
+--           , Functor (Instrs ys)
+--           , Functor (Instrs xs)
+--           , AdmitsSubset xs fs
+--           , AdmitsSubset ys fs
+--           , AdmitsSubset ys ys
+--           , AdmitsSubset fs fs
+--           , AdmitsSubset xs xs
+--           , Subset xs fs
+--           , Subset ys fs
+--           ) => Context xs m -> Context ys m -> Context fs m
+-- append xs ys =
+--   let fs = unsafeBuild :: Instrs fs (Transformation fs m)
+--       xs' = pushSubset (fmap liftTrans xs :: Instrs xs (Transformation fs m)) fs
+--       ys' = pushSubset (fmap liftTrans ys :: Instrs ys (Transformation fs m)) xs'
+--   in ys'
+--   where
+--     liftTrans :: forall fs gs m. (Subset fs gs,Monad m,AdmitsSubset gs gs,Functor (Instrs fs),AdmitsSubset fs gs,AdmitsSubset fs fs)
+--               => (Instructions fs m -> m (Instructions fs m))
+--               ->  Instructions gs m -> m (Instructions gs m)
+--     liftTrans f gsI = do
+--       let gs = getContext gsI
+--           fs = pullSubset gs
+--       fs' <- f (unsafeCoerce $ Instructions fs)
+--       let fs'' = unsafeCoerce fs'
+--       let gs' = pushSubset (getContext fs'') gs :: Instrs gs (Transformation gs m)
+--       pure $ Instructions gs'
 
 -- newtype Instructions fs m = Instructions { getContext :: Context fs m }
 -- type Transformation fs m = Instructions fs m -> m (Instructions fs m)
@@ -170,8 +170,8 @@ instance (Pair i s,Pair (Instrs is) (Symbol ss))
     pair p (Instr ia _) (Symbol  sa) = {-# SCC "symbol_pairing" #-} pair p ia sa
     pair p (Instr _ is) (Further ss) = {-# SCC "further_pairing" #-} pair p is ss
 
-pairs :: forall fs gs m b. (Pair (Instrs fs) (Symbol gs)) => Instructions (fs :: [* -> *]) m -> Proxy (Symbol (gs :: [* -> *]) ())
-pairs _ = Proxy :: Proxy (Symbol gs ())
+-- pairs :: forall fs gs m b. (Pair (Instrs fs) (Symbol gs)) => Instructions (fs :: [* -> *]) m -> Proxy (Symbol (gs :: [* -> *]) ())
+-- pairs _ = Proxy :: Proxy (Symbol gs ())
 
 type family End (xs :: [k]) :: k where
   End '[x] = x
@@ -184,9 +184,9 @@ data Plan symbols m a
 
 {-# INLINE delta #-}
 delta :: (Pair (Instrs is) (Symbol symbols),Monad m)
-       => Instructions is m
+       => Instructions is symbols m a
        -> Plan symbols m a
-       -> m (Instructions is m,a)
+       -> m (Instructions is symbols m a,a)
 delta is p0 = go p0
   where
     go p =
@@ -196,19 +196,21 @@ delta is p0 = go p0
           p' <- mp
           go p'
         Step symbols k -> do
-          (trans,nxt) <- fmap k <$> pair (curry pure) (getContext is) symbols
-          is' <- trans is
-          delta is' nxt
+          let (trans,b) = pair (\a x -> (a,x)) (getContext is) symbols
+          (interpreter,nxt) <- trans (is,k b)
+          delta interpreter nxt
 
-type Uses f fs m = (Monad m,Admits' f fs (IndexOf f fs))
+type Uses f fs gs m = (Monad m,Admits' f fs (IndexOf f fs),Pair (Instrs fs) (Symbol gs))
 type Has f fs m = (Monad m,Allows' f fs (IndexOf f fs))
 
-type Transformation fs m = Instructions fs m -> m (Instructions fs m)
-type Instruction f fs m = f (Transformation fs m)
-type Context fs m = Instrs fs (Transformation fs m)
-type Build fs m = Context fs m -> Context fs m
-newtype Instructions fs m = Instructions { getContext :: Context fs m }
+type Transformation fs gs m a
+  =      (Instructions fs gs m a,Plan gs m a)
+    -> m (Instructions fs gs m a,Plan gs m a)
 
+type Instruction f fs gs m a = f (Transformation fs gs m a)
+type Context fs gs m a = Instrs fs (Transformation fs gs m a)
+type Build fs gs m a = Context fs gs m a -> Context fs gs m a
+newtype Instructions fs gs m a = Instructions { getContext :: Context fs gs m a }
 
 class UnsafeBuild fs where
   unsafeBuild :: Instrs fs a
@@ -220,7 +222,8 @@ instance (Typeable f,Denies f fs,UnsafeBuild fs) => UnsafeBuild (f ': fs) where
         msg = "Instruction (" ++ instr ++ ") uninitialized."
     in Instr (error msg) unsafeBuild
 
-build :: (UnsafeBuild fs,Monad m) => Build fs m -> Instructions fs m
+build :: (UnsafeBuild fs,Pair (Instrs fs) (Symbol gs),Monad m)
+      => Build fs gs m a -> Instructions fs gs m a
 build f = Instructions $ f unsafeBuild
 
 class UnsafeBuild' fs where
@@ -230,7 +233,8 @@ instance UnsafeBuild' '[] where
 instance (Denies f fs,UnsafeBuild' fs) => UnsafeBuild' (f ': fs) where
   unsafeBuild' = Instr undefined unsafeBuild'
 
-build' :: (UnsafeBuild' fs,Monad m) => Build fs m -> Instructions fs m
+build' :: (UnsafeBuild' fs,Pair (Instrs fs) (Symbol gs),Monad m)
+       => Build fs gs m a -> Instructions fs gs m a
 build' f = Instructions $ f unsafeBuild'
 
 instance (Monad m) => Functor (Plan symbols m) where
@@ -273,13 +277,18 @@ add fa i = Instr fa i
 (*:*) = add
 infixr 5 *:*
 
-view :: forall x xs m. (Uses x xs m) => Instructions xs m -> x (Instructions xs m -> m (Instructions xs m))
+view :: Uses x xs gs m => Instructions xs gs m a -> Instruction x xs gs m a
 view xs = pull $ getContext xs
 
-instruction :: forall fs x m. (Uses x fs m)
-            => Instruction x fs m
-            -> Instructions fs m -> m (Instructions fs m)
+instruction :: Uses x fs gs m => Instruction x fs gs m a -> Instructions fs gs m a -> m (Instructions fs gs m a)
 instruction x is = {-# SCC "instruction_building" #-} pure $ Instructions $ push x $ getContext is
+
+simple :: (Applicative f, Admits x fs)
+       => x (Transformation fs gs m a) -> (Instructions fs gs m a, t) -> f (Instructions fs gs m a, t)
+simple x = modI (push x)
+
+modI f (fs,gs) = pure (Instructions $ f (getContext fs),gs)
+modP f (fs,gs) = pure (fs,f gs)
 
 cutoff :: Monad m => Integer -> Plan fs m a -> Plan fs m (Maybe a)
 cutoff n _ | n <= 0 = return Nothing
@@ -295,24 +304,24 @@ lift m = M (m >>= \r -> return (Pure r))
 symbol :: Allows x symbols => x a -> Plan symbols m a
 symbol xa = Step (inj xa) Pure
 
--- foldP allows recovery of interpreter at every produced value
-{-# INLINE foldP #-}
-foldP :: (Foldable f,Pair (Instrs is) (Symbol symbols),Monad m)
-     => Instructions is m -> (a -> Plan symbols m b) -> f a -> m [(Instructions is m,b)]
-foldP i0 ap f = foldr accumulate (const (return [])) f i0
-  where
-    accumulate a cont is = do
-      (i,!b) <- delta is (ap a)
-      ~ibs <- cont i
-      return ((i,b):ibs)
+-- -- foldP allows recovery of interpreter at every produced value
+-- {-# INLINE foldP #-}
+-- foldP :: (Foldable f,Pair (Instrs is) (Symbol symbols),Monad m)
+--      => Instructions is m -> (a -> Plan symbols m b) -> f a -> m [(Instructions is m,b)]
+-- foldP i0 ap f = foldr accumulate (const (return [])) f i0
+--   where
+--     accumulate a cont is = do
+--       (i,!b) <- delta is (ap a)
+--       ~ibs <- cont i
+--       return ((i,b):ibs)
 
--- foldP_, unlike foldP, does not allow recovery of interpreter
-{-# INLINE foldP_ #-}
-foldP_ :: (Foldable f,Pair (Instrs is) (Symbol symbols),Monad m)
-     => Instructions is m -> (a -> Plan symbols m b) -> f a -> m [b]
-foldP_ i0 ap f = foldr accumulate (const (return [])) f i0
-  where
-    accumulate a cont is = do
-      (i,b) <- delta is (ap a)
-      bs <- cont i
-      return (b:bs)
+-- -- foldP_, unlike foldP, does not allow recovery of interpreter
+-- {-# INLINE foldP_ #-}
+-- foldP_ :: (Foldable f,Pair (Instrs is) (Symbol symbols),Monad m)
+--      => Instructions is m -> (a -> Plan symbols m b) -> f a -> m [b]
+-- foldP_ i0 ap f = foldr accumulate (const (return [])) f i0
+--   where
+--     accumulate a cont is = do
+--       (i,b) <- delta is (ap a)
+--       bs <- cont i
+--       return (b:bs)
