@@ -328,9 +328,9 @@ symbol xa = Step (inj xa) Pure
 --       bs <- cont i
 --       return (b:bs)
 
-{-# INLINE reduceStep #-}
-reduceStep :: Functor m => ((Plan symbols m a -> Plan symbols m a) -> Plan symbols m a -> Plan symbols m a) -> Plan symbols m a -> Plan symbols m a
-reduceStep f p0 = go p0
+{-# INLINE mapStep #-}
+mapStep :: Functor m => ((Plan symbols m a -> Plan symbols m a) -> Plan symbols m a -> Plan symbols m a) -> Plan symbols m a -> Plan symbols m a
+mapStep f p0 = go p0
   where
     go p =
       case p of
