@@ -1,36 +1,23 @@
 module Effect.Exception
-  (throw,catch,throwHandler,Throw(..),ThrowHandler(..),Exception(..),SomeException(..))
+  (throw,catch,throws,Throw(..),ThrowHandler(..),Exception(..),SomeException(..))
   where
 
 import Mop
 import Control.Exception hiding (throw,catch)
 
-data Throw k = Throw SomeException
-data ThrowHandler k = ThrowHandler k
+data Throw        k = Throw         SomeException    k
+data ThrowHandler k = ThrowHandler (SomeException -> k)
 
-scrub :: (Has Throw syms m,Exception e) => (e -> Plan syms m a) -> Plan syms m a -> Plan syms m a
-scrub sub = go
-  where
-    go p =
-      case p of
-        Step syms bp ->
-          case prj syms of
-            Just (Throw se) ->
-              case fromException se of
-                Just x -> sub x
-                Nothing -> Step syms (\b -> go (bp b))
-                -- ^ Look closely here.
-            Nothing -> Step syms (\b -> go (bp b))
-        M mp -> M (fmap go mp)
-        Pure r -> Pure r
+-- catch :: (Has Throw symbols m, Exception e)
+--       => (e -> Plan symbols m a) -> Plan symbols m a -> Plan symbols m a
+catch sub = removeStep $ \stp@(Step syms bp) ->
+  maybe stp (\(Throw se _) -> maybe stp sub (fromException se)) (prj syms)
 
-catch :: (Has Throw syms m,Exception e) => (e -> Plan syms m a) -> Plan syms m a -> Plan syms m a
-catch = scrub
+-- throw :: (Has Throw symbols, Exception e) => e -> Plan symbols m a
+throw e = symbol (Throw (toException e) undefined)
 
-throw e = symbol (Throw $ toException e)
-
-throwHandler :: Monad m => Instruction ThrowHandler instrs syms m a
-throwHandler = ThrowHandler return
+-- throws :: ThrowHandler k
+throws = ThrowHandler (\se -> error $ "Uncaught exception: " ++ show se)
 
 instance Pair ThrowHandler Throw where
-  pair p (ThrowHandler k) (Throw e) = p k (error $ "Uncaught exception: " ++ show e)
+  pair p (ThrowHandler k) (Throw e k') = p (k e) k'

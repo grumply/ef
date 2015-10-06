@@ -182,6 +182,40 @@ data Plan symbols m a
   | M (m (Plan symbols m a))
   | forall b. Step (Symbol symbols b) (b -> Plan symbols m a)
 
+instance Monad m => Functor (Plan symbols m) where
+  fmap f p0 = go p0
+    where
+      go p =
+        case p of
+          Pure a -> Pure (f a)
+          M m -> M (m >>= \p' -> return (go p'))
+          Step syms bp -> Step syms (\b -> go (bp b))
+
+instance (Monad m) => Applicative (Plan symbols m) where
+  pure = Pure
+  (<*>) = ap
+
+instance (Monad m) => Monad (Plan symbols m) where
+  return = Pure
+  (>>=) = _bind
+
+{-# NOINLINE _bind #-}
+_bind :: Monad m => Plan symbols m a -> (a -> Plan symbols m a') -> Plan symbols m a'
+p0 `_bind` f = go p0 where
+  go p = case p of
+    Pure res -> f res
+    M m -> M (m >>= \p' -> return (go p'))
+    Step syms k -> Step syms (\r -> go (k r))
+
+{-# RULES
+    "_bind (Step syms k) f" forall syms k f .
+        _bind (Step syms k) f = Step syms (\a  -> _bind (k a) f);
+    "_bind (M          m) f" forall m    f .
+        _bind (M          m) f = M (m >>= \p -> return (_bind p f));
+    "_bind (Pure    r   ) f" forall r    f .
+        _bind (Pure    r   ) f = f r;
+  #-}
+
 {-# INLINE delta #-}
 delta :: (Pair (Instrs is) (Symbol symbols),Monad m)
        => Instructions is symbols m a
@@ -236,38 +270,6 @@ instance (Denies f fs,UnsafeBuild' fs) => UnsafeBuild' (f ': fs) where
 build' :: (UnsafeBuild' fs,Pair (Instrs fs) (Symbol gs),Monad m)
        => Build fs gs m a -> Instructions fs gs m a
 build' f = Instructions $ f unsafeBuild'
-
-instance (Monad m) => Functor (Plan symbols m) where
-  fmap f p0 = go p0 where
-    go p = case p of
-      Pure a -> Pure (f a)
-      M m -> M (m >>= \p' -> return (go p'))
-      Step symbols fa -> Step symbols (\b -> go (fa b))
-
-instance (Monad m) => Applicative (Plan symbols m) where
-  pure = Pure
-  (<*>) = ap
-
-instance (Monad m) => Monad (Plan symbols m) where
-  return = Pure
-  (>>=) = _bind
-
-{-# NOINLINE _bind #-}
-_bind :: Monad m => Plan symbols m a -> (a -> Plan symbols m a') -> Plan symbols m a'
-p0 `_bind` f = go p0 where
-  go p = case p of
-    Pure res -> f res
-    M m -> M (m >>= \p' -> return (go p'))
-    Step syms k -> Step syms (\r -> go (k r))
-
-{-# RULES
-    "_bind (Step syms k) f" forall syms k f .
-        _bind (Step syms k) f = Step syms (\a  -> _bind (k a) f);
-    "_bind (M          m) f" forall m    f .
-        _bind (M          m) f = M (m >>= \p -> return (_bind p f));
-    "_bind (Pure    r   ) f" forall r    f .
-        _bind (Pure    r   ) f = f r;
-  #-}
 
 add :: (Denies f fs) => f a -> Instrs fs a -> Instrs (f ': fs) a
 add fa Empty = Instr fa Empty
@@ -326,38 +328,22 @@ symbol xa = Step (inj xa) Pure
 --       bs <- cont i
 --       return (b:bs)
 
-convertSymbol :: (Has s syms m,Has s' syms m) => (forall b. s b -> s' b) -> Plan syms m a -> Plan syms m a
-convertSymbol sp p0 = go p0
+{-# INLINE reduceStep #-}
+reduceStep :: Functor m => ((Plan symbols m a -> Plan symbols m a) -> Plan symbols m a -> Plan symbols m a) -> Plan symbols m a -> Plan symbols m a
+reduceStep f p0 = go p0
   where
-    go p0 =
-      case p0 of
-        Step syms bp ->
-          case prj syms of
-            Just sa -> Step (inj $ sp sa) (\b -> go (bp b))
-            Nothing -> Step syms (\b -> go (bp b))
-        M mp -> M (fmap go mp)
+    go p =
+      case p of
+        M mp   -> M (fmap go mp)
         Pure r -> Pure r
+        stp    -> f go stp
 
-substituteRec :: Has s syms m => (forall b. s b -> Plan syms m a) -> Plan syms m a -> Plan syms m a
-substituteRec sap p0 = go p0
+{-# INLINE removeStep #-}
+removeStep :: Functor m => (Plan symbols m a -> Plan symbols m a) -> Plan symbols m a -> Plan symbols m a
+removeStep f p0 = go p0
   where
-    go p0 =
-      case p0 of
-        Step syms bp ->
-          case prj syms of
-            Just sa -> go $ sap sa
-            Nothing -> Step syms (\b -> go (bp b))
-        M mp -> M (fmap go mp)
-        Pure r -> Pure r
-
-substitute :: Has s syms m => (forall b. s b -> Plan syms m a) -> Plan syms m a -> Plan syms m a
-substitute sub p0 = go p0
-  where
-    go p0 =
-      case p0 of
-        Step syms bp ->
-          case prj syms of
-            Just sa -> sub sa
-            Nothing -> Step syms (\b -> go (bp b))
-        M mp -> M (fmap go mp)
-        Pure r -> Pure r
+    go p =
+      case p of
+        stp@(Step syms bp) -> go (f (Step syms (\b -> go (bp b))))
+        M mp               -> M (fmap go mp)
+        Pure r             -> Pure r
