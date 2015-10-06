@@ -152,6 +152,7 @@ class Allows' x xs (n :: Nat) where
 instance (Denies x' xs',xs ~ (x' ': xs'),Allows' x xs' (IndexOf x xs')) => Allows' x xs ('S n) where
   inj' _ xa = Further (inj' (Index :: Index (IndexOf x xs')) xa)
   prj' _ (Further ss) = prj' (Index :: Index (IndexOf x xs')) ss
+  prj' _ _ = Nothing
 instance (Denies x xs',xs ~ (x ': xs')) => Allows' x xs 'Z where
   inj' _ = Symbol
   prj' _ (Symbol sa) = Just sa
@@ -218,9 +219,9 @@ p0 `_bind` f = go p0 where
 
 {-# INLINE delta #-}
 delta :: (Pair (Instrs is) (Symbol symbols),Monad m)
-       => Instructions is symbols m a
+       => Instructions is m
        -> Plan symbols m a
-       -> m (Instructions is symbols m a,a)
+       -> m (Instructions is m,a)
 delta is p0 = go p0
   where
     go p =
@@ -231,20 +232,20 @@ delta is p0 = go p0
           go p'
         Step symbols k -> do
           let (trans,b) = pair (\a x -> (a,x)) (getContext is) symbols
-          (interpreter,nxt) <- trans (is,k b)
-          delta interpreter nxt
+          interpreter <- trans is
+          delta interpreter (k b)
 
-type Uses f fs gs m = (Monad m,Admits' f fs (IndexOf f fs),Pair (Instrs fs) (Symbol gs))
+type Uses f fs m = (Monad m,Admits' f fs (IndexOf f fs))
 type Has f fs m = (Monad m,Allows' f fs (IndexOf f fs))
 
-type Transformation fs gs m a
-  =      (Instructions fs gs m a,Plan gs m a)
-    -> m (Instructions fs gs m a,Plan gs m a)
+type Transformation instrs m
+  =      (Instructions instrs m)
+    -> m (Instructions instrs m)
 
-type Instruction f fs gs m a = f (Transformation fs gs m a)
-type Context fs gs m a = Instrs fs (Transformation fs gs m a)
-type Build fs gs m a = Context fs gs m a -> Context fs gs m a
-newtype Instructions fs gs m a = Instructions { getContext :: Context fs gs m a }
+type Instruction instr instrs m = instr (Transformation instrs m)
+type Context instrs m = Instrs instrs (Transformation instrs m)
+type Build instrs m = Context instrs m -> Context instrs m
+newtype Instructions instrs m = Instructions { getContext :: Context instrs m }
 
 class UnsafeBuild fs where
   unsafeBuild :: Instrs fs a
@@ -256,8 +257,7 @@ instance (Typeable f,Denies f fs,UnsafeBuild fs) => UnsafeBuild (f ': fs) where
         msg = "Instruction (" ++ instr ++ ") uninitialized."
     in Instr (error msg) unsafeBuild
 
-build :: (UnsafeBuild fs,Pair (Instrs fs) (Symbol gs),Monad m)
-      => Build fs gs m a -> Instructions fs gs m a
+build :: UnsafeBuild instrs => Build instrs m -> Instructions instrs m
 build f = Instructions $ f unsafeBuild
 
 class UnsafeBuild' fs where
@@ -267,8 +267,7 @@ instance UnsafeBuild' '[] where
 instance (Denies f fs,UnsafeBuild' fs) => UnsafeBuild' (f ': fs) where
   unsafeBuild' = Instr undefined unsafeBuild'
 
-build' :: (UnsafeBuild' fs,Pair (Instrs fs) (Symbol gs),Monad m)
-       => Build fs gs m a -> Instructions fs gs m a
+build' :: UnsafeBuild' instrs => Build instrs m -> Instructions instrs m
 build' f = Instructions $ f unsafeBuild'
 
 add :: (Denies f fs) => f a -> Instrs fs a -> Instrs (f ': fs) a
@@ -279,18 +278,11 @@ add fa i = Instr fa i
 (*:*) = add
 infixr 5 *:*
 
-view :: Admits x xs => Instructions xs gs m a -> Instruction x xs gs m a
+view :: Admits instr instrs => Instructions instrs m -> Instruction instr instrs m
 view xs = pull $ getContext xs
 
-instruction :: Uses x fs gs m => Instruction x fs gs m a -> Instructions fs gs m a -> m (Instructions fs gs m a)
+instruction :: Uses instr instrs m => Instruction instr instrs m -> Instructions instrs m -> m (Instructions instrs m)
 instruction x is = {-# SCC "instruction_building" #-} pure $ Instructions $ push x $ getContext is
-
-simple :: (Applicative f, Admits x fs)
-       => x (Transformation fs gs m a) -> (Instructions fs gs m a, t) -> f (Instructions fs gs m a, t)
-simple x = modI (push x)
-
-modI f (fs,gs) = pure (Instructions $ f (getContext fs),gs)
-modP f (fs,gs) = pure (fs,f gs)
 
 cutoff :: Monad m => Integer -> Plan fs m a -> Plan fs m (Maybe a)
 cutoff n _ | n <= 0 = return Nothing

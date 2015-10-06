@@ -1,6 +1,8 @@
 module Effect.Exception
-  (throw,catch,throws,Throw(..),ThrowHandler(..),Exception(..),SomeException(..))
-  where
+  ( throw, catch, Throw(..)
+  , throws, ThrowHandler(..)
+  , Exception(..),SomeException(..)
+  ) where
 
 import Mop
 import Control.Exception (SomeException(..),Exception(..))
