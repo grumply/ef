@@ -28,10 +28,10 @@ scrub sub p0 = go p0
 catch :: (Has Throw syms m,Exception e) => (e -> Plan syms m a) -> Plan syms m a -> Plan syms m a
 catch = scrub
 
-throw e = symbol (Throw e)
+throw e = symbol (Throw $ toException e)
 
-throwHandler :: Applicative m => Instruction ThrowHandler instrs syms m a
-throwHandler = ThrowHandler pure
+throwHandler :: Monad m => Instruction ThrowHandler instrs syms m a
+throwHandler = ThrowHandler return
 
 instance Pair ThrowHandler Throw where
   pair p (ThrowHandler k) (Throw e) = p k (error $ "Uncaught exception: " ++ show e)
