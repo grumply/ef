@@ -3,7 +3,7 @@ module Effect.Exception
   where
 
 import Mop
-import Control.Exception hiding (throw,catch)
+import Control.Exception (SomeException(..),Exception(..))
 
 data Throw        k = Throw         SomeException    k
 data ThrowHandler k = ThrowHandler (SomeException -> k)
