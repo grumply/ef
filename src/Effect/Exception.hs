@@ -25,7 +25,7 @@ scrub sub = go
         Pure r -> Pure r
 
 catch :: (Has Throw syms m,Exception e) => (e -> Plan syms m a) -> Plan syms m a -> Plan syms m a
-catch = scrub'
+catch = scrub
 
 throw e = symbol (Throw $ toException e)
 
