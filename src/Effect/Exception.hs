@@ -8,12 +8,11 @@ import Control.Exception hiding (throw,catch)
 data Throw k = Throw SomeException
 data ThrowHandler k = ThrowHandler k
 
--- abstract over this pattern-matching pattern, it seems common and useful.
 scrub :: (Has Throw syms m,Exception e) => (e -> Plan syms m a) -> Plan syms m a -> Plan syms m a
-scrub sub p0 = go p0
+scrub sub = go
   where
-    go p0 =
-      case p0 of
+    go p =
+      case p of
         Step syms bp ->
           case prj syms of
             Just (Throw se) ->
@@ -26,7 +25,7 @@ scrub sub p0 = go p0
         Pure r -> Pure r
 
 catch :: (Has Throw syms m,Exception e) => (e -> Plan syms m a) -> Plan syms m a -> Plan syms m a
-catch = scrub
+catch = scrub'
 
 throw e = symbol (Throw $ toException e)
 

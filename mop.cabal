@@ -20,7 +20,8 @@ library
   exposed-modules:     Mop,
                        Effect.Reader,
                        Effect.State,
-                       Effect.Writer
+                       Effect.Writer,
+                       Effect.Exception
   default-extensions:  ScopedTypeVariables
                        MultiParamTypeClasses
                        FlexibleContexts

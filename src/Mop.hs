@@ -1,23 +1,23 @@
-{-# LANGUAGE PolyKinds                 #-}
-{-# LANGUAGE ConstraintKinds           #-}
-{-# LANGUAGE DataKinds                 #-}
-{-# LANGUAGE FlexibleContexts          #-}
-{-# LANGUAGE FlexibleInstances         #-}
-{-# LANGUAGE FunctionalDependencies    #-}
-{-# LANGUAGE KindSignatures            #-}
-{-# LANGUAGE MultiParamTypeClasses     #-}
-{-# LANGUAGE RankNTypes                #-}
-{-# LANGUAGE ScopedTypeVariables       #-}
-{-# LANGUAGE TypeFamilies              #-}
-{-# LANGUAGE TypeOperators             #-}
-{-# LANGUAGE GADTs                     #-}
-{-# LANGUAGE UndecidableInstances      #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE CPP #-}
-{-# OPTIONS_GHC -fno-warn-missing-methods #-}
+{-# LANGUAGE PolyKinds                          #-}
+{-# LANGUAGE ConstraintKinds                    #-}
+{-# LANGUAGE DataKinds                          #-}
+{-# LANGUAGE FlexibleContexts                   #-}
+{-# LANGUAGE FlexibleInstances                  #-}
+{-# LANGUAGE FunctionalDependencies             #-}
+{-# LANGUAGE KindSignatures                     #-}
+{-# LANGUAGE MultiParamTypeClasses              #-}
+{-# LANGUAGE RankNTypes                         #-}
+{-# LANGUAGE ScopedTypeVariables                #-}
+{-# LANGUAGE TypeFamilies                       #-}
+{-# LANGUAGE TypeOperators                      #-}
+{-# LANGUAGE GADTs                              #-}
+{-# LANGUAGE UndecidableInstances               #-}
+{-# LANGUAGE QuasiQuotes                        #-}
+{-# LANGUAGE BangPatterns                       #-}
+{-# LANGUAGE ViewPatterns                       #-}
+{-# LANGUAGE InstanceSigs                       #-}
+{-# LANGUAGE CPP                                #-}
+{-# OPTIONS_GHC -fno-warn-missing-methods       #-}
 #if __GLASGOW_HASKELL__ > 710
 {-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
 #endif
@@ -179,7 +179,7 @@ type family End (xs :: [k]) :: k where
 
 data Plan symbols m a
   = Pure a
-  | M                       (m             (Plan symbols m a))
+  | M (m (Plan symbols m a))
   | forall b. Step (Symbol symbols b) (b -> Plan symbols m a)
 
 {-# INLINE delta #-}
@@ -277,7 +277,7 @@ add fa i = Instr fa i
 (*:*) = add
 infixr 5 *:*
 
-view :: Uses x xs gs m => Instructions xs gs m a -> Instruction x xs gs m a
+view :: Admits x xs => Instructions xs gs m a -> Instruction x xs gs m a
 view xs = pull $ getContext xs
 
 instruction :: Uses x fs gs m => Instruction x fs gs m a -> Instructions fs gs m a -> m (Instructions fs gs m a)
@@ -325,3 +325,39 @@ symbol xa = Step (inj xa) Pure
 --       (i,b) <- delta is (ap a)
 --       bs <- cont i
 --       return (b:bs)
+
+convertSymbol :: (Has s syms m,Has s' syms m) => (forall b. s b -> s' b) -> Plan syms m a -> Plan syms m a
+convertSymbol sp p0 = go p0
+  where
+    go p0 =
+      case p0 of
+        Step syms bp ->
+          case prj syms of
+            Just sa -> Step (inj $ sp sa) (\b -> go (bp b))
+            Nothing -> Step syms (\b -> go (bp b))
+        M mp -> M (fmap go mp)
+        Pure r -> Pure r
+
+substituteRec :: Has s syms m => (forall b. s b -> Plan syms m a) -> Plan syms m a -> Plan syms m a
+substituteRec sap p0 = go p0
+  where
+    go p0 =
+      case p0 of
+        Step syms bp ->
+          case prj syms of
+            Just sa -> go $ sap sa
+            Nothing -> Step syms (\b -> go (bp b))
+        M mp -> M (fmap go mp)
+        Pure r -> Pure r
+
+substitute :: Has s syms m => (forall b. s b -> Plan syms m a) -> Plan syms m a -> Plan syms m a
+substitute sub p0 = go p0
+  where
+    go p0 =
+      case p0 of
+        Step syms bp ->
+          case prj syms of
+            Just sa -> sub sa
+            Nothing -> Step syms (\b -> go (bp b))
+        M mp -> M (fmap go mp)
+        Pure r -> Pure r
