@@ -21,7 +21,10 @@ library
                        Effect.Reader,
                        Effect.State,
                        Effect.Writer,
-                       Effect.Exception
+                       Effect.Exception,
+                       Effect.Continuation,
+                       Effect.Fresh,
+                       Effect.Try
   default-extensions:  ScopedTypeVariables
                        MultiParamTypeClasses
                        FlexibleContexts

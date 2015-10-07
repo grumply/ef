@@ -12,10 +12,6 @@
 {-# LANGUAGE TypeOperators                      #-}
 {-# LANGUAGE GADTs                              #-}
 {-# LANGUAGE UndecidableInstances               #-}
-{-# LANGUAGE QuasiQuotes                        #-}
-{-# LANGUAGE BangPatterns                       #-}
-{-# LANGUAGE ViewPatterns                       #-}
-{-# LANGUAGE InstanceSigs                       #-}
 {-# LANGUAGE CPP                                #-}
 {-# OPTIONS_GHC -fno-warn-missing-methods       #-}
 #if __GLASGOW_HASKELL__ > 710
@@ -25,7 +21,6 @@ module Mop where
 
 import Control.Monad
 import Data.Typeable
-import Unsafe.Coerce
 
 type family (:++:) (xs :: [k]) (ys :: [k]) :: [k] where
   xs        :++: '[] = xs

@@ -9,21 +9,21 @@ import Unsafe.Coerce
 -- Try implements short-circuiting plans with success and non-specific failure.
 
 data Try k
-  = forall a. Success Int a
-  | Failure Int
+  = forall a. Success Integer a
+  | Failure Integer
 
 data TryHandler k = TryHandler k
 
 tries :: Monad m => TryHandler (k -> m k)
 tries = TryHandler return
 
-try :: forall fs m a. (Has Try fs m,Has (Fresh Int) fs m)
+try :: forall fs m a. (Has Try fs m,Has (Fresh Integer) fs m)
     => ((forall b. a -> Plan fs m b) -> (forall b. Plan fs m b) -> Plan fs m (Maybe a)) -> Plan fs m (Maybe a)
 try x = do
     tries <- fresh
     transform tries $ x (\a -> symbol (Success tries a)) (symbol (Failure tries))
   where
-    transform :: Int -> Plan fs m (Maybe a) -> Plan fs m (Maybe a)
+    transform :: Integer -> Plan fs m (Maybe a) -> Plan fs m (Maybe a)
     transform tries =
       mapStep $ \go stp@(Step syms bp) ->
         case prj syms of
