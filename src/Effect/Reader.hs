@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeOperators #-}
 {-
 Reader here has been partitioned into the default encapsulation effect, Reader,
 and the subcomputation localization effect, Localize. This division is explained
@@ -7,7 +8,7 @@ module Effect.Reader
   ( Reader, ask, asks
   , Env, reader
   , Localize, local
-  , Localizer, localizable
+  , Localizer, localizer
   ) where
 
 import Mop
@@ -43,13 +44,8 @@ local f p = do
   overwrite (const (orig :: r))
   return a
 
-localizable :: forall fs m r. (Uses (Env r) fs m,Uses (Localizer r) fs m)
-            => r -> Build fs m
-localizable r = push (localizer :: Instruction (Localizer r) fs m) . push (reader r)
-
-localizer :: (Uses (Localizer r) fs m, Uses (Env r) fs m)
-          => Instruction (Localizer r) fs m
-localizer = Localizer $ \f fs ->
+localizer :: Uses (Env r) fs m => r -> Localizer r (Transformation fs m)
+localizer _ = Localizer $ \f fs ->
   let Env r k = view fs
   in instruction (Env (f r) k) fs
 

@@ -1,9 +1,11 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
-module Effect.Try where
+module Effect.Try
+  ( try
+  , tries, TryHandler(..)
+  ) where
 
 import Mop
-import Effect.Fresh
 import Unsafe.Coerce
 
 -- Try implements short-circuiting plans with success and non-specific failure.
@@ -11,32 +13,38 @@ import Unsafe.Coerce
 data Try k
   = forall a. Success Integer a
   | Failure Integer
+  | FreshScope (Integer -> k)
 
-data TryHandler k = TryHandler k
+data TryHandler k = TryHandler Integer k
 
-tries :: Monad m => TryHandler (k -> m k)
-tries = TryHandler return
+tries :: Uses TryHandler fs m => Instruction TryHandler fs m
+tries = TryHandler 0 $ \fs ->
+  let TryHandler i k = view fs
+  in instruction (TryHandler (succ i) k) fs
 
-try :: forall fs m a. (Has Try fs m,Has (Fresh Integer) fs m)
-    => ((forall b. a -> Plan fs m b) -> (forall b. Plan fs m b) -> Plan fs m (Maybe a)) -> Plan fs m (Maybe a)
+freshScope :: Has Try fs m => Plan fs m Integer
+freshScope = symbol (FreshScope id)
+
+try :: Has Try fs m => ((forall b. a -> Plan fs m b) -> (forall b. Plan fs m b) -> Plan fs m (Maybe a)) -> Plan fs m (Maybe a)
 try x = do
-    tries <- fresh
-    transform tries $ x (\a -> symbol (Success tries a)) (symbol (Failure tries))
+    scope <- freshScope
+    transform scope $ x (\a -> symbol (Success scope a)) (symbol (Failure scope))
   where
-    transform :: Integer -> Plan fs m (Maybe a) -> Plan fs m (Maybe a)
-    transform tries =
+    transform scope =
       mapStep $ \go stp@(Step syms bp) ->
         case prj syms of
           Just tried ->
             case tried of
               Success i a ->
-                if i == tries
+                if i == scope
                 then Pure (Just (unsafeCoerce a))
                 else Step syms (\b -> go (bp b))
               Failure i ->
-                if i == tries
+                if i == scope
                 then Pure Nothing
                 else Step syms (\b -> go (bp b))
           Nothing -> Step syms (\b -> go (bp b))
 
-instance Pair TryHandler Try
+instance Pair TryHandler Try where
+  pair p (TryHandler i k) (FreshScope ik) = p k (ik i)
+  pair p _ _ = error "Unscoped try continuation."
