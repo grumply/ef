@@ -11,7 +11,7 @@ import Unsafe.Coerce
 
 data Loop k
   = FreshScope (Integer -> k)
-  | Continue Integer
+  | forall s. Continue Integer s
   | forall a. Break Integer a
 
 data LoopHandler k = LoopHandler Integer k
@@ -19,19 +19,23 @@ data LoopHandler k = LoopHandler Integer k
 freshScope :: Has Loop fs m => Plan fs m Integer
 freshScope = symbol (FreshScope id)
 
-loop :: Has Loop fs m => ((forall b. a -> Plan fs m b) -> (forall b. Plan fs m b) -> Plan fs m a) -> Plan fs m a
-loop x = do
+loop :: forall fs m st a. Has Loop fs m => st -> ((forall b. a -> Plan fs m b) -> (forall b. st -> Plan fs m b) -> st -> Plan fs m a) -> Plan fs m a
+loop s0 x = do
     scope <- freshScope
-    fix $ \restart -> transform restart scope $ x (\a -> symbol (Break scope a)) (symbol (Continue scope))
+    let break a = symbol (Break scope a)
+        continue st = symbol (Continue scope st)
+        loopBody restart st =
+          transform restart scope (x break continue st)
+    fix loopBody s0
   where
     transform restart scope =
       mapStep $ \go (Step syms bp) ->
         case prj syms of
           Just l ->
             case l of
-              Continue i ->
+              Continue i s ->
                 if i == scope
-                then restart
+                then restart (unsafeCoerce s)
                 else Step syms (\b -> go (bp b))
               Break i a ->
                 if i == scope
