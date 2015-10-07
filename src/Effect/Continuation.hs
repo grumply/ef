@@ -15,17 +15,17 @@ data ContHandler k = ContHandler Integer k
 
 callCC :: Has Cont fs m => ((forall b. a -> Plan fs m b) -> Plan fs m a) -> Plan fs m a
 callCC x = do
-    f <- freshScope
-    transform f $ x (\a -> symbol (Cont f a))
+    scope <- freshScope
+    transform scope $ x (\a -> symbol (Cont scope a))
   where
-    transform f =
+    transform scope =
       mapStep $ \go (Step syms bp) ->
         case prj syms of
           Just (Cont i a) ->
-            if i == f
+            if i == scope
             then Pure (unsafeCoerce a)
             else Step syms (\b -> go (bp b))
-          _ -> Step syms (\b -> go (bp b))
+          _   -> Step syms (\b -> go (bp b))
 
 freshScope :: Has Cont fs m => Plan fs m Integer
 freshScope = symbol (FreshScope id)
