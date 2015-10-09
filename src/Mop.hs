@@ -178,6 +178,12 @@ data Plan symbols m a
   | M (m (Plan symbols m a))
   | forall b. Step (Symbol symbols b) (b -> Plan symbols m a)
 
+lift :: Monad m => m a -> Plan symbols m a
+lift m = M (m >>= \r -> return (Pure r))
+
+symbol :: Allows x symbols => x a -> Plan symbols m a
+symbol xa = Step (inj xa) Pure
+
 instance Monad m => Functor (Plan symbols m) where
   fmap f p0 = go p0
     where
@@ -192,6 +198,9 @@ instance (Monad m) => Applicative (Plan symbols m) where
   (<*>) = ap
 
 instance (Monad m) => Monad (Plan symbols m) where
+  -- version that's more correct for monad transformers, but slower?
+  -- return = M . return . Pure
+  -- this makes lift . return = return
   return = Pure
   (>>=) = _bind
 
@@ -286,12 +295,6 @@ cutoff n p =
     Pure a -> Pure (Just a)
     M m -> M (cutoff (n - 1) `liftM` m)
     Step sym k -> Step sym (cutoff (n - 1) . k)
-
-lift :: Monad m => m a -> Plan symbols m a
-lift m = M (m >>= \r -> return (Pure r))
-
-symbol :: Allows x symbols => x a -> Plan symbols m a
-symbol xa = Step (inj xa) Pure
 
 -- -- foldP allows recovery of interpreter at every produced value
 -- {-# INLINE foldP #-}
