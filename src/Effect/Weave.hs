@@ -1,78 +1,425 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
 module Effect.Weaving
-  ( weave
-  , Weaving, weaves
+  ( Weaving,weaving
+  , Weave
   ) where
 
-import Mop
-
+import Mop hiding (push,pull)
+import Data.Function
 import Unsafe.Coerce
-import Control.Monad
 
 data Weave k
-  = forall fs m a. Weave (Plan fs m a) k
-  | Yield k
-  | Stop
+  = FreshScope (Integer -> k)
+  | forall fs a' a m r. Request Integer a' (a  -> Plan fs m r)
+  | forall fs b' b m r. Respond Integer b  (b' -> Plan fs m r)
 
--- round-robin threading
--- use: weave $ \fork yield -> do { .. ; }
-weave :: Has Weave fs m
-     => ((forall b. Plan fs m b -> Plan fs m ()) -> Plan fs m () -> Plan fs m a)
-     -> Plan fs m a
-weave x = do
-    transform emptyQueue
-      $ x (\p -> symbol (Weave (p >> symbol Stop) ()))
-          (symbol (Yield ()))
+data Weaving k = Weaving Integer k
+
+freshScope :: Has Weave fs m => Plan fs m Integer
+freshScope = symbol (FreshScope id)
+
+weaves :: Uses Weaving fs m => Instruction Weaving fs m
+weaves = Weaving 0 $ \fs ->
+  let Weaving n k = view fs
+  in instruction (Weaving (succ n) k) fs
+
+getScope p =
+  case p undefined undefined of
+    Step sym bp ->
+      case prj sym of
+        Just x ->
+          case x of
+            Request i _ _ -> i
+            Respond i _ _ -> i
+            _ -> error "getScope got FreshScope"
+        _ -> error "getScope got non-Weave"
+    _ -> error "getScope got non-step"
+
+instance Pair Weaving Weave where
+  pair p (Weaving i k) (FreshScope ik) = p k (ik i)
+  pair _ _ _ = error "Pipe primitive escaped its scope:\n\
+                     \\tAttempting to reuse control flow\
+                     \ primitives outside of their scope\
+                     \ is unsupported."
+
+linearize :: Has Weave fs m => Effect fs m r -> Plan fs m r
+linearize e = do
+    scope <- freshScope
+    go' scope $ e (\a' ap -> symbol (Request scope a' ap)) (\b b'p -> symbol (Respond scope b b'p))
   where
-    transform q p0 = go p0
+    go' scope p0 = go p0
       where
         go p =
           case p of
-            Step syms bp ->
-              case prj syms of
+            Step sym bp ->
+              case prj sym of
                 Just x ->
                   case x of
-                    Weave child k ->
-                      transform (enqueue (unsafeCoerce child) q) (bp k)
-                    Yield k ->
-                      case dequeue q of
-                        Nothing -> go (bp k)
-                        Just (rest,nxt) ->
-                          transform (enqueue (unsafeCoerce (bp k)) rest) nxt
-                    Stop ->
-                      case dequeue q of
-                        Nothing -> Step syms bp
-                        Just (rest,nxt) -> transform rest nxt
-                Nothing -> Step syms (\b -> go (bp b))
+                    Request i x _ ->
+                      if i == scope
+                      then closed (unsafeCoerce x)
+                      else Step sym (\b -> go (bp b))
+                    Respond i x _ ->
+                      if i == scope
+                      then closed (unsafeCoerce x)
+                      else Step sym (\b -> go (bp b))
+                Nothing -> Step sym (\b -> go (bp b))
             M m -> M (fmap go m)
-            Pure r ->
-              case dequeue q of
-                Nothing -> Pure r
-                Just (rest,nxt) ->
-                  transform rest (unsafeCoerce nxt)
+            Pure r -> Pure r
+{-# INLINABLE flow #-}
 
-instance Pair Weaving Weave where
-  pair p (Weaving k) Stop = p k undefined
+newtype X = X X
 
-data Weaving k = Weaving k
+closed :: X -> a
+closed (X x) = closed x
+{-# INLINABLE closed #-}
 
-weaves :: Uses Weaving gs m => Instruction Weaving gs m
-weaves = Weaving return
+type Effect fs m r = Proxy fs X () () X m r
 
--- amortized constant-time queue
-data Queue = forall fs m a. Queue [Plan fs m a] [Plan fs m a]
+type Producer fs b m r = Proxy fs X () () b m r
+-- producer $ \yield -> do { .. ; }
+producer :: Has Weave fs m => ((b -> Plan fs m ()) -> Plan fs m r) -> Producer' fs b m r
+producer f = \_ dn -> f (\b -> symbol (Respond (getScope dn) b Pure))
 
-emptyQueue = Queue [] []
+type Consumer fs a m r = Proxy fs () a () X m r
+-- consumer $ \await -> do { .. ; }
+consumer :: Has Weave fs m => (Plan fs m a -> Plan fs m r) -> Consumer' fs a m r
+consumer f = \up _ -> f (symbol (Request (getScope up) () Pure))
 
-newQueue stack = Queue stack []
+type Pipe fs a b m r = Proxy fs () a () b m r
+-- pipe $ \await yield -> do { .. ; }
+pipe :: Has Weave fs m => (Plan fs m a -> (b -> Plan fs m x) -> Plan fs m r) -> Pipe fs a b m r
+pipe f = \up dn -> f (symbol (Request (getScope up) () Pure))
+                     (\b -> symbol (Respond (getScope dn) b Pure))
 
-enqueue :: (forall fs m a. Plan fs m a) -> Queue -> Queue
-enqueue a (Queue l r) = Queue l (a:r)
+type Client fs a' a m r = Proxy fs a' a () X m r
+-- client $ \request -> do { .. ; }
+client :: Has Weave fs m => ((a -> Plan fs m a') -> Plan fs m r) -> Client' fs a' a m r
+client f = \up _ -> f (\a -> symbol (Request (getScope up) a Pure))
 
-dequeue :: Queue -> Maybe (Queue,Plan fs m a)
-dequeue (Queue [] []) = Nothing
-dequeue (Queue [] xs) =
-  let stack = reverse xs
-  in Just (Queue (tail stack) [],unsafeCoerce (head stack))
-dequeue (Queue xs ys) = Just (Queue (tail xs) ys,unsafeCoerce (head xs))
+type Server fs b' b m r = Proxy fs X () b' b m r
+-- server $ \respond -> do { .. ; }
+server :: Has Weave fs m => ((b' -> Plan fs m b) -> Plan fs m r) -> Server' fs b' b m r
+server f = \_ dn -> f (\b' -> symbol (Respond (getScope dn) b' Pure))
+
+type Proxy fs a' a b' b m r
+  =  (forall x. a' -> (a -> Plan fs m x) -> Plan fs m x)
+  -> (forall x. b -> (b' -> Plan fs m x) -> Plan fs m x)
+  -> Plan fs m r
+-- proxy $ \request respond -> do { .. ; }
+proxy :: Has Weave fs m => ((a -> Plan fs m a') -> (b' -> Plan fs m b) -> Plan fs m r) -> Proxy fs a' a b' b m r
+proxy f = \up dn -> f (\a -> symbol (Request (getScope up) a Pure))
+                      (\b' -> symbol (Respond (getScope dn) b' Pure))
+
+type Effect' fs m r = forall x' x y' y . Proxy fs x' x y' y m r
+
+type Producer' fs b m r = forall x' x . Proxy fs x' x () b m r
+
+type Consumer' fs a m r = forall y' y . Proxy fs () a y' y m r
+
+type Server' fs b' b m r = forall x' x . Proxy fs x' x b' b m r
+
+type Client' fs a' a m r = forall y' y . Proxy fs a' a y' y m r
+
+
+--------------------------------------------------------------------------------
+-- Respond
+
+for :: Has Weave fs m
+    =>       Proxy fs x' x b' b m a'
+    -> (b -> Proxy fs x' x c' c m b')
+    ->       Proxy fs x' x c' c m a'
+for = (//>)
+{-# INLINABLE for #-}
+
+infixr 3 <\\
+(<\\) :: Has Weave fs m
+      => (b -> Proxy fs x' x c' c m b')
+      ->       Proxy fs x' x b' b m a'
+      ->       Proxy fs x' x c' c m a'
+f <\\ p = p //> f
+{-# INLINABLE (<\\) #-}
+
+infixl 4 \<\ --
+(\<\) :: Has Weave fs m
+      => (b -> Proxy fs x' x c' c m b')
+      -> (a -> Proxy fs x' x b' b m a')
+      ->  a -> Proxy fs x' x c' c m a'
+p1 \<\ p2 = p2 />/ p1
+{-# INLINABLE (\<\) #-}
+
+infixr 4 ~>
+(~>) :: Has Weave fs m
+     => (a -> Proxy fs x' x b' b m a')
+     -> (b -> Proxy fs x' x c' c m b')
+     ->  a -> Proxy fs x' x c' c m a'
+(~>) = (/>/)
+{-# INLINABLE (~>) #-}
+
+infixl 4 <~
+(<~) :: Has Weave fs m
+     => (b -> Proxy fs x' x c' c m b')
+     -> (a -> Proxy fs x' x b' b m a')
+     ->  a -> Proxy fs x' x c' c m a'
+g <~ f = f ~> g
+{-# INLINABLE (<~) #-}
+
+infixr 4 />/
+(/>/) :: Has Weave fs m
+      => (a -> Proxy fs x' x b' b m a')
+      -> (b -> Proxy fs x' x c' c m b')
+      ->  a -> Proxy fs x' x c' c m a'
+(fa />/ fb) a = fa a //> fb
+{-# INLINABLE (/>/) #-}
+
+infixl 3 //>
+(//>) :: forall fs x' x b' b c' c m a'. Has Weave fs m
+      =>       Proxy fs x' x b' b m a'
+      -> (b -> Proxy fs x' x c' c m b')
+      ->       Proxy fs x' x c' c m a'
+p0 //> fb = \up dn -> transform (getScope up) up dn (p0 up (unsafeCoerce dn))
+  where
+    transform scope up dn p0 = go p0
+      where
+        go p =
+          case p of
+            Step sym bp ->
+              case prj sym of
+                Just x ->
+                  case x of
+                    Respond i b _ ->
+                      if i == scope
+                      then go (bp $ unsafeCoerce $ fb (unsafeCoerce b) (unsafeCoerce up) (unsafeCoerce dn))
+                      else Step sym (\b -> go (bp b))
+                    _ -> Step sym (\b -> go (bp b))
+                Nothing -> Step sym (\b -> go (bp b))
+            M m -> M (fmap go m)
+            Pure r -> Pure r
+{-# INLINABLE (//>) #-}
+
+unfold :: ((b -> Plan fs m b') -> Plan fs m r) -> Proxy fs a' a b' b m r
+unfold u = \_ respond -> u (\x -> respond x Pure)
+{-# INLINABLE unfold #-}
+
+--------------------------------------------------------------------------------
+-- Request
+
+
+infixr 5 /</
+(/</) :: Has Weave fs m
+      => (c' -> Proxy fs b' b x' x m c)
+      -> (b' -> Proxy fs a' a x' x m b)
+      ->  c' -> Proxy fs a' a x' x m c
+p1 /</ p2 = p2 \>\ p1
+{-# INLINABLE (/</) #-}
+
+infixr 5 >~
+(>~) :: Has Weave fs m
+     => Proxy fs a' a y' y m b
+     -> Proxy fs () b y' y m c
+     -> Proxy fs a' a y' y m c
+p1 >~ p2 = (\() -> p1) >\\ p2
+{-# INLINABLE (>~) #-}
+
+infixl 5 ~<
+(~<) :: Has Weave fs m
+     => Proxy fs () b y' y m c
+     -> Proxy fs a' a y' y m b
+     -> Proxy fs a' a y' y m c
+p2 ~< p1 = p1 >~ p2
+{-# INLINABLE (~<) #-}
+
+infixl 5 \>\ --
+(\>\) :: Has Weave fs m
+      => (b' -> Proxy fs a' a y' y m b)
+      -> (c' -> Proxy fs b' b y' y m c)
+      ->  c' -> Proxy fs a' a y' y m c
+(fb' \>\ fc') c' = fb' >\\ fc' c'
+{-# INLINABLE (\>\) #-}
+
+infixr 4 >\\ --
+(>\\) :: forall fs y' y a' a b' b m c. Has Weave fs m
+      => (b' -> Proxy fs a' a y' y m b)
+      ->        Proxy fs b' b y' y m c
+      ->        Proxy fs a' a y' y m c
+fb' >\\ p0 = \up dn -> transform (getScope up) up dn (p0 (unsafeCoerce up) dn)
+  where
+    transform scope up dn p1 = go p1
+      where
+        go p =
+          case p of
+            Step sym bp ->
+              case prj sym of
+                Just x ->
+                  case x of
+                    Request i b' _ ->
+                      if i == scope
+                      then go (bp (unsafeCoerce (fb' (unsafeCoerce b') (unsafeCoerce up) (unsafeCoerce dn))))
+                      else Step sym (\b -> go (bp b))
+                    _ -> Step sym (\b -> go (bp b))
+                Nothing -> Step sym (\b -> go (bp b))
+            M m -> M (fmap go m)
+            Pure r -> Pure r
+{-# INLINABLE (>\\) #-}
+
+fold :: ((a' -> Plan fs m a) -> Plan fs m r) -> Proxy fs a' a b' b m r
+fold f = \request _ -> f (\x -> request x Pure)
+{-# INLINABLE fold #-}
+
+--------------------------------------------------------------------------------
+-- Push
+
+infixl 8 <~<
+(<~<) :: Has Weave fs m
+      => (b -> Proxy fs b' b c' c m r)
+      -> (a -> Proxy fs a' a b' b m r)
+      ->  a -> Proxy fs a' a c' c m r
+p1 <~< p2 = p2 >~> p1
+{-# INLINABLE (<~<) #-}
+
+infixr 8 >~>
+(>~>) :: Has Weave fs m
+      => (_a -> Proxy fs a' a b' b m r)
+      -> ( b -> Proxy fs b' b c' c m r)
+      ->  _a -> Proxy fs a' a c' c m r
+(fa >~> fb) a = fa a >>~ fb
+{-# INLINABLE (>~>) #-}
+
+infixr 7 ~<<
+(~<<) :: Has Weave fs m
+      => (b -> Proxy fs b' b c' c m r)
+      ->       Proxy fs a' a b' b m r
+      ->       Proxy fs a' a c' c m r
+k ~<< p = p >>~ k
+{-# INLINABLE (~<<) #-}
+
+infixl 7 >>~
+(>>~) :: forall fs a' a b' b c' c m r. Has Weave fs m
+      =>       Proxy fs a' a b' b m r
+      -> (b -> Proxy fs b' b c' c m r)
+      ->       Proxy fs a' a c' c m r
+p0 >>~ fb0 = \up dn -> transform (getScope up) up dn (p0 up (unsafeCoerce dn))
+  where
+    transform scope up dn p1 = go p1
+      where
+        go = goLeft (\b -> fb0 b (unsafeCoerce up) (unsafeCoerce dn))
+          where
+            goLeft :: (b -> Plan fs m r) -> Plan fs m r -> Plan fs m r
+            goLeft fb = goLeft'
+              where
+                goLeft' p =
+                  case p of
+                    Step sym bp ->
+                      case prj sym of
+                        Just x ->
+                          case x of
+                            Respond i b _ ->
+                              if i == scope
+                              then goRight (unsafeCoerce bp) (fb (unsafeCoerce b))
+                              else Step sym (\b -> goLeft' (bp b))
+                            _ -> Step sym (\b -> goLeft' (bp b))
+                        Nothing -> Step sym (\b -> goLeft' (bp b))
+                    M m -> M (fmap goLeft' m)
+                    Pure r -> Pure r
+            goRight :: (b' -> Plan fs m r) -> Plan fs m r -> Plan fs m r
+            goRight b'p = goRight'
+              where
+                goRight' p =
+                  case p of
+                    Step sym bp ->
+                      case prj sym of
+                        Just x ->
+                          case x of
+                            Request i b' _ ->
+                              if i == scope
+                              then goLeft (unsafeCoerce bp) (b'p (unsafeCoerce b'))
+                              else Step sym (\b -> goRight' (bp b))
+                            _ -> Step sym (\b -> goRight' (bp b))
+                        Nothing -> Step sym (\b -> goRight' (bp b))
+                    M m -> M (fmap goRight' m)
+                    Pure r -> Pure r
+{-# INLINABLE (>>~) #-}
+
+--------------------------------------------------------------------------------
+-- Pull
+
+infixl 7 >->
+(>->) :: Has Weave fs m
+      => Proxy fs a' a () b m r
+      -> Proxy fs () b c' c m r
+      -> Proxy fs a' a c' c m r
+p1 >-> p2 = (\() -> p1) +>> p2
+{-# INLINABLE (>->) #-}
+
+infixr 7 <-<
+(<-<) :: Has Weave fs m
+      => Proxy fs () b c' c m r
+      -> Proxy fs a' a () b m r
+      -> Proxy fs a' a c' c m r
+p2 <-< p1 = p1 >-> p2
+{-# INLINABLE (<-<) #-}
+
+infixr 7 <+<
+(<+<) :: Has Weave fs m
+      => (c' -> Proxy fs b' b c' c m r)
+      -> (b' -> Proxy fs a' a b' b m r)
+      ->  c' -> Proxy fs a' a c' c m r
+p1 <+< p2 = p2 >+> p1
+{-# INLINABLE (<+<) #-}
+
+infixl 7 >+>
+(>+>) :: Has Weave fs m
+      => ( b' -> Proxy fs a' a b' b m r)
+      -> (_c' -> Proxy fs b' b c' c m r)
+      ->  _c' -> Proxy fs a' a c' c m r
+(fb' >+> fc') c' = fb' +>> fc' c'
+{-# INLINABLE (>+>) #-}
+
+
+infixr 6 +>>
+(+>>) :: forall fs m a' a b' b c' c r. Has Weave fs m
+      => (b' -> Proxy fs a' a b' b m r)
+      ->        Proxy fs b' b c' c m r
+      ->        Proxy fs a' a c' c m r
+fb' +>> p0 = \up dn -> transform (getScope up) up dn (p0 (unsafeCoerce up) dn)
+  where
+    transform scope up dn p1 = go p1
+      where
+        go = goRight (\b' -> fb' b' (unsafeCoerce up) (unsafeCoerce dn))
+          where
+            goRight :: (b' -> Plan fs m r) -> Plan fs m r -> Plan fs m r
+            goRight fb' = goRight'
+              where
+                goRight' p =
+                  case p of
+                    Step sym bp ->
+                      case prj sym of
+                        Just x ->
+                          case x of
+                            Request i b' _ ->
+                              if i == scope
+                              then goLeft (unsafeCoerce bp) (fb' (unsafeCoerce b'))
+                              else Step sym (\b -> goRight' (bp b))
+                            _ -> Step sym (\b -> goRight' (bp b))
+                        Nothing -> Step sym (\b -> goRight' (bp b))
+                    M m -> M (fmap goRight' m)
+                    Pure r -> Pure r
+            goLeft :: (b -> Plan fs m r) -> Plan fs m r -> Plan fs m r
+            goLeft bp = goLeft'
+              where
+                goLeft' p =
+                  case p of
+                    Step sym bp' ->
+                      case prj sym of
+                        Just x ->
+                          case x of
+                            Respond i b _ ->
+                              if i == scope
+                              then goRight (unsafeCoerce bp') (bp (unsafeCoerce b))
+                              else Step sym (\b' -> goLeft' (bp' b'))
+                            _ -> Step sym (\b' -> goLeft' (bp' b'))
+                        Nothing -> Step sym (\b' -> goLeft' (bp' b'))
+                    M m -> M (fmap goLeft' m)
+                    Pure r -> Pure r
+{-# INLINABLE (+>>) #-}

@@ -26,8 +26,8 @@ library
                        Effect.Continuation,
                        Effect.Fresh,
                        Effect.Possibly,
-                       Effect.Weave,
-                       Effect.Pipes
+                       Effect.Thread,
+                       Effect.Weave
   default-extensions:  ScopedTypeVariables
                        MultiParamTypeClasses
                        FlexibleContexts

@@ -1,17 +1,10 @@
-{-# LANGUAGE TypeOperators #-}
-{-
-Reader here has been partitioned into the default encapsulation effect, Reader,
-and the subcomputation localization effect, Localize. This division is explained
-in doc/Effect/Reader.hs
--}
 module Effect.Reader
-  ( Reader, ask, asks
+  ( Reader, ask, asks, local
   , Env, reader
-  , Localize, local
-  , Localizer, localizer
   ) where
 
 import Mop
+import Unsafe.Coerce
 
 data Reader r k = Reader (r -> k)
 
@@ -29,25 +22,14 @@ asks f = symbol (Reader f)
 reader :: Uses (Env r) fs m => r -> Instruction (Env r) fs m
 reader r = Env r pure
 
-data Localize r k = Localize (r -> r) k
-data Localizer r k = Localizer ((r -> r) -> k)
-
-overwrite :: Has (Localize r) fs m => (r -> r) -> Plan fs m ()
-overwrite f = symbol (Localize f ())
-
-local :: forall r fs m a. (Has (Localize r) fs m,Has (Reader r) fs m)
-      => (r -> r) -> Plan fs m a -> Plan fs m a
-local f p = do
-  orig <- ask
-  overwrite f
-  a <- p
-  overwrite (const (orig :: r))
-  return a
-
-localizer :: Uses (Env r) fs m => r -> Localizer r (Transformation fs m)
-localizer _ = Localizer $ \f fs ->
-  let Env r k = view fs
-  in instruction (Env (f r) k) fs
-
-instance Pair (Localizer r) (Localize r) where
-  pair p (Localizer rrk) (Localize rr k) = pair p rrk (rr,k)
+local :: forall fs m r. Has (Reader r) fs m => (r -> r) -> Plan fs m r -> Plan fs m r
+local f p0 = go p0
+  where
+    go p =
+      case p of
+        Step sym bp ->
+          case prj sym of
+            Just (Reader (r :: r -> b)) -> Step (inj (Reader (r . f))) (\b -> go (bp b))
+            Nothing -> Step sym (\b -> go (bp b))
+        M m -> M (fmap go m)
+        Pure r -> Pure r

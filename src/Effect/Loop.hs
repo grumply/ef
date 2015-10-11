@@ -1,8 +1,8 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
 module Effect.Loop
-  ( loop
-  , loops, LoopHandler(..)
+  ( loop, Loop
+  , loops, Loops
   ) where
 
 import Mop
@@ -14,7 +14,7 @@ data Loop k
   | forall s. Continue Integer s
   | forall a. Break Integer a
 
-data LoopHandler k = LoopHandler Integer k
+data Loops k = Loops Integer k
 
 freshScope :: Has Loop fs m => Plan fs m Integer
 freshScope = symbol (FreshScope id)
@@ -51,12 +51,12 @@ reifyLoop restart scope =
         handle _ = step
     in maybe step handle (prj syms)
 
-loops :: Uses LoopHandler gs m
-      => Instruction LoopHandler gs m
-loops = LoopHandler 0 $ \fs ->
-  let LoopHandler i k = view fs
-  in instruction (LoopHandler (succ i) k) fs
+loops :: Uses Loops gs m
+      => Instruction Loops gs m
+loops = Loops 0 $ \fs ->
+  let Loops i k = view fs
+  in instruction (Loops (succ i) k) fs
 
-instance Pair LoopHandler Loop where
-  pair p (LoopHandler i k) (FreshScope ik) = p k (ik i)
+instance Pair Loops Loop where
+  pair p (Loops i k) (FreshScope ik) = p k (ik i)
   pair _ _ _ = error "Unscoped looping construct."

@@ -1,40 +1,40 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
-module Effect.Continuation
-  (callCC
-  ,continuations,ContHandler(..)
+module Effect.Continuationinuation
+  (Continuation,continuation
+  ,Continuations,continuations
   ) where
 
 import Mop
 import Unsafe.Coerce
 
-data Cont k
+data Continuation k
   = FreshScope (Integer -> k)
-  | forall a. Cont Integer a
-data ContHandler k = ContHandler Integer k
+  | forall a. Continuation Integer a
+data Continuations k = Continuations Integer k
 
-callCC :: Has Cont fs m => ((forall b. a -> Plan fs m b) -> Plan fs m a) -> Plan fs m a
-callCC x = do
+continuation :: Has Continuation fs m => ((forall b. a -> Plan fs m b) -> Plan fs m a) -> Plan fs m a
+continuation x = do
     scope <- freshScope
-    transform scope $ x (\a -> symbol (Cont scope a))
+    transform scope $ x (\a -> symbol (Continuation scope a))
   where
     transform scope =
       mapStep $ \go (Step syms bp) ->
         case prj syms of
-          Just (Cont i a) ->
+          Just (Continuation i a) ->
             if i == scope
             then Pure (unsafeCoerce a)
             else Step syms (\b -> go (bp b))
           _   -> Step syms (\b -> go (bp b))
 
-freshScope :: Has Cont fs m => Plan fs m Integer
+freshScope :: Has Continuation fs m => Plan fs m Integer
 freshScope = symbol (FreshScope id)
 
-continuations :: Uses ContHandler gs m => Instruction ContHandler gs m
-continuations = ContHandler 0 $ \fs ->
-  let ContHandler i k = view fs
-  in instruction (ContHandler (succ i) k) fs
+continuations :: Uses Continuations gs m => Instruction Continuations gs m
+continuations = Continuations 0 $ \fs ->
+  let Continuations i k = view fs
+  in instruction (Continuations (succ i) k) fs
 
-instance Pair ContHandler Cont where
-  pair p (ContHandler i k) (FreshScope ik) = p k (ik i)
-  pair p _ (Cont _ _) = error "Unscoped continuation."
+instance Pair Continuations Continuation where
+  pair p (Continuations i k) (FreshScope ik) = p k (ik i)
+  pair p _ (Continuation _ _) = error "Unscoped continuation."
