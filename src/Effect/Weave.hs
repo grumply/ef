@@ -1,24 +1,28 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
-module Effect.Threading where
+module Effect.Weaving
+  ( weave
+  , Weaving, weaves
+  ) where
 
 import Mop
 
 import Unsafe.Coerce
 import Control.Monad
 
-data Thread k
-  = forall fs m a. Thread (Plan fs m a) k
+data Weave k
+  = forall fs m a. Weave (Plan fs m a) k
   | Yield k
   | Stop
 
 -- round-robin threading
-thread :: (Monad m,Has Thread fs m)
+-- use: weave $ \fork yield -> do { .. ; }
+weave :: Has Weave fs m
      => ((forall b. Plan fs m b -> Plan fs m ()) -> Plan fs m () -> Plan fs m a)
      -> Plan fs m a
-thread x = do
+weave x = do
     transform emptyQueue
-      $ x (\p -> symbol (Thread (p >> symbol Stop) ()))
+      $ x (\p -> symbol (Weave (p >> symbol Stop) ()))
           (symbol (Yield ()))
   where
     transform q p0 = go p0
@@ -29,7 +33,7 @@ thread x = do
               case prj syms of
                 Just x ->
                   case x of
-                    Thread child k ->
+                    Weave child k ->
                       transform (enqueue (unsafeCoerce child) q) (bp k)
                     Yield k ->
                       case dequeue q of
@@ -48,13 +52,13 @@ thread x = do
                 Just (rest,nxt) ->
                   transform rest (unsafeCoerce nxt)
 
-instance Pair Threading Thread where
-  pair p (Threading k) Stop = p k undefined
+instance Pair Weaving Weave where
+  pair p (Weaving k) Stop = p k undefined
 
-data Threading k = Threading k
+data Weaving k = Weaving k
 
-threading :: Uses Threading gs m => Instruction Threading gs m
-threading = Threading return
+weaves :: Uses Weaving gs m => Instruction Weaving gs m
+weaves = Weaving return
 
 -- amortized constant-time queue
 data Queue = forall fs m a. Queue [Plan fs m a] [Plan fs m a]

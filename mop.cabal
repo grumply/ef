@@ -18,19 +18,22 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Mop,
+                       Mop.IO,
                        Effect.Reader,
                        Effect.State,
                        Effect.Writer,
                        Effect.Exception,
                        Effect.Continuation,
                        Effect.Fresh,
-                       Effect.Try
+                       Effect.Possibly,
+                       Effect.Weave,
+                       Effect.Pipes
   default-extensions:  ScopedTypeVariables
                        MultiParamTypeClasses
                        FlexibleContexts
                        DataKinds
   -- other-modules:       
   -- other-extensions:    
-  build-depends:       base >=4.8 && <4.9
+  build-depends:       base >=4.8 && <4.9, array
   hs-source-dirs:      src
   default-language:    Haskell2010
