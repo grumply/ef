@@ -1,6 +1,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
-module Effect.Continuationinuation
+module Effect.Continuation
   (Continuation,continuation
   ,Continuations,continuations
   ) where

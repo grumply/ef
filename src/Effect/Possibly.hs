@@ -1,8 +1,8 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
 module Effect.Possibly
-  ( possibly
-  , Could(..), did, didn't, might've
+  ( Could(..), did, didn't, could've
+  , possibly, Possibly
   , possible, Possible
   ) where
 

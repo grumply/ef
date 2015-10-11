@@ -25,6 +25,7 @@ library
                        Effect.Exception,
                        Effect.Continuation,
                        Effect.Fresh,
+                       Effect.Loop,
                        Effect.Possibly,
                        Effect.Thread,
                        Effect.Weave
