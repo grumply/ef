@@ -6,12 +6,8 @@ module Effect.Pipes where
 import Mop
 
 import Data.Function
-
 import Control.Monad
-
 import Unsafe.Coerce
-
-import Prelude hiding (fail)
 
 data Flow k
   = FreshScope (Integer -> k)
@@ -20,208 +16,17 @@ data Flow k
 
 getScope :: forall fs m r. Has Flow fs m => Plan fs m r -> Integer
 getScope f =
-  case f of
-    Step sym _ ->
-      case prj ((unsafeCoerce sym) :: Symbol fs z) of
-        Just x ->
-          case x of
-            Request i _ _ -> i
-            Respond i _ _ -> i
-
---------------------------------------------------------------------------------
--- Respond
-
-for :: Has Flow fs m
-    =>       Proxy fs x' x b' b m a'
-    -> (b -> Proxy fs x' x c' c m b')
-    ->       Proxy fs x' x c' c m a'
-for = (//>)
-
-infixr 4 ~>
-(~>) :: Has Flow fs m
-     => (a -> Proxy fs x' x b' b m a')
-     -> (b -> Proxy fs x' x c' c m b')
-     ->  a -> Proxy fs x' x c' c m a'
-(~>) = (/>/)
-
-infixl 4 <~
-(<~) :: Has Flow fs m
-     => (b -> Proxy fs x' x c' c m b')
-     -> (a -> Proxy fs x' x b' b m a')
-     ->  a -> Proxy fs x' x c' c m a'
-g <~ f = f ~> g
-
-infixr 4 />/
-(/>/) :: Has Flow fs m
-      => (a -> Proxy fs x' x b' b m a')
-      -> (b -> Proxy fs x' x c' c m b')
-      ->  a -> Proxy fs x' x c' c m a'
-(fa />/ fb) a = fa a //> fb
-
-infixl 3 //>
-(//>) :: forall fs x' x b' b c' c m a'. Has Flow fs m
-      =>       Proxy fs x' x b' b m a'
-      -> (b -> Proxy fs x' x c' c m b')
-      ->       Proxy fs x' x c' c m a'
-p0 //> fb = \_ _ -> do scope <- freshScope
-                       transform scope p0
-  where
-    transform :: Integer -> Proxy fs x' x b' b m a' -> Plan fs m a'
-    transform scope p0 =
-        let request a' ap = symbol (Request scope a' ap)
-            respond b b'p = symbol (Respond scope b b'p)
-        in go request respond (p0 request respond)
-      where
-        go :: (a' -> (a -> Plan fs m r) -> Plan fs m r)
-           -> (b -> (b' -> Plan fs m r) -> Plan fs m r)
-           -> Plan fs m r
-           -> Plan fs m r
-        go req rsp = go'
-          where
-            go' :: Plan fs m r -> Plan fs m r
-            go' p =
-              case p of
-                Step sym bp ->
-                  case prj sym of
-                    Just x ->
-                      case x of
-                        Respond i b b'p -> do
-                          b' <- fb (unsafeCoerce b)
-                                   (unsafeCoerce req)
-                                   (unsafeCoerce rsp)
-                          go' (bp $ unsafeCoerce $ b'p (unsafeCoerce b'))
-                        _ -> Step sym (\b -> go' (bp b))
-                    Nothing -> Step sym (\b -> go' (bp b))
-                M m -> M (fmap go' m)
-                Pure r -> Pure r
-
-unfold :: Has Flow fs m => ((b -> Plan fs m b') -> Plan fs m r) -> Proxy fs a' a b' b m r
-unfold u = \_ respond -> u (\x -> respond x Pure)
-
---------------------------------------------------------------------------------
--- Request
-
-infixr 5 >~
-(>~) :: Has Flow fs m
-     => Proxy fs a' a y' y m b
-     -> Proxy fs () b y' y m c
-     -> Proxy fs a' a y' y m c
-p1 >~ p2 = (\() -> p1) >\\ p2
-
-infixl 5 ~<
-(~<) :: Has Flow fs m
-     => Proxy fs () b y' y m c
-     -> Proxy fs a' a y' y m b
-     -> Proxy fs a' a y' y m c
-p2 ~< p1 = p1 >~ p2
-
-infixl 5 \>\ --
-(\>\) :: Has Flow fs m
-      => (b' -> Proxy fs a' a y' y m b)
-      -> (c' -> Proxy fs b' b y' y m c)
-      ->  c' -> Proxy fs a' a y' y m c
-(fb' \>\ fc') c' = fb' >\\ fc' c'
-
-infixr 4 >\\ --
-(>\\) :: forall fs y' y a' a b' b m c. Has Flow fs m
-      => (b' -> Proxy fs a' a y' y m b)
-      ->        Proxy fs b' b y' y m c
-      ->        Proxy fs a' a y' y m c
-fb' >\\ p0 = \_ _ -> do scope <- freshScope
-                        transform scope p0
-  where
-    transform :: Integer -> Proxy fs b' b y' y m c -> Plan fs m c
-    transform scope p1 =
-        let request a' ap = symbol (Request scope a' ap)
-            respond b b'p = symbol (Respond scope b b'p)
-        in go request respond (p1 request respond)
-      where
-        go :: (a' -> (a -> Plan fs m r) -> Plan fs m r)
-           -> (b -> (b' -> Plan fs m r) -> Plan fs m r)
-           -> Plan fs m r
-           -> Plan fs m r
-        go req rsp = go'
-          where
-            go' :: Plan fs m r -> Plan fs m r
-            go' p =
-              case p of
-                Step sym bp ->
-                  case prj sym of
-                    Just x ->
-                      case x of
-                        Request i b' fb -> do
-                          b <- fb' (unsafeCoerce b')
-                                   (unsafeCoerce req)
-                                   (unsafeCoerce rsp)
-                          go' (bp (unsafeCoerce (fb (unsafeCoerce b))))
-                        _ -> Step sym (\b -> go' (bp b))
-                    Nothing -> Step sym (\b -> go' (bp b))
-                M m -> M (fmap go' m)
-                Pure r -> Pure r
-
-fold :: Has Flow fs m => ((a' -> Plan fs m a) -> Plan fs m r) -> Proxy fs a' a b' b m r
-fold f = \request _ -> f (\x -> request x Pure)
-
---------------------------------------------------------------------------------
--- Push
-
-push :: Has Flow fs m => ((a -> Plan fs m r) -> Plan fs m r) -> Proxy fs a' a a' a m r
-push f = \request respond -> f (fix $ \go -> \a -> respond a (\a' -> (request a' go)))
-
-infixr 8 >~>
-(>~>) :: Has Flow fs m
-      => (_a -> Proxy fs a' a b' b m r)
-      -> ( b -> Proxy fs b' b c' c m r)
-      ->  _a -> Proxy fs a' a c' c m r
-(fa >~> fb) a = fa a >>~ fb
-
-infixl 7 >>~
-(>>~) :: forall fs a' a b' b c' c m r. Has Flow fs m
-      =>       Proxy fs a' a b' b m r
-      -> (b -> Proxy fs b' b c' c m r)
-      ->       Proxy fs a' a c' c m r
-p0 >>~ fb = \_ _ -> do scope <- freshScope
-                       transform scope p0
-  where
-    transform :: Integer -> Proxy fs a' a b' b m r -> Plan fs m r
-    transform scope p1 =
-        let request a' ap = symbol (Request scope a' ap)
-            respond b b'p = symbol (Respond scope b b'p)
-        in go request respond (p1 request respond)
-      where
-        go :: (a' -> (a -> Plan fs m r) -> Plan fs m r)
-           -> (b -> (b' -> Plan fs m r) -> Plan fs m r)
-           -> Plan fs m r
-           -> Plan fs m r
-        go req rsp = go'
-          where
-            go' :: Plan fs m r -> Plan fs m r
-            go' p =
-              case p of
-                Step sym bp ->
-                  case prj sym of
-                    Just x ->
-                      case x of
-                        Respond i b b'p -> b'p +>> (gunsafeCoerce $ fb (unsafeCoerce b))
-
-
--- push :: forall fs m a r. Has Flow fs m => Integer -> a -> Plan fs m r
--- push scope = symbol . go
---   where
---     go a
---       = Respond scope a
---           (\a' -> (symbol $ Request scope a' (symbol . go)
---                   ) :: Plan fs m r
---           )
-
--- pull_ :: forall fs m b' r. Has Flow fs m => Integer -> b' -> Plan fs m r
--- pull_ scope = symbol . go
---   where
---     go b'
---       = Request scope b'
---           (\b -> (symbol $ Respond scope b ((symbol . go) :: b' -> Plan fs m r)
---                  ) :: Plan fs m r
---           )
+  let err = error "getScope: Shouldn't happen. Expecting a properly \
+                  \scoped Flow communication primitive."
+  in case f of
+       Step sym _ ->
+         case prj ((unsafeCoerce sym) :: Symbol fs z) of
+           Just x ->
+             case x of
+               Request i _ _ -> i
+               Respond i _ _ -> i
+               _ -> err
+           _ -> err
 
 freshScope :: Has Flow fs m => Plan fs m Integer
 freshScope = symbol (FreshScope id)
@@ -291,6 +96,256 @@ type Server' fs b' b m r = forall x' x . Proxy fs x' x b' b m r
 
 type Client' fs a' a m r = forall y' y . Proxy fs a' a y' y m r
 
+
+--------------------------------------------------------------------------------
+-- Respond
+
+for :: Has Flow fs m
+    =>       Proxy fs x' x b' b m a'
+    -> (b -> Proxy fs x' x c' c m b')
+    ->       Proxy fs x' x c' c m a'
+for = (//>)
+
+infixr 3 <\\
+(<\\) :: Has Flow fs m
+      => (b -> Proxy fs x' x c' c m b')
+      ->       Proxy fs x' x b' b m a'
+      ->       Proxy fs x' x c' c m a'
+f <\\ p = p //> f
+
+infixl 4 \<\ --
+(\<\) :: Has Flow fs m
+      => (b -> Proxy fs x' x c' c m b')
+      -> (a -> Proxy fs x' x b' b m a')
+      ->  a -> Proxy fs x' x c' c m a'
+p1 \<\ p2 = p2 />/ p1
+
+infixr 4 ~>
+(~>) :: Has Flow fs m
+     => (a -> Proxy fs x' x b' b m a')
+     -> (b -> Proxy fs x' x c' c m b')
+     ->  a -> Proxy fs x' x c' c m a'
+(~>) = (/>/)
+
+infixl 4 <~
+(<~) :: Has Flow fs m
+     => (b -> Proxy fs x' x c' c m b')
+     -> (a -> Proxy fs x' x b' b m a')
+     ->  a -> Proxy fs x' x c' c m a'
+g <~ f = f ~> g
+
+infixr 4 />/
+(/>/) :: Has Flow fs m
+      => (a -> Proxy fs x' x b' b m a')
+      -> (b -> Proxy fs x' x c' c m b')
+      ->  a -> Proxy fs x' x c' c m a'
+(fa />/ fb) a = fa a //> fb
+
+infixl 3 //>
+(//>) :: forall fs x' x b' b c' c m a'. Has Flow fs m
+      =>       Proxy fs x' x b' b m a'
+      -> (b -> Proxy fs x' x c' c m b')
+      ->       Proxy fs x' x c' c m a'
+p0 //> fb = \_ _ -> do scope <- freshScope
+                       transform scope p0
+  where
+    transform :: Integer -> Proxy fs x' x b' b m a' -> Plan fs m a'
+    transform scope p0 =
+        let request a' ap = symbol (Request scope a' ap)
+            respond b b'p = symbol (Respond scope b b'p)
+        in go request respond (p0 request respond)
+      where
+        go :: (a' -> (a -> Plan fs m r) -> Plan fs m r)
+           -> (b -> (b' -> Plan fs m r) -> Plan fs m r)
+           -> Plan fs m r
+           -> Plan fs m r
+        go req rsp = go'
+          where
+            go' :: Plan fs m r -> Plan fs m r
+            go' p =
+              case p of
+                Step sym bp ->
+                  case prj sym of
+                    Just x ->
+                      case x of
+                        Respond i b b'p -> do
+                          if i == scope
+                          then do
+                            b' <- fb (unsafeCoerce b)
+                                     (unsafeCoerce req)
+                                     (unsafeCoerce rsp)
+                            go' (bp $ unsafeCoerce $ b'p (unsafeCoerce b'))
+                          else Step sym (\b -> go' (bp b))
+                        _ -> Step sym (\b -> go' (bp b))
+                    Nothing -> Step sym (\b -> go' (bp b))
+                M m -> M (fmap go' m)
+                Pure r -> Pure r
+
+unfold :: Has Flow fs m => ((b -> Plan fs m b') -> Plan fs m r) -> Proxy fs a' a b' b m r
+unfold u = \_ respond -> u (\x -> respond x Pure)
+
+--------------------------------------------------------------------------------
+-- Request
+
+
+infixr 5 /</
+(/</) :: Has Flow fs m
+      => (c' -> Proxy fs b' b x' x m c)
+      -> (b' -> Proxy fs a' a x' x m b)
+      ->  c' -> Proxy fs a' a x' x m c
+p1 /</ p2 = p2 \>\ p1
+
+infixr 5 >~
+(>~) :: Has Flow fs m
+     => Proxy fs a' a y' y m b
+     -> Proxy fs () b y' y m c
+     -> Proxy fs a' a y' y m c
+p1 >~ p2 = (\() -> p1) >\\ p2
+
+infixl 5 ~<
+(~<) :: Has Flow fs m
+     => Proxy fs () b y' y m c
+     -> Proxy fs a' a y' y m b
+     -> Proxy fs a' a y' y m c
+p2 ~< p1 = p1 >~ p2
+
+infixl 5 \>\ --
+(\>\) :: Has Flow fs m
+      => (b' -> Proxy fs a' a y' y m b)
+      -> (c' -> Proxy fs b' b y' y m c)
+      ->  c' -> Proxy fs a' a y' y m c
+(fb' \>\ fc') c' = fb' >\\ fc' c'
+
+infixr 4 >\\ --
+(>\\) :: forall fs y' y a' a b' b m c. Has Flow fs m
+      => (b' -> Proxy fs a' a y' y m b)
+      ->        Proxy fs b' b y' y m c
+      ->        Proxy fs a' a y' y m c
+fb' >\\ p0 = \_ _ -> do scope <- freshScope
+                        transform scope p0
+  where
+    transform :: Integer -> Proxy fs b' b y' y m c -> Plan fs m c
+    transform scope p1 =
+        let request a' ap = symbol (Request scope a' ap)
+            respond b b'p = symbol (Respond scope b b'p)
+        in go request respond (p1 request respond)
+      where
+        go :: (a' -> (a -> Plan fs m r) -> Plan fs m r)
+           -> (b -> (b' -> Plan fs m r) -> Plan fs m r)
+           -> Plan fs m r
+           -> Plan fs m r
+        go req rsp = go'
+          where
+            go' :: Plan fs m r -> Plan fs m r
+            go' p =
+              case p of
+                Step sym bp ->
+                  case prj sym of
+                    Just x ->
+                      case x of
+                        Request i b' fb -> do
+                          if i == scope
+                          then do
+                            b <- fb' (unsafeCoerce b')
+                                     (unsafeCoerce req)
+                                     (unsafeCoerce rsp)
+                            go' (bp (unsafeCoerce (fb (unsafeCoerce b))))
+                          else Step sym (\b -> go' (bp b))
+                        _ -> Step sym (\b -> go' (bp b))
+                    Nothing -> Step sym (\b -> go' (bp b))
+                M m -> M (fmap go' m)
+                Pure r -> Pure r
+
+fold :: Has Flow fs m => ((a' -> Plan fs m a) -> Plan fs m r) -> Proxy fs a' a b' b m r
+fold f = \request _ -> f (\x -> request x Pure)
+
+--------------------------------------------------------------------------------
+-- Push
+
+infixl 8 <~<
+(<~<) :: Has Flow fs m
+      => (b -> Proxy fs b' b c' c m r)
+      -> (a -> Proxy fs a' a b' b m r)
+      ->  a -> Proxy fs a' a c' c m r
+p1 <~< p2 = p2 >~> p1
+
+push :: Has Flow fs m => ((a -> Plan fs m r) -> Plan fs m r) -> Proxy fs a' a a' a m r
+push f = \request respond -> f (fix $ \go -> \a -> respond a (\a' -> (request a' go)))
+
+infixr 8 >~>
+(>~>) :: Has Flow fs m
+      => (_a -> Proxy fs a' a b' b m r)
+      -> ( b -> Proxy fs b' b c' c m r)
+      ->  _a -> Proxy fs a' a c' c m r
+(fa >~> fb) a = fa a >>~ fb
+
+
+infixr 7 ~<<
+(~<<) :: Has Flow fs m
+      => (b -> Proxy fs b' b c' c m r)
+      ->       Proxy fs a' a b' b m r
+      ->       Proxy fs a' a c' c m r
+k ~<< p = p >>~ k
+
+infixl 7 >>~
+(>>~) :: forall fs a' a b' b c' c m r. Has Flow fs m
+      =>       Proxy fs a' a b' b m r
+      -> (b -> Proxy fs b' b c' c m r)
+      ->       Proxy fs a' a c' c m r
+p0 >>~ fb0 = \_ _ -> do scope <- freshScope
+                        transform scope p0
+  where
+    transform :: Integer -> Proxy fs a' a b' b m r -> Plan fs m r
+    transform scope p1 =
+        let request a' ap = symbol (Request scope a' ap)
+            respond b b'p = symbol (Respond scope b b'p)
+        in go request respond (p1 request respond)
+      where
+        go :: (a' -> (a -> Plan fs m r) -> Plan fs m r)
+           -> (b -> (b' -> Plan fs m r) -> Plan fs m r)
+           -> Plan fs m r
+           -> Plan fs m r
+        go req rsp = goLeft (\b -> fb0 b (unsafeCoerce req) (unsafeCoerce rsp))
+          where
+            goLeft :: (b -> Plan fs m r) -> Plan fs m r -> Plan fs m r
+            goLeft fb = goLeft'
+              where
+                goLeft' p =
+                  case p of
+                    Step sym bp ->
+                      case prj sym of
+                        Just x ->
+                          case x of
+                            Respond i b _ ->
+                              if i == scope
+                              then goRight (unsafeCoerce bp) (fb (unsafeCoerce b))
+                              else Step sym (\b -> goLeft' (bp b))
+                            _ -> Step sym (\b -> goLeft' (bp b))
+                        Nothing -> Step sym (\b -> goLeft' (bp b))
+                    M m -> M (fmap goLeft' m)
+                    Pure r -> Pure r
+            goRight :: (b' -> Plan fs m r) -> Plan fs m r -> Plan fs m r
+            goRight b'p = goRight'
+              where
+                goRight' p =
+                  case p of
+                    Step sym bp ->
+                      case prj sym of
+                        Just x ->
+                          case x of
+                            Request i b' _ ->
+                              if i == scope
+                              -- need to use bp' bp' b' bp''
+                              then goLeft (unsafeCoerce bp) (b'p (unsafeCoerce b'))
+                              else Step sym (\b -> goRight' (bp b))
+                            _ -> Step sym (\b -> goRight' (bp b))
+                        Nothing -> Step sym (\b -> goRight' (bp b))
+                    M m -> M (fmap goRight' m)
+                    Pure r -> Pure r
+
+--------------------------------------------------------------------------------
+-- Pull
+
 infixl 7 >->
 (>->) :: Has Flow fs m
       => Proxy fs a' a () b m r
@@ -305,11 +360,15 @@ infixr 7 <-<
       -> Proxy fs a' a c' c m r
 p2 <-< p1 = p1 >-> p2
 
-infixr 7 ~<<
-(~<<) :: (b -> Proxy fs b' b c' c m r)
-      ->       Proxy fs a' a b' b m r
-      ->       Proxy fs a' a c' c m r
-(~<<) = undefined
+infixr 7 <+<
+(<+<) :: Has Flow fs m
+      => (c' -> Proxy fs b' b c' c m r)
+      -> (b' -> Proxy fs a' a b' b m r)
+      ->  c' -> Proxy fs a' a c' c m r
+p1 <+< p2 = p2 >+> p1
+
+pull :: Has Flow fs m => ((a' -> Plan fs m r) -> Plan fs m r) -> Proxy fs a' a a' a m r
+pull f = \request respond -> f (fix $ \go -> \a' -> request a' (\a -> (respond a go)))
 
 infixl 7 >+>
 (>+>) :: Has Flow fs m
@@ -323,41 +382,59 @@ infixr 6 +>>
       => (b' -> Proxy fs a' a b' b m r)
       ->        Proxy fs b' b c' c m r
       ->        Proxy fs a' a c' c m r
-fb' +>> p0 = \req rsp -> undefined
+fb' +>> p0 = \_ _ -> do scope <- freshScope
+                        transform scope p0
+  where
+    transform :: Integer -> Proxy fs b' b c' c m r -> Plan fs m r
+    transform scope p1 =
+        let request b' bp = symbol (Request scope b' bp)
+            respond c c'p = symbol (Respond scope c c'p)
+        in go request respond (p1 request respond)
+      where
+        go :: (b' -> (b -> Plan fs m r) -> Plan fs m r)
+           -> (a -> (a' -> Plan fs m r) -> Plan fs m r)
+           -> Plan fs m r
+           -> Plan fs m r
+        go req rsp = goRight (\b' -> fb' b' (unsafeCoerce req) (unsafeCoerce rsp))
+          where
+            goRight :: (b' -> Plan fs m r) -> Plan fs m r -> Plan fs m r
+            goRight fb' = goRight'
+              where
+                goRight' p =
+                  case p of
+                    Step sym bp ->
+                      case prj sym of
+                        Just x ->
+                          case x of
+                            Request i b' _ ->
+                              if i == scope
+                              then goLeft (unsafeCoerce bp) (fb' (unsafeCoerce b'))
+                              else Step sym (\b -> goRight' (bp b))
+                            _ -> Step sym (\b -> goRight' (bp b))
+                        Nothing -> Step sym (\b -> goRight' (bp b))
+                    M m -> M (fmap goRight' m)
+                    Pure r -> Pure r
+            goLeft :: (b -> Plan fs m r) -> Plan fs m r -> Plan fs m r
+            goLeft bp = goLeft'
+              where
+                goLeft' p =
+                  case p of
+                    Step sym bp' ->
+                      case prj sym of
+                        Just x ->
+                          case x of
+                            Respond i b _ ->
+                              if i == scope
+                              then goRight (unsafeCoerce bp') (bp (unsafeCoerce b))
+                              else Step sym (\b' -> goLeft' (bp' b'))
+                            _ -> Step sym (\b' -> goLeft' (bp' b'))
+                        Nothing -> Step sym (\b' -> goLeft' (bp' b'))
+                    M m -> M (fmap goLeft' m)
+                    Pure r -> Pure r
 
-infixl 4 \<\ --
-(\<\) :: Has Flow fs m
-      => (b -> Proxy fs x' x c' c m b')
-      -> (a -> Proxy fs x' x b' b m a')
-      ->  a -> Proxy fs x' x c' c m a'
-p1 \<\ p2 =  p2 />/ p1
 
-infixr 5 /</
-(/</) :: Has Flow fs m
-      => (c' -> Proxy fs b' b x' x m c)
-      -> (b' -> Proxy fs a' a x' x m b)
-      ->  c' -> Proxy fs a' a x' x m c
-p1 /</ p2 = p2 \>\ p1
 
-infixl 8 <~<
-(<~<) :: (b -> Proxy fs b' b c' c m r)
-      -> (a -> Proxy fs a' a b' b m r)
-      ->  a -> Proxy fs a' a c' c m r
-p1 <~< p2 = p2 >~> p1
-
-infixr 7 <+<
-(<+<) :: Has Flow fs m
-      => (c' -> Proxy fs b' b c' c m r)
-      -> (b' -> Proxy fs a' a b' b m r)
-      ->  c' -> Proxy fs a' a c' c m r
-p1 <+< p2 = p2 >+> p1
-
-infixr 3 <\\
-(<\\) :: Has Flow fs m
-      => (b -> Proxy fs x' x c' c m b')
-      ->       Proxy fs x' x b' b m a'
-      ->       Proxy fs x' x c' c m a'
-f <\\ p = p //> f
+--------------------------------------------------------------------------------
 
 -- reflect :: Has Flow fs m => Proxy fs a' a b' b m r -> Proxy fs b b' a a' m r
 -- reflect p0 = \rsp awt req yld -> go (p0 (unsafeCoerce rsp) (unsafeCoerce awt) (unsafeCoerce req) (unsafeCoerce yld))
@@ -387,13 +464,20 @@ comp :: Instructions '[Pipes] IO
 comp = Instructions $ pipes *:* Empty
 
 -- handler :: Has Flow fs IO => Int -> Proxy fs () b' b IO String
-handler b = \_ _ -> lift (putStrLn $ "Received: " ++ show b)
+handler b = \_ _ -> do
+  lift $ do
+    putStrLn "Receiving in handler."
+    putStrLn $ "Received: " ++ show b
 
 -- prod :: Has Flow fs IO => Proxy fs a' a b' Int IO String
 prod = unfold $ \respond -> do
-  forM_ [(1 :: Int)..] $ \n -> do
-    lift (putStrLn $ "Sending: " ++ show n)
+  forM_ [(1 :: Int)..3] $ \n -> do
+    lift (putStrLn $ "Sending in prod.")
     _ <- respond n
+    lift $ do
+      putStrLn $ "Sent "  ++ show n ++ " in prod."
+      putStrLn ""
+
     return ()
   return "DoneProd"
 
