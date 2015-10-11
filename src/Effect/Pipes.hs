@@ -335,7 +335,6 @@ p0 >>~ fb0 = \_ _ -> do scope <- freshScope
                           case x of
                             Request i b' _ ->
                               if i == scope
-                              -- need to use bp' bp' b' bp''
                               then goLeft (unsafeCoerce bp) (b'p (unsafeCoerce b'))
                               else Step sym (\b -> goRight' (bp b))
                             _ -> Step sym (\b -> goRight' (bp b))
@@ -432,27 +431,6 @@ fb' +>> p0 = \_ _ -> do scope <- freshScope
                     M m -> M (fmap goLeft' m)
                     Pure r -> Pure r
 
-
-
---------------------------------------------------------------------------------
-
--- reflect :: Has Flow fs m => Proxy fs a' a b' b m r -> Proxy fs b b' a a' m r
--- reflect p0 = \rsp awt req yld -> go (p0 (unsafeCoerce rsp) (unsafeCoerce awt) (unsafeCoerce req) (unsafeCoerce yld))
---   where
---     go p =
---       case p of
---         Step sym bp ->
---           case prj sym of
---             Just x ->
---               case x of
---                 Yield o   -> Step (inj (Respond o)) (\b -> go (bp (unsafeCoerce b)))
---                 Respond o -> Step (inj (Yield   o)) (\b -> go (bp (unsafeCoerce b)))
---                 Request o -> Step (inj (Await   o)) (\b -> go (bp (unsafeCoerce b)))
---                 Await o   -> Step (inj (Request o)) (\b -> go (bp (unsafeCoerce b)))
---             Nothing -> Step sym (\b -> go (bp b))
---         M m -> M (fmap go m)
---         Pure r -> Pure r
-
 instance Pair Pipes Flow where
   pair p (Pipes i k) (FreshScope ik) = p k (ik i)
   pair _ _ _ = error "Pipe primitive escaped its scope:\n\
@@ -487,7 +465,3 @@ main = do
   (_,str) <- delta comp $ flow (prod //> handler )
   putStrLn str
   return ()
-
--- consumer is not productive enough because we immediately go back to the
--- producer after fulfilling an await. Need to walk to the next await and then
--- go back to the producer.
