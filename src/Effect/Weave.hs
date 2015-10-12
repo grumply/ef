@@ -13,6 +13,7 @@ module Effect.Weave
   , (\\<), (/</), (>~),  (~<) , (\>\), (>\\)
   ,        (<~<), (~<<), (>>~), (>~>)
   , (<<+), (<+<), (<-<), (>->), (>+>), (+>>)
+  ,       (<==<), (==<), (>==), (>==>)
   ) where
 
 import Mop hiding (push,pull)
@@ -449,3 +450,18 @@ fb' +>> p0 = \up dn -> transform (getScope up) up dn (p0 (unsafeCoerce up) dn)
                     M m -> M (fmap goLeft' m)
                     Pure r -> Pure r
 {-# INLINABLE (+>>) #-}
+
+--------------------------------------------------------------------------------
+-- Kleisli
+
+(>==) :: Has Weave fs m => Woven fs a' a b' b m r -> (r -> Woven fs a' a b' b m s) -> Woven fs a' a b' b m s
+(>==) r rs = \up dn -> (r (unsafeCoerce up) (unsafeCoerce dn)) >>= \r -> (rs r up dn)
+
+(==<) :: Has Weave fs m => (r -> Woven fs a' a b' b m s) -> Woven fs a' a b' b m r -> Woven fs a' a b' b m s
+(==<) rs r = (>==) r rs
+
+(>==>) :: Has Weave fs m => (t -> Woven fs a' a b' b m r) -> (r -> Woven fs a' a b' b m s) -> t -> Woven fs a' a b' b m s
+(>==>) r rs x = r x >== rs
+
+(<==<) :: Has Weave fs m => (r -> Woven fs a' a b' b m s) -> (t -> Woven fs a' a b' b m r) -> t -> Woven fs a' a b' b m s
+(tr <==< rs) t = (rs >==> tr) t

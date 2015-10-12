@@ -28,7 +28,7 @@ nondet = Nondet 0 $ \fs ->
 freshScope :: Has Logic fs m => Plan fs m Integer
 freshScope = symbol (FreshScope id)
 
--- a nondeterministic generator
+-- a nondeterministic producer
 -- use: logic $ \ch yield cut ->
 --        ch [1..5] $ \x -> ch [2..5] $ \y -> ch [3..5] $ \z ->
 --          when (a*a + b*b /= c*c) (yield (x,y,z))
@@ -49,7 +49,6 @@ logic l =
           yield
           (symbol (Cut scope))
   where
-    go :: Integer -> Plan fs m r -> Plan fs m (Could r)
     go scope p0 = go' p0
       where
         try :: forall a. [a] -> (a -> Plan fs m r) -> Plan fs m (Could r) -> Plan fs m (Could r)
@@ -83,7 +82,7 @@ logic l =
                       if i == scope
                       then try as (unsafeCoerce bp) (Pure Didn't)
                       else Step sym (\b -> go' (bp b))
-                    -- ignore cuts if not choices
+                    -- ignore cuts if no choices
                     Cut _ -> Step sym (\b -> go' (bp b))
                 Nothing -> Step sym (\b -> go' (bp b))
             M m -> M (fmap go' m)
