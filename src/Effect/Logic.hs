@@ -11,6 +11,9 @@ import Mop
 import Effect.Weave
 import Data.Could
 import Unsafe.Coerce
+import Data.IORef
+import System.IO.Unsafe
+import Debug.Trace
 
 -- nondeterministic choice with pruning
 
@@ -19,28 +22,34 @@ data Logic k
   | forall a. Choose Integer [a] (a -> k)
   | Cut Integer
 
-data Nondet k = Nondet Integer k
-nondet :: Uses Nondet fs m => Instruction Nondet fs m
-nondet = Nondet 0 $ \fs ->
-  let Nondet i k = view fs
-  in instruction (Nondet (succ i) k) fs
+data Nondet k = Nondet (IORef Integer) k
 
+{-# INLINE nondet #-}
+nondet :: Uses Nondet fs m => Instruction Nondet fs m
+nondet = Nondet (unsafePerformIO (newIORef 0)) $ \fs ->
+  let Nondet i k = view fs
+      next = unsafePerformIO (modifyIORef i succ)
+  in next `seq` return fs
+
+
+{-# INLINABLE freshScope #-}
 freshScope :: Has Logic fs m => Plan fs m Integer
 freshScope = symbol (FreshScope id)
 
 -- a nondeterministic producer
--- use: logic $ \ch yield cut ->
---        ch [1..5] $ \x -> ch [2..5] $ \y -> ch [3..5] $ \z ->
---          when (a*a + b*b /= c*c) (yield (x,y,z))
+-- use: pythag n = logic $ \ch yield cut ->
+--        ch [1..n] >>= \z -> ch [1..z] >>= \x -> ch [x..z] >>= \y -> do
+--          when (x*x + y*y /= z*z) (yield (x,y,z))
 --          cut
+{-# INLINE logic #-}
 logic :: forall fs m r b.
          (Has Logic fs m,Has Weave fs m)
       => (   (forall a. [a] -> Plan fs m a)
           -> (b -> Plan fs m ())
           -> (forall d. Plan fs m d)
-          -> Plan fs m r
+          -> Plan fs m ()
          )
-      -> Producer fs b m (Could r)
+      -> Producer fs b m ()
 logic l =
   producer $ \yield -> do
     scope <- freshScope
@@ -51,7 +60,7 @@ logic l =
   where
     go scope p0 = go' p0
       where
-        try :: forall a. [a] -> (a -> Plan fs m r) -> Plan fs m (Could r) -> Plan fs m (Could r)
+        try :: forall a. [a] -> (a -> Plan fs m ()) -> Plan fs m () -> Plan fs m ()
         try [] bp or = or
         try (a:as) bp or = try' (bp a)
           where
@@ -71,7 +80,7 @@ logic l =
                           else Step sym (\b -> try' (bp' b))
                     Nothing -> Step sym (\b -> try' (bp' b))
                 M m -> M (fmap try' m)
-                Pure r -> Pure (Did r)
+                Pure r -> try as bp or
         go' p =
           case p of
             Step sym bp ->
@@ -80,13 +89,19 @@ logic l =
                   case x of
                     Choose i as _ ->
                       if i == scope
-                      then try as (unsafeCoerce bp) (Pure Didn't)
+                      then try as (unsafeCoerce bp) (Pure ())
                       else Step sym (\b -> go' (bp b))
                     -- ignore cuts if no choices
                     Cut _ -> Step sym (\b -> go' (bp b))
                 Nothing -> Step sym (\b -> go' (bp b))
             M m -> M (fmap go' m)
-            Pure r -> Pure (Did r)
+            Pure r -> Pure r
 
 instance Pair Nondet Logic where
-  pair p (Nondet i k) (FreshScope ik) = p k (ik i)
+  pair p (Nondet i k) (FreshScope ik) =
+    let n = (unsafePerformIO $ readIORef i)
+    in trace (show n) $ p k (ik n)
+  pair _ _ _ = error "Logic primitive escaped its scope:\n\
+                     \\tAttempting to reuse control flow\
+                     \ primitives outside of their scope\
+                     \ is unsupported."

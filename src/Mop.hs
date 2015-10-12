@@ -27,45 +27,6 @@ type family (:++:) (xs :: [k]) (ys :: [k]) :: [k] where
   '[]       :++: ys  = ys
   (x ': xs) :++: ys  = x ': (xs :++: ys)
 
--- -- So this seems to work if append is done in the correct order, but I'm not sure
--- -- how to enact that correct order yet... Is typerep an instance of ord? I could
--- -- witness the ordering through that....
--- append :: forall fs m xs ys.
---           ( Monad m
---           , (:++:) xs ys ~ fs
---           , UnsafeBuild fs
---           , Functor (Instrs ys)
---           , Functor (Instrs xs)
---           , AdmitsSubset xs fs
---           , AdmitsSubset ys fs
---           , AdmitsSubset ys ys
---           , AdmitsSubset fs fs
---           , AdmitsSubset xs xs
---           , Subset xs fs
---           , Subset ys fs
---           ) => Context xs m -> Context ys m -> Context fs m
--- append xs ys =
---   let fs = unsafeBuild :: Instrs fs (Transformation fs m)
---       xs' = pushSubset (fmap liftTrans xs :: Instrs xs (Transformation fs m)) fs
---       ys' = pushSubset (fmap liftTrans ys :: Instrs ys (Transformation fs m)) xs'
---   in ys'
---   where
---     liftTrans :: forall fs gs m. (Subset fs gs,Monad m,AdmitsSubset gs gs,Functor (Instrs fs),AdmitsSubset fs gs,AdmitsSubset fs fs)
---               => (Instructions fs m -> m (Instructions fs m))
---               ->  Instructions gs m -> m (Instructions gs m)
---     liftTrans f gsI = do
---       let gs = getContext gsI
---           fs = pullSubset gs
---       fs' <- f (unsafeCoerce $ Instructions fs)
---       let fs'' = unsafeCoerce fs'
---       let gs' = pushSubset (getContext fs'') gs :: Instrs gs (Transformation gs m)
---       pure $ Instructions gs'
-
--- newtype Instructions fs m = Instructions { getContext :: Context fs m }
--- type Transformation fs m = Instructions fs m -> m (Instructions fs m)
--- type Context fs m = Instrs fs (Transformation fs m)
--- type Build fs m = Context fs m -> Context fs m
-
 type family In (x :: k) (xs :: [k]) :: Bool where
   In x '[] = 'False
   In x (x ': xs) = 'True
@@ -214,11 +175,11 @@ p0 `_bind` f = go p0 where
 
 {-# RULES
     "_bind (Step syms k) f" forall syms k f .
-        _bind (Step syms k) f = Step syms (\a  -> _bind (k a) f);
-    "_bind (M          m) f" forall m    f .
-        _bind (M          m) f = M (m >>= \p -> return (_bind p f));
-    "_bind (Pure    r   ) f" forall r    f .
-        _bind (Pure    r   ) f = f r;
+        _bind (Step syms k) f = Step syms (\a -> _bind (k a) f);
+    "_bind (M m) f" forall m f.
+        _bind (M m) f = M (m >>= \p -> return (_bind p f));
+    "_bind (Pure r) f" forall r f.
+        _bind (Pure r) f = f r;
   #-}
 
 {-# INLINE delta #-}
@@ -261,6 +222,7 @@ instance (Typeable f,Denies f fs,UnsafeBuild fs) => UnsafeBuild (f ': fs) where
         msg = "Instruction (" ++ instr ++ ") uninitialized."
     in Instr (error msg) unsafeBuild
 
+{-# INLINE build #-}
 build :: UnsafeBuild instrs => Build instrs m -> Instructions instrs m
 build f = Instructions $ f unsafeBuild
 
@@ -274,17 +236,21 @@ instance (Denies f fs,UnsafeBuild' fs) => UnsafeBuild' (f ': fs) where
 build' :: UnsafeBuild' instrs => Build instrs m -> Instructions instrs m
 build' f = Instructions $ f unsafeBuild'
 
+{-# INLINE add #-}
 add :: (Denies f fs) => f a -> Instrs fs a -> Instrs (f ': fs) a
 add fa Empty = Instr fa Empty
 add fa i = Instr fa i
 
+{-# INLINE (*:*)#-}
 (*:*) :: Denies f fs => f a -> Instrs fs a -> Instrs (f ': fs) a
 (*:*) = add
 infixr 5 *:*
 
+{-# INLINE view #-}
 view :: Admits instr instrs => Instructions instrs m -> Instruction instr instrs m
 view xs = pull $ getContext xs
 
+{-# INLINE instruction #-}
 instruction :: Uses instr instrs m => Instruction instr instrs m -> Instructions instrs m -> m (Instructions instrs m)
 instruction x is = {-# SCC "instruction_building" #-} pure $ Instructions $ push x $ getContext is
 
@@ -318,7 +284,6 @@ cutoff n p =
 --       bs <- cont i
 --       return (b:bs)
 
-{-# INLINE mapStep #-}
 mapStep :: Functor m => ((Plan symbols m a -> Plan symbols m a) -> Plan symbols m a -> Plan symbols m a) -> Plan symbols m a -> Plan symbols m a
 mapStep f p0 = go p0
   where
@@ -328,7 +293,6 @@ mapStep f p0 = go p0
         Pure r -> Pure r
         stp    -> f go stp
 
-{-# INLINE removeStep #-}
 removeStep :: Functor m => (Plan symbols m a -> Plan symbols m a) -> Plan symbols m a -> Plan symbols m a
 removeStep f p0 = go p0
   where

@@ -19,6 +19,7 @@ cabal-version:       >=1.10
 library
   exposed-modules:     Mop
                        Mop.IO
+                       Data.Could
                        Effect.Continuation
                        Effect.Exception
                        Effect.Fresh

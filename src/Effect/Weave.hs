@@ -9,6 +9,7 @@ module Effect.Weave
   , client, Client, Client'
   , server, Server, Server'
   , weave, Woven
+  , fold, unfold
   , (<\\), (\<\), (~>),  (<~) , (/>/), (//>)
   , (\\<), (/</), (>~),  (~<) , (\>\), (>\\)
   ,        (<~<), (~<<), (>>~), (>~>)
@@ -18,27 +19,50 @@ module Effect.Weave
 
 import Mop hiding (push,pull)
 import Data.Function
+import Data.IORef
+import System.IO.Unsafe
 import Unsafe.Coerce
 
 -- linearization of communicating threads
+
+{-# RULES
+    "(p //> f) //> g" forall p f g . (p //> f) //> g = p //> (\x -> f x //> g)
+
+  ; "f >\\ (g >\\ p)" forall f g p . f >\\ (g >\\ p) = (\x -> f >\\ g x) >\\ p
+
+  ; "(p >>~ f) >>~ g" forall p f g . (p >>~ f) >>~ g = p >>~ (\x -> f x >>~ g)
+
+  ; "f +>> (g +>> p)" forall f g p . f +>> (g +>> p) = (\x -> f +>> g x) +>> p
+
+  -- "for (for p f) g" forall p f g . for (for p f) g = for p (\a -> for (f a) g)
+
+  ; "f >~ (g >~ p)" forall f g p . f >~ (g >~ p) = (f >~ g) >~ p
+
+  ; "p1 >-> (p2 >-> p3)" forall p1 p2 p3 .
+        p1 >-> (p2 >-> p3) = (p1 >-> p2) >-> p3
+
+  #-}
 
 data Weave k
   = FreshScope (Integer -> k)
   | forall fs a' a m r. Request Integer a' (a  -> Plan fs m r)
   | forall fs b' b m r. Respond Integer b  (b' -> Plan fs m r)
 
-data Weaving k = Weaving Integer k
+data Weaving k = Weaving (IORef Integer) k
 
+{-# INLINABLE freshScope #-}
 freshScope :: Has Weave fs m => Plan fs m Integer
 freshScope = symbol (FreshScope id)
 
+{-# INLINE weaving #-}
 weaving :: Uses Weaving fs m => Instruction Weaving fs m
-weaving = Weaving 0 $ \fs ->
+weaving = Weaving (unsafePerformIO (newIORef 0)) $ \fs ->
   let Weaving n k = view fs
-  in instruction (Weaving (succ n) k) fs
+      n' = unsafePerformIO (modifyIORef n succ)
+  in n' `seq` return fs
 
 getScope p =
-  case p undefined undefined of
+  case p (unsafeCoerce ()) (unsafeCoerce ()) of
     Step sym bp ->
       case prj sym of
         Just x ->
@@ -50,12 +74,15 @@ getScope p =
     _ -> error "getScope got non-step"
 
 instance Pair Weaving Weave where
-  pair p (Weaving i k) (FreshScope ik) = p k (ik i)
+  pair p (Weaving i k) (FreshScope ik) =
+    let n = unsafePerformIO (readIORef i)
+    in n `seq` p k (ik n)
   pair _ _ _ = error "Pipe primitive escaped its scope:\n\
                      \\tAttempting to reuse control flow\
                      \ primitives outside of their scope\
                      \ is unsupported."
 
+{-# INLINE linearize #-}
 linearize :: Has Weave fs m => Effect fs m r -> Plan fs m r
 linearize e = do
     scope <- freshScope
@@ -80,13 +107,11 @@ linearize e = do
                 Nothing -> Step sym (\b -> go (bp b))
             M m -> M (fmap go m)
             Pure r -> Pure r
-{-# INLINABLE linearize #-}
 
 newtype X = X X
 
 closed :: X -> a
 closed (X x) = closed x
-{-# INLINABLE closed #-}
 
 type Effect fs m r = Woven fs X () () X m r
 
@@ -145,7 +170,6 @@ type Client' fs a' a m r = forall y' y . Woven fs a' a y' y m r
 --     -> (b -> Woven fs x' x c' c m b')
 --     ->       Woven fs x' x c' c m a'
 -- for = (//>)
--- {-# INLINABLE for #-}
 
 infixr 3 <\\
 (<\\) :: Has Weave fs m
@@ -153,7 +177,6 @@ infixr 3 <\\
       ->       Woven fs x' x b' b m a'
       ->       Woven fs x' x c' c m a'
 f <\\ p = p //> f
-{-# INLINABLE (<\\) #-}
 
 infixl 4 \<\ --
 (\<\) :: Has Weave fs m
@@ -161,7 +184,6 @@ infixl 4 \<\ --
       -> (a -> Woven fs x' x b' b m a')
       ->  a -> Woven fs x' x c' c m a'
 p1 \<\ p2 = p2 />/ p1
-{-# INLINABLE (\<\) #-}
 
 infixr 4 ~>
 (~>) :: Has Weave fs m
@@ -169,7 +191,6 @@ infixr 4 ~>
      -> (b -> Woven fs x' x c' c m b')
      ->  a -> Woven fs x' x c' c m a'
 (~>) = (/>/)
-{-# INLINABLE (~>) #-}
 
 infixl 4 <~
 (<~) :: Has Weave fs m
@@ -177,7 +198,6 @@ infixl 4 <~
      -> (a -> Woven fs x' x b' b m a')
      ->  a -> Woven fs x' x c' c m a'
 g <~ f = f ~> g
-{-# INLINABLE (<~) #-}
 
 infixr 4 />/
 (/>/) :: Has Weave fs m
@@ -185,7 +205,6 @@ infixr 4 />/
       -> (b -> Woven fs x' x c' c m b')
       ->  a -> Woven fs x' x c' c m a'
 (fa />/ fb) a = fa a //> fb
-{-# INLINABLE (/>/) #-}
 
 infixl 3 //>
 (//>) :: forall fs x' x b' b c' c m a'. Has Weave fs m
@@ -204,17 +223,17 @@ p0 //> fb = \up dn -> transform (getScope up) up dn (p0 up (unsafeCoerce dn))
                   case x of
                     Respond i b _ ->
                       if i == scope
-                      then go (bp $ unsafeCoerce $ fb (unsafeCoerce b) (unsafeCoerce up) (unsafeCoerce dn))
+                      then do
+                        fb (unsafeCoerce b) (unsafeCoerce up) (unsafeCoerce dn)
+                          >>= go . bp . unsafeCoerce
                       else Step sym (\b -> go (bp b))
                     _ -> Step sym (\b -> go (bp b))
                 Nothing -> Step sym (\b -> go (bp b))
             M m -> M (fmap go m)
             Pure r -> Pure r
-{-# INLINABLE (//>) #-}
 
 unfold :: ((b -> Plan fs m b') -> Plan fs m r) -> Woven fs a' a b' b m r
 unfold u = \_ respond -> u (\x -> respond x Pure)
-{-# INLINABLE unfold #-}
 
 --------------------------------------------------------------------------------
 -- Request
@@ -226,7 +245,6 @@ infixr 5 /</
       -> (b' -> Woven fs a' a x' x m b)
       ->  c' -> Woven fs a' a x' x m c
 p1 /</ p2 = p2 \>\ p1
-{-# INLINABLE (/</) #-}
 
 infixr 5 >~
 (>~) :: Has Weave fs m
@@ -234,7 +252,6 @@ infixr 5 >~
      -> Woven fs () b y' y m c
      -> Woven fs a' a y' y m c
 p1 >~ p2 = (\() -> p1) >\\ p2
-{-# INLINABLE (>~) #-}
 
 infixl 5 ~<
 (~<) :: Has Weave fs m
@@ -242,7 +259,6 @@ infixl 5 ~<
      -> Woven fs a' a y' y m b
      -> Woven fs a' a y' y m c
 p2 ~< p1 = p1 >~ p2
-{-# INLINABLE (~<) #-}
 
 infixl 5 \>\ --
 (\>\) :: Has Weave fs m
@@ -250,7 +266,6 @@ infixl 5 \>\ --
       -> (c' -> Woven fs b' b y' y m c)
       ->  c' -> Woven fs a' a y' y m c
 (fb' \>\ fc') c' = fb' >\\ fc' c'
-{-# INLINABLE (\>\) #-}
 
 infixl 4 \\<
 (\\<) :: forall fs y' y a' a b' b m c. Has Weave fs m
@@ -276,17 +291,17 @@ fb' >\\ p0 = \up dn -> transform (getScope up) up dn (p0 (unsafeCoerce up) dn)
                   case x of
                     Request i b' _ ->
                       if i == scope
-                      then go (bp (unsafeCoerce (fb' (unsafeCoerce b') (unsafeCoerce up) (unsafeCoerce dn))))
+                      then do
+                        fb' (unsafeCoerce b') (unsafeCoerce up) (unsafeCoerce dn)
+                          >>= (go . bp . unsafeCoerce)
                       else Step sym (\b -> go (bp b))
                     _ -> Step sym (\b -> go (bp b))
                 Nothing -> Step sym (\b -> go (bp b))
             M m -> M (fmap go m)
             Pure r -> Pure r
-{-# INLINABLE (>\\) #-}
 
 fold :: ((a' -> Plan fs m a) -> Plan fs m r) -> Woven fs a' a b' b m r
 fold f = \request _ -> f (\x -> request x Pure)
-{-# INLINABLE fold #-}
 
 --------------------------------------------------------------------------------
 -- Push
@@ -297,7 +312,6 @@ infixl 8 <~<
       -> (a -> Woven fs a' a b' b m r)
       ->  a -> Woven fs a' a c' c m r
 p1 <~< p2 = p2 >~> p1
-{-# INLINABLE (<~<) #-}
 
 infixr 8 >~>
 (>~>) :: Has Weave fs m
@@ -305,7 +319,6 @@ infixr 8 >~>
       -> ( b -> Woven fs b' b c' c m r)
       ->  _a -> Woven fs a' a c' c m r
 (fa >~> fb) a = fa a >>~ fb
-{-# INLINABLE (>~>) #-}
 
 infixr 7 ~<<
 (~<<) :: Has Weave fs m
@@ -313,7 +326,6 @@ infixr 7 ~<<
       ->       Woven fs a' a b' b m r
       ->       Woven fs a' a c' c m r
 k ~<< p = p >>~ k
-{-# INLINABLE (~<<) #-}
 
 infixl 7 >>~
 (>>~) :: forall fs a' a b' b c' c m r. Has Weave fs m
@@ -360,7 +372,6 @@ p0 >>~ fb0 = \up dn -> transform (getScope up) up dn (p0 up (unsafeCoerce dn))
                         Nothing -> Step sym (\b -> goRight' (bp b))
                     M m -> M (fmap goRight' m)
                     Pure r -> Pure r
-{-# INLINABLE (>>~) #-}
 
 --------------------------------------------------------------------------------
 -- Pull
@@ -371,7 +382,6 @@ infixl 7 >->
       -> Woven fs () b c' c m r
       -> Woven fs a' a c' c m r
 p1 >-> p2 = (\() -> p1) +>> p2
-{-# INLINABLE (>->) #-}
 
 infixr 7 <-<
 (<-<) :: Has Weave fs m
@@ -379,7 +389,6 @@ infixr 7 <-<
       -> Woven fs a' a () b m r
       -> Woven fs a' a c' c m r
 p2 <-< p1 = p1 >-> p2
-{-# INLINABLE (<-<) #-}
 
 infixr 7 <+<
 (<+<) :: Has Weave fs m
@@ -387,7 +396,6 @@ infixr 7 <+<
       -> (b' -> Woven fs a' a b' b m r)
       ->  c' -> Woven fs a' a c' c m r
 p1 <+< p2 = p2 >+> p1
-{-# INLINABLE (<+<) #-}
 
 infixl 7 >+>
 (>+>) :: Has Weave fs m
@@ -395,7 +403,6 @@ infixl 7 >+>
       -> (_c' -> Woven fs b' b c' c m r)
       ->  _c' -> Woven fs a' a c' c m r
 (fb' >+> fc') c' = fb' +>> fc' c'
-{-# INLINABLE (>+>) #-}
 
 infixl 6 <<+
 (<<+) :: forall fs m a' a b' b c' c r. Has Weave fs m
@@ -449,7 +456,6 @@ fb' +>> p0 = \up dn -> transform (getScope up) up dn (p0 (unsafeCoerce up) dn)
                         Nothing -> Step sym (\b' -> goLeft' (bp' b'))
                     M m -> M (fmap goLeft' m)
                     Pure r -> Pure r
-{-# INLINABLE (+>>) #-}
 
 --------------------------------------------------------------------------------
 -- Kleisli
