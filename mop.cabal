@@ -17,18 +17,19 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Mop,
-                       Mop.IO,
-                       Effect.Reader,
-                       Effect.State,
-                       Effect.Writer,
-                       Effect.Exception,
-                       Effect.Continuation,
-                       Effect.Fresh,
-                       Effect.Loop,
-                       Effect.Possibly,
-                       Effect.Thread,
+  exposed-modules:     Mop
+                       Mop.IO
+                       Effect.Continuation
+                       Effect.Exception
+                       Effect.Fresh
+                       Effect.Logic
+                       Effect.Loop
+                       Effect.Possibly
+                       Effect.Reader
+                       Effect.State
+                       Effect.Thread
                        Effect.Weave
+                       Effect.Writer
   default-extensions:  ScopedTypeVariables
                        MultiParamTypeClasses
                        FlexibleContexts

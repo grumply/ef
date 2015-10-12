@@ -1,29 +1,16 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
 module Effect.Possibly
-  ( Could(..), did, didn't, could've
-  , possibly, Possibly
+  ( possibly, Possibly
   , possible, Possible
   ) where
 
 import Mop
+import Data.Could
+
 import Unsafe.Coerce
 
 -- Possibly implements short-circuiting plans with success and non-specific failure.
-
-data Could x = Did x | Didn't
-
-did :: Could x -> Bool
-did (Did x) = True
-did _ = False
-
-didn't :: Could x -> Bool
-didn't Didn't = True
-didn't _ = False
-
-could've :: y -> (x -> y) -> Could x -> y
-could've _didn't _ Didn't = _didn't
-could've _ _did (Did x) = _did x
 
 data Possibly k
   = forall a. Success Integer a
