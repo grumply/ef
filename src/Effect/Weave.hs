@@ -466,6 +466,6 @@ infixr 1 >==>
 (>==>) :: Has Weave fs m => (t -> Woven fs a' a b' b m r) -> (r -> Woven fs a' a b' b m s) -> t -> Woven fs a' a b' b m s
 (>==>) r rs x = r x >== rs
 
-infixl 1 <==<
+infixr 1 <==<
 (<==<) :: Has Weave fs m => (r -> Woven fs a' a b' b m s) -> (t -> Woven fs a' a b' b m r) -> t -> Woven fs a' a b' b m s
 (tr <==< rs) t = (rs >==> tr) t
