@@ -454,14 +454,18 @@ fb' +>> p0 = \up dn -> transform (getScope up) up dn (p0 (unsafeCoerce up) dn)
 --------------------------------------------------------------------------------
 -- Kleisli
 
+infixl 1 >==
 (>==) :: Has Weave fs m => Woven fs a' a b' b m r -> (r -> Woven fs a' a b' b m s) -> Woven fs a' a b' b m s
 (>==) r rs = \up dn -> (r (unsafeCoerce up) (unsafeCoerce dn)) >>= \r -> (rs r up dn)
 
+infixr 1 ==<
 (==<) :: Has Weave fs m => (r -> Woven fs a' a b' b m s) -> Woven fs a' a b' b m r -> Woven fs a' a b' b m s
 (==<) rs r = (>==) r rs
 
+infixr 1 >==>
 (>==>) :: Has Weave fs m => (t -> Woven fs a' a b' b m r) -> (r -> Woven fs a' a b' b m s) -> t -> Woven fs a' a b' b m s
 (>==>) r rs x = r x >== rs
 
+infixl 1 <==<
 (<==<) :: Has Weave fs m => (r -> Woven fs a' a b' b m s) -> (t -> Woven fs a' a b' b m r) -> t -> Woven fs a' a b' b m s
 (tr <==< rs) t = (rs >==> tr) t
