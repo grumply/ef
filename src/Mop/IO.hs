@@ -5,12 +5,12 @@ import Mop
 
 -- this class and module exists to avoid a core dependency on mtl/transformers.
 
-class MIO m where
-  liftMIO :: IO a -> Plan fs m a
+class Monad m => MIO m where
+  mio :: IO a -> Plan fs m a
 
 instance MIO IO where
-  liftMIO :: IO a -> Plan fs IO a
-  liftMIO = lift
+  mio :: IO a -> Plan fs IO a
+  mio = lift
 
 -- Extract this out to mop-transformers/mop-mtl:
 -- instance MonadIO m => MIO m where

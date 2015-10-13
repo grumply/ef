@@ -10,6 +10,7 @@ module Effect.Weave
   , server, Server, Server'
   , weave, Woven
   , fold, unfold
+  , for, cat
   , (<\\), (\<\), (~>),  (<~) , (/>/), (//>)
   , (\\<), (/</), (>~),  (~<) , (\>\), (>\\)
   ,        (<~<), (~<<), (>>~), (>~>)
@@ -18,12 +19,16 @@ module Effect.Weave
   ) where
 
 import Mop hiding (push,pull)
+import Control.Monad
 import Data.Function
 import Data.IORef
 import System.IO.Unsafe
 import Unsafe.Coerce
 
 -- linearization of communicating threads
+
+cat :: Has Weave fs m => Pipe fs a a m r
+cat = pipe $ \await yield -> forever (await >>= yield)
 
 {-# RULES
     "(p //> f) //> g" forall p f g . (p //> f) //> g = p //> (\x -> f x //> g)
@@ -164,12 +169,12 @@ type Client' fs a' a m r = forall y' y . Woven fs a' a y' y m r
 --------------------------------------------------------------------------------
 -- Respond
 
--- convenient, but I'd rather use the name for generators
--- for :: Has Weave fs m
---     =>       Woven fs x' x b' b m a'
---     -> (b -> Woven fs x' x c' c m b')
---     ->       Woven fs x' x c' c m a'
--- for = (//>)
+
+for :: Has Weave fs m
+    =>       Woven fs x' x b' b m a'
+    -> (b -> Woven fs x' x c' c m b')
+    ->       Woven fs x' x c' c m a'
+for = (//>)
 
 infixr 3 <\\
 (<\\) :: Has Weave fs m
@@ -293,7 +298,7 @@ fb' >\\ p0 = \up dn -> transform (getScope up) up dn (p0 (unsafeCoerce up) dn)
                       if i == scope
                       then do
                         fb' (unsafeCoerce b') (unsafeCoerce up) (unsafeCoerce dn)
-                          >>= (go . bp . unsafeCoerce)
+                          >>= go . bp . unsafeCoerce
                       else Step sym (\b -> go (bp b))
                     _ -> Step sym (\b -> go (bp b))
                 Nothing -> Step sym (\b -> go (bp b))
