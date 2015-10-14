@@ -1,3 +1,7 @@
+{-
+Leaving these pragmas here reference.
+Pragmas for other modules are in the cabal file.
+-}
 {-# LANGUAGE PolyKinds                          #-}
 {-# LANGUAGE ConstraintKinds                    #-}
 {-# LANGUAGE DataKinds                          #-}

@@ -1,5 +1,3 @@
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE RankNTypes #-}
 module Effect.Continuation
   (Continuation,enter
   ,Continuations,continuations

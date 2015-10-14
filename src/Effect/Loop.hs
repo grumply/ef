@@ -1,5 +1,3 @@
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE RankNTypes #-}
 module Effect.Loop
   ( loop, Loop
   , loops, Loops

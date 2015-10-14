@@ -1,5 +1,3 @@
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DataKinds #-}
 module Mop.Base
   ( Base, base, run
   , module Base

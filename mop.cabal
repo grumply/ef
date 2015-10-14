@@ -38,10 +38,14 @@ library
                        Effect.Thread
                        Effect.Weave
                        Effect.Writer
+                       
   default-extensions:  ScopedTypeVariables
                        MultiParamTypeClasses
                        FlexibleContexts
                        DataKinds
+                       RankNTypes
+                       ExistentialQuantification
+                       TypeOperators
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.8 && <4.9

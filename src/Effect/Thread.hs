@@ -1,5 +1,3 @@
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ExistentialQuantification #-}
 module Effect.Thread
   ( Thread,thread
   , Threading, threads
