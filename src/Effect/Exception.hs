@@ -10,8 +10,6 @@ import Mop
 import Control.Exception (SomeException(..),Exception(..))
 import qualified Control.Exception as Exc
 
-data Masking = Masked | Unmasked
-
 data Throw k = Throw SomeException k
 data Throws k = Throws (SomeException -> k)
 
