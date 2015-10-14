@@ -3,13 +3,11 @@
 module Effect.Logic
   ( Logic, logic
   , Nondet, nondet
-  , module Data.Could
   , module Effect.Weave
   ) where
 
 import Mop
 import Effect.Weave
-import Data.Could
 import Unsafe.Coerce
 import Data.IORef
 import System.IO.Unsafe
