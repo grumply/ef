@@ -26,14 +26,13 @@ library
   exposed-modules:     Mop.Base
                        Mop
                        Mop.IO
-                       Data.Could
                        Effect.Continuation
                        Effect.Exception
                        Effect.Fresh
                        Effect.List
                        Effect.Logic
                        Effect.Loop
-                       Effect.Possibly
+                       Effect.Maybe
                        Effect.Reader
                        Effect.State
                        Effect.Thread

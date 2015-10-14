@@ -1,7 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
 module Effect.Continuation
-  (Continuation,continuation
+  (Continuation,enter
   ,Continuations,continuations
   ) where
 
@@ -13,8 +13,9 @@ data Continuation k
   | forall a. Continuation Integer a
 data Continuations k = Continuations Integer k
 
-continuation :: Has Continuation fs m => ((forall b. a -> PlanT fs m b) -> PlanT fs m a) -> PlanT fs m a
-continuation x = do
+-- use: enter $ \exit -> do { .. ; }
+enter :: Has Continuation fs m => ((forall b. a -> PlanT fs m b) -> PlanT fs m a) -> PlanT fs m a
+enter x = do
     scope <- freshScope
     transform scope $ x (\a -> symbol (Continuation scope a))
   where

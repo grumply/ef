@@ -12,7 +12,7 @@ import Effect.Logic         as Base
 import Effect.Weave         as Base
 import Effect.Exception     as Base
 import Effect.Loop          as Base
-import Effect.Possibly      as Base
+import Effect.Maybe         as Base
 import Effect.Thread        as Base
 
 type Base = '[Continuations,Nondet,Weaving,Throws,Loops,Possible,Threading]
