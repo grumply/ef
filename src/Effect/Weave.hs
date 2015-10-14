@@ -50,13 +50,13 @@ cat = pipe $ \await yield -> forever (await >>= yield)
 
 data Weave k
   = FreshScope (Integer -> k)
-  | forall fs a' a m r. Request Integer a' (a  -> Plan fs m r)
-  | forall fs b' b m r. Respond Integer b  (b' -> Plan fs m r)
+  | forall fs a' a m r. Request Integer a' (a  -> PlanT fs m r)
+  | forall fs b' b m r. Respond Integer b  (b' -> PlanT fs m r)
 
 data Weaving k = Weaving (IORef Integer) k
 
 {-# INLINABLE freshScope #-}
-freshScope :: Has Weave fs m => Plan fs m Integer
+freshScope :: Has Weave fs m => PlanT fs m Integer
 freshScope = symbol (FreshScope id)
 
 {-# INLINE weaving #-}
@@ -88,7 +88,7 @@ instance Pair Weaving Weave where
                      \ is unsupported."
 
 {-# INLINE linearize #-}
-linearize :: Has Weave fs m => Effect fs m r -> Plan fs m r
+linearize :: Has Weave fs m => Effect fs m r -> PlanT fs m r
 linearize e = do
     scope <- freshScope
     go' scope $ e (\a' ap -> symbol (Request scope a' ap)) (\b b'p -> symbol (Respond scope b b'p))
@@ -122,36 +122,36 @@ type Effect fs m r = Woven fs X () () X m r
 
 type Producer fs b m r = Woven fs X () () b m r
 -- producer $ \yield -> do { .. ; }
-producer :: Has Weave fs m => ((b -> Plan fs m ()) -> Plan fs m r) -> Producer' fs b m r
+producer :: Has Weave fs m => ((b -> PlanT fs m ()) -> PlanT fs m r) -> Producer' fs b m r
 producer f = \_ dn -> f (\b -> symbol (Respond (getScope dn) b Pure))
 
 type Consumer fs a m r = Woven fs () a () X m r
 -- consumer $ \await -> do { .. ; }
-consumer :: Has Weave fs m => (Plan fs m a -> Plan fs m r) -> Consumer' fs a m r
+consumer :: Has Weave fs m => (PlanT fs m a -> PlanT fs m r) -> Consumer' fs a m r
 consumer f = \up _ -> f (symbol (Request (getScope up) () Pure))
 
 type Pipe fs a b m r = Woven fs () a () b m r
 -- pipe $ \await yield -> do { .. ; }
-pipe :: Has Weave fs m => (Plan fs m a -> (b -> Plan fs m x) -> Plan fs m r) -> Pipe fs a b m r
+pipe :: Has Weave fs m => (PlanT fs m a -> (b -> PlanT fs m x) -> PlanT fs m r) -> Pipe fs a b m r
 pipe f = \up dn -> f (symbol (Request (getScope up) () Pure))
                      (\b -> symbol (Respond (getScope dn) b Pure))
 
 type Client fs a' a m r = Woven fs a' a () X m r
 -- client $ \request -> do { .. ; }
-client :: Has Weave fs m => ((a -> Plan fs m a') -> Plan fs m r) -> Client' fs a' a m r
+client :: Has Weave fs m => ((a -> PlanT fs m a') -> PlanT fs m r) -> Client' fs a' a m r
 client f = \up _ -> f (\a -> symbol (Request (getScope up) a Pure))
 
 type Server fs b' b m r = Woven fs X () b' b m r
 -- server $ \respond -> do { .. ; }
-server :: Has Weave fs m => ((b' -> Plan fs m b) -> Plan fs m r) -> Server' fs b' b m r
+server :: Has Weave fs m => ((b' -> PlanT fs m b) -> PlanT fs m r) -> Server' fs b' b m r
 server f = \_ dn -> f (\b' -> symbol (Respond (getScope dn) b' Pure))
 
 type Woven fs a' a b' b m r
-  =  (forall x. a' -> (a -> Plan fs m x) -> Plan fs m x)
-  -> (forall x. b -> (b' -> Plan fs m x) -> Plan fs m x)
-  -> Plan fs m r
+  =  (forall x. a' -> (a -> PlanT fs m x) -> PlanT fs m x)
+  -> (forall x. b -> (b' -> PlanT fs m x) -> PlanT fs m x)
+  -> PlanT fs m r
 -- weave $ \request respond -> do { .. ; }
-weave :: Has Weave fs m => ((a -> Plan fs m a') -> (b' -> Plan fs m b) -> Plan fs m r) -> Woven fs a' a b' b m r
+weave :: Has Weave fs m => ((a -> PlanT fs m a') -> (b' -> PlanT fs m b) -> PlanT fs m r) -> Woven fs a' a b' b m r
 weave f = \up dn -> f (\a -> symbol (Request (getScope up) a Pure))
                       (\b' -> symbol (Respond (getScope dn) b' Pure))
 
@@ -237,7 +237,7 @@ p0 //> fb = \up dn -> transform (getScope up) up dn (p0 up (unsafeCoerce dn))
             M m -> M (fmap go m)
             Pure r -> Pure r
 
-unfold :: ((b -> Plan fs m b') -> Plan fs m r) -> Woven fs a' a b' b m r
+unfold :: ((b -> PlanT fs m b') -> PlanT fs m r) -> Woven fs a' a b' b m r
 unfold u = \_ respond -> u (\x -> respond x Pure)
 
 --------------------------------------------------------------------------------
@@ -305,7 +305,7 @@ fb' >\\ p0 = \up dn -> transform (getScope up) up dn (p0 (unsafeCoerce up) dn)
             M m -> M (fmap go m)
             Pure r -> Pure r
 
-fold :: ((a' -> Plan fs m a) -> Plan fs m r) -> Woven fs a' a b' b m r
+fold :: ((a' -> PlanT fs m a) -> PlanT fs m r) -> Woven fs a' a b' b m r
 fold f = \request _ -> f (\x -> request x Pure)
 
 --------------------------------------------------------------------------------
@@ -343,7 +343,7 @@ p0 >>~ fb0 = \up dn -> transform (getScope up) up dn (p0 up (unsafeCoerce dn))
       where
         go = goLeft (\b -> fb0 b (unsafeCoerce up) (unsafeCoerce dn))
           where
-            goLeft :: (b -> Plan fs m r) -> Plan fs m r -> Plan fs m r
+            goLeft :: (b -> PlanT fs m r) -> PlanT fs m r -> PlanT fs m r
             goLeft fb = goLeft'
               where
                 goLeft' p =
@@ -360,7 +360,7 @@ p0 >>~ fb0 = \up dn -> transform (getScope up) up dn (p0 up (unsafeCoerce dn))
                         Nothing -> Step sym (\b -> goLeft' (bp b))
                     M m -> M (fmap goLeft' m)
                     Pure r -> Pure r
-            goRight :: (b' -> Plan fs m r) -> Plan fs m r -> Plan fs m r
+            goRight :: (b' -> PlanT fs m r) -> PlanT fs m r -> PlanT fs m r
             goRight b'p = goRight'
               where
                 goRight' p =
@@ -427,7 +427,7 @@ fb' +>> p0 = \up dn -> transform (getScope up) up dn (p0 (unsafeCoerce up) dn)
       where
         go = goRight (\b' -> fb' b' (unsafeCoerce up) (unsafeCoerce dn))
           where
-            goRight :: (b' -> Plan fs m r) -> Plan fs m r -> Plan fs m r
+            goRight :: (b' -> PlanT fs m r) -> PlanT fs m r -> PlanT fs m r
             goRight fb' = goRight'
               where
                 goRight' p =
@@ -444,7 +444,7 @@ fb' +>> p0 = \up dn -> transform (getScope up) up dn (p0 (unsafeCoerce up) dn)
                         Nothing -> Step sym (\b -> goRight' (bp b))
                     M m -> M (fmap goRight' m)
                     Pure r -> Pure r
-            goLeft :: (b -> Plan fs m r) -> Plan fs m r -> Plan fs m r
+            goLeft :: (b -> PlanT fs m r) -> PlanT fs m r -> PlanT fs m r
             goLeft bp = goLeft'
               where
                 goLeft' p =

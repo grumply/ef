@@ -13,16 +13,16 @@ data Env r k = Env r k
 instance Pair (Env r) (Reader r) where
   pair p (Env r k) (Reader rk) = pair p (r,k) rk
 
-ask :: Has (Reader r) fs m => Plan fs m r
+ask :: Has (Reader r) fs m => PlanT fs m r
 ask = symbol (Reader id)
 
-asks :: Has (Reader r) fs m => (r -> a) -> Plan fs m a
+asks :: Has (Reader r) fs m => (r -> a) -> PlanT fs m a
 asks f = symbol (Reader f)
 
 reader :: Uses (Env r) fs m => r -> Instruction (Env r) fs m
 reader r = Env r pure
 
-local :: forall fs m r. Has (Reader r) fs m => (r -> r) -> Plan fs m r -> Plan fs m r
+local :: forall fs m r. Has (Reader r) fs m => (r -> r) -> PlanT fs m r -> PlanT fs m r
 local f p0 = go p0
   where
     go p =

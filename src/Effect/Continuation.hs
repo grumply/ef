@@ -13,7 +13,7 @@ data Continuation k
   | forall a. Continuation Integer a
 data Continuations k = Continuations Integer k
 
-continuation :: Has Continuation fs m => ((forall b. a -> Plan fs m b) -> Plan fs m a) -> Plan fs m a
+continuation :: Has Continuation fs m => ((forall b. a -> PlanT fs m b) -> PlanT fs m a) -> PlanT fs m a
 continuation x = do
     scope <- freshScope
     transform scope $ x (\a -> symbol (Continuation scope a))
@@ -27,7 +27,7 @@ continuation x = do
             else Step syms (\b -> go (bp b))
           _   -> Step syms (\b -> go (bp b))
 
-freshScope :: Has Continuation fs m => Plan fs m Integer
+freshScope :: Has Continuation fs m => PlanT fs m Integer
 freshScope = symbol (FreshScope id)
 
 continuations :: Uses Continuations gs m => Instruction Continuations gs m

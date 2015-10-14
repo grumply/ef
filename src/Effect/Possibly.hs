@@ -24,11 +24,11 @@ possible = Possible 0 $ \fs ->
   let Possible i k = view fs
   in instruction (Possible (succ i) k) fs
 
-freshScope :: Has Possibly fs m => Plan fs m Integer
+freshScope :: Has Possibly fs m => PlanT fs m Integer
 freshScope = symbol (FreshScope id)
 
 -- use: possibly $ \success failure ...
-possibly :: Has Possibly fs m => ((forall b. a -> Plan fs m b) -> (forall b. Plan fs m b) -> Plan fs m (Could a)) -> Plan fs m (Could a)
+possibly :: Has Possibly fs m => ((forall b. a -> PlanT fs m b) -> (forall b. PlanT fs m b) -> PlanT fs m (Could a)) -> PlanT fs m (Could a)
 possibly x = do
     scope <- freshScope
     transform scope $ x (\a -> symbol (Success scope a)) (symbol (Failure scope))

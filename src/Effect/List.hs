@@ -2,12 +2,11 @@
 module Effect.List where
 
 import Mop
+-- import Mop.Trans
 import Effect.Weave
 
 import Control.Applicative
 import Control.Monad
-
-import qualified Control.Monad.Trans as Trans
 
 import qualified Data.Foldable as F
 
@@ -44,11 +43,11 @@ instance Monoid (List fs m a) where
   mempty = empty
   mappend = (<|>)
 
-instance Trans.MonadTrans (List fs) where
-  lift m = Select (producer $ \yield -> do
-    a <- lift m
-    yield a
-    )
+-- instance Trans (List fs) where
+--   lift m = Select (producer $ \yield -> do
+--     a <- lift m
+--     yield a
+--     )
 
 runList l = linearize (enumerate (l >> mzero))
 
@@ -61,13 +60,13 @@ discard _ = \_ _ -> return ()
 every :: Has Weave fs m => List fs m a -> Producer' fs a m ()
 every it = discard >\\ (enumerate it)
 
-pair :: Has Weave fs IO => List fs IO (Int,Int)
-pair = do
-    x <- Select $ each [1,2]
-    Trans.lift (putStrLn ("x = " ++ show x))
-    y <- Select $ each [3,4]
-    Trans.lift (putStrLn ("y = " ++ show y))
-    return (x,y)
+-- pair :: Has Weave fs IO => List fs IO (Int,Int)
+-- pair = do
+--     x <- Select $ each [1,2]
+--     Trans.lift (putStrLn ("x = " ++ show x))
+--     y <- Select $ each [3,4]
+--     Trans.lift (putStrLn ("y = " ++ show y))
+--     return (x,y)
 
-main = do
-  delta (Instructions $ weaving *:* Empty) $ runList Effect.List.pair
+-- main = do
+--   delta (Instructions $ weaving *:* Empty) $ runList Effect.List.pair

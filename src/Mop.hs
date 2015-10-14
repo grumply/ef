@@ -20,6 +20,7 @@
 module Mop where
 
 import Control.Monad
+import Data.Functor.Identity
 import Data.Typeable
 
 type family (:++:) (xs :: [k]) (ys :: [k]) :: [k] where
@@ -106,11 +107,15 @@ class Allows' x xs (n :: Nat) where
   inj' :: Index n -> x a -> Symbol xs a
   prj' :: Index n -> Symbol xs a -> Maybe (x a)
 instance (Denies x' xs',xs ~ (x' ': xs'),Allows' x xs' (IndexOf x xs')) => Allows' x xs ('S n) where
+  {-# INLINE inj' #-}
   inj' _ xa = Further (inj' (Index :: Index (IndexOf x xs')) xa)
+  {-# INLINE prj' #-}
   prj' _ (Further ss) = prj' (Index :: Index (IndexOf x xs')) ss
   prj' _ _ = Nothing
 instance (Denies x xs',xs ~ (x ': xs')) => Allows' x xs 'Z where
+  {-# INLINE inj' #-}
   inj' _ = Symbol
+  {-# INLINE prj' #-}
   prj' _ (Symbol sa) = Just sa
   prj' _ (Further _) = Nothing
 
@@ -124,93 +129,124 @@ instance Pair (Instrs '[]) (Symbol '[])
 instance (Pair i s,Pair (Instrs is) (Symbol ss))
     => Pair (Instrs (i ': is)) (Symbol (s ': ss))
   where
-    pair p (Instr ia _) (Symbol  sa) = {-# SCC "symbol_pairing" #-} pair p ia sa
-    pair p (Instr _ is) (Further ss) = {-# SCC "further_pairing" #-} pair p is ss
-
--- pairs :: forall fs gs m b. (Pair (Instrs fs) (Symbol gs)) => Instructions (fs :: [* -> *]) m -> Proxy (Symbol (gs :: [* -> *]) ())
--- pairs _ = Proxy :: Proxy (Symbol gs ())
+    pair p (Instr ia _) (Symbol  sa) = pair p ia sa
+    pair p (Instr _ is) (Further ss) = pair p is ss
 
 type family End (xs :: [k]) :: k where
   End '[x] = x
   End (x ': xs) = End xs
 
-data Plan symbols m a
+data PlanT symbols m a
   = Pure a
-  | M (m (Plan symbols m a))
-  | forall b. Step (Symbol symbols b) (b -> Plan symbols m a)
+  | M (m (PlanT symbols m a))
+  | forall b. Step (Symbol symbols b) (b -> PlanT symbols m a)
 
-lift :: Monad m => m a -> Plan symbols m a
-lift m = M (m >>= \r -> return (Pure r))
+type Plan symbols a = PlanT symbols Identity a
 
-symbol :: Allows x symbols => x a -> Plan symbols m a
+{-# INLINE lift #-}
+lift :: Functor m => m a -> PlanT symbols m a
+lift m = M (fmap Pure m)
+
+{-# INLINE symbol #-}
+symbol :: Allows x symbols => x a -> PlanT symbols m a
 symbol xa = Step (inj xa) Pure
 
-instance Monad m => Functor (Plan symbols m) where
-  fmap f p0 = go p0
-    where
-      go p =
-        case p of
-          Pure a -> Pure (f a)
-          M m -> M (m >>= \p' -> return (go p'))
-          Step syms bp -> Step syms (\b -> go (bp b))
+instance Functor m => Functor (PlanT symbols m) where
+  fmap f p0 = _fmap f p0
 
-instance (Monad m) => Applicative (Plan symbols m) where
+instance Functor m => Applicative (PlanT symbols m) where
   pure = Pure
   (<*>) = ap
 
-instance (Monad m) => Monad (Plan symbols m) where
-  -- version that's more correct for monad transformers, but slower?
-  -- return = M . return . Pure
-  -- this makes lift . return = return
+instance Functor m => Monad (PlanT symbols m) where
+#ifdef TRANSFORMERS_SAFE
+  return = M . fmap Pure
+#else
   return = Pure
+#endif
   (>>=) = _bind
 
+{-# NOINLINE _fmap #-}
+_fmap :: Functor m => (a -> b) -> PlanT symbols m a -> PlanT symbols m b
+_fmap f p0 = go p0
+  where
+    go p =
+      case p of
+        Pure a -> Pure (f a)
+        M m -> M (fmap go m)
+        Step syms bp -> Step syms (\b -> go (bp b))
+
+{-# RULES
+  "_fmap f (Step syms k)" forall syms k f.
+      _fmap f (Step syms k) = Step syms (\a -> _fmap f (k a));
+  "_fmap f (M m)" forall f m.
+      _fmap f (M m) = M (fmap (_fmap f) m);
+  "_fmap f (Pure r)" forall f r.
+      _fmap f (Pure r) = Pure (f r);
+  #-}
+
 {-# NOINLINE _bind #-}
-_bind :: Monad m => Plan symbols m a -> (a -> Plan symbols m a') -> Plan symbols m a'
-p0 `_bind` f = go p0 where
-  go p = case p of
-    Pure res -> f res
-    M m -> M (m >>= \p' -> return (go p'))
-    Step syms k -> Step syms (\r -> go (k r))
+_bind :: Functor m => PlanT symbols m a -> (a -> PlanT symbols m a') -> PlanT symbols m a'
+p0 `_bind` f = go p0
+  where
+    go p =
+      case p of
+        Pure res -> f res
+        M m -> M (fmap go m)
+        Step syms k -> Step syms (\r -> go (k r))
 
 {-# RULES
     "_bind (Step syms k) f" forall syms k f .
         _bind (Step syms k) f = Step syms (\a -> _bind (k a) f);
     "_bind (M m) f" forall m f.
-        _bind (M m) f = M (m >>= \p -> return (_bind p f));
+        _bind (M m) f = M (fmap (flip _bind f) m);
     "_bind (Pure r) f" forall r f.
         _bind (Pure r) f = f r;
   #-}
 
-{-# INLINE delta #-}
 delta :: (Pair (Instrs is) (Symbol symbols),Monad m)
-       => Instructions is m
-       -> Plan symbols m a
-       -> m (Instructions is m,a)
-delta is p0 = go p0
+       => InstructionsT is m
+       -> PlanT symbols m a
+       -> m (InstructionsT is m,a)
+delta = _delta
+
+{-# NOINLINE _delta #-}
+_delta :: forall is symbols m a. (Pair (Instrs is) (Symbol symbols),Monad m)
+       => InstructionsT is m
+       -> PlanT symbols m a
+       -> m (InstructionsT is m,a)
+_delta is p0 = go p0
   where
+    go :: PlanT symbols m a -> m (InstructionsT is m,a)
     go p =
       case p of
         Pure res -> pure (is,res)
-        M mp -> do
-          p' <- mp
-          go p'
-        Step symbols k -> do
-          let (trans,b) = pair (\a x -> (a,x)) (getContext is) symbols
-          interpreter <- trans is
-          delta interpreter (k b)
+        M mp -> mp >>= go
+        Step syms k ->
+          let (trans,b) = pair (\a x -> (a,x)) (getContext is) syms
+          in trans is >>= \is' -> _delta is' (k b)
 
 type Uses f fs m = (Monad m,Admits' f fs (IndexOf f fs))
+type Using fs' fs m = (Monad m,AdmitsSubset fs' fs)
 type Has f fs m = (Monad m,Allows' f fs (IndexOf f fs))
+type Having fs' fs m = (Monad m,AllowsSubset fs' fs)
 
-type Transformation instrs m
-  =      (Instructions instrs m)
-    -> m (Instructions instrs m)
+class AllowsSubset fs' fs
+instance AllowsSubset '[] fs
+instance (Allows' f fs (IndexOf f fs),AllowsSubset fs' fs)
+  => AllowsSubset (f ': fs') fs
 
-type Instruction instr instrs m = instr (Transformation instrs m)
-type Context instrs m = Instrs instrs (Transformation instrs m)
+type TransformationT instrs m
+  =      (InstructionsT instrs m)
+    -> m (InstructionsT instrs m)
+
+type Transformation instrs = TransformationT instrs Identity
+
+type Instruction instr instrs m = instr (TransformationT instrs m)
+type Context instrs m = Instrs instrs (TransformationT instrs m)
 type Build instrs m = Context instrs m -> Context instrs m
-newtype Instructions instrs m = Instructions { getContext :: Context instrs m }
+newtype InstructionsT instrs m = Instructions { getContext :: Context instrs m }
+type Instructions instrs = InstructionsT instrs Identity
 
 class UnsafeBuild fs where
   unsafeBuild :: Instrs fs a
@@ -223,7 +259,7 @@ instance (Typeable f,Denies f fs,UnsafeBuild fs) => UnsafeBuild (f ': fs) where
     in Instr (error msg) unsafeBuild
 
 {-# INLINE build #-}
-build :: UnsafeBuild instrs => Build instrs m -> Instructions instrs m
+build :: UnsafeBuild instrs => Build instrs m -> InstructionsT instrs m
 build f = Instructions $ f unsafeBuild
 
 class UnsafeBuild' fs where
@@ -233,7 +269,7 @@ instance UnsafeBuild' '[] where
 instance (Denies f fs,UnsafeBuild' fs) => UnsafeBuild' (f ': fs) where
   unsafeBuild' = Instr undefined unsafeBuild'
 
-build' :: UnsafeBuild' instrs => Build instrs m -> Instructions instrs m
+build' :: UnsafeBuild' instrs => Build instrs m -> InstructionsT instrs m
 build' f = Instructions $ f unsafeBuild'
 
 {-# INLINE add #-}
@@ -247,14 +283,15 @@ add fa i = Instr fa i
 infixr 5 *:*
 
 {-# INLINE view #-}
-view :: Admits instr instrs => Instructions instrs m -> Instruction instr instrs m
+view :: Admits instr instrs => InstructionsT instrs m -> Instruction instr instrs m
 view xs = pull $ getContext xs
 
 {-# INLINE instruction #-}
-instruction :: Uses instr instrs m => Instruction instr instrs m -> Instructions instrs m -> m (Instructions instrs m)
+instruction :: Uses instr instrs m => Instruction instr instrs m -> InstructionsT instrs m -> m (InstructionsT instrs m)
 instruction x is = {-# SCC "instruction_building" #-} pure $ Instructions $ push x $ getContext is
 
-cutoff :: Monad m => Integer -> Plan fs m a -> Plan fs m (Maybe a)
+-- add rewrite here; could be useful.
+cutoff :: Monad m => Integer -> PlanT fs m a -> PlanT fs m (Maybe a)
 cutoff n _ | n <= 0 = return Nothing
 cutoff n p =
   case p of
@@ -262,10 +299,11 @@ cutoff n p =
     M m -> M (cutoff (n - 1) `liftM` m)
     Step sym k -> Step sym (cutoff (n - 1) . k)
 
+
 -- -- foldP allows recovery of interpreter at every produced value
 -- {-# INLINE foldP #-}
 -- foldP :: (Foldable f,Pair (Instrs is) (Symbol symbols),Monad m)
---      => Instructions is m -> (a -> Plan symbols m b) -> f a -> m [(Instructions is m,b)]
+--      => Instructions is m -> (a -> PlanT symbols m b) -> f a -> m [(Instructions is m,b)]
 -- foldP i0 ap f = foldr accumulate (const (return [])) f i0
 --   where
 --     accumulate a cont is = do
@@ -276,7 +314,7 @@ cutoff n p =
 -- -- foldP_, unlike foldP, does not allow recovery of interpreter
 -- {-# INLINE foldP_ #-}
 -- foldP_ :: (Foldable f,Pair (Instrs is) (Symbol symbols),Monad m)
---      => Instructions is m -> (a -> Plan symbols m b) -> f a -> m [b]
+--      => Instructions is m -> (a -> PlanT symbols m b) -> f a -> m [b]
 -- foldP_ i0 ap f = foldr accumulate (const (return [])) f i0
 --   where
 --     accumulate a cont is = do
@@ -284,7 +322,7 @@ cutoff n p =
 --       bs <- cont i
 --       return (b:bs)
 
-mapStep :: Functor m => ((Plan symbols m a -> Plan symbols m a) -> Plan symbols m a -> Plan symbols m a) -> Plan symbols m a -> Plan symbols m a
+mapStep :: Functor m => ((PlanT symbols m a -> PlanT symbols m a) -> PlanT symbols m a -> PlanT symbols m a) -> PlanT symbols m a -> PlanT symbols m a
 mapStep f p0 = go p0
   where
     go p =
@@ -293,7 +331,7 @@ mapStep f p0 = go p0
         Pure r -> Pure r
         stp    -> f go stp
 
-removeStep :: Functor m => (Plan symbols m a -> Plan symbols m a) -> Plan symbols m a -> Plan symbols m a
+removeStep :: Functor m => (PlanT symbols m a -> PlanT symbols m a) -> PlanT symbols m a -> PlanT symbols m a
 removeStep f p0 = go p0
   where
     go p =

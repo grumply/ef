@@ -8,7 +8,7 @@ import Mop
 data Fresh i k = Fresh (i -> k)
 data Uniques i k = Uniques i k
 
-fresh :: Has (Fresh i) fs m => Plan fs m i
+fresh :: Has (Fresh i) fs m => PlanT fs m i
 fresh = symbol (Fresh id)
 
 uniques :: forall f instrs m.

@@ -16,17 +16,17 @@ data Loop k
 
 data Loops k = Loops Integer k
 
-freshScope :: Has Loop fs m => Plan fs m Integer
+freshScope :: Has Loop fs m => PlanT fs m Integer
 freshScope = symbol (FreshScope id)
 
 loop :: forall fs m s a. Has Loop fs m
      => s
-     -> (    (forall b. a -> Plan fs m b)
-          -> (forall b. s -> Plan fs m b)
+     -> (    (forall b. a -> PlanT fs m b)
+          -> (forall b. s -> PlanT fs m b)
           -> s
-          -> Plan fs m a
+          -> PlanT fs m a
         )
-     -> Plan fs m a
+     -> PlanT fs m a
 loop s0 x = do
     scope <- freshScope
     let break a      = symbol (Break scope a)
@@ -35,10 +35,10 @@ loop s0 x = do
     fix loopBody s0
 
 reifyLoop :: Has Loop symbols m
-          => (b -> Plan symbols m a)
+          => (b -> PlanT symbols m a)
           -> Integer
-          -> Plan symbols m a
-          -> Plan symbols m a
+          -> PlanT symbols m a
+          -> PlanT symbols m a
 reifyLoop restart scope =
   mapStep $ \go (Step syms bp) ->
     let step = Step syms (\b -> go (bp b))
