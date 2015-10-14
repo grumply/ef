@@ -1,8 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 module Effect.Exception
   ( Throw, throw, catch, handle, catchJust, handleJust, try, tryJust
-         , onException, finally, bracket, bracket_, bracketOnError
-         , mapException, mask, masked, unmasked
+         , onException, finally, bracket, bracket_, bracketOnError, mapException
   , throws, Throws
   , Exception,SomeException(..)
   ) where
@@ -13,32 +12,14 @@ import qualified Control.Exception as Exc
 
 data Masking = Masked | Unmasked
 
-data Throw k = Throw Masking SomeException k
+data Throw k = Throw SomeException k
 data Throws k = Throws (SomeException -> k)
 
-masked Masked = True
-masked _ = False
-
-unmasked Unmasked = True
-unmasked _ = False
-
 throw :: (Has Throw symbols m, Exception e) => e -> PlanT symbols m a
-throw e = symbol (Throw Unmasked (toException e) undefined)
+throw e = symbol (Throw (toException e) undefined)
 
 throws :: Throws k
 throws = Throws (\se -> error $ "Uncaught exception: " ++ show se)
-
-mask :: Has Throw fs m => ((forall a. PlanT fs m a -> PlanT fs m a) -> PlanT fs m b) -> PlanT fs m b
-mask x = x unmask
-  where
-    unmask p =
-      case p of
-        Step sym bp ->
-          case prj sym of
-            Just (Throw _ se k) -> Step (inj (Throw Unmasked se k)) (\b -> unmask (bp b))
-            Nothing -> Step sym (\b -> unmask (bp b))
-        M m -> M (fmap unmask m)
-        Pure r -> Pure r
 
 catch :: (Has Throw symbols m, Exception e)
       => PlanT symbols m a -> (e -> PlanT symbols m a) -> PlanT symbols m a
@@ -48,7 +29,7 @@ catch plan handler = go plan
       case p of
         Step sym bp ->
           case prj sym of
-            Just (Throw Unmasked se _) ->
+            Just (Throw se _) ->
                 case fromException se of
                   Just e -> handler e
                   Nothing -> Step sym (\b -> go (bp b))
@@ -145,4 +126,4 @@ bracketOnError before after thing = do
   (thing a) `onException` (after a)
 
 instance Pair Throws Throw where
-  pair p (Throws k) (Throw _ e k') = p (k e) k'
+  pair p (Throws k) (Throw e k') = p (k e) k'
