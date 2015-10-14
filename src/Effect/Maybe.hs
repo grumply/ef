@@ -44,6 +44,7 @@ may x = do
                 if i == scope
                 then Pure Nothing
                 else Step syms (\b -> go (bp b))
+              _ -> Step syms (\b -> go (bp b))
           Nothing -> Step syms (\b -> go (bp b))
 
 instance Pair Possible May where
