@@ -1,6 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 module Effect.Exception
-  ( Throw, throw, catch, handle, catchJust, handleJust, try, tryJust
+  ( Throw, throw, throw_, catch, handle, catchJust, handleJust, try, tryJust
          , onException, finally, bracket, bracket_, bracketOnError, mapException
   , throws, Throws
   , Exception,SomeException(..)
@@ -15,6 +15,10 @@ data Throws k = Throws (SomeException -> k)
 
 throw :: (Has Throw symbols m, Exception e) => e -> PlanT symbols m a
 throw e = symbol (Throw (toException e) undefined)
+
+-- used in Actor to resume upon exception.
+throw_ :: (Has Throw symbols m, Exception e) => e -> PlanT symbols m ()
+throw_ e = symbol (Throw (toException e) ())
 
 throws :: Throws k
 throws = Throws (\se -> error $ "Uncaught exception: " ++ show se)
