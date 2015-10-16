@@ -18,6 +18,33 @@ import Unsafe.Coerce
 
 import Data.Binary
 
+{-
+Extract Promise API and use it both here and in all other concurrency frameworks
+so they may interact (Actors/Agents/Fork).
+
+Universe is a set of ActorRecs in an IORef for uniform access.
+
+ActorRecs contain Name, Inbox, Parent ActorRef, Child ActorRefs, and termination
+status wrapped in IORef for uniform access.
+
+Inboxes are `MVar Message` wrapped in IORef for uniform access and GC guarantees.
+
+Messages are passed with ActorRefs
+
+Supervisors supervise uniformly.
+
+Send can be asynchronous or synchronous.
+
+System-level actor and supervisor exceptions induce actor system failure.
+
+Supervision strategies should allow restarting (obj -> (e -> plan) -> plan),
+resumption, and exception passing.
+
+Might need a communication channel for exceptions passed to supervisor?
+How do we handle this? Can we just use the rewrite strategy above to handle
+the expected effects?
+-}
+
 type Name = String
 
 data Message = Local ActorRef Dynamic
