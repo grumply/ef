@@ -18,27 +18,25 @@ import Unsafe.Coerce
 
 import Data.Binary
 
-data BoundedQueue a = Queue Int Int [a] [a]
-
-emptyQueue n = Queue n 0 [] []
-
-enqueue new q@(Queue mx cur l r)
-  | mx == cur = Left (q,new)
-  | otherwise = Right (Queue mx (cur+1) l (new:r))
-
-dequeue (Queue _ 0 _ _) = Nothing
-dequeue (Queue x n l (r:rs)) =
-  Just (r,Queue x (n - 1) l rs)
-dequeue (Queue x n [] r) =
-  let l = reverse r
-  in Just (head l,Queue x (n - 1) (tail l) [])
-
 type Name = String
 
 data Message = Local ActorRef Dynamic
 
 data ActorRef
-  = ActorRef { actorRef :: (Name,MVar Message) }
+  -- Message inbox wrapped in IORef to ease garbage collection when an actor is restarted.
+  = ActorRef { actorRef :: (Name,IORef (MVar Message)) }
+
+data ActorRec = ActorRec
+  { name :: Name
+  , inbox :: IORef (MVar Message)
+  , parent :: ActorRef
+  , children :: [ActorRef]
+  , isTerminated :: Bool
+
+  }
+
+recordToRef :: ActorRec -> ActorRef
+recordToRef (ActorRec nm inbx _ _) = ActorRef (nm,inbx)
 
 newtype Promise a = Promise { getPromise :: MVar a }
 
@@ -66,7 +64,7 @@ data Actor k
     => Supervisor
          Name
          (forall x. m' x -> IO x)
-         (forall b. PlanT hs m' b -> PlanT hs m' b)
+         (forall js b. (Has Throw js m') => PlanT js m' b -> PlanT js m' b)
          (InstructionsT is m')
          (Consumer hs Message m' a)
          k
@@ -76,7 +74,6 @@ data Actor k
     => Actor
          Name
          (forall x. m'' x -> IO x)
-         (forall b. PlanT js m'' b -> PlanT js m'' b)
          (InstructionsT ks m'')
          (Consumer js Message m'' a)
          k
@@ -103,7 +100,24 @@ getParent = symbol (GetParent id)
 
 data Actors k = Actors k
 
-type Creator
+type SupervisionStrategy = forall fs m b. (Has Throw fs m,Has Actor fs m,Has Weave fs m, MIO m)
+  => PlanT fs m b -> PlanT fs m b
+
+type SupervisorCreator
+  = forall m' m'' hs js ks a.
+    ( Pair (Instrs ks) (Symbol js)
+    , Has Throw hs m'
+    , Has Actor hs m'
+    , Has Weave hs m'
+    , MIO m'
+    ) => Name
+      -> (forall x. m'' x -> IO x)
+      -> SupervisionStrategy
+      -> InstructionsT ks m''
+      -> Consumer js Message m'' a
+      -> PlanT hs m' (ActorRef,Promise (Either SomeException a))
+
+type ActorCreator
   = forall m' m'' hs js ks a.
     ( Pair (Instrs ks) (Symbol js)
     , Has Throw hs m'
@@ -116,16 +130,9 @@ type Creator
     , MIO m''
     ) => Name
       -> (forall x. m'' x -> IO x)
-      -> ( forall b.
-              PlanT js m'' b
-           -> PlanT js m'' b
-         )
       -> InstructionsT ks m''
       -> Consumer js Message m'' a
       -> PlanT hs m' (ActorRef,Promise (Either SomeException a))
-
-type SupervisorCreator = Creator
-type ActorCreator = Creator
 
 produceMVar :: (Has Weave fs m,Has Throw fs m,MIO m) => MVar a -> Producer fs a m r
 produceMVar mv = producer go
@@ -161,7 +168,7 @@ system x = do
     let ActorRef (_,mv) = rt
     system_ rt ars $ do
       let cnsmr = x (\nm lft strat obj cnsmr -> symbol (Supervisor nm lft strat obj cnsmr undefined))
-                    (\nm lft strat obj cnsmr -> symbol (Actor nm lft strat obj cnsmr undefined))
+                    (\nm lft obj cnsmr -> symbol (Actor nm lft obj cnsmr undefined))
       linearize (produceMVar mv >-> cnsmr)
   where
     system_ :: ActorRef -> IORef [ActorRef] -> PlanT fs m a -> PlanT fs m a
@@ -169,7 +176,7 @@ system x = do
       where
         go chldrn = go'
           where
-            go' =
+            go' p =
               case p of
                 Step sym bp ->
                   case prj sym of
@@ -187,14 +194,14 @@ system x = do
                                        Right a -> void $ fulfillIO p a
                             return (ar,p)
                           go' (bp (unsafeCoerce (ar,p)))
-                        Actor nm lft strat obj cnsmr _ -> do
+                        Actor nm lft obj cnsmr _ -> do
                           -- system-level actor; unsupervised
                           (ar,p) <- mio $ do
                             mv <- newEmptyMVar
                             let ar = ActorRef (nm,mv)
                             p <- newPromiseIO
                             tid <- forkIO $ do
-                                     (_,esa) <- lft $ delta obj (try $ systemActor_ ar root ars $ strat $ linearize $ produceMVar mv >-> cnsmr)
+                                     (_,esa) <- lft $ delta obj (try $ systemActor_ ar root ars $ linearize $ produceMVar mv >-> cnsmr)
                                      case esa of
                                        Left (se :: SomeException) -> send_ se ar root
                                        Right a -> void $ fulfillIO p a
