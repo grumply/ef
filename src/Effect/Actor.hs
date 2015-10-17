@@ -5,6 +5,7 @@ module Effect.Actor where
 
 import Mop
 import Mop.IO
+import Data.Promise
 import Effect.Exception
 import Effect.Weave
 
@@ -19,21 +20,14 @@ import Unsafe.Coerce
 import Data.Binary
 
 {-
-Extract Promise API and use it both here and in all other concurrency frameworks
-so they may interact (Actors/Agents/Fork).
+Because of the GHC RTS awesomeness, we don't need an Executor.
 
-Universe is a set of ActorRecs in an IORef for uniform access.
-
-ActorRecs contain Name, Inbox, Parent ActorRef, Child ActorRefs, and termination
-status wrapped in IORef for uniform access.
-
-Inboxes are `MVar Message` wrapped in IORef for uniform access and GC guarantees.
+Recover asynchronous API with the bidirectional communication available in
+Weave; that is, the actor can send a polling `request` to the MVar producer.
 
 Messages are passed with ActorRefs
 
 Supervisors supervise uniformly.
-
-Send can be asynchronous or synchronous.
 
 System-level actor and supervisor exceptions induce actor system failure.
 
@@ -45,53 +39,35 @@ How do we handle this? Can we just use the rewrite strategy above to handle
 the expected effects?
 -}
 
-type Name = String
+----------------------------------------
+-- ActorRec/Ref components
 
+type Path = [String]
+type Inbox = IORef (MVar Message)
 data Message = Local ActorRef Dynamic
+type Liveness = IORef Bool
 
-data ActorRef
-  -- Message inbox wrapped in IORef to ease garbage collection when an actor is restarted.
-  = ActorRef { actorRef :: (Name,IORef (MVar Message)) }
-
-data ActorRec = ActorRec
-  { name :: Name
-  , inbox :: IORef (MVar Message)
+newtype ActorRecords = ActorRecords { getActorRecords :: IORef [ActorRec] }
+data ActorRecord = ActorRecord
+  { path :: Path
+  , inbox :: Inbox
   , parent :: ActorRef
   , children :: [ActorRef]
-  , isTerminated :: Bool
-
+  , liveness :: Liveness
   }
 
-recordToRef :: ActorRec -> ActorRef
-recordToRef (ActorRec nm inbx _ _) = ActorRef (nm,inbx)
+newtype ActorRef = ActorRef { actorRef :: (Path,Inbox) }
 
-newtype Promise a = Promise { getPromise :: MVar a }
-
-newPromiseIO :: IO (Promise a)
-newPromiseIO = Promise <$> newEmptyMVar
-
-newPromise :: (MIO m,Has Throw fs m) => PlanT fs m (Promise a)
-newPromise = mio newPromiseIO
-
-demand :: (MIO m,Has Throw fs m) => Promise a -> PlanT fs m a
-demand = mio . demandIO
-
-demandIO :: Promise a -> IO a
-demandIO = readMVar . getPromise
-
-fulfill :: (MIO m,Has Throw fs m) => Promise a -> a -> PlanT fs m Bool
-fulfill = (mio .) . fulfillIO
-
-fulfillIO :: Promise a -> a -> IO Bool
-fulfillIO (Promise p) a = tryPutMVar p a
+recordToRef :: ActorRecord -> ActorRef
+recordToRef (ActorRecord path inbx _ _ _) = ActorRef (path,inbx)
 
 data Actor k
   = forall hs is m' a.
     (Pair (Instrs is) (Symbol hs),Has Actor hs m',Has Weave hs m',Has Throw hs m',MIO m')
     => Supervisor
-         Name
+         Path
          (forall x. m' x -> IO x)
-         (forall js b. (Has Throw js m') => PlanT js m' b -> PlanT js m' b)
+         (forall m js b. (Has Throw js m, Has Actor js m) => PlanT js m b -> PlanT js m b)
          (InstructionsT is m')
          (Consumer hs Message m' a)
          k
@@ -99,11 +75,12 @@ data Actor k
   | forall m'' js ks a.
     (Pair (Instrs ks) (Symbol js),Has Weave js m'',Has Actor js m'',Has Throw js m'',MIO m'')
     => Actor
-         Name
+         Path
          (forall x. m'' x -> IO x)
          (InstructionsT ks m'')
          (Consumer js Message m'' a)
          k
+
   | Lookup String (Maybe ActorRef -> k)
   | forall a. Typeable a => Send a ActorRef ActorRef k
   | Self (ActorRef -> k)

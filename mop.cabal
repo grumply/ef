@@ -26,6 +26,7 @@ library
   exposed-modules:     Mop.Base
                        Mop
                        Mop.IO
+                       Data.Promise
                        Effect.Continuation
                        Effect.Exception
                        Effect.Fresh

@@ -11,11 +11,13 @@ module Effect.Weave
   , weave, Woven
   , fold, unfold
   , for, cat
+  , X
   , (<\\), (\<\), (~>),  (<~) , (/>/), (//>)
   , (\\<), (/</), (>~),  (~<) , (\>\), (>\\)
   ,        (<~<), (~<<), (>>~), (>~>)
   , (<<+), (<+<), (<-<), (>->), (>+>), (+>>)
   ,       (<==<), (==<), (>==), (>==>)
+  ,        (<--), (>--), (--<), (-->)
   ) where
 
 import Mop hiding (push,pull)
@@ -39,7 +41,7 @@ cat = pipe $ \await yield -> forever (await >>= yield)
 
   ; "f +>> (g +>> p)" forall f g p . f +>> (g +>> p) = (\x -> f +>> g x) +>> p
 
-  -- "for (for p f) g" forall p f g . for (for p f) g = for p (\a -> for (f a) g)
+  ; "for (for p f) g" forall p f g . for (for p f) g = for p (\a -> for (f a) g)
 
   ; "f >~ (g >~ p)" forall f g p . f >~ (g >~ p) = (f >~ g) >~ p
 
@@ -165,10 +167,231 @@ type Server' fs b' b m r = forall x' x . Woven fs x' x b' b m r
 
 type Client' fs a' a m r = forall y' y . Woven fs a' a y' y m r
 
+--------------------------------------------------------------------------------
+-- the side the '>' or '<' is on determines where execution start. The greater
+-- side says which side is eagerly evaluated. Thus, '>--' says: start evaluation
+-- on the left and always execute as little as possible on the right. That means
+-- we start evaluation on the left and find the first instance of a Respond in
+-- our scope, we then switch sides to evaluate the right side and look for a
+-- request. Since we have a value to fulfill a request, we have a choice:
+-- fulfill the request and continue execution on the right or
+-- fulfill the request and switch back to the left. The (>--) method prefers
+-- switching back to the left side. (<--) prefers staying on the right as
+-- long as possible. These each have uses, I believe. For instance, `-->`
+-- is useful when you want allocation of a resource to happen as late as
+-- possible on the left and cleanup needs to be done as soon as possible
+-- when triggered by the right.
+
+-- start execution on the left, execute as little as possible on the right
+infixl 6 >--
+(>--) :: forall fs a' a b' b c' c m r. Has Weave fs m
+      => Woven fs a' a b' b m r
+      -> Woven fs b' b c' c m r
+      -> Woven fs a' a c' c m r
+pl >-- pr = \up dn -> transform (getScope up) (pl up (unsafeCoerce dn))
+                                              (pr (unsafeCoerce up) dn)
+  where
+    transform scope pl0 pr0 = start pr0 pl0
+      where
+        start pr = go
+          where
+            go pl =
+              case pl of
+                Step sym bp ->
+                  case prj sym of
+                    Just x ->
+                      case x of
+                        Respond i b _ ->
+                          if i == scope
+                          then goRight (unsafeCoerce bp) (unsafeCoerce b) pr
+                          else Step sym (\b -> go (bp b))
+                        _ -> Step sym (\b -> go (bp b))
+                    Nothing -> Step sym (\b -> go (bp b))
+                M m -> M (fmap go m)
+                Pure r -> Pure r
+        goRight bpl b = go
+          where
+            go p =
+              case p of
+                Step sym bp ->
+                  case prj sym of
+                    Just x ->
+                      case x of
+                        Request i b' _ ->
+                          if i == scope
+                          then start (bp (unsafeCoerce b)) (bpl (unsafeCoerce b'))
+                          else Step sym (\b -> go (bp b))
+                        _ -> Step sym (\b -> go (bp b))
+                    Nothing -> Step sym (\b -> go (bp b))
+                M m -> M (fmap go m)
+                Pure r -> Pure r
+
+-- start execution on the left, execute as much as possible on the right
+infixl 5 <--
+(<--) :: forall fs a' a b' b c' c m r. Has Weave fs m
+      => Woven fs a' a b' b m r
+      -> Woven fs b' b c' c m r
+      -> Woven fs a' a c' c m r
+pl <-- pr = \up dn -> transform (getScope up) (pl up (unsafeCoerce dn))
+                                              (pr (unsafeCoerce up) dn)
+  where
+    transform scope pl0 pr0 = start pr0 pl0
+      where
+        start pr = go
+          where
+            go pl =
+              case pl of
+                Step sym bp ->
+                  case prj sym of
+                    Just x ->
+                      case x of
+                        Respond i b _ ->
+                          if i == scope
+                          then goRight (unsafeCoerce bp) (unsafeCoerce b) pr
+                          else Step sym (\b -> go (bp b))
+                        _ -> Step sym (\b -> go (bp b))
+                    Nothing -> Step sym (\b -> go (bp b))
+                M m -> M (fmap go m)
+                Pure r -> Pure r
+        goRight bpl b = go
+          where
+            go p =
+              case p of
+                Step sym bp ->
+                  case prj sym of
+                    Just x ->
+                      case x of
+                        Request i b' _ ->
+                          if i == scope
+                          then continueRight (bp (unsafeCoerce b)) (bpl (unsafeCoerce b'))
+                          else Step sym (\b -> go (bp b))
+                        _ -> Step sym (\b -> go (bp b))
+                    Nothing -> Step sym (\b -> go (bp b))
+                M m -> M (fmap go m)
+                Pure r -> Pure r
+        continueRight l = go
+          where
+            go p =
+              case p of
+                Step sym bp ->
+                  case prj sym of
+                    Just x ->
+                      case x of
+                        Request i _ _ ->
+                          if i == scope
+                          then start p l
+                          else Step sym (\b -> go (bp b))
+                        _ -> Step sym (\b -> go (bp b))
+                    Nothing -> Step sym (\b -> go (bp b))
+                M m -> M (fmap go m)
+                Pure r -> Pure r
+
+-- start execution on the right, execute as little as possible on the left
+infixr 6 --<
+(--<) :: Has Weave fs m
+      => Woven fs a' a b' b m r
+      -> Woven fs b' b c' c m r
+      -> Woven fs a' a c' c m r
+pl --< pr = \up dn -> transform (getScope up) (pl up (unsafeCoerce dn))
+                                              (pr (unsafeCoerce up) dn)
+  where
+    transform scope pl0 pr0 = start pl0 pr0
+      where
+        start pl = go
+          where
+            go pr =
+              case pr of
+                Step sym bp ->
+                  case prj sym of
+                    Just x ->
+                      case x of
+                        Request i b _ ->
+                          if i == scope
+                          then goLeft (unsafeCoerce bp) (unsafeCoerce b) pl
+                          else Step sym (\b -> go (bp b))
+                        _ -> Step sym (\b -> go (bp b))
+                    Nothing -> Step sym (\b -> go (bp b))
+                M m -> M (fmap go m)
+                Pure r -> Pure r
+        goLeft bpr b = go
+          where
+            go p =
+              case p of
+                Step sym bp ->
+                  case prj sym of
+                    Just x ->
+                      case x of
+                        Respond i b' _ ->
+                          if i == scope
+                          then start (bp (unsafeCoerce b)) (bpr (unsafeCoerce b'))
+                          else Step sym (\b -> go (bp b))
+                        _ -> Step sym (\b -> go (bp b))
+                    Nothing -> Step sym (\b -> go (bp b))
+                M m -> M (fmap go m)
+                Pure r -> Pure r
+
+-- start execution on the right, execute as much as possible on the left
+infixr 5 -->
+(-->) :: Has Weave fs m
+      => Woven fs a' a b' b m r
+      -> Woven fs b' b c' c m r
+      -> Woven fs a' a c' c m r
+pl --> pr = \up dn -> transform (getScope up) (pl up (unsafeCoerce dn))
+                                              (pr (unsafeCoerce up) dn)
+  where
+    transform scope pl0 pr0 = start pl0 pr0
+      where
+        start pl = go
+          where
+            go pr =
+              case pr of
+                Step sym bp ->
+                  case prj sym of
+                    Just x ->
+                      case x of
+                        Request i b _ ->
+                          if i == scope
+                          then goLeft (unsafeCoerce bp) (unsafeCoerce b) pl
+                          else Step sym (\b -> go (bp b))
+                        _ -> Step sym (\b -> go (bp b))
+                    Nothing -> Step sym (\b -> go (bp b))
+                M m -> M (fmap go m)
+                Pure r -> Pure r
+        goLeft bpr b = go
+          where
+            go p =
+              case p of
+                Step sym bp ->
+                  case prj sym of
+                    Just x ->
+                      case x of
+                        Respond i b' _ ->
+                          if i == scope
+                          then continueLeft (bp (unsafeCoerce b)) (bpr (unsafeCoerce b'))
+                          else Step sym (\b -> go (bp b))
+                        _ -> Step sym (\b -> go (bp b))
+                    Nothing -> Step sym (\b -> go (bp b))
+                M m -> M (fmap go m)
+                Pure r -> Pure r
+        continueLeft l r = go l
+          where
+            go p =
+              case p of
+                Step sym bp ->
+                  case prj sym of
+                    Just x ->
+                      case x of
+                        Respond i b' _ ->
+                          if i == scope
+                          then start p r
+                          else Step sym (\b -> go (bp b))
+                        _ -> Step sym (\b -> go (bp b))
+                    Nothing -> Step sym (\b -> go (bp b))
+                M m -> M (fmap go m)
+                Pure r -> Pure r
 
 --------------------------------------------------------------------------------
--- Respond
-
+-- Respond; execution starts upstream and pushes values downstream
 
 for :: Has Weave fs m
     =>       Woven fs x' x b' b m a'
@@ -241,7 +464,7 @@ unfold :: ((b -> PlanT fs m b') -> PlanT fs m r) -> Woven fs a' a b' b m r
 unfold u = \_ respond -> u (\x -> respond x Pure)
 
 --------------------------------------------------------------------------------
--- Request
+-- Request; execution starts downstream and pulls values from upstream
 
 
 infixr 5 /</
