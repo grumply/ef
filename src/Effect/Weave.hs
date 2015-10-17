@@ -391,7 +391,7 @@ pl --> pr = \up dn -> transform (getScope up) (pl up (unsafeCoerce dn))
                 Pure r -> Pure r
 
 --------------------------------------------------------------------------------
--- Respond; execution starts upstream and pushes values downstream
+-- Respond
 
 for :: Has Weave fs m
     =>       Woven fs x' x b' b m a'
@@ -464,7 +464,7 @@ unfold :: ((b -> PlanT fs m b') -> PlanT fs m r) -> Woven fs a' a b' b m r
 unfold u = \_ respond -> u (\x -> respond x Pure)
 
 --------------------------------------------------------------------------------
--- Request; execution starts downstream and pulls values from upstream
+-- Request
 
 
 infixr 5 /</

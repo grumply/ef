@@ -44,10 +44,11 @@ the expected effects?
 
 type Path = [String]
 type Inbox = IORef (MVar Message)
-data Message = Local ActorRef Dynamic
+type Message = (ActorRef,Dynamic)
 type Liveness = IORef Bool
 
-newtype ActorRecords = ActorRecords { getActorRecords :: IORef [ActorRec] }
+newtype ActorRecords = ActorRecords { getActorRecords :: IORef [ActorRecord] }
+
 data ActorRecord = ActorRecord
   { path :: Path
   , inbox :: Inbox
@@ -104,8 +105,8 @@ getParent = symbol (GetParent id)
 
 data Actors k = Actors k
 
-type SupervisionStrategy = forall fs m b. (Has Throw fs m,Has Actor fs m,Has Weave fs m, MIO m)
-  => PlanT fs m b -> PlanT fs m b
+type SupervisionStrategy = forall fs m b. (Has Throw fs m,Has Actor fs m,Has Weave fs m, MIO m,Pair (Instrs ks) (Symbol fs))
+  => InstructionsT ks m -> PlanT fs m b -> PlanT fs m b
 
 type SupervisorCreator
   = forall m' m'' hs js ks a.
@@ -114,7 +115,7 @@ type SupervisorCreator
     , Has Actor hs m'
     , Has Weave hs m'
     , MIO m'
-    ) => Name
+    ) => Path
       -> (forall x. m'' x -> IO x)
       -> SupervisionStrategy
       -> InstructionsT ks m''
@@ -132,24 +133,27 @@ type ActorCreator
     , Has Actor js m''
     , Has Weave js m''
     , MIO m''
-    ) => Name
+    ) => Path
       -> (forall x. m'' x -> IO x)
       -> InstructionsT ks m''
       -> Consumer js Message m'' a
       -> PlanT hs m' (ActorRef,Promise (Either SomeException a))
 
 produceMVar :: (Has Weave fs m,Has Throw fs m,MIO m) => MVar a -> Producer fs a m r
-produceMVar mv = producer go
+produceMVar mv = weave go
   where
-    go yield = go'
+    go request respond = go'
       where
         go' = do
+          req <- request Nothing
           a <- mio $ takeMVar mv
           yield a
           go'
 
 send_ :: Typeable a => a -> ActorRef -> ActorRef -> IO ()
-send_ a ar (ActorRef (_,mv)) = putMVar mv (Local ar (toDyn a))
+send_ a ar (ActorRef (_,_mv)) = do
+  mv <- readIORef _mv
+  putMVar mv (ar,(toDyn a))
 
 -- | system is the initialization point for an actor system.
 --
@@ -161,14 +165,24 @@ send_ a ar (ActorRef (_,mv)) = putMVar mv (Local ar (toDyn a))
 --                       someActor <- actor "someActor" id supervisionStrategy1 aObj
 --                       ...
 -- @
+
+-- data ActorRecord = ActorRecord
+--   { path :: Path
+--   , inbox :: Inbox
+--   , parent :: ActorRef
+--   , children :: [ActorRef]
+--   , liveness :: Liveness
+--   }
+
 system :: forall fs m a. (Has Actor fs m, Has Throw fs m, Has Weave fs m, MIO m)
        => (SupervisorCreator -> ActorCreator -> Consumer fs Message m a)
        -> PlanT fs m a
 system x = do
-    (ars,rt) <- mio $ do mv <- newEmptyMVar
-                         let root = ActorRef ("/",mv)
-                         ars <- newIORef [root]
-                         return (ars,root)
+    (ars,lvns,inbx) <- mio $ do inbx <- newIORef =<< newEmptyMVar
+                                ars <- newIORef []
+                                lvns <- newIORef True
+                                return (ActorRecords ars,lvns,inbx)
+    let systemARec = ActorRecord [] inbx systemARec [] lvns
     let ActorRef (_,mv) = rt
     system_ rt ars $ do
       let cnsmr = x (\nm lft strat obj cnsmr -> symbol (Supervisor nm lft strat obj cnsmr undefined))
