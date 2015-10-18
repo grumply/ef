@@ -2,7 +2,7 @@
 module Effect.List where
 
 import Mop
--- import Mop.Trans
+import Mop.Trans
 import Effect.Weave
 
 import Control.Applicative
@@ -32,8 +32,8 @@ instance Monad (List fs m) where
 instance Alternative (List fs m) where
   empty = Select (producer $ \_ -> return ())
   p1 <|> p2 = Select (weave $ \up dn -> do
-     enumerate p1 (unsafeCoerce up) (unsafeCoerce dn)
-     enumerate p2 (unsafeCoerce up) (unsafeCoerce dn))
+     runWoven (enumerate p1) (unsafeCoerce up) (unsafeCoerce dn)
+     runWoven (enumerate p2) (unsafeCoerce up) (unsafeCoerce dn))
 
 instance MonadPlus (List fs m) where
   mzero = empty
@@ -43,30 +43,32 @@ instance Monoid (List fs m a) where
   mempty = empty
   mappend = (<|>)
 
--- instance Trans (List fs) where
---   lift m = Select (producer $ \yield -> do
---     a <- lift m
---     yield a
---     )
-
 runList l = linearize (enumerate (l >> mzero))
 
 each :: Has Weave fs m => F.Foldable f => f a -> Producer' fs a m ()
 each xs = producer $ \yield ->
   F.foldr (\a p -> yield a >> p) (return ()) xs
 
-discard _ = \_ _ -> return ()
+discard :: Functor m => t -> Woven fs a' a b' b m ()
+discard _ = Woven $ \_ _ -> return ()
 
 every :: Has Weave fs m => List fs m a -> Producer' fs a m ()
-every it = discard >\\ (enumerate it)
+every it = discard >\\ enumerate it
 
--- pair :: Has Weave fs IO => List fs IO (Int,Int)
--- pair = do
---     x <- Select $ each [1,2]
---     Trans.lift (putStrLn ("x = " ++ show x))
---     y <- Select $ each [3,4]
---     Trans.lift (putStrLn ("y = " ++ show y))
---     return (x,y)
 
--- main = do
---   delta (Instructions $ weaving *:* Empty) $ runList Effect.List.pair
+instance MTrans (List fs) where
+  lift' m = Select (producer $ \yield -> do
+    a <- lift m
+    yield a
+    )
+
+pair :: Has Weave fs IO => List fs IO (Int,Int)
+pair = do
+    x <- Select $ each [1..5]
+    Select (producer $ \yield -> do { lift (putStrLn ("x = " ++ show x)); yield () } )
+    y <- Select $ each [6..10]
+    Select (producer $ \yield -> do { lift (putStrLn ("y = " ++ show y)); yield () } )
+    return (x,y)
+
+main = do
+  delta (Instructions $ weaving *:* Empty) $ runList Effect.List.pair

@@ -1,6 +1,8 @@
 module Mop.Trans where
 
-import Mop
+class MTrans t where
+  lift' :: Monad m => m a -> t m a
 
--- this class and module exists to avoid a core dependency on mtl/transformers
--- because writing a full-stack application in mop is not dependent on them.
+-- this avoids internal dependency
+-- instance MTrans t => Trans t where
+--   lift = lift'
