@@ -20,6 +20,7 @@ module Effect.Weave
 import Mop
 import Mop.Trans
 
+import Control.Applicative
 import Control.Monad
 import Data.Function
 import Data.IORef
@@ -124,6 +125,23 @@ instance (Monad m, Monoid r) => Monoid (Woven fs a' a b' b m r) where
               Step sym bp -> Step sym (\b -> go (bp b))
               M m -> M (fmap go m)
               Pure r -> fmap (mappend r) (runWoven w2 (unsafeCoerce up) (unsafeCoerce dn))
+
+instance MonadPlus m => Alternative (Woven fs a' a b' b m) where
+    empty = mzero
+    (<|>) = mplus
+
+instance MonadPlus m => MonadPlus (Woven fs a' a b' b m) where
+    mzero = Woven $ \_ _ -> lift mzero
+    mplus w0 w1 = Woven $ \up dn -> transform up dn (runWoven w0 (unsafeCoerce up) (unsafeCoerce dn))
+      where
+        transform up dn = go
+          where
+            go p =
+              case p of
+                Step sym bp -> Step sym (\b -> go (bp b))
+                Pure r -> Pure r
+                M m -> M (fmap go m `mplus` return (runWoven w1 (unsafeCoerce up) (unsafeCoerce dn)))
+
 
 instance MTrans (Woven fs a' a b' b) where
   lift' ma = Woven $ \_ _ -> lift ma

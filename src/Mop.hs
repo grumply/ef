@@ -23,6 +23,7 @@ Pragmas for other modules are in the cabal file.
 #endif
 module Mop where
 
+import Control.Applicative
 import Control.Monad
 import Data.Functor.Identity
 import Data.Typeable
@@ -207,6 +208,36 @@ p0 `_bind` f = go p0
     "_bind (Pure r) f" forall r f.
         _bind (Pure r) f = f r;
   #-}
+
+instance MonadPlus m => Alternative (PlanT fs m) where
+  empty = mzero
+  (<|>) = mplus
+
+instance MonadPlus m => MonadPlus (PlanT fs m) where
+  mzero = lift mzero
+  mplus = _mplus
+
+_mplus :: MonadPlus m => PlanT fs m a -> PlanT fs m a -> PlanT fs m a
+_mplus p0 p1 = go p0
+  where
+    go p =
+      case p of
+        Step sym bp -> Step sym (\b -> go (bp b))
+        Pure r -> Pure r
+        M m -> M (fmap go m `mplus` return p1)
+
+instance (Monad m,Monoid r) => Monoid (PlanT fs m r) where
+  mempty = pure mempty
+  mappend = _mappend
+
+_mappend :: (Monad m,Monoid r) => PlanT fs m r -> PlanT fs m r -> PlanT fs m r
+_mappend p0 p1 = go p0
+    where
+      go p =
+        case p of
+          Step sym bp -> Step sym (\b -> go (bp b))
+          M m -> M (fmap go m)
+          Pure r -> fmap (mappend r) p1
 
 delta :: (Pair (Instrs is) (Symbol symbols),Monad m)
        => InstructionsT is m
