@@ -332,21 +332,3 @@ cutoff n p =
     Pure a -> Pure (Just a)
     M m -> M (cutoff (n - 1) `liftM` m)
     Step sym k -> Step sym (cutoff (n - 1) . k)
-
--- mapStep :: Functor m => ((PlanT symbols m a -> PlanT symbols m a) -> PlanT symbols m a -> PlanT symbols m a) -> PlanT symbols m a -> PlanT symbols m a
--- mapStep f p0 = go p0
---   where
---     go p =
---       case p of
---         M mp   -> M (fmap go mp)
---         Pure r -> Pure r
---         stp    -> f go stp
-
--- removeStep :: Functor m => (PlanT symbols m a -> PlanT symbols m a) -> PlanT symbols m a -> PlanT symbols m a
--- removeStep f p0 = go p0
---   where
---     go p =
---       case p of
---         stp@(Step syms bp) -> go (f (Step syms (\b -> go (bp b))))
---         M mp               -> M (fmap go mp)
---         Pure r             -> Pure r
