@@ -157,34 +157,38 @@ type Effect fs m r = Woven fs X () () X m r
 type Producer fs b m r = Woven fs X () () b m r
 -- producer $ \yield -> do { .. ; }
 {-# INLINABLE producer #-}
-producer :: Has Weave fs m => ((b -> PlanT fs m ()) -> PlanT fs m r) -> Producer' fs b m r
-producer f = Woven $ \_ dn -> f (\b -> symbol (Respond (getScope dn) b Pure))
+producer :: forall fs m b r. Has Weave fs m => ((b -> PlanT fs m ()) -> PlanT fs m r) -> Producer' fs b m r
+producer f = Woven $ \_ dn ->
+  f (\b -> symbol (Respond (getScope dn) b (return :: forall a. a -> PlanT fs m a)))
 
 type Consumer fs a m r = Woven fs () a () X m r
 -- consumer $ \await -> do { .. ; }
 {-# INLINABLE consumer #-}
-consumer :: Has Weave fs m => (PlanT fs m a -> PlanT fs m r) -> Consumer' fs a m r
-consumer f = Woven $ \up _ -> f (symbol (Request (getScope up) () Pure))
+consumer :: forall fs m a r. Has Weave fs m => (PlanT fs m a -> PlanT fs m r) -> Consumer' fs a m r
+consumer f = Woven $ \up _ ->
+  f (symbol (Request (getScope up) () (return :: forall x. x -> PlanT fs m x)))
 
 type Pipe fs a b m r = Woven fs () a () b m r
 -- pipe $ \await yield -> do { .. ; }
 {-# INLINABLE pipe #-}
-pipe :: Has Weave fs m => (PlanT fs m a -> (b -> PlanT fs m x) -> PlanT fs m r) -> Pipe fs a b m r
+pipe :: forall fs m a b x r. Has Weave fs m => (PlanT fs m a -> (b -> PlanT fs m x) -> PlanT fs m r) -> Pipe fs a b m r
 pipe f = Woven $ \up dn ->
-  f (symbol (Request (getScope up) () Pure))
-    (\b -> symbol (Respond (getScope dn) b Pure))
+  f (symbol (Request (getScope up) () (return :: forall z. z -> PlanT fs m z)))
+    (\b -> symbol (Respond (getScope dn) b (return :: forall z. z -> PlanT fs m z)))
 
 type Client fs a' a m r = Woven fs a' a () X m r
 -- client $ \request -> do { .. ; }
 {-# INLINABLE client #-}
-client :: Has Weave fs m => ((a -> PlanT fs m a') -> PlanT fs m r) -> Client' fs a' a m r
-client f = Woven $ \up _ -> f (\a -> symbol (Request (getScope up) a Pure))
+client :: forall fs m a' a r. Has Weave fs m => ((a -> PlanT fs m a') -> PlanT fs m r) -> Client' fs a' a m r
+client f = Woven $ \up _ ->
+  f (\a -> symbol (Request (getScope up) a (return :: forall z. z -> PlanT fs m z)))
 
 type Server fs b' b m r = Woven fs X () b' b m r
 -- server $ \respond -> do { .. ; }
 {-# INLINABLE server #-}
-server :: Has Weave fs m => ((b' -> PlanT fs m b) -> PlanT fs m r) -> Server' fs b' b m r
-server f = Woven $ \_ dn -> f (\b' -> symbol (Respond (getScope dn) b' Pure))
+server :: forall fs m b' b r. Has Weave fs m => ((b' -> PlanT fs m b) -> PlanT fs m r) -> Server' fs b' b m r
+server f = Woven $ \_ dn ->
+  f (\b' -> symbol (Respond (getScope dn) b' (return :: forall z. z -> PlanT fs m z)))
 
 newtype Woven fs a' a b' b m r
   =  Woven
@@ -194,10 +198,10 @@ newtype Woven fs a' a b' b m r
   }
 -- weave $ \request respond -> do { .. ; }
 {-# INLINABLE weave #-}
-weave :: Has Weave fs m => ((a -> PlanT fs m a') -> (b' -> PlanT fs m b) -> PlanT fs m r) -> Woven fs a' a b' b m r
+weave :: forall fs a a' b b' m r. Has Weave fs m => ((a -> PlanT fs m a') -> (b' -> PlanT fs m b) -> PlanT fs m r) -> Woven fs a' a b' b m r
 weave f = Woven $ \up dn ->
-  f (\a -> symbol (Request (getScope up) a Pure))
-    (\b' -> symbol (Respond (getScope dn) b' Pure))
+  f (\a -> symbol (Request (getScope up) a (return :: forall z. z -> PlanT fs m z)))
+    (\b' -> symbol (Respond (getScope dn) b' (return :: forall z. z -> PlanT fs m z)))
 
 type Effect' fs m r = forall x' x y' y . Woven fs x' x y' y m r
 

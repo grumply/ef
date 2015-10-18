@@ -153,8 +153,8 @@ lift :: Functor m => m a -> PlanT symbols m a
 lift m = M (fmap Pure m)
 
 {-# INLINE symbol #-}
-symbol :: Allows x symbols => x a -> PlanT symbols m a
-symbol xa = Step (inj xa) Pure
+symbol :: Has x symbols m => x a -> PlanT symbols m a
+symbol xa = Step (inj xa) return
 
 instance Functor m => Functor (PlanT symbols m) where
   fmap f p0 = _fmap f p0

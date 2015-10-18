@@ -6,12 +6,12 @@ import qualified Control.Exception as Exc
 import System.IO.Unsafe
 
 {-# INLINE inlineUnsafePerformMIO #-}
-inlineUnsafePerformMIO :: IO a -> PlanT fs m a
-inlineUnsafePerformMIO = Pure . unsafePerformIO
+inlineUnsafePerformMIO :: forall fs m a. Functor m => IO a -> PlanT fs m a
+inlineUnsafePerformMIO = (return :: forall z. z -> PlanT fs m z) . unsafePerformIO
 
 {-# NOINLINE unsafePerformMIO #-}
-unsafePerformMIO :: IO a -> PlanT fs m a
-unsafePerformMIO = Pure . unsafePerformIO
+unsafePerformMIO :: forall fs m a. Functor m => IO a -> PlanT fs m a
+unsafePerformMIO = (return :: forall z. z -> PlanT fs m z) . unsafePerformIO
 
 class Monad m => MIO m where
   unsafeMIO :: IO a -> PlanT fs m a

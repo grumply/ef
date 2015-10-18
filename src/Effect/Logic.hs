@@ -87,7 +87,7 @@ logic l =
                   case x of
                     Choose i as _ ->
                       if i == scope
-                      then try as (unsafeCoerce bp) (Pure ())
+                      then try as (unsafeCoerce bp) (return ())
                       else Step sym (\b -> go' (bp b))
                     -- ignore cuts if no choices
                     Cut _ -> Step sym (\b -> go' (bp b))
