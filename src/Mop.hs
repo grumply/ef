@@ -325,7 +325,6 @@ view xs = pull $ getContext xs
 instruction :: Uses instr instrs m => Instruction instr instrs m -> InstructionsT instrs m -> m (InstructionsT instrs m)
 instruction x is = {-# SCC "instruction_building" #-} pure $ Instructions $ push x $ getContext is
 
--- add rewrite here; could be useful.
 cutoff :: Monad m => Integer -> PlanT fs m a -> PlanT fs m (Maybe a)
 cutoff n _ | n <= 0 = return Nothing
 cutoff n p =
@@ -334,43 +333,20 @@ cutoff n p =
     M m -> M (cutoff (n - 1) `liftM` m)
     Step sym k -> Step sym (cutoff (n - 1) . k)
 
-
--- -- foldP allows recovery of interpreter at every produced value
--- {-# INLINE foldP #-}
--- foldP :: (Foldable f,Pair (Instrs is) (Symbol symbols),Monad m)
---      => Instructions is m -> (a -> PlanT symbols m b) -> f a -> m [(Instructions is m,b)]
--- foldP i0 ap f = foldr accumulate (const (return [])) f i0
+-- mapStep :: Functor m => ((PlanT symbols m a -> PlanT symbols m a) -> PlanT symbols m a -> PlanT symbols m a) -> PlanT symbols m a -> PlanT symbols m a
+-- mapStep f p0 = go p0
 --   where
---     accumulate a cont is = do
---       (i,!b) <- delta is (ap a)
---       ~ibs <- cont i
---       return ((i,b):ibs)
+--     go p =
+--       case p of
+--         M mp   -> M (fmap go mp)
+--         Pure r -> Pure r
+--         stp    -> f go stp
 
--- -- foldP_, unlike foldP, does not allow recovery of interpreter
--- {-# INLINE foldP_ #-}
--- foldP_ :: (Foldable f,Pair (Instrs is) (Symbol symbols),Monad m)
---      => Instructions is m -> (a -> PlanT symbols m b) -> f a -> m [b]
--- foldP_ i0 ap f = foldr accumulate (const (return [])) f i0
+-- removeStep :: Functor m => (PlanT symbols m a -> PlanT symbols m a) -> PlanT symbols m a -> PlanT symbols m a
+-- removeStep f p0 = go p0
 --   where
---     accumulate a cont is = do
---       (i,b) <- delta is (ap a)
---       bs <- cont i
---       return (b:bs)
-
-mapStep :: Functor m => ((PlanT symbols m a -> PlanT symbols m a) -> PlanT symbols m a -> PlanT symbols m a) -> PlanT symbols m a -> PlanT symbols m a
-mapStep f p0 = go p0
-  where
-    go p =
-      case p of
-        M mp   -> M (fmap go mp)
-        Pure r -> Pure r
-        stp    -> f go stp
-
-removeStep :: Functor m => (PlanT symbols m a -> PlanT symbols m a) -> PlanT symbols m a -> PlanT symbols m a
-removeStep f p0 = go p0
-  where
-    go p =
-      case p of
-        stp@(Step syms bp) -> go (f (Step syms (\b -> go (bp b))))
-        M mp               -> M (fmap go mp)
-        Pure r             -> Pure r
+--     go p =
+--       case p of
+--         stp@(Step syms bp) -> go (f (Step syms (\b -> go (bp b))))
+--         M mp               -> M (fmap go mp)
+--         Pure r             -> Pure r

@@ -17,14 +17,22 @@ enter x = do
     scope <- freshScope
     transform scope $ x (\a -> symbol (Continuation scope a))
   where
-    transform scope =
-      mapStep $ \go (Step syms bp) ->
-        case prj syms of
-          Just (Continuation i a) ->
-            if i == scope
-            then Pure (unsafeCoerce a)
-            else Step syms (\b -> go (bp b))
-          _   -> Step syms (\b -> go (bp b))
+    transform scope = go
+      where
+        go p =
+          case p of
+            Step sym bp ->
+              case prj sym of
+                Just x ->
+                  case x of
+                    Continuation i a ->
+                      if i == scope
+                      then return (unsafeCoerce a)
+                      else Step sym (\b -> go (bp b))
+                    _ -> Step sym (\b -> go (bp b))
+                _ -> Step sym (\b -> go (bp b))
+            M m -> M (fmap go m)
+            Pure r -> Pure r
 
 freshScope :: Has Continuation fs m => PlanT fs m Integer
 freshScope = symbol (FreshScope id)
