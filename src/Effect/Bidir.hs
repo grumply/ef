@@ -7,19 +7,20 @@ import Data.Function
 import Data.IORef
 import System.IO.Unsafe
 import Unsafe.Coerce
+import Data.Maybe
 
 data Switches k
   = FreshScope (Integer -> k)
 
   -- upstream interface
   | forall a'. Respond Integer a'
-  | Await Integer k
+  | Await Integer
 
   -- downstream interface
-  | Request Integer k
+  | Request Integer
   | forall b. Yield Integer b
 
-data Switching k = Switching (IORef Integer) k
+data Switching k = Switching k (IORef Integer) k
 
 newtype X = X X
 
@@ -37,8 +38,8 @@ getScope p =
         Just x ->
           case x of
             Respond i _ -> i
-            Await i _ -> i
-            Request i _ -> i
+            Await i -> i
+            Request i -> i
             Yield i _ -> i
             _ -> error "getScope got FreshScope"
         _ -> error "getScope got non-Switching"
@@ -47,8 +48,8 @@ getScope p =
 
 {-# INLINE switching #-}
 switching :: Uses Switching fs m => Instruction Switching fs m
-switching = Switching (unsafePerformIO (newIORef 0)) $ \fs ->
-  let Switching n k = view fs
+switching = Switching return (unsafePerformIO (newIORef 0)) $ \fs ->
+  let Switching dn n k = view fs
       n' = unsafePerformIO (modifyIORef n succ)
   in n' `seq` return fs
 
@@ -65,41 +66,44 @@ Upstream | Downstream
           r
 -}
 
--- respond await request yield
+
+-- respond await request yield done
 type Switcher fs a' a b' b m r
-  =  (a' -> PlanT fs m ())
-  -> PlanT fs m a
-  -> PlanT fs m b'
-  -> (b -> PlanT fs m ())
+  =  (a' -> PlanT fs m ())   -- respond
+  -> PlanT fs m a            -- await
+  -> PlanT fs m b'           -- request
+  -> (b -> PlanT fs m ())    -- yield
   -> PlanT fs m r
+
 switcher :: Has Switches fs m
-         => ((a' -> PlanT fs m ()) -> PlanT fs m a -> PlanT fs m b' -> (b -> PlanT fs m ()) -> PlanT fs m r) -> Switcher fs a' a b' b m r
-switcher f = \rsp awt req yld ->
+         => (    (a' -> PlanT fs m ())    -- respond
+              -> PlanT fs m a             -- await
+              -> PlanT fs m b'            -- request
+              -> (b -> PlanT fs m ())     -- yield
+              -> PlanT fs m r
+            )
+         -> Switcher fs a' a b' b m r
+switcher f = \_ awt _ _ ->
   let scp = getScope awt
   in f (\a' -> symbol (Respond scp a'))
-       (symbol (Await scp undefined))
-       (symbol (Request scp undefined))
+       (symbol (Await scp))
+       (symbol (Request scp))
        (\b -> symbol (Yield scp b))
 
-type Composition fs m r = Switcher fs X X X X m r
+type Switched fs m r = Switcher fs X X X X m r
 
-conduct :: Has Switches fs m => Composition fs m r -> PlanT fs m r
-conduct c = do
-  scope <- freshScope
-  c (\a' -> symbol (Respond scope a'))
-    (symbol (Await scope undefined))
-    (symbol (Request scope undefined))
-    (\b -> symbol (Yield scope b))
-
-(>-->) :: forall fs a' a b' b c' c m r. Has Switches fs m
-       => Switcher fs a' a b' b m r
-       -> Switcher fs b' b c' c m r
-       -> Switcher fs a' a c' c m r
-pl >--> pr = \rsp awt req yld -> transform (getScope awt)
-                                   (pl rsp awt (unsafeCoerce req) (unsafeCoerce yld))
-                                   (pr (unsafeCoerce rsp) (unsafeCoerce awt) req yld)
+infixl 5 >->
+-- yield-fast
+(>->) :: Has Switches fs m
+      => Switcher fs a' a b' b m r
+      -> Switcher fs b' b c' c m r
+      -> Switcher fs a' a c' c m r
+l >-> r = \rsp awt req yld ->
+  transform (getScope awt)
+    (l rsp awt (unsafeCoerce req) (unsafeCoerce yld))
+    (r (unsafeCoerce rsp) (unsafeCoerce awt) req yld)
   where
-    transform scope = start
+    transform scope l r = start l r
       where
         start l r = go l
           where
@@ -109,19 +113,19 @@ pl >--> pr = \rsp awt req yld -> transform (getScope awt)
                   case prj sym of
                     Just x ->
                       case x of
-                        Request i _ ->
+                        Request i ->
                           if i == scope
                           then requesting (unsafeCoerce bp) r
                           else Step sym (\b -> go (bp b))
-                        Yield i b ->
+                        Yield i _b ->
                           if i == scope
-                          then yielding (bp (unsafeCoerce ())) (unsafeCoerce b) r
+                          then yielding (unsafeCoerce _b) (bp (unsafeCoerce ())) r
                           else Step sym (\b -> go (bp b))
                         _ -> Step sym (\b -> go (bp b))
-                    Nothing -> Step sym (\b -> go (bp b))
+                    _ -> Step sym (\b -> go (bp b))
                 M m -> M (fmap go m)
-                Pure r -> Pure r
-        requesting a'l = go
+                Pure res -> Pure res
+        requesting bpl = go
           where
             go p =
               case p of
@@ -131,13 +135,17 @@ pl >--> pr = \rsp awt req yld -> transform (getScope awt)
                       case x of
                         Respond i a' ->
                           if i == scope
-                          then start (a'l (unsafeCoerce a')) (bp (unsafeCoerce ()))
+                          then start (bpl (unsafeCoerce a')) (bp (unsafeCoerce ()))
+                          else Step sym (\b -> go (bp b))
+                        Await i ->
+                          if i == scope
+                          then error "Request/Await deadlock"
                           else Step sym (\b -> go (bp b))
                         _ -> Step sym (\b -> go (bp b))
-                    Nothing -> Step sym (\b -> go (bp b))
+                    _ -> Step sym (\b -> go (bp b))
                 M m -> M (fmap go m)
                 Pure r -> Pure r
-        yielding l b_ = go
+        yielding b l = go
           where
             go p =
               case p of
@@ -145,156 +153,18 @@ pl >--> pr = \rsp awt req yld -> transform (getScope awt)
                   case prj sym of
                     Just x ->
                       case x of
-                        Await i _ ->
+                        Respond i a' ->
                           if i == scope
-                          then start l (bp (unsafeCoerce b_))
+                          then error "Yield/Respond deadlock"
+                          else Step sym (\b -> go (bp b))
+                        Await i ->
+                          if i == scope
+                          then continueRight l (bp (unsafeCoerce b))
                           else Step sym (\b -> go (bp b))
                         _ -> Step sym (\b -> go (bp b))
-                    Nothing -> Step sym (\b -> go (bp b))
+                    _ -> Step sym (\b -> go (bp b))
                 M m -> M (fmap go m)
-                Pure r -> Pure r
-
--- add Lazy/Strict as primitives; add them to yield/await/request/respond...
--- yield Lazy ..
--- yield Strict ..
--- request Lazy
--- request Strict
--- await Lazy
--- await Strict
--- respond Lazy ..
--- respond Strict ..
-
--- fully eager evaluation: evaluate the left side as far as we can while
--- maintaining the streaming properties and then switch sides and evaluate
--- as much of the right side as we can while maintaining the streaming
--- properties.
-(>==>) :: forall fs a' a b' b c' c m r. Has Switches fs m
-       => Switcher fs a' a b' b m r
-       -> Switcher fs b' b c' c m r
-       -> Switcher fs a' a c' c m r
-pl >==> pr = \rsp awt req yld -> transform (getScope awt)
-                                   (pl rsp awt (unsafeCoerce req) (unsafeCoerce yld))
-                                   (pr (unsafeCoerce rsp) (unsafeCoerce awt) req yld)
-  where
-    transform scope = goLeft
-      where
-        goLeftWith b' bp = go
-          where
-            go p =
-              case p of
-                Step sym bp ->
-                  case prj sym of
-                    Just x ->
-                      case x of
-                        _ -> undefined
-
-        goLeft l r = go l
-          where
-            go p =
-              case p of
-                Step sym bp ->
-                  case prj sym of
-                    Just x ->
-                      case x of
-                        Request i _ ->
-                          if i == scope
-                          -- cannot continue without a value; have to evaluate right
-                          then goRight bp r
-                          else Step sym (\b -> go (bp b))
-                        Yield i b ->
-                          if i == scope
-                          then continueLeft r b (bp (unsafeCoerce ()))
-                          else Step sym (\b -> go (bp b))
-                        _ -> Step sym (\b -> go (bp b))
-                    Nothing -> Step sym (\b -> go (bp b))
-                M m -> M (fmap go m)
-                Pure r -> Pure r
-
-        continueLeft r b = go
-          where
-            go p =
-              case p of
-                Step sym bp ->
-                  case prj sym of
-                    Just x ->
-                      case x of
-                        Request i _ ->
-                          if i == scope
-                          -- cannot continue without a value; have to evaluate right
-                          then requesting b bp r
-                          else Step sym (\b -> go (bp b))
-                        Yield i _ ->
-                          if i == scope
-                          -- second yield, we must switch threads to maintain streaming
-                          then yielding b p r
-                          else Step sym (\b -> go (bp b))
-                        _ -> Step sym (\b -> go (bp b))
-                    Nothing -> Step sym (\b -> go (bp b))
-                M m -> M (fmap go m)
-                Pure r -> Pure r
-
-        requesting b bpl = go
-          where
-            go p =
-              case p of
-                Step sym bp ->
-                  case prj sym of
-                    Just x ->
-                      case x of
-                        _ -> undefined
-
-        yielding b pl = go
-          where
-            go p =
-              case p of
-                Step sym bp ->
-                  case prj sym of
-                    Just x ->
-                      case x of
-                        _ -> undefined
-
-        goRightWith b bp = go
-          where
-            go p =
-              case p of
-                Step sym bp ->
-                  case prj sym of
-                    Just x ->
-                      case x of
-                        Request i _ ->
-                          if i == scope
-                          then _
-                          else Step sym (\b -> go (bp b))
-                        Yield i _ ->
-                          if i == scope
-                          then _
-                          else Step sym (\b -> go (bp b))
-                        _ -> Step sym (\b -> go (bp b))
-                    Nothing -> Step sym (\b -> go (bp b))
-                M m -> M (fmap go m)
-                Pure r -> Pure r
-
-        goRight bpl = go
-          where
-            go p =
-              case p of
-                Step sym bp ->
-                  case prj sym of
-                    Just x ->
-                      case x of
-                        Respond i b' ->
-                          if i == scope
-                          then continueRight (bpl (unsafeCoerce b')) (bp (unsafeCoerce ()))
-                          else Step sym (\b -> go (bp b))
-                        Await i a ->
-                          if i == scope
-                          then error "Awaiting while upstream is requesting."
-                          else Step sym (\b -> go (bp b))
-                        _ -> Step sym (\b -> go (bp b))
-                    Nothing -> Step sym (\b -> go (bp b))
-                M m -> M (fmap go m)
-                Pure r -> Pure r
-
+                Pure res -> Pure res
         continueRight l = go
           where
             go p =
@@ -303,109 +173,26 @@ pl >==> pr = \rsp awt req yld -> transform (getScope awt)
                   case prj sym of
                     Just x ->
                       case x of
-                        Respond i b' ->
+                        Respond i a' ->
                           if i == scope
-                          then responding b' p l
-                          else Step sym (\b -> go (bp b))
-                        Await i a ->
+                          then _
+                          else
+                        Await i ->
                           if i == scope
-                          then awaiting a bp l
+                          then _
                           else Step sym (\b -> go (bp b))
-                        _ -> Step sym (\b -> go (bp b))
-                    Nothing -> Step sym (\b -> go (bp b))
-                M m -> M (fmap go m)
-                Pure r -> Pure r
-
-        awaiting a bpr = go
-          where
-            go p =
-              case p of
-                Step sym bp ->
-                  case prj sym of
-                    Just x ->
-                      case x of
-                        _ -> undefined
-                M m -> M (fmap go m)
-                Pure r -> Pure r
-
-        responding b' pr = go
-          where
-            go p =
-              case p of
-                Step sym bp ->
-                  case prj sym of
-                    Just x ->
-                      case x of
-                        _ -> undefined
-                M m -> M (fmap go m)
-                Pure r -> Pure r
 
 
-(<--<) :: forall fs a' a b' b c' c m r. Has Switches fs m
-       => Switcher fs a' a b' b m r
-       -> Switcher fs b' b c' c m r
-       -> Switcher fs a' a c' c m r
-pl <--< pr = \rsp awt req yld -> transform (getScope awt)
-                                   (pl rsp awt (unsafeCoerce req) (unsafeCoerce yld))
-                                   (pr (unsafeCoerce rsp) (unsafeCoerce awt) req yld)
-  where
-    transform scope = start
-      where
-        start l r = go r
-          where
-            go p =
-              case p of
-                Step sym bp ->
-                  case prj sym of
-                    Just x ->
-                      case x of
-                        Await i _ ->
-                          if i == scope
-                          then awaiting (unsafeCoerce bp) l
-                          else Step sym (\b -> go (bp b))
-                        Respond i b' ->
-                          if i == scope
-                          then responding (bp (unsafeCoerce ())) (unsafeCoerce b') l
-                          else Step sym (\b -> go (bp b))
-                        _ -> Step sym (\b -> go (bp b))
-                    Nothing -> Step sym (\b -> go (bp b))
-                M m -> M (fmap go m)
-                Pure r -> Pure r
-        awaiting bl = go
-          where
-            go p =
-              case p of
-                Step sym bp ->
-                  case prj sym of
-                    Just x ->
-                      case x of
-                        Yield i b ->
-                          if i == scope
-                          then start (bl (unsafeCoerce b)) (bp (unsafeCoerce ()))
-                          else Step sym (\b -> go (bp b))
-                        _ -> Step sym (\b -> go (bp b))
-                    Nothing -> Step sym (\b -> go (bp b))
-                M m -> M (fmap go m)
-                Pure r -> Pure r
-        responding r b'_ = go
-          where
-            go p =
-              case p of
-                Step sym bp ->
-                  case prj sym of
-                    Just x ->
-                      case x of
-                        Await i _ ->
-                          if i == scope
-                          then start (bp (unsafeCoerce b'_)) r
-                          else Step sym (\b -> go (bp b))
-                        _ -> Step sym (\b -> go (bp b))
-                    Nothing -> Step sym (\b -> go (bp b))
-                M m -> M (fmap go m)
-                Pure r -> Pure r
+conduct :: Has Switches fs m => Switched fs m r -> PlanT fs m r
+conduct c = do
+  scope <- freshScope
+  c (\a' -> symbol (Respond scope a'))
+    (symbol (Await scope))
+    (symbol (Request scope))
+    (\b -> symbol (Yield scope b))
 
 instance Pair Switching Switches where
-  pair p (Switching i k) (FreshScope ik) =
+  pair p (Switching _ i k) (FreshScope ik) =
     let n = unsafePerformIO (readIORef i)
     in n `seq` p k (ik n)
   pair _ _ _ = error "Switching primitive escaped its scope:\n\
@@ -413,45 +200,42 @@ instance Pair Switching Switches where
                      \ primitives outside of their scope\
                      \ is unsupported."
 
-main = do
-  delta (Instructions $ switching *:* Empty) (conduct $ stdinLn >--> takeWhile' (/= "quit") >--> stdoutLn)
-
-stdinLn :: Has Switches fs IO => Switcher fs X X Bool String IO ()
 stdinLn = switcher go
   where
-    go _ _ req yld = go'
+    go _ _ _ yld = go'
       where
         go' = do
-          fromUp <- req
-          case fromUp of
-            False -> lift (putStrLn "Done in stdinLn")
-            True -> do
-              ln <- lift getLine
-              yld ln
-              go'
+          ln <- lift getLine
+          lift (putStrLn "Yielding from stdinLn")
+          yld ln
+          go'
 
-takeWhile' :: Has Switches fs m => (String -> Bool) -> Switcher fs Bool String X String m ()
 takeWhile' pred = switcher go
   where
-    go rsp awt _ yld = go'
+    go _ awt _ yld = go'
       where
         go' = do
-          rsp True
-          str <- awt
-          if pred str
+          lift (putStrLn "Awaiting in takeWhile'")
+          ln <- awt
+          lift (putStrLn "Yielding in takeWhile'")
+          if pred ln
           then do
-            yld str
-            go'
+            yld ln
+            return "takeWhile'"
           else do
-            yld str
-            rsp False
+            yld ln
+            go'
 
-stdoutLn :: Has Switches fs IO => Switcher fs X String X X IO r
 stdoutLn = switcher go
   where
     go _ awt _ _ = go'
       where
         go' = do
-          str <- awt
-          lift (putStrLn str)
+          lift (putStrLn "Awaiting in stdoutLn")
+          ln <- awt
+          lift (putStrLn ln)
           go'
+
+main = do
+  (_,str) <- delta (Instructions $ switching *:* Empty) (conduct $ stdinLn >-> takeWhile' (/= "quit") >-> stdoutLn)
+  putStrLn str
