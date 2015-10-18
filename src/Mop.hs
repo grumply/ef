@@ -332,3 +332,55 @@ cutoff n p =
     Pure a -> Pure (Just a)
     M m -> M (cutoff (n - 1) `liftM` m)
     Step sym k -> Step sym (cutoff (n - 1) . k)
+
+newtype Codensity fs m a = Codensity
+  { runCodensity :: forall b. (a -> PlanT fs m b) -> PlanT fs m b
+  }
+
+instance Functor (Codensity fs k) where
+  fmap f (Codensity m) = Codensity (\k -> m (k . f))
+  {-# INLINE fmap #-}
+
+instance Applicative (Codensity fs f) where
+  pure x = Codensity (\k -> k x)
+  {-# INLINE pure #-}
+  (<*>) = ap
+  {-# INLINE (<*>) #-}
+
+instance Monad (Codensity fs f) where
+  return x = Codensity (\k -> k x)
+  {-# INLINE return #-}
+  m >>= k = Codensity (\c -> runCodensity m (\a -> runCodensity (k a) c))
+  {-# INLINE (>>=) #-}
+
+instance (Alternative v,MonadPlus v) => Alternative (Codensity fs v) where
+  empty = Codensity (\_ -> empty)
+  {-# INLINE empty #-}
+  Codensity m <|> Codensity n = Codensity (\k -> m k <|> n k)
+  {-# INLINE (<|>) #-}
+
+instance MonadPlus v => MonadPlus (Codensity fs v) where
+  mzero = Codensity (\_ -> mzero)
+  {-# INLINE mzero #-}
+  Codensity m `mplus` Codensity n = Codensity (\k -> m k `mplus` n k)
+  {-# INLINE mplus #-}
+
+toCodensity :: Functor m => PlanT fs m a -> Codensity fs m a
+toCodensity f = Codensity (f >>=)
+
+fromCodensity :: Monad m => Codensity fs m a -> PlanT fs m a
+fromCodensity a = runCodensity a return
+
+{-
+-- Example usages for asymptotic improvements:
+
+replicateM :: Monad m => Int -> PlanT fs m a -> PlanT fs m [a]
+replicateM n f = fromCodensity $ Control.Monad.replicateM n (toCodensity f)
+
+sequence :: Monad m => [PlanT fs m a] -> PlanT fs m [a]
+sequence = fromCodensity . Control.Monad.sequence . map toCodensity
+
+mapM :: Monad m => (a -> PlanT fs m b) -> [a] -> PlanT fs m [b]
+mapM f = fromCodensity . Control.Monad.mapM (toCodensity . f)
+
+-}
