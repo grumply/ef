@@ -1,3 +1,4 @@
+{-# LANGUAGE KindSignatures, ImpredicativeTypes #-} -- keep an eye on this
 module Mop.IO where
 
 import Mop
@@ -14,12 +15,18 @@ unsafePerformMIO :: forall fs m a. Functor m => IO a -> PlanT fs m a
 unsafePerformMIO = (return :: forall z. z -> PlanT fs m z) . unsafePerformIO
 
 class Monad m => MIO m where
-  unsafeMIO :: IO a -> PlanT fs m a
-  mio :: Has Throw fs m => IO a -> PlanT fs m a
+  unsafeMIO  :: Has Throw fs m => IO a -> PlanT fs m a
+  maskedMIO_ :: Has Throw fs m => IO a -> PlanT fs m a
+  maskedMIO  :: Has Throw fs m => ((forall (a :: *). IO a -> IO a) -> IO b) -> PlanT fs m b
+  mio        :: Has Throw fs m => IO a -> PlanT fs m a
 
 instance MIO IO where
   {-# INLINE unsafeMIO #-}
   unsafeMIO = lift
+  {-# INLINE maskedMIO_ #-}
+  maskedMIO_ = lift . Exc.mask_
+  {-# INLINE maskedMIO #-}
+  maskedMIO = lift . Exc.mask
   {-# INLINE mio #-}
   mio ioa = do
     ea <- lift $ Exc.try ioa
