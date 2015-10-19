@@ -1,4 +1,4 @@
-module Resource where
+module Effect.Resource where
 
 import Mop
 import Effect.Exception

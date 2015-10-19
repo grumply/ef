@@ -28,6 +28,7 @@ library
                        Mop
                        Mop.IO
                        Data.Promise
+                       Effect.Concurrent
                        Effect.Continuation
                        Effect.Exception
                        Effect.Fresh
@@ -36,6 +37,7 @@ library
                        Effect.Loop
                        Effect.Maybe
                        Effect.Reader
+                       Effect.Resource
                        Effect.State
                        Effect.Thread
                        Effect.Weave

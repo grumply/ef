@@ -61,14 +61,3 @@ instance MTrans (List fs) where
     a <- lift m
     yield a
     )
-
-pair :: Has Weave fs IO => List fs IO (Int,Int)
-pair = do
-    x <- Select $ each [1..5]
-    Select (producer $ \yield -> do { lift (putStrLn ("x = " ++ show x)); yield () } )
-    y <- Select $ each [6..10]
-    Select (producer $ \yield -> do { lift (putStrLn ("y = " ++ show y)); yield () } )
-    return (x,y)
-
-main = do
-  delta (Instructions $ weaving *:* Empty) $ runList Effect.List.pair
