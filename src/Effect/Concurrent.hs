@@ -13,12 +13,14 @@ import Control.Monad
 type Ref gs m a = (ThreadId,Promise (Either SomeException (InstructionsT gs m,a)))
 
 fork :: forall fs fs' gs m m' a.
-        (Pair (Instrs gs) (Symbol fs),Has Throw fs' m',MIO m'
-        ,Monad m,Has Throw fs m)
-     => InstructionsT gs m
-     -> PlanT fs m a
-     -> (forall x. m x -> IO x)
-     -> PlanT fs' m' (Ref gs m a)
+        (Pair (Instrs gs) (Symbol fs)
+        ,MIO m'
+        ,Has Throw fs' m'
+        ,Has Throw fs m
+        ) => InstructionsT gs m
+          -> PlanT fs m a
+          -> (forall x. m x -> IO x)
+          -> PlanT fs' m' (Ref gs m a)
 fork comp plan lft = do
   p <- mio newPromiseIO
   mv <- mio newEmptyMVar
