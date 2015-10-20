@@ -18,10 +18,10 @@ import Effect.Thread        as Base
 import Effect.Transient     as Base
 import Effect.Weave         as Base
 
-type Base = '[Continuations,Nondet,Weaving,Throws,Loops,Possible,Threading]
+type Base = '[Transience,Continuations,Nondet,Weaving,Throws,Loops,Possible,Threading]
 type BaseT fs m = InstructionsT (fs :++: Base) m
 
-base fs = Instructions (fs (continuations *:* nondet *:* weaving *:* throws *:* loops *:* possible *:* threads *:* Empty))
+base fs = Instructions (fs (transience *:* continuations *:* nondet *:* weaving *:* throws *:* loops *:* possible *:* threads *:* Empty))
 
 run :: (Monad m,Pair (Instrs Base) (Symbol fs)) => PlanT fs m a -> m a
 run = fmap snd . delta (base id)
