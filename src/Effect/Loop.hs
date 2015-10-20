@@ -7,6 +7,29 @@ import Mop
 import Data.Function
 import Unsafe.Coerce
 
+-- | I believe this module is entirely subsumed by 'fix' and named functions.
+-- That is:
+-- @
+--   loop x $ \break continue st -> do
+--     something
+--     if x st then continue st else break x
+-- @
+-- is equivalent to:
+-- @
+--   fix $ \go st -> do
+--     something
+--     if x st then go st else return x
+-- @
+-- which is equivalent to:
+-- @
+--   go st
+--     where
+--       go st = do
+--         something
+--         if x st then go st else return x
+-- @
+-- TODO: Test performance to find out where they differ.
+
 data Loop k
   = FreshScope (Integer -> k)
   | forall s. Continue Integer s

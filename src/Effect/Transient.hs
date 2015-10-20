@@ -101,7 +101,6 @@ transiently x = do
                             Just (store',cleanup) ->
                               Step sym (\b -> go store' (cleanup >> bp b))
                             Nothing -> Step sym (\b -> go' (bp b))
-
                         Register (Token t) p _ ->
                           go (unsafeCoerce (t,p):store) (bp (unsafeCoerce ()))
                         Unregister (Token t) _ ->
