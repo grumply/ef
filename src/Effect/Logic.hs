@@ -98,7 +98,7 @@ logic l =
 instance Pair Nondet Logic where
   pair p (Nondet i k) (FreshScope ik) =
     let n = (unsafePerformIO $ readIORef i)
-    in trace (show n) $ p k (ik n)
+    in n `seq` p k (ik n)
   pair _ _ _ = error "Logic primitive escaped its scope:\n\
                      \\tAttempting to reuse control flow\
                      \ primitives outside of their scope\

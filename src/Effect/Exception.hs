@@ -1,6 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 module Effect.Exception
-  ( Throw, throw, throw_, catch, handle, catchJust, handleJust, try, tryJust
+  ( Throw, throw,  catch, handle, catchJust, handleJust, try, tryJust
+         , catches, Handler(..)
          , onException, finally, bracket, bracket_, bracketOnError, mapException
   , throws, Throws
   , Exception,SomeException(..)
@@ -16,9 +17,21 @@ data Throws k = Throws (SomeException -> k)
 throw :: (Has Throw symbols m, Exception e) => e -> PlanT symbols m a
 throw e = symbol (Throw (toException e) undefined)
 
--- used in Actor to resume upon exception.
-throw_ :: (Has Throw symbols m, Exception e) => e -> PlanT symbols m ()
-throw_ e = symbol (Throw (toException e) ())
+data Handler fs m a = forall e. Exception e => Handler (e -> PlanT fs m a)
+
+instance Functor m => Functor (Handler fs m) where
+  fmap f (Handler h) = Handler (fmap f . h)
+
+catches :: Has Throw fs m => PlanT fs m a -> [Handler fs m a] -> PlanT fs m a
+catches p handlers = p `catch` catchesHandler handlers
+
+catchesHandler :: Has Throw fs m => [Handler fs m a] -> SomeException -> PlanT fs m a
+catchesHandler handlers e = foldr tryHandler (throw e) handlers
+  where
+    tryHandler (Handler handler) res
+      = case fromException e of
+          Just e' -> handler e'
+          Nothing -> res
 
 throws :: Throws k
 throws = Throws (\se -> error $ "Uncaught exception: " ++ show se)
