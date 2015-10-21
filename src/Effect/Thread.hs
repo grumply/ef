@@ -25,33 +25,26 @@ thread x = do
   where
     transform q p0 = go p0
       where
-        go p =
-          case p of
-            Step syms bp ->
-              case prj syms of
-                Just x ->
-                  case x of
+        go p = case p of
+            Step syms bp -> case prj syms of
+                Just x -> case x of
                     Thread child k ->
-                      transform (enqueue (unsafeCoerce child) q) (bp k)
-                    Yield k ->
-                      case dequeue q of
+                        transform (enqueue (unsafeCoerce child) q) (bp k)
+                    Yield k -> case dequeue q of
                         Nothing -> go (bp k)
                         Just (rest,nxt) ->
-                          transform (enqueue (unsafeCoerce (bp k)) rest) nxt
-                    Stop ->
-                      case dequeue q of
+                            transform (enqueue (unsafeCoerce (bp k)) rest) nxt
+                    Stop -> case dequeue q of
                         Nothing -> Step syms bp
                         Just (rest,nxt) -> transform rest nxt
                 Nothing -> Step syms (\b -> go (bp b))
             M m -> M (fmap go m)
-            Pure r ->
-              case dequeue q of
+            Pure r -> case dequeue q of
                 Nothing -> Pure r
-                Just (rest,nxt) ->
-                  transform rest (unsafeCoerce nxt)
+                Just (rest,nxt) -> transform rest (unsafeCoerce nxt)
 
 instance Pair Threading Thread where
-  pair p (Threading k) Stop = p k undefined
+    pair p (Threading k) Stop = p k undefined
 
 data Threading k = Threading k
 
@@ -71,6 +64,6 @@ enqueue a (Queue l r) = Queue l (a:r)
 dequeue :: Queue -> Maybe (Queue,Plan fs m a)
 dequeue (Queue [] []) = Nothing
 dequeue (Queue [] xs) =
-  let stack = reverse xs
-  in Just (Queue (tail stack) [],unsafeCoerce (head stack))
+    let stack = reverse xs
+    in Just (Queue (tail stack) [],unsafeCoerce (head stack))
 dequeue (Queue xs ys) = Just (Queue (tail xs) ys,unsafeCoerce (head xs))

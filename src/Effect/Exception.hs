@@ -48,7 +48,7 @@ coerceWrap = coerce
 data Handler fs m a = forall e. Exception e => Handler (e -> Plan fs m a)
 
 instance Functor m => Functor (Handler fs m) where
-  fmap f (Handler h) = Handler (fmap f . h)
+    fmap f (Handler h) = Handler (fmap f . h)
 
 catches :: Has Throw fs m => Plan fs m a -> [Handler fs m a] -> Plan fs m a
 catches p handlers = p `catch` catchesHandler handlers
@@ -56,10 +56,9 @@ catches p handlers = p `catch` catchesHandler handlers
 catchesHandler :: Has Throw fs m => [Handler fs m a] -> SomeException -> Plan fs m a
 catchesHandler handlers e = foldr tryHandler (throw e) handlers
   where
-    tryHandler (Handler handler) res
-      = case fromException e of
-          Just e' -> handler e'
-          Nothing -> res
+    tryHandler (Handler handler) res = case fromException e of
+       Just e' -> handler e'
+       Nothing -> res
 
 exceptions :: Attribute Exceptions gs k
 exceptions = Exceptions (\se -> error $ "Uncaught exception: " ++ show se)
@@ -68,14 +67,11 @@ catch :: (Has Throw symbols m, Exception e)
       => Plan symbols m a -> (e -> Plan symbols m a) -> Plan symbols m a
 catch plan handler = go plan
   where
-    go p =
-      case p of
-        Step sym bp ->
-          case prj sym of
-            Just (Throw se _) ->
-                case fromException se of
-                  Just e -> handler e
-                  Nothing -> Step sym (\b -> go (bp b))
+    go p = case p of
+        Step sym bp -> case prj sym of
+            Just (Throw se _) -> case fromException se of
+                Just e -> handler e
+                Nothing -> Step sym (\b -> go (bp b))
             _ -> Step sym (\b -> go (bp b))
         M m -> M (fmap go m)
         Pure r -> Pure r
@@ -93,8 +89,7 @@ catchJust :: (Exception e,Has Throw symbols m)
           -> Plan symbols m a
 catchJust p a handler = catch a handler'
   where
-    handler' e =
-      case p e of
+    handler' e = case p e of
         Nothing -> throw e
         Just b -> handler b
 
@@ -117,10 +112,11 @@ tryJust :: (Exception e,Has Throw symbols m)
         -> Plan symbols m a
         -> Plan symbols m (Either b a)
 tryJust p a = do
-  r <- try a
-  case r of
-    Right v -> return (Right v)
-    Left e -> case p e of
+    r <- try a
+    case r of
+        Right v -> return (Right v)
+        Left e ->
+            case p e of
                 Nothing -> throw e
                 Just b -> return (Left b)
 
@@ -128,8 +124,9 @@ onException :: Has Throw symbols m
             => Plan symbols m a
             -> Plan symbols m b
             -> Plan symbols m a
-onException p what = p `catch` \e -> do _ <- what
-                                        throw (e :: SomeException)
+onException p what = p `catch` \e -> do
+    _ <- what
+    throw (e :: SomeException)
 
 -- this seems incorrect; sequel might actually run twice
 finally :: Has Throw symbols m
@@ -137,9 +134,9 @@ finally :: Has Throw symbols m
         -> Plan symbols m b
         -> Plan symbols m a
 finally a sequel = do
-  r <- a `onException` sequel
-  _ <- sequel
-  return r
+    r <- a `onException` sequel
+    _ <- sequel
+    return r
 
 bracket :: Has Throw symbols m
         => Plan symbols m a
@@ -147,10 +144,10 @@ bracket :: Has Throw symbols m
         -> (a -> Plan symbols m c)
         -> Plan symbols m c
 bracket before after thing = do
-  a <- before
-  r <- (thing a) `onException` after a
-  _ <- after a
-  return r
+    a <- before
+    r <- (thing a) `onException` after a
+    _ <- after a
+    return r
 
 bracket_ :: Has Throw symbols m
          => Plan symbols m a
@@ -165,8 +162,8 @@ bracketOnError :: Has Throw symbols m
                -> (a -> Plan symbols m c)
                -> Plan symbols m c
 bracketOnError before after thing = do
-  a <- before
-  (thing a) `onException` (after a)
+    a <- before
+    (thing a) `onException` (after a)
 
 instance Pair Exceptions Throw where
-  pair p (Exceptions k) (Throw e k') = p (k e) k'
+    pair p (Exceptions k) (Throw e k') = p (k e) k'

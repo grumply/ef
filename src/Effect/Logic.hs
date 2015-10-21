@@ -1,10 +1,10 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
 module Effect.Logic
-  ( Logic, logic
-  , Nondet, nondet
-  , module Effect.Weave
-  ) where
+    ( Logic, logic
+    , Nondet, nondet
+    , module Effect.Weave
+    ) where
 
 import Mop
 import Effect.Weave
@@ -16,18 +16,18 @@ import Debug.Trace
 -- nondeterministic choice with pruning
 
 data Logic k
-  = FreshScope (Integer -> k)
-  | forall a. Choose Integer [a] (a -> k)
-  | Cut Integer
+    = FreshScope (Integer -> k)
+    | forall a. Choose Integer [a] (a -> k)
+    | Cut Integer
 
 data Nondet k = Nondet (IORef Integer) k
 
 {-# INLINE nondet #-}
 nondet :: Uses Nondet fs m => Attribute Nondet fs m
 nondet = Nondet (unsafePerformIO (newIORef 0)) $ \fs ->
-  let Nondet i k = (fs&)
-      next = unsafePerformIO (modifyIORef i succ)
-  in next `seq` return fs
+    let Nondet i k = (fs&)
+        next = unsafePerformIO (modifyIORef i succ)
+    in next `seq` return fs
 
 
 {-# INLINABLE freshScope #-}
@@ -62,33 +62,27 @@ logic l =
         try [] bp or = or
         try (a:as) bp or = try' (bp a)
           where
-            try' p =
-              case p of
-                Step sym bp' ->
-                  case prj sym of
-                    Just x ->
-                      case x of
+            try' p = case p of
+                Step sym bp' -> case prj sym of
+                    Just x -> case x of
                         Choose i as' _ ->
-                          if i == scope
-                          then try as' (unsafeCoerce bp') (try as bp or)
-                          else Step sym (\b -> try' (bp' b))
+                            if i == scope
+                            then try as' (unsafeCoerce bp') (try as bp or)
+                            else Step sym (\b -> try' (bp' b))
                         Cut i ->
-                          if i == scope
-                          then try as bp or
-                          else Step sym (\b -> try' (bp' b))
+                            if i == scope
+                            then try as bp or
+                            else Step sym (\b -> try' (bp' b))
                     Nothing -> Step sym (\b -> try' (bp' b))
                 M m -> M (fmap try' m)
                 Pure r -> try as bp or
-        go' p =
-          case p of
-            Step sym bp ->
-              case prj sym of
-                Just x ->
-                  case x of
+        go' p = case p of
+            Step sym bp -> case prj sym of
+                Just x -> case x of
                     Choose i as _ ->
-                      if i == scope
-                      then try as (unsafeCoerce bp) (return ())
-                      else Step sym (\b -> go' (bp b))
+                        if i == scope
+                        then try as (unsafeCoerce bp) (return ())
+                        else Step sym (\b -> go' (bp b))
                     -- ignore cuts if no choices
                     Cut _ -> Step sym (\b -> go' (bp b))
                 Nothing -> Step sym (\b -> go' (bp b))
@@ -96,10 +90,10 @@ logic l =
             Pure r -> Pure r
 
 instance Pair Nondet Logic where
-  pair p (Nondet i k) (FreshScope ik) =
-    let n = (unsafePerformIO $ readIORef i)
-    in n `seq` p k (ik n)
-  pair _ _ _ = error "Logic primitive escaped its scope:\n\
-                     \\tAttempting to reuse control flow\
-                     \ primitives outside of their scope\
-                     \ is unsupported."
+    pair p (Nondet i k) (FreshScope ik) =
+        let n = (unsafePerformIO $ readIORef i)
+        in n `seq` p k (ik n)
+    pair _ _ _ = error "Logic primitive escaped its scope:\n\
+                       \\tAttempting to reuse control flow\
+                       \ primitives outside of their scope\
+                       \ is unsupported."

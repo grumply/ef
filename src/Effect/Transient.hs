@@ -37,22 +37,22 @@ import Unsafe.Coerce
 newtype Token a = Token Integer
 
 data Transient k
-  = FreshScope (Integer -> k)
+    = FreshScope (Integer -> k)
 
-  | forall a fs m . Allocate   Integer (Plan fs m a) (a -> Plan fs m ()) ((a,Token a) -> k)
+    | forall a fs m . Allocate   Integer (Plan fs m a) (a -> Plan fs m ()) ((a,Token a) -> k)
 
-  | forall fs m a . OnEnd      Integer           (Plan fs m ()) (Token () -> k)
-  | forall fs m a . Register   Integer (Token a) (Plan fs m ()) k
+    | forall fs m a . OnEnd      Integer           (Plan fs m ()) (Token () -> k)
+    | forall fs m a . Register   Integer (Token a) (Plan fs m ()) k
 
-  | forall a      . Unregister Integer (Token a) k
-  | forall a      . Deallocate         (Token a) k
+    | forall a      . Unregister Integer (Token a) k
+    | forall a      . Deallocate         (Token a) k
 
 data Transience k = Transience (IORef Integer) k k
 transience :: Uses Transience fs m => Attribute Transience fs m
 transience = flip (Transience (unsafePerformIO (newIORef 0))) return $ \fs ->
-  let Transience i non me = (fs&)
-      next = unsafePerformIO (modifyIORef i succ)
-  in next `seq` return fs
+    let Transience i non me = (fs&)
+        next = unsafePerformIO (modifyIORef i succ)
+    in next `seq` return fs
 
 transientMisuse :: String -> a
 transientMisuse method = error $
@@ -61,13 +61,13 @@ transientMisuse method = error $
   \it's instantiation block."
 
 instance Pair Transience Transient where
-  pair p (Transience _ _ k) (Deallocate _ k') = p k k'
-  pair p (Transience i k _) (FreshScope ik)   =
-    let n = unsafePerformIO $ readIORef i
-    in n `seq` p k (ik n)
-  pair p _ (OnEnd _ _ _)      = transientMisuse "OnEnd"
-  pair p _ (Register _ _ _ _) = transientMisuse "Register"
-  pair p _ (Unregister _ _ _) = transientMisuse "Unregister"
+    pair p (Transience _ _ k) (Deallocate _ k') = p k k'
+    pair p (Transience i k _) (FreshScope ik)   =
+        let n = unsafePerformIO $ readIORef i
+        in n `seq` p k (ik n)
+    pair p _ (OnEnd _ _ _)      = transientMisuse "OnEnd"
+    pair p _ (Register _ _ _ _) = transientMisuse "Register"
+    pair p _ (Unregister _ _ _) = transientMisuse "Unregister"
 
 freshScope :: Has Transient fs m => Plan fs m Integer
 freshScope = symbol (FreshScope id)
@@ -76,11 +76,11 @@ deallocate :: Has Transient fs m => Token a -> Plan fs m ()
 deallocate rsrc = symbol (Deallocate rsrc ())
 
 data TransientScope fs m = TransientScope
-  { allocate   :: forall a. Plan fs m a -> (a -> Plan fs m ()) -> Plan fs m (a,Token a)
-  , register   :: forall a. Token a -> Plan fs m () -> Plan fs m ()
-  , unregister :: forall a. Token a -> Plan fs m ()
-  , onEnd      ::           Plan fs m () -> Plan fs m (Token ())
-  }
+    { allocate   :: forall a. Plan fs m a -> (a -> Plan fs m ()) -> Plan fs m (a,Token a)
+    , register   :: forall a. Token a -> Plan fs m () -> Plan fs m ()
+    , unregister :: forall a. Token a -> Plan fs m ()
+    , onEnd      ::           Plan fs m () -> Plan fs m (Token ())
+    }
 
 -- use: transiently $ \transient -> do
 --        (a,key) <- allocate transient _ _
@@ -94,59 +94,55 @@ transiently :: forall fs m r.
                  -> Plan fs m r
                ) -> Plan fs m r
 transiently x = do
-  scope <- freshScope
-  let alloc create onEnd = symbol (Allocate scope create onEnd id)
-      register token onEnd = symbol (Register scope token onEnd ())
-      unregister token = symbol (Unregister scope token ())
-      onEnd oE = symbol (OnEnd scope oE id)
-  transform scope [] $ x $ TransientScope alloc register unregister onEnd
+    scope <- freshScope
+    let alloc create onEnd = symbol (Allocate scope create onEnd id)
+        register token onEnd = symbol (Register scope token onEnd ())
+        unregister token = symbol (Unregister scope token ())
+        onEnd oE = symbol (OnEnd scope oE id)
+    transform scope [] $ x $ TransientScope alloc register unregister onEnd
   where
     transform scope store = go store
       where
         go store = go'
           where
             go' :: Plan fs m r -> Plan fs m r
-            go' p =
-              case p of
-                Step sym bp ->
-                  case prj sym of
-                    Just x ->
-                      case x of
+            go' p = case p of
+                Step sym bp -> case prj sym of
+                    Just x  -> case x of
                         Allocate i create oE _ ->
-                          if i == scope
-                          then do
-                            n <- freshScope
-                            let t = Token n
-                            a <- unsafeCoerce create
-                            go ((n,unsafeCoerce (oE a)):store)
-                               (bp (unsafeCoerce (a,t)))
-                          else Step sym (\b -> go' (bp b))
-                        Deallocate (Token t) _ -> do
-                          case extract t store of
+                            if i == scope
+                            then do
+                              n <- freshScope
+                              let t = Token n
+                              a <- unsafeCoerce create
+                              go ((n,unsafeCoerce (oE a)):store)
+                                 (bp (unsafeCoerce (a,t)))
+                            else Step sym (\b -> go' (bp b))
+                        Deallocate (Token t) _ -> case extract t store of
                             Just (store',cleanup) ->
-                              Step sym (\b -> go store' (cleanup >> bp b))
+                                Step sym (\b -> go store' (cleanup >> bp b))
                             Nothing -> Step sym (\b -> go' (bp b))
                         Register i (Token t) p _ ->
-                          if i == scope
-                          then go (unsafeCoerce (t,p):store) (bp (unsafeCoerce ()))
-                          else Step sym (\b -> go' (bp b))
+                            if i == scope
+                            then go (unsafeCoerce (t,p):store)
+                                    (bp (unsafeCoerce ()))
+                            else Step sym (\b -> go' (bp b))
                         Unregister i (Token t) _ ->
-                          if i == scope
-                          then go (filter ((/= t) . fst) store)
-                                  (bp (unsafeCoerce ()))
-                          else Step sym (\b -> go' (bp b))
+                            if i == scope
+                            then go (filter ((/= t) . fst) store)
+                                    (bp (unsafeCoerce ()))
+                            else Step sym (\b -> go' (bp b))
                         OnEnd i oE _ -> do
-                          if i == scope
-                          then do
-                            n <- freshScope
-                            go (unsafeCoerce (n,oE):store)
-                               (bp (unsafeCoerce (Token n :: Token ())))
-                          else Step sym (\b -> go' (bp b))
+                            if i == scope
+                            then do
+                                n <- freshScope
+                                go (unsafeCoerce (n,oE):store)
+                                   (bp (unsafeCoerce (Token n :: Token ())))
+                            else Step sym (\b -> go' (bp b))
                         _ -> Step sym (\b -> go' (bp b))
                     Nothing -> Step sym (\b -> go' (bp b))
                 M m -> M (fmap go' m)
-                Pure r ->
-                  case store of
+                Pure r -> case store of
                     [] -> Pure r
                     ((_,x):xs) -> go xs (x >> return r)
 

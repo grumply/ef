@@ -1,29 +1,29 @@
 module Effect.Writer
-  ( Writer, tell
-  , Tracer, tracer, writer, written
-  ) where
+    ( Trace, tell
+    , Writer, tracer, writer, written
+    ) where
 
 import Mop
 
 import Data.Monoid
 
-data Writer r k = Writer r k
+data Trace r k = Trace r k
 
-data Tracer r k = Tracer r (r -> k)
+data Writer r k = Writer r (r -> k)
 
-instance Pair (Tracer r) (Writer r) where
-  pair p (Tracer _ rk) (Writer r k) = pair p rk (r,k)
+instance Pair (Writer r) (Trace r) where
+    pair p (Writer _ rk) (Trace r k) = pair p rk (r,k)
 
-tell :: (Has (Writer w) fs m) => w -> Plan fs m ()
-tell w = symbol (Writer w ())
+tell :: (Has (Trace w) fs m) => w -> Plan fs m ()
+tell w = symbol (Trace w ())
 
-writer :: (Monoid w,Uses (Tracer w) fs m) => Attribute (Tracer w) fs m
+writer :: (Monoid w,Uses (Writer w) fs m) => Attribute (Writer w) fs m
 writer = tracer mempty (<>)
 
-tracer :: Uses (Tracer w) fs m => w -> (w -> w -> w) -> Attribute (Tracer w) fs m
-tracer w0 f = Tracer w0 $ \w' is ->
-  let Tracer w k = (is&)
-  in pure $ is .= Tracer (f w w') k
+tracer :: Uses (Writer w) fs m => w -> (w -> w -> w) -> Attribute (Writer w) fs m
+tracer w0 f = Writer w0 $ \w' is ->
+    let Writer w k = (is&)
+    in pure $ is .= Writer (f w w') k
 
-written :: Uses (Tracer w) fs m => Object fs m -> w
-written fs = let Tracer w _ = (fs&) in w
+written :: Uses (Writer w) fs m => Object fs m -> w
+written fs = let Writer w _ = (fs&) in w
