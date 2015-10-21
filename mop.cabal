@@ -31,10 +31,8 @@ library
                        Effect.Concurrent
                        Effect.Continuation
                        Effect.Exception
-                       Effect.Fresh
                        Effect.List
                        Effect.Logic
-                       Effect.Loop
                        Effect.Maybe
                        Effect.Reader
                        Effect.State

@@ -12,7 +12,6 @@ import Effect.Continuation  as Base
 import Effect.Exception     as Base
 import Effect.List          as Base
 import Effect.Logic         as Base
--- import Effect.Loop          as Base
 import Effect.Maybe         as Base
 import Effect.Thread        as Base
 import Effect.Transient     as Base
