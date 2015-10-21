@@ -54,43 +54,43 @@ type family IndexOf (f :: k) (fs :: [k]) :: Nat where
   IndexOf f (f ': fs) = 'Z
   IndexOf f (any ': fs) = 'S (IndexOf f fs)
 
-data Instrs (is :: [* -> *]) a where
-  Empty :: Instrs '[] a
-  Instr :: Denies f fs => f a -> Instrs fs a -> Instrs (f ': fs) a
+data Attrs (is :: [* -> *]) a where
+  Empty :: Attrs '[] a
+  Attr :: Denies f fs => f a -> Attrs fs a -> Attrs (f ': fs) a
 
-instance Functor (Instrs '[]) where
+instance Functor (Attrs '[]) where
   fmap _ Empty = Empty
-instance (Functor f,Functor (Instrs fs)) => Functor (Instrs (f ': fs)) where
-  fmap f (Instr fa fs) = Instr (fmap f fa) (fmap f fs)
+instance (Functor f,Functor (Attrs fs)) => Functor (Attrs (f ': fs)) where
+  fmap f (Attr fa fs) = Attr (fmap f fa) (fmap f fs)
 
 class Admits (x :: * -> *) (xs :: [* -> *]) where
-  push :: x a -> Instrs xs a -> Instrs xs a
-  pull :: Instrs xs a -> x a
+  push :: x a -> Attrs xs a -> Attrs xs a
+  pull :: Attrs xs a -> x a
 instance (Admits' x xs (IndexOf x xs)) => Admits x xs where
   push xa = push' (Index :: Index (IndexOf x xs)) xa
   pull xs = pull' (Index :: Index (IndexOf x xs)) xs
 
 class Admits' (x :: * -> *) (xs :: [* -> *]) (n :: Nat) where
-  push' :: Index n -> x a -> Instrs xs a -> Instrs xs a
-  pull' :: Index n -> Instrs xs a -> x a
+  push' :: Index n -> x a -> Attrs xs a -> Attrs xs a
+  pull' :: Index n -> Attrs xs a -> x a
 instance (xs ~ (x ': xs')) => Admits' x xs 'Z where
-  push' _ xa (Instr _ fs) = Instr xa fs
-  pull' _ (Instr fa _) = fa
+  push' _ xa (Attr _ fs) = Attr xa fs
+  pull' _ (Attr fa _) = fa
 instance (Admits' x xs' (IndexOf x xs')) => Admits' x (x' ': xs') ('S n) where
-  push' _ xa (Instr fa xs) = Instr fa (push' (Index :: Index (IndexOf x xs')) xa xs)
-  pull' _ (Instr _ xs) = pull' (Index :: Index (IndexOf x xs')) xs
+  push' _ xa (Attr fa xs) = Attr fa (push' (Index :: Index (IndexOf x xs')) xa xs)
+  pull' _ (Attr _ xs) = pull' (Index :: Index (IndexOf x xs')) xs
 
 class AdmitsSubset (xs :: [* -> *]) (ys :: [* -> *]) where
-  pushSubset :: Instrs xs a -> Instrs ys a -> Instrs ys a
-  pullSubset :: Instrs ys a -> Instrs xs a
+  pushSubset :: Attrs xs a -> Attrs ys a -> Attrs ys a
+  pullSubset :: Attrs ys a -> Attrs xs a
 instance AdmitsSubset '[] ys where
   pushSubset _ ys = ys
   pullSubset _ = Empty
 instance (Denies x xs,Admits' x ys (IndexOf x ys),AdmitsSubset xs ys) => AdmitsSubset (x ': xs) ys where
-  pushSubset (Instr xa xs) ys = pushSubset xs (push xa ys)
+  pushSubset (Attr xa xs) ys = pushSubset xs (push xa ys)
   pullSubset ys =
     let xa = pull ys
-    in Instr xa (pullSubset ys)
+    in Attr xa (pullSubset ys)
 
 data Symbol (symbols :: [* -> *]) a where
   Symbol  :: Denies s ss => s a -> Symbol (s ': ss) a
@@ -130,40 +130,38 @@ instance Pair ((->) a) ((,) a) where
   pair p f g = uncurry (\x -> p (f x)) g
 instance Pair ((,) a) ((->) a) where
   pair p (l,r) g = p r (g l)
-instance Pair (Instrs '[]) (Symbol '[])
-instance (Pair i s,Pair (Instrs is) (Symbol ss))
-    => Pair (Instrs (i ': is)) (Symbol (s ': ss))
+instance Pair (Attrs '[]) (Symbol '[])
+instance (Pair i s,Pair (Attrs is) (Symbol ss))
+    => Pair (Attrs (i ': is)) (Symbol (s ': ss))
   where
-    pair p (Instr ia _) (Symbol  sa) = pair p ia sa
-    pair p (Instr _ is) (Further ss) = pair p is ss
+    pair p (Attr ia _) (Symbol  sa) = pair p ia sa
+    pair p (Attr _ is) (Further ss) = pair p is ss
 
 type family End (xs :: [k]) :: k where
   End '[x] = x
   End (x ': xs) = End xs
 
-data PlanT symbols m a
+data Plan symbols m a
   = Pure a
-  | M (m (PlanT symbols m a))
-  | forall b. Step (Symbol symbols b) (b -> PlanT symbols m a)
-
-type Plan symbols a = PlanT symbols Identity a
+  | M (m (Plan symbols m a))
+  | forall b. Step (Symbol symbols b) (b -> Plan symbols m a)
 
 {-# INLINE lift #-}
-lift :: Functor m => m a -> PlanT symbols m a
+lift :: Functor m => m a -> Plan symbols m a
 lift m = M (fmap Pure m)
 
 {-# INLINE symbol #-}
-symbol :: Has x symbols m => x a -> PlanT symbols m a
+symbol :: Has x symbols m => x a -> Plan symbols m a
 symbol xa = Step (inj xa) return
 
-instance Functor m => Functor (PlanT symbols m) where
+instance Functor m => Functor (Plan symbols m) where
   fmap f p0 = _fmap f p0
 
-instance Functor m => Applicative (PlanT symbols m) where
+instance Functor m => Applicative (Plan symbols m) where
   pure = Pure
   (<*>) = ap
 
-instance Functor m => Monad (PlanT symbols m) where
+instance Functor m => Monad (Plan symbols m) where
 #ifdef TRANSFORMERS_SAFE
   return = M . fmap Pure
 #else
@@ -172,7 +170,7 @@ instance Functor m => Monad (PlanT symbols m) where
   (>>=) = _bind
 
 {-# NOINLINE _fmap #-}
-_fmap :: Functor m => (a -> b) -> PlanT symbols m a -> PlanT symbols m b
+_fmap :: Functor m => (a -> b) -> Plan symbols m a -> Plan symbols m b
 _fmap f p0 = go p0
   where
     go p =
@@ -191,7 +189,7 @@ _fmap f p0 = go p0
   #-}
 
 {-# NOINLINE _bind #-}
-_bind :: Functor m => PlanT symbols m a -> (a -> PlanT symbols m a') -> PlanT symbols m a'
+_bind :: Functor m => Plan symbols m a -> (a -> Plan symbols m a') -> Plan symbols m a'
 p0 `_bind` f = go p0
   where
     go p =
@@ -209,15 +207,15 @@ p0 `_bind` f = go p0
         _bind (Pure r) f = f r;
   #-}
 
-instance MonadPlus m => Alternative (PlanT fs m) where
+instance MonadPlus m => Alternative (Plan fs m) where
   empty = mzero
   (<|>) = mplus
 
-instance MonadPlus m => MonadPlus (PlanT fs m) where
+instance MonadPlus m => MonadPlus (Plan fs m) where
   mzero = lift mzero
   mplus = _mplus
 
-_mplus :: MonadPlus m => PlanT fs m a -> PlanT fs m a -> PlanT fs m a
+_mplus :: MonadPlus m => Plan fs m a -> Plan fs m a -> Plan fs m a
 _mplus p0 p1 = go p0
   where
     go p =
@@ -226,11 +224,11 @@ _mplus p0 p1 = go p0
         Pure r -> Pure r
         M m -> M (fmap go m `mplus` return p1)
 
-instance (Monad m,Monoid r) => Monoid (PlanT fs m r) where
+instance (Monad m,Monoid r) => Monoid (Plan fs m r) where
   mempty = pure mempty
   mappend = _mappend
 
-_mappend :: (Monad m,Monoid r) => PlanT fs m r -> PlanT fs m r -> PlanT fs m r
+_mappend :: (Monad m,Monoid r) => Plan fs m r -> Plan fs m r -> Plan fs m r
 _mappend p0 p1 = go p0
     where
       go p =
@@ -239,93 +237,83 @@ _mappend p0 p1 = go p0
           M m -> M (fmap go m)
           Pure r -> fmap (mappend r) p1
 
-delta :: (Pair (Instrs is) (Symbol symbols),Monad m)
-       => InstructionsT is m
-       -> PlanT symbols m a
-       -> m (InstructionsT is m,a)
+delta :: (Pair (Attrs is) (Symbol symbols),Monad m)
+       => Object is m
+       -> Plan symbols m a
+       -> m (Object is m,a)
 delta = _delta
 
 {-# NOINLINE _delta #-}
-_delta :: forall is symbols m a. (Pair (Instrs is) (Symbol symbols),Monad m)
-       => InstructionsT is m
-       -> PlanT symbols m a
-       -> m (InstructionsT is m,a)
+_delta :: forall is symbols m a. (Pair (Attrs is) (Symbol symbols),Monad m)
+       => Object is m
+       -> Plan symbols m a
+       -> m (Object is m,a)
 _delta is p0 = go p0
   where
-    go :: PlanT symbols m a -> m (InstructionsT is m,a)
+    go :: Plan symbols m a -> m (Object is m,a)
     go p =
       case p of
         Pure res -> pure (is,res)
         M mp -> mp >>= go
         Step syms k ->
-          let (trans,b) = pair (\a x -> (a,x)) (getContext is) syms
+          let (trans,b) = pair (\a x -> (a,x)) (objectAttrs is) syms
           in trans is >>= \is' -> _delta is' (k b)
 
 type Uses f fs m = (Monad m,Admits' f fs (IndexOf f fs))
-type Using fs' fs m = (Monad m,AdmitsSubset fs' fs)
+type Extends extended orig m = (Monad m,AdmitsSubset orig extended)
+type (extended :=> orig) m = Extends extended orig m
+
 type Has f fs m = (Monad m,Allows' f fs (IndexOf f fs))
-type Having fs' fs m = (Monad m,AllowsSubset fs' fs)
+type (f :< fs) m = Has f fs m
+type Invokes fs' fs m = (Monad m,AllowsSubset fs' fs)
 
 class AllowsSubset fs' fs
 instance AllowsSubset '[] fs
 instance (Allows' f fs (IndexOf f fs),AllowsSubset fs' fs)
   => AllowsSubset (f ': fs') fs
 
-type TransformationT instrs m
-  =      (InstructionsT instrs m)
-    -> m (InstructionsT instrs m)
-
-type Transformation instrs = TransformationT instrs Identity
-
-type Instruction instr instrs m = instr (TransformationT instrs m)
-type Context instrs m = Instrs instrs (TransformationT instrs m)
-type Build instrs m = Context instrs m -> Context instrs m
-newtype InstructionsT instrs m = Instructions { getContext :: Context instrs m }
-type Instructions instrs = InstructionsT instrs Identity
+type Method fs m = Object fs m -> m (Object fs m)
+type Attribute f fs m = f (Method fs m)
+newtype Object fs m = Object { objectAttrs :: Attrs fs (Method fs m) }
 
 class UnsafeBuild fs where
-  unsafeBuild :: Instrs fs a
+  unsafeBuild :: Attrs fs a
 instance UnsafeBuild '[] where
   unsafeBuild = Empty
 instance (Typeable f,Denies f fs,UnsafeBuild fs) => UnsafeBuild (f ': fs) where
   unsafeBuild =
-    let instr = show (typeOf1 (undefined :: forall a. f a))
-        msg = "Instruction (" ++ instr ++ ") uninitialized."
-    in Instr (error msg) unsafeBuild
+    let attr = show (typeOf1 (undefined :: forall a. f a))
+        msg = "Attribute (" ++ attr ++ ") uninitialized."
+    in Attr (error msg) unsafeBuild
 
 {-# INLINE build #-}
-build :: UnsafeBuild instrs => Build instrs m -> InstructionsT instrs m
-build f = Instructions $ f unsafeBuild
-
-class UnsafeBuild' fs where
-  unsafeBuild' :: Instrs fs a
-instance UnsafeBuild' '[] where
-  unsafeBuild' = Empty
-instance (Denies f fs,UnsafeBuild' fs) => UnsafeBuild' (f ': fs) where
-  unsafeBuild' = Instr undefined unsafeBuild'
-
-build' :: UnsafeBuild' instrs => Build instrs m -> InstructionsT instrs m
-build' f = Instructions $ f unsafeBuild'
+build :: UnsafeBuild attrs
+      => (    Attrs attrs (Method attrs m)
+           -> Attrs attrs (Method attrs m)
+         )
+      -> Object attrs m
+build f = Object $ f unsafeBuild
 
 {-# INLINE add #-}
-add :: (Denies f fs) => f a -> Instrs fs a -> Instrs (f ': fs) a
-add fa Empty = Instr fa Empty
-add fa i = Instr fa i
+add :: (Denies f fs) => f a -> Attrs fs a -> Attrs (f ': fs) a
+add fa Empty = Attr fa Empty
+add fa i = Attr fa i
 
 {-# INLINE (*:*)#-}
-(*:*) :: Denies f fs => f a -> Instrs fs a -> Instrs (f ': fs) a
+(*:*) :: Denies f fs => f a -> Attrs fs a -> Attrs (f ': fs) a
 (*:*) = add
-infixr 5 *:*
+infixr 6 *:*
 
-{-# INLINE view #-}
-view :: Admits instr instrs => InstructionsT instrs m -> Instruction instr instrs m
-view xs = pull $ getContext xs
+{-# INLINE (&) #-}
+(&) :: Admits f fs => Object fs m -> Attribute f fs m
+(&) xs = pull $ objectAttrs xs
 
-{-# INLINE instruction #-}
-instruction :: Uses instr instrs m => Instruction instr instrs m -> InstructionsT instrs m -> m (InstructionsT instrs m)
-instruction x is = {-# SCC "instruction_building" #-} pure $ Instructions $ push x $ getContext is
+infixl 5 .=
+{-# INLINE (.=) #-}
+(.=) :: Uses f fs m => Object fs m -> Attribute f fs m -> Object fs m
+is .= x = Object $ push x $ objectAttrs is
 
-cutoff :: Monad m => Integer -> PlanT fs m a -> PlanT fs m (Maybe a)
+cutoff :: Monad m => Integer -> Plan fs m a -> Plan fs m (Maybe a)
 cutoff n _ | n <= 0 = return Nothing
 cutoff n p =
   case p of
@@ -334,7 +322,7 @@ cutoff n p =
     Step sym k -> Step sym (cutoff (n - 1) . k)
 
 newtype Codensity fs m a = Codensity
-  { runCodensity :: forall b. (a -> PlanT fs m b) -> PlanT fs m b
+  { runCodensity :: forall b. (a -> Plan fs m b) -> Plan fs m b
   }
 
 instance Functor (Codensity fs k) where
@@ -365,22 +353,22 @@ instance MonadPlus v => MonadPlus (Codensity fs v) where
   Codensity m `mplus` Codensity n = Codensity (\k -> m k `mplus` n k)
   {-# INLINE mplus #-}
 
-toCodensity :: Functor m => PlanT fs m a -> Codensity fs m a
+toCodensity :: Functor m => Plan fs m a -> Codensity fs m a
 toCodensity f = Codensity (f >>=)
 
-fromCodensity :: Monad m => Codensity fs m a -> PlanT fs m a
+fromCodensity :: Monad m => Codensity fs m a -> Plan fs m a
 fromCodensity a = runCodensity a return
 
 {-
 -- Example usages for asymptotic improvements:
 
-replicateM :: Monad m => Int -> PlanT fs m a -> PlanT fs m [a]
+replicateM :: Monad m => Int -> Plan fs m a -> Plan fs m [a]
 replicateM n f = fromCodensity $ Control.Monad.replicateM n (toCodensity f)
 
-sequence :: Monad m => [PlanT fs m a] -> PlanT fs m [a]
+sequence :: Monad m => [Plan fs m a] -> Plan fs m [a]
 sequence = fromCodensity . Control.Monad.sequence . map toCodensity
 
-mapM :: Monad m => (a -> PlanT fs m b) -> [a] -> PlanT fs m [b]
+mapM :: Monad m => (a -> Plan fs m b) -> [a] -> Plan fs m [b]
 mapM f = fromCodensity . Control.Monad.mapM (toCodensity . f)
 
 -}

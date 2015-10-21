@@ -9,15 +9,15 @@ import Unsafe.Coerce
 import Control.Monad
 
 data Thread k
-  = forall fs m a. Thread (PlanT fs m a) k
+  = forall fs m a. Thread (Plan fs m a) k
   | Yield k
   | Stop
 
 -- round-robin threading
 -- use: thread $ \fork yield -> do { .. ; }
 thread :: Has Thread fs m
-     => ((forall b. PlanT fs m b -> PlanT fs m ()) -> PlanT fs m () -> PlanT fs m a)
-     -> PlanT fs m a
+     => ((forall b. Plan fs m b -> Plan fs m ()) -> Plan fs m () -> Plan fs m a)
+     -> Plan fs m a
 thread x = do
     transform emptyQueue
       $ x (\p -> symbol (Thread (p >> symbol Stop) ()))
@@ -55,20 +55,20 @@ instance Pair Threading Thread where
 
 data Threading k = Threading k
 
-threads :: Uses Threading gs m => Instruction Threading gs m
+threads :: Monad m => Attribute Threading gs m
 threads = Threading return
 
 -- amortized constant-time queue
-data Queue = forall fs m a. Queue [PlanT fs m a] [PlanT fs m a]
+data Queue = forall fs m a. Queue [Plan fs m a] [Plan fs m a]
 
 emptyQueue = Queue [] []
 
 newQueue stack = Queue stack []
 
-enqueue :: (forall fs m a. PlanT fs m a) -> Queue -> Queue
+enqueue :: (forall fs m a. Plan fs m a) -> Queue -> Queue
 enqueue a (Queue l r) = Queue l (a:r)
 
-dequeue :: Queue -> Maybe (Queue,PlanT fs m a)
+dequeue :: Queue -> Maybe (Queue,Plan fs m a)
 dequeue (Queue [] []) = Nothing
 dequeue (Queue [] xs) =
   let stack = reverse xs

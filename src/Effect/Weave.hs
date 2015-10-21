@@ -22,26 +22,26 @@ import Mop.Trans
 
 import Control.Applicative
 import Control.Monad
-import Data.Function
+import Data.Function hiding ((&))
 import Data.IORef
 import System.IO.Unsafe
 import Unsafe.Coerce
 
 data Weave k
   = FreshScope (Integer -> k)
-  | forall fs a' a m r. Request Integer a' (a  -> PlanT fs m r)
-  | forall fs b' b m r. Respond Integer b  (b' -> PlanT fs m r)
+  | forall fs a' a m r. Request Integer a' (a  -> Plan fs m r)
+  | forall fs b' b m r. Respond Integer b  (b' -> Plan fs m r)
 
 data Weaving k = Weaving (IORef Integer) k
 
 {-# INLINABLE freshScope #-}
-freshScope :: Has Weave fs m => PlanT fs m Integer
+freshScope :: Has Weave fs m => Plan fs m Integer
 freshScope = symbol (FreshScope id)
 
 {-# INLINE weaving #-}
-weaving :: Uses Weaving fs m => Instruction Weaving fs m
+weaving :: Uses Weaving fs m => Attribute Weaving fs m
 weaving = Weaving (unsafePerformIO (newIORef 0)) $ \fs ->
-  let Weaving n k = view fs
+  let Weaving n k = (fs&)
       n' = unsafePerformIO (modifyIORef n succ)
   in n' `seq` return fs
 
@@ -67,7 +67,7 @@ instance Pair Weaving Weave where
                      \ is unsupported."
 
 {-# INLINE linearize #-}
-linearize :: Has Weave fs m => Effect fs m r -> PlanT fs m r
+linearize :: Has Weave fs m => Effect fs m r -> Plan fs m r
 linearize e = do
     scope <- freshScope
     go' scope $ runWoven e (\a' ap -> symbol (Request scope a' ap)) (\b b'p -> symbol (Respond scope b b'p))
@@ -157,51 +157,51 @@ type Effect fs m r = Woven fs X () () X m r
 type Producer fs b m r = Woven fs X () () b m r
 -- producer $ \yield -> do { .. ; }
 {-# INLINABLE producer #-}
-producer :: forall fs m b r. Has Weave fs m => ((b -> PlanT fs m ()) -> PlanT fs m r) -> Producer' fs b m r
+producer :: forall fs m b r. Has Weave fs m => ((b -> Plan fs m ()) -> Plan fs m r) -> Producer' fs b m r
 producer f = Woven $ \_ dn ->
-  f (\b -> symbol (Respond (getScope dn) b (return :: forall a. a -> PlanT fs m a)))
+  f (\b -> symbol (Respond (getScope dn) b (return :: forall a. a -> Plan fs m a)))
 
 type Consumer fs a m r = Woven fs () a () X m r
 -- consumer $ \await -> do { .. ; }
 {-# INLINABLE consumer #-}
-consumer :: forall fs m a r. Has Weave fs m => (PlanT fs m a -> PlanT fs m r) -> Consumer' fs a m r
+consumer :: forall fs m a r. Has Weave fs m => (Plan fs m a -> Plan fs m r) -> Consumer' fs a m r
 consumer f = Woven $ \up _ ->
-  f (symbol (Request (getScope up) () (return :: forall x. x -> PlanT fs m x)))
+  f (symbol (Request (getScope up) () (return :: forall x. x -> Plan fs m x)))
 
 type Pipe fs a b m r = Woven fs () a () b m r
 -- pipe $ \await yield -> do { .. ; }
 {-# INLINABLE pipe #-}
-pipe :: forall fs m a b x r. Has Weave fs m => (PlanT fs m a -> (b -> PlanT fs m x) -> PlanT fs m r) -> Pipe fs a b m r
+pipe :: forall fs m a b x r. Has Weave fs m => (Plan fs m a -> (b -> Plan fs m x) -> Plan fs m r) -> Pipe fs a b m r
 pipe f = Woven $ \up dn ->
-  f (symbol (Request (getScope up) () (return :: forall z. z -> PlanT fs m z)))
-    (\b -> symbol (Respond (getScope dn) b (return :: forall z. z -> PlanT fs m z)))
+  f (symbol (Request (getScope up) () (return :: forall z. z -> Plan fs m z)))
+    (\b -> symbol (Respond (getScope dn) b (return :: forall z. z -> Plan fs m z)))
 
 type Client fs a' a m r = Woven fs a' a () X m r
 -- client $ \request -> do { .. ; }
 {-# INLINABLE client #-}
-client :: forall fs m a' a r. Has Weave fs m => ((a -> PlanT fs m a') -> PlanT fs m r) -> Client' fs a' a m r
+client :: forall fs m a' a r. Has Weave fs m => ((a -> Plan fs m a') -> Plan fs m r) -> Client' fs a' a m r
 client f = Woven $ \up _ ->
-  f (\a -> symbol (Request (getScope up) a (return :: forall z. z -> PlanT fs m z)))
+  f (\a -> symbol (Request (getScope up) a (return :: forall z. z -> Plan fs m z)))
 
 type Server fs b' b m r = Woven fs X () b' b m r
 -- server $ \respond -> do { .. ; }
 {-# INLINABLE server #-}
-server :: forall fs m b' b r. Has Weave fs m => ((b' -> PlanT fs m b) -> PlanT fs m r) -> Server' fs b' b m r
+server :: forall fs m b' b r. Has Weave fs m => ((b' -> Plan fs m b) -> Plan fs m r) -> Server' fs b' b m r
 server f = Woven $ \_ dn ->
-  f (\b' -> symbol (Respond (getScope dn) b' (return :: forall z. z -> PlanT fs m z)))
+  f (\b' -> symbol (Respond (getScope dn) b' (return :: forall z. z -> Plan fs m z)))
 
 newtype Woven fs a' a b' b m r
   =  Woven
-  { runWoven :: (forall x. a' -> (a -> PlanT fs m x) -> PlanT fs m x)
-             -> (forall x. b -> (b' -> PlanT fs m x) -> PlanT fs m x)
-             -> PlanT fs m r
+  { runWoven :: (forall x. a' -> (a -> Plan fs m x) -> Plan fs m x)
+             -> (forall x. b -> (b' -> Plan fs m x) -> Plan fs m x)
+             -> Plan fs m r
   }
 -- weave $ \request respond -> do { .. ; }
 {-# INLINABLE weave #-}
-weave :: forall fs a a' b b' m r. Has Weave fs m => ((a -> PlanT fs m a') -> (b' -> PlanT fs m b) -> PlanT fs m r) -> Woven fs a' a b' b m r
+weave :: forall fs a a' b b' m r. Has Weave fs m => ((a -> Plan fs m a') -> (b' -> Plan fs m b) -> Plan fs m r) -> Woven fs a' a b' b m r
 weave f = Woven $ \up dn ->
-  f (\a -> symbol (Request (getScope up) a (return :: forall z. z -> PlanT fs m z)))
-    (\b' -> symbol (Respond (getScope dn) b' (return :: forall z. z -> PlanT fs m z)))
+  f (\a -> symbol (Request (getScope up) a (return :: forall z. z -> Plan fs m z)))
+    (\b' -> symbol (Respond (getScope dn) b' (return :: forall z. z -> Plan fs m z)))
 
 type Effect' fs m r = forall x' x y' y . Woven fs x' x y' y m r
 
@@ -375,7 +375,7 @@ p0 >>~ fb0 = Woven $ \up dn -> transform (getScope up) up dn (runWoven p0 up (un
       where
         go = goLeft (\b -> runWoven (fb0 b) (unsafeCoerce up) (unsafeCoerce dn))
           where
-            goLeft :: (b -> PlanT fs m r) -> PlanT fs m r -> PlanT fs m r
+            goLeft :: (b -> Plan fs m r) -> Plan fs m r -> Plan fs m r
             goLeft fb = goLeft'
               where
                 goLeft' p =
@@ -392,7 +392,7 @@ p0 >>~ fb0 = Woven $ \up dn -> transform (getScope up) up dn (runWoven p0 up (un
                         Nothing -> Step sym (\b -> goLeft' (bp b))
                     M m -> M (fmap goLeft' m)
                     Pure r -> Pure r
-            goRight :: (b' -> PlanT fs m r) -> PlanT fs m r -> PlanT fs m r
+            goRight :: (b' -> Plan fs m r) -> Plan fs m r -> Plan fs m r
             goRight b'p = goRight'
               where
                 goRight' p =
@@ -450,7 +450,7 @@ fb' +>> p0 = Woven $ \up dn -> transform (getScope up) up dn (runWoven p0 (unsaf
       where
         go = goRight (\b' -> runWoven (fb' b') (unsafeCoerce up) (unsafeCoerce dn))
           where
-            goRight :: (b' -> PlanT fs m r) -> PlanT fs m r -> PlanT fs m r
+            goRight :: (b' -> Plan fs m r) -> Plan fs m r -> Plan fs m r
             goRight fb' = goRight'
               where
                 goRight' p =
@@ -467,7 +467,7 @@ fb' +>> p0 = Woven $ \up dn -> transform (getScope up) up dn (runWoven p0 (unsaf
                         Nothing -> Step sym (\b -> goRight' (bp b))
                     M m -> M (fmap goRight' m)
                     Pure r -> Pure r
-            goLeft :: (b -> PlanT fs m r) -> PlanT fs m r -> PlanT fs m r
+            goLeft :: (b -> Plan fs m r) -> Plan fs m r -> Plan fs m r
             goLeft bp = goLeft'
               where
                 goLeft' p =

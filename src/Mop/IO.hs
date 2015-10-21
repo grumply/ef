@@ -7,18 +7,18 @@ import qualified Control.Exception as Exc
 import System.IO.Unsafe
 
 {-# INLINE inlineUnsafePerformMIO #-}
-inlineUnsafePerformMIO :: forall fs m a. Functor m => IO a -> PlanT fs m a
-inlineUnsafePerformMIO = (return :: forall z. z -> PlanT fs m z) . unsafePerformIO
+inlineUnsafePerformMIO :: forall fs m a. Functor m => IO a -> Plan fs m a
+inlineUnsafePerformMIO = (return :: forall z. z -> Plan fs m z) . unsafePerformIO
 
 {-# NOINLINE unsafePerformMIO #-}
-unsafePerformMIO :: forall fs m a. Functor m => IO a -> PlanT fs m a
-unsafePerformMIO = (return :: forall z. z -> PlanT fs m z) . unsafePerformIO
+unsafePerformMIO :: forall fs m a. Functor m => IO a -> Plan fs m a
+unsafePerformMIO = (return :: forall z. z -> Plan fs m z) . unsafePerformIO
 
 class Monad m => MIO m where
-  unsafeMIO  :: Has Throw fs m => IO a -> PlanT fs m a
-  maskedMIO_ :: Has Throw fs m => IO a -> PlanT fs m a
-  maskedMIO  :: Has Throw fs m => ((forall (a :: *). IO a -> IO a) -> IO b) -> PlanT fs m b
-  mio        :: Has Throw fs m => IO a -> PlanT fs m a
+  unsafeMIO  :: Has Throw fs m => IO a -> Plan fs m a
+  maskedMIO_ :: Has Throw fs m => IO a -> Plan fs m a
+  maskedMIO  :: Has Throw fs m => ((forall (a :: *). IO a -> IO a) -> IO b) -> Plan fs m b
+  mio        :: Has Throw fs m => IO a -> Plan fs m a
 
 instance MIO IO where
   {-# INLINE unsafeMIO #-}

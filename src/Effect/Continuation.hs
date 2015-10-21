@@ -12,7 +12,7 @@ data Continuation k
 data Continuations k = Continuations Integer k
 
 -- use: enter $ \exit -> do { .. ; }
-enter :: Has Continuation fs m => ((forall b. a -> PlanT fs m b) -> PlanT fs m a) -> PlanT fs m a
+enter :: Has Continuation fs m => ((forall b. a -> Plan fs m b) -> Plan fs m a) -> Plan fs m a
 enter x = do
     scope <- freshScope
     transform scope $ x (\a -> symbol (Continuation scope a))
@@ -34,13 +34,13 @@ enter x = do
             M m -> M (fmap go m)
             Pure r -> Pure r
 
-freshScope :: Has Continuation fs m => PlanT fs m Integer
+freshScope :: Has Continuation fs m => Plan fs m Integer
 freshScope = symbol (FreshScope id)
 
-continuations :: Uses Continuations gs m => Instruction Continuations gs m
+continuations :: Uses Continuations gs m => Attribute Continuations gs m
 continuations = Continuations 0 $ \fs ->
-  let Continuations i k = view fs
-  in instruction (Continuations (succ i) k) fs
+  let Continuations i k = (fs&)
+  in pure $ fs .= Continuations (succ i) k
 
 instance Pair Continuations Continuation where
   pair p (Continuations i k) (FreshScope ik) = p k (ik i)

@@ -1,8 +1,8 @@
-{-# LANGUAGE ImpredicativeTypes #-}
 module Effect.Transient
-  ( Transient, Transience, transience
+  ( Transient, Transience, transience, transiently
+  , TransientScope
   , Token
-  , deallocate, register, unregister, onEnd
+  , deallocate, allocate, register, unregister, onEnd
   ) where
 
 import Mop
@@ -21,66 +21,91 @@ import Unsafe.Coerce
 -- as well as onEnd/finalize and register/unregister.
 
 -- I believe the only approach that will fix the asynchronous exception safety
--- issues is attaching transient to the top-level scope by embedding it inside
+-- issue is attaching transient to the top-level scope by embedding it inside
 -- delta. But as soon as you embed it in delta, performance will drop
 -- tremendously. Please, if you have any ideas, send them to me at:
 -- sean@grump.ly
+
+-- For now, exception safety can be guaranteed through internal use of mio for
+-- finalizers. However, this will not permit exception safety /between/
+-- executions of finalizers, sadly. Thus, to achieve an acceptable level of
+-- exception safety, it is imperative not to conflate resource management
+-- with asynchronous exception safety; we must, by current design, be careful
+-- when using resources and make thoughtful use of exception handling.
+
 
 newtype Token a = Token Integer
 
 data Transient k
   = FreshScope (Integer -> k)
-  | forall a fs m. Allocate Integer (PlanT fs m a) (a -> PlanT fs m ()) (Token a -> k)
-  | forall a. Deallocate (Token a) k
-  | forall fs m a. Register (Token a) (PlanT fs m ()) k
-  | forall a. Unregister (Token a) k
-  | forall fs m a. OnEnd (PlanT fs m ()) (Token () -> k)
+
+  | forall a fs m . Allocate   Integer (Plan fs m a) (a -> Plan fs m ()) ((a,Token a) -> k)
+
+  | forall fs m a . OnEnd      Integer           (Plan fs m ()) (Token () -> k)
+  | forall fs m a . Register   Integer (Token a) (Plan fs m ()) k
+
+  | forall a      . Unregister Integer (Token a) k
+  | forall a      . Deallocate         (Token a) k
 
 data Transience k = Transience (IORef Integer) k k
-transience :: Uses Transience fs m => Instruction Transience fs m
+transience :: Uses Transience fs m => Attribute Transience fs m
 transience = flip (Transience (unsafePerformIO (newIORef 0))) return $ \fs ->
-  let Transience i non me = view fs
+  let Transience i non me = (fs&)
       next = unsafePerformIO (modifyIORef i succ)
   in next `seq` return fs
+
+transientMisuse :: String -> a
+transientMisuse method = error $
+  "Transient misuse: " ++ method ++ " used outside of a 'transiently' block. \
+  \Do not return a TransientScope or its internal fields from \
+  \it's instantiation block."
 
 instance Pair Transience Transient where
   pair p (Transience _ _ k) (Deallocate _ k') = p k k'
   pair p (Transience i k _) (FreshScope ik)   =
     let n = unsafePerformIO $ readIORef i
     in n `seq` p k (ik n)
-  pair p _ _ = error "Transient misuse"
+  pair p _ (OnEnd _ _ _)      = transientMisuse "OnEnd"
+  pair p _ (Register _ _ _ _) = transientMisuse "Register"
+  pair p _ (Unregister _ _ _) = transientMisuse "Unregister"
 
-freshScope :: Has Transient fs m => PlanT fs m Integer
+freshScope :: Has Transient fs m => Plan fs m Integer
 freshScope = symbol (FreshScope id)
 
-deallocate :: Has Transient fs m => Token a -> PlanT fs m ()
+deallocate :: Has Transient fs m => Token a -> Plan fs m ()
 deallocate rsrc = symbol (Deallocate rsrc ())
 
-register :: Has Transient fs m => Token a -> PlanT fs m () -> PlanT fs m ()
-register rsrc onEnd = symbol (Register rsrc onEnd ())
+data TransientScope fs m = TransientScope
+  { allocate   :: forall a. Plan fs m a -> (a -> Plan fs m ()) -> Plan fs m (a,Token a)
+  , register   :: forall a. Token a -> Plan fs m () -> Plan fs m ()
+  , unregister :: forall a. Token a -> Plan fs m ()
+  , onEnd      ::           Plan fs m () -> Plan fs m (Token ())
+  }
 
-unregister :: Has Transient fs m => Token a -> PlanT fs m ()
-unregister rsrc = symbol (Unregister rsrc ())
+-- use: transiently $ \transient -> do
+--        (a,key) <- allocate transient _ _
+--        transient&unregister key
+--        onEnd transient _
+--        deallocate key
 
-onEnd :: Has Transient fs m => PlanT fs m () -> PlanT fs m (Token ())
-onEnd oE = symbol (OnEnd oE id)
-
--- use: transiently $ \allocate ->
 transiently :: forall fs m r.
                (Has Transient fs m,Has Throw fs m,MIO m)
-            => (    (forall a. PlanT fs m a -> (a -> PlanT fs m ()) -> PlanT fs m (Token a))
-                 -> PlanT fs m r
-               ) -> PlanT fs m r
+            => (    TransientScope fs m
+                 -> Plan fs m r
+               ) -> Plan fs m r
 transiently x = do
   scope <- freshScope
   let alloc create onEnd = symbol (Allocate scope create onEnd id)
-  transform scope [] $ x alloc
+      register token onEnd = symbol (Register scope token onEnd ())
+      unregister token = symbol (Unregister scope token ())
+      onEnd oE = symbol (OnEnd scope oE id)
+  transform scope [] $ x $ TransientScope alloc register unregister onEnd
   where
     transform scope store = go store
       where
         go store = go'
           where
-            go' :: PlanT fs m r -> PlanT fs m r
+            go' :: Plan fs m r -> Plan fs m r
             go' p =
               case p of
                 Step sym bp ->
@@ -94,22 +119,29 @@ transiently x = do
                             let t = Token n
                             a <- unsafeCoerce create
                             go ((n,unsafeCoerce (oE a)):store)
-                               (bp (unsafeCoerce t))
+                               (bp (unsafeCoerce (a,t)))
                           else Step sym (\b -> go' (bp b))
                         Deallocate (Token t) _ -> do
                           case extract t store of
                             Just (store',cleanup) ->
                               Step sym (\b -> go store' (cleanup >> bp b))
                             Nothing -> Step sym (\b -> go' (bp b))
-                        Register (Token t) p _ ->
-                          go (unsafeCoerce (t,p):store) (bp (unsafeCoerce ()))
-                        Unregister (Token t) _ ->
-                          go (filter ((/= t) . fst) store)
-                             (bp (unsafeCoerce ()))
-                        OnEnd oE _ -> do
-                          n <- freshScope
-                          go (unsafeCoerce (n,oE):store)
-                             (bp (unsafeCoerce (Token n :: Token ())))
+                        Register i (Token t) p _ ->
+                          if i == scope
+                          then go (unsafeCoerce (t,p):store) (bp (unsafeCoerce ()))
+                          else Step sym (\b -> go' (bp b))
+                        Unregister i (Token t) _ ->
+                          if i == scope
+                          then go (filter ((/= t) . fst) store)
+                                  (bp (unsafeCoerce ()))
+                          else Step sym (\b -> go' (bp b))
+                        OnEnd i oE _ -> do
+                          if i == scope
+                          then do
+                            n <- freshScope
+                            go (unsafeCoerce (n,oE):store)
+                               (bp (unsafeCoerce (Token n :: Token ())))
+                          else Step sym (\b -> go' (bp b))
                         _ -> Step sym (\b -> go' (bp b))
                     Nothing -> Step sym (\b -> go' (bp b))
                 M m -> M (fmap go' m)
@@ -122,5 +154,5 @@ transiently x = do
       where
         finish (xs,[]) = Nothing
         finish (xs,[a]) = Just (xs,a)
-        finish (xs,rs) = Just (xs,foldr1 (>>) rs :: PlanT fs m ())
+        finish (xs,rs) = Just (xs,foldr1 (>>) rs :: Plan fs m ())
         go (t,x) = if t == n then Right x else Left (t,x)

@@ -20,11 +20,6 @@ import Unsafe.Coerce
 import Data.Binary
 
 {-
-Because of the GHC RTS awesomeness, we don't need an Executor.
-
-Recover asynchronous API with the bidirectional communication available in
-Weave; that is, the actor can send a polling `request` to the MVar producer.
-
 Messages are passed with ActorRefs
 
 Supervisors supervise uniformly.

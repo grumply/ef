@@ -4,7 +4,8 @@ module Effect.Loop
   ) where
 
 import Mop
-import Data.Function
+
+import qualified Data.Function
 import Unsafe.Coerce
 
 -- | I believe this module is entirely subsumed by 'fix' and named functions.
@@ -37,23 +38,23 @@ data Loop k
 
 data Loops k = Loops Integer k
 
-freshScope :: Has Loop fs m => PlanT fs m Integer
+freshScope :: Has Loop fs m => Plan fs m Integer
 freshScope = symbol (FreshScope id)
 
 loop :: forall fs m s a. Has Loop fs m
      => s
-     -> (    (forall b. a -> PlanT fs m b)
-          -> (forall b. s -> PlanT fs m b)
+     -> (    (forall b. a -> Plan fs m b)
+          -> (forall b. s -> Plan fs m b)
           -> s
-          -> PlanT fs m a
+          -> Plan fs m a
         )
-     -> PlanT fs m a
+     -> Plan fs m a
 loop s0 x = do
     scope <- freshScope
     let break a      = symbol (Break scope a)
         continue s   = symbol (Continue scope s)
         loopBody r s = transform scope r (x break continue s)
-    fix loopBody s0
+    Data.Function.fix loopBody s0
   where
     transform scope restart = go
       where
@@ -76,11 +77,10 @@ loop s0 x = do
             M m -> M (fmap go m)
             Pure r -> Pure r
 
-loops :: Uses Loops gs m
-      => Instruction Loops gs m
+loops :: Uses Loops gs m => Attribute Loops gs m
 loops = Loops 0 $ \fs ->
-  let Loops i k = view fs
-  in instruction (Loops (succ i) k) fs
+  let Loops i k = (fs&)
+  in pure $ fs .= Loops (succ i) k
 
 instance Pair Loops Loop where
   pair p (Loops i k) (FreshScope ik) = p k (ik i)

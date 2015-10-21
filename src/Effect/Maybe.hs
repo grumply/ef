@@ -18,16 +18,16 @@ data May k
 
 data Possible k = Possible Integer k
 
-possible :: Uses Possible fs m => Instruction Possible fs m
+possible :: Uses Possible fs m => Attribute Possible fs m
 possible = Possible 0 $ \fs ->
-  let Possible i k = view fs
-  in instruction (Possible (succ i) k) fs
+  let Possible i k = (fs&)
+  in pure $ fs .= Possible (succ i) k
 
-freshScope :: Has May fs m => PlanT fs m Integer
+freshScope :: Has May fs m => Plan fs m Integer
 freshScope = symbol (FreshScope id)
 
 -- use: may $ \success failure ...
-tryMaybe :: Has May fs m => ((forall b. a -> PlanT fs m b) -> (forall b. PlanT fs m b) -> PlanT fs m (Maybe a)) -> PlanT fs m (Maybe a)
+tryMaybe :: Has May fs m => ((forall b. a -> Plan fs m b) -> (forall b. Plan fs m b) -> Plan fs m (Maybe a)) -> Plan fs m (Maybe a)
 tryMaybe x = do
     scope <- freshScope
     transform scope $ x (\a -> symbol (Success scope a)) (symbol (Failure scope))
@@ -54,7 +54,7 @@ tryMaybe x = do
             Pure r -> Pure r
 
 -- unsafe; rewrite this without the Maybe over the scoped result.
-tryEither :: Has May fs m => ((forall b. l -> PlanT fs m b) -> (forall b. r -> PlanT fs m b) -> PlanT fs m (Maybe (Either l r))) -> PlanT fs m (Either l r)
+tryEither :: Has May fs m => ((forall b. l -> Plan fs m b) -> (forall b. r -> Plan fs m b) -> Plan fs m (Maybe (Either l r))) -> Plan fs m (Either l r)
 tryEither x = fromJust <$> tryMaybe (\success _ -> x (success . Left) (success . Right))
 
 instance Pair Possible May where

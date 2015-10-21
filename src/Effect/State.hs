@@ -20,32 +20,32 @@ instance Pair (Store st) (State st) where
     let st' = stst st
     in pair p (st,k st') stk
 
-get :: Has (State st) fs m => PlanT fs m st
+get :: Has (State st) fs m => Plan fs m st
 get = symbol (Modify id id)
 
-gets :: Has (State st) fs m => (st -> a) -> PlanT fs m a
+gets :: Has (State st) fs m => (st -> a) -> Plan fs m a
 gets f = symbol (Modify id f)
 
-put :: Has (State st) fs m => st -> PlanT fs m ()
+put :: Has (State st) fs m => st -> Plan fs m ()
 put st = symbol (Modify (const st) (const ()))
 
-puts :: Has (State st) fs m => (a -> st) -> a -> PlanT fs m ()
+puts :: Has (State st) fs m => (a -> st) -> a -> Plan fs m ()
 puts f a = symbol (Modify (const (f a)) (const ()))
 
-swap :: Has (State st) fs m => st -> PlanT fs m st
+swap :: Has (State st) fs m => st -> Plan fs m st
 swap st = symbol (Modify (const st) id)
 
-modify :: Has (State st) fs m => (st -> st) -> PlanT fs m ()
+modify :: Has (State st) fs m => (st -> st) -> Plan fs m ()
 modify f = symbol (Modify f (const ()))
 
-modify' :: Has (State st) fs m => (st -> st) -> PlanT fs m ()
+modify' :: Has (State st) fs m => (st -> st) -> Plan fs m ()
 modify' f = do
   st <- get
   put $! f st
 
 {-# INLINABLE store #-}
-store :: Uses (Store st) fs m => st -> Instruction (Store st) fs m
-store st0 = Store st0 (instruction . store)
+store :: Uses (Store st) fs m => st -> Attribute (Store st) fs m
+store st0 = Store st0 (\a fs -> pure $ fs .= store a)
 
 data LocalState k
   = FreshScope (Integer -> k)
@@ -55,9 +55,9 @@ data LocalState k
 data LocalStore k = LocalStore (IORef Integer) k
 
 {-# INLINE localStore #-}
-localStore :: Uses LocalStore fs m => Instruction LocalStore fs m
+localStore :: Uses LocalStore fs m => Attribute LocalStore fs m
 localStore = LocalStore (unsafePerformIO $ newIORef 0) $ \fs ->
-  let LocalStore i k = view fs
+  let LocalStore i k = (fs&)
       x = unsafePerformIO (modifyIORef i succ)
   in x `seq` return fs
 
@@ -67,11 +67,11 @@ instance Pair LocalStore LocalState where
     in n `seq` p k (ik n)
 
 {-# INLINE freshScope #-}
-freshScope :: Has LocalState fs m => PlanT fs m Integer
+freshScope :: Has LocalState fs m => Plan fs m Integer
 freshScope = symbol (FreshScope id)
 
 {-# INLINE localState #-}
-localState :: Has LocalState fs m => st -> (PlanT fs m st -> (st -> PlanT fs m ()) -> PlanT fs m r) -> PlanT fs m r
+localState :: Has LocalState fs m => st -> (Plan fs m st -> (st -> Plan fs m ()) -> Plan fs m r) -> Plan fs m r
 localState st f = do
     scope <- freshScope
     transform scope st $ f (symbol (Get scope)) (\st -> symbol (Put scope st))

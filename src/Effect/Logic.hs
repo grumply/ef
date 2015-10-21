@@ -23,15 +23,15 @@ data Logic k
 data Nondet k = Nondet (IORef Integer) k
 
 {-# INLINE nondet #-}
-nondet :: Uses Nondet fs m => Instruction Nondet fs m
+nondet :: Uses Nondet fs m => Attribute Nondet fs m
 nondet = Nondet (unsafePerformIO (newIORef 0)) $ \fs ->
-  let Nondet i k = view fs
+  let Nondet i k = (fs&)
       next = unsafePerformIO (modifyIORef i succ)
   in next `seq` return fs
 
 
 {-# INLINABLE freshScope #-}
-freshScope :: Has Logic fs m => PlanT fs m Integer
+freshScope :: Has Logic fs m => Plan fs m Integer
 freshScope = symbol (FreshScope id)
 
 -- a nondeterministic producer
@@ -42,10 +42,10 @@ freshScope = symbol (FreshScope id)
 {-# INLINE logic #-}
 logic :: forall fs m r b.
          (Has Logic fs m,Has Weave fs m)
-      => (   (forall a. [a] -> PlanT fs m a)
-          -> (b -> PlanT fs m ())
-          -> (forall d. PlanT fs m d)
-          -> PlanT fs m ()
+      => (   (forall a. [a] -> Plan fs m a)
+          -> (b -> Plan fs m ())
+          -> (forall d. Plan fs m d)
+          -> Plan fs m ()
          )
       -> Producer fs b m ()
 logic l =
@@ -58,7 +58,7 @@ logic l =
   where
     go scope p0 = go' p0
       where
-        try :: forall a. [a] -> (a -> PlanT fs m ()) -> PlanT fs m () -> PlanT fs m ()
+        try :: forall a. [a] -> (a -> Plan fs m ()) -> Plan fs m () -> Plan fs m ()
         try [] bp or = or
         try (a:as) bp or = try' (bp a)
           where

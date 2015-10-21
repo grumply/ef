@@ -10,17 +10,17 @@ import Control.Concurrent (ThreadId)
 import Control.Concurrent.MVar
 import Control.Monad
 
-type Ref gs m a = (ThreadId,Promise (Either SomeException (InstructionsT gs m,a)))
+type Ref gs m a = (ThreadId,Promise (Either SomeException (Object gs m,a)))
 
 fork :: forall fs fs' gs m m' a.
-        (Pair (Instrs gs) (Symbol fs)
+        (Pair (Attrs gs) (Symbol fs)
         ,MIO m'
         ,Has Throw fs' m'
         ,Has Throw fs m
-        ) => InstructionsT gs m
-          -> PlanT fs m a
+        ) => Object gs m
+          -> Plan fs m a
           -> (forall x. m x -> IO x)
-          -> PlanT fs' m' (Ref gs m a)
+          -> Plan fs' m' (Ref gs m a)
 fork comp plan lft = do
   p <- mio newPromiseIO
   mv <- mio newEmptyMVar
@@ -40,14 +40,14 @@ fork comp plan lft = do
   return (tid,p)
 
 forkOS :: forall fs fs' gs m m' a.
-          (Pair (Instrs gs) (Symbol fs)
+          (Pair (Attrs gs) (Symbol fs)
           ,MIO m'
           ,Has Throw fs' m'
           ,Has Throw fs m
-          ) => InstructionsT gs m
-            -> PlanT fs m a
+          ) => Object gs m
+            -> Plan fs m a
             -> (forall x. m x -> IO x)
-            -> PlanT fs' m' (Ref gs m a)
+            -> Plan fs' m' (Ref gs m a)
 forkOS comp plan lft = do
   p <- mio newPromiseIO
   mv <- mio newEmptyMVar
@@ -67,15 +67,15 @@ forkOS comp plan lft = do
   return (tid,p)
 
 forkOn :: forall fs fs' gs m m' a.
-          (Pair (Instrs gs) (Symbol fs)
+          (Pair (Attrs gs) (Symbol fs)
           ,MIO m'
           ,Has Throw fs' m'
           ,Has Throw fs m
           ) => Int
-            -> InstructionsT gs m
-            -> PlanT fs m a
+            -> Object gs m
+            -> Plan fs m a
             -> (forall x. m x -> IO x)
-            -> PlanT fs' m' (Ref gs m a)
+            -> Plan fs' m' (Ref gs m a)
 forkOn n comp plan lft = do
   p <- mio newPromiseIO
   mv <- mio newEmptyMVar
