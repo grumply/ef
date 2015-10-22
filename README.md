@@ -3,6 +3,26 @@ middle-out programming<sup>[1](#middle-out-def)</sup><a name="middle-out"></a> i
 
 This repository is a work in progress.
 
+## Implemented features
+
+* OOP
+* Continuations
+* Concurrency
+* Exceptions
+  * Checked
+  * Unchecked
+* Threading
+* Transient Resources
+* Bidirectional Communication a la Pipes
+* Reader/Writer/State
+  * Object-scoped
+  * Locally-scoped
+
+## Work-in-progress
+
+* Actors a la Akka
+* OOP standards
+
 ## Naming
 
 The name `mop` is an homage to MP Ward's work on Language-oriented programming.
