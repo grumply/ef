@@ -1,7 +1,9 @@
 # mop
 middle-out programming<sup>[1](#middle-out-def)</sup><a name="middle-out"></a> in Haskell.
 
-This repository is a work in progress.
+`mop` intends to show that Haskell is the "Best Imperative Language."
+
+This repository is a work in progress. The name is likely to change.
 
 ## Implemented features
 
