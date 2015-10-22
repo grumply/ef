@@ -2,7 +2,6 @@
 module Effect.List where
 
 import Mop
-import Mop.Trans
 import Effect.Weave
 
 import Control.Applicative
@@ -57,7 +56,7 @@ discard _ = Woven $ \_ _ -> return ()
 every :: Has Weave fs m => List fs m a -> Producer' fs a m ()
 every it = discard >\\ enumerate it
 
-instance MTrans (List fs) where
+instance Trans (List fs) where
     lift' m = Select $ producer $ \yield -> do
         a <- lift m
         yield a

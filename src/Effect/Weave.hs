@@ -16,7 +16,6 @@ module Effect.Weave
   ) where
 
 import Mop
-import Mop.Trans
 
 import Control.Applicative
 import Control.Monad
@@ -143,7 +142,7 @@ instance MonadPlus m => MonadPlus (Woven fs a' a b' b m) where
                          )
 
 
-instance MTrans (Woven fs a' a b' b) where
+instance Trans (Woven fs a' a b' b) where
     lift' ma = Woven $ \_ _ -> lift ma
 
 newtype X = X X

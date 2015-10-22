@@ -5,7 +5,6 @@ module Mop.Base
 
 import Mop                        as Base
 import Mop.IO                     as Base
-import Mop.Trans                  as Base
 import Data.Promise               as Base
 import Effect.Concurrent          as Base
 import Effect.Continuation        as Base

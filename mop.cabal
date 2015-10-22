@@ -24,7 +24,6 @@ Flag TRANSFORMERS_SAFE
                      
 library
   exposed-modules:     Mop.Base
-                       Mop.Trans
                        Mop
                        Mop.IO
                        Data.Promise
