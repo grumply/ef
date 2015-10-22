@@ -3,7 +3,7 @@ middle-out programming<sup>[1](#middle-out-def)</sup><a name="middle-out"></a> i
 
 `mop` intends to show that Haskell is the "Best Imperative Language."
 
-This repository is a work in progress. The name is likely to change. Documentation begins in November, keep an eye here for changes. 
+This repository is a work in progress. The name is likely to change. Documentation begins in November so keep an eye here for updates. 
 
 ## Implemented features
 
