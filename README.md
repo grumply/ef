@@ -25,6 +25,7 @@ This repository is a work in progress. The name is likely to change. Documentati
 * Actors a la Akka
 * Agents
 * OOP standards
+* Interpreter
 
 ## Naming
 
