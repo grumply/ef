@@ -1,4 +1,3 @@
-{-# LANGUAGE ExistentialQuantification #-}
 module Effect.State
     ( State, get, gets, put, puts, swap, modify, modify'
     , Store, store

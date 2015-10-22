@@ -380,3 +380,6 @@ mapM :: Monad m => (a -> Plan fs m b) -> [a] -> Plan fs m [b]
 mapM f = fromCodensity . Control.Monad.mapM (toCodensity . f)
 
 -}
+
+class Trans t where
+  lift' :: Monad m => m a -> t m a

@@ -1,5 +1,6 @@
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE KindSignatures, ImpredicativeTypes #-} -- keep an eye on this
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE ImpredicativeTypes #-}
 module Mop.IO where
 
 import Mop

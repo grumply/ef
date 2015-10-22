@@ -1,5 +1,3 @@
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ExistentialQuantification #-}
 module Effect.Maybe
     ( tryMaybe, May
     , possible, Possible

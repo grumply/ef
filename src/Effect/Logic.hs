@@ -1,5 +1,3 @@
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ExistentialQuantification #-}
 module Effect.Logic
     ( Logic, logic
     , Nondet, nondet
