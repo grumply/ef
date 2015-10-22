@@ -32,6 +32,9 @@ library
                        Effect.Continuation
                        Effect.Exception
                        Effect.List
+                       Effect.Local.State
+                       Effect.Local.Journaler
+                       Effect.Local.Writer
                        Effect.Logic
                        Effect.Maybe
                        Effect.Reader
@@ -50,6 +53,7 @@ library
                        TypeOperators
                        AutoDeriveTypeable
                        PostfixOperators
+                       RecordWildCards
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.8 && <4.9

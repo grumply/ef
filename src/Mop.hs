@@ -17,6 +17,7 @@ Pragmas for other modules are in the cabal file.
 {-# LANGUAGE GADTs                              #-}
 {-# LANGUAGE UndecidableInstances               #-}
 {-# LANGUAGE CPP                                #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -fno-warn-missing-methods       #-}
 #if __GLASGOW_HASKELL__ > 710
 {-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
@@ -25,8 +26,9 @@ module Mop where
 
 import Control.Applicative
 import Control.Monad
-import Data.Functor.Identity
 import Data.Typeable
+
+import GHC.Exts
 
 type family (:++:) (xs :: [k]) (ys :: [k]) :: [k] where
   xs        :++: '[] = xs
@@ -88,9 +90,7 @@ instance AdmitsSubset '[] ys where
   pullSubset _ = Empty
 instance (Denies x xs,Admits' x ys (IndexOf x ys),AdmitsSubset xs ys) => AdmitsSubset (x ': xs) ys where
   pushSubset (Attr xa xs) ys = pushSubset xs (push xa ys)
-  pullSubset ys =
-    let xa = pull ys
-    in Attr xa (pullSubset ys)
+  pullSubset ys = Attr (pull ys) (pullSubset ys)
 
 data Symbol (symbols :: [* -> *]) a where
   Symbol  :: Denies s ss => s a -> Symbol (s ': ss) a
@@ -127,9 +127,9 @@ instance (Denies x xs',xs ~ (x ': xs')) => Allows' x xs 'Z where
 class Pair f g | f -> g, g -> f where
   pair :: (a -> b -> r) -> f a -> g b -> r
 instance Pair ((->) a) ((,) a) where
-  pair p f g = uncurry (\x -> p (f x)) g
+  pair p f g = uncurry (p . f) g
 instance Pair ((,) a) ((->) a) where
-  pair p (l,r) g = p r (g l)
+  pair p ~(l,r) g = p r (g l)
 instance Pair (Attrs '[]) (Symbol '[])
 instance (Pair i s,Pair (Attrs is) (Symbol ss))
     => Pair (Attrs (i ': is)) (Symbol (s ': ss))
@@ -157,13 +157,13 @@ symbol xa = Step (inj xa) return
 instance Functor m => Functor (Plan symbols m) where
   fmap f p0 = _fmap f p0
 
-instance Functor m => Applicative (Plan symbols m) where
+instance Monad m => Applicative (Plan symbols m) where
   pure = Pure
   (<*>) = ap
 
-instance Functor m => Monad (Plan symbols m) where
+instance Monad m => Monad (Plan symbols m) where
 #ifdef TRANSFORMERS_SAFE
-  return = M . fmap Pure
+  return = M . return . Pure
 #else
   return = Pure
 #endif
@@ -194,9 +194,9 @@ p0 `_bind` f = go p0
   where
     go p =
       case p of
+        Step syms k -> Step syms (\r -> go (k r))
         Pure res -> f res
         M m -> M (fmap go m)
-        Step syms k -> Step syms (\r -> go (k r))
 
 {-# RULES
     "_bind (Step syms k) f" forall syms k f .
@@ -253,11 +253,12 @@ _delta is p0 = go p0
     go :: Plan symbols m a -> m (Object is m,a)
     go p =
       case p of
+        Step syms k ->
+          let (trans,b) = pair (,) (objectAttrs is) syms
+          in do is' <- trans is
+                _delta is' (k b)
         Pure res -> pure (is,res)
         M mp -> mp >>= go
-        Step syms k ->
-          let (trans,b) = pair (\a x -> (a,x)) (objectAttrs is) syms
-          in trans is >>= \is' -> _delta is' (k b)
 
 type Uses f fs m = (Monad m,Admits' f fs (IndexOf f fs))
 type Extends extended orig m = (Monad m,AdmitsSubset orig extended)
@@ -353,7 +354,7 @@ instance MonadPlus v => MonadPlus (Codensity fs v) where
   Codensity m `mplus` Codensity n = Codensity (\k -> m k `mplus` n k)
   {-# INLINE mplus #-}
 
-toCodensity :: Functor m => Plan fs m a -> Codensity fs m a
+toCodensity :: Monad m => Plan fs m a -> Codensity fs m a
 toCodensity f = Codensity (f >>=)
 
 fromCodensity :: Monad m => Codensity fs m a -> Plan fs m a

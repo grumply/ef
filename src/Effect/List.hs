@@ -51,7 +51,7 @@ runList l = linearize (enumerate (l >> mzero))
 each :: Has Weave fs m => F.Foldable f => f a -> Producer' fs a m ()
 each xs = producer $ \yield -> F.foldr (\a p -> yield a >> p) (return ()) xs
 
-discard :: Functor m => t -> Woven fs a' a b' b m ()
+discard :: Monad m => t -> Woven fs a' a b' b m ()
 discard _ = Woven $ \_ _ -> return ()
 
 every :: Has Weave fs m => List fs m a -> Producer' fs a m ()

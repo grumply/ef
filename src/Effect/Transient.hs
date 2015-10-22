@@ -57,8 +57,8 @@ transience = flip (Transience (unsafePerformIO (newIORef 0))) return $ \fs ->
 transientMisuse :: String -> a
 transientMisuse method = error $
   "Transient misuse: " ++ method ++ " used outside of a 'transiently' block. \
-  \Do not return a TransientScope or its internal fields from \
-  \it's instantiation block."
+  \Do not return a TransientScope or its internal fields from its instantiation\
+  \ block."
 
 instance Pair Transience Transient where
     pair p (Transience _ _ k) (Deallocate _ k') = p k k'

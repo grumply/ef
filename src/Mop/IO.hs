@@ -7,11 +7,11 @@ import qualified Control.Exception as Exc
 import System.IO.Unsafe
 
 {-# INLINE inlineUnsafePerformMIO #-}
-inlineUnsafePerformMIO :: forall fs m a. Functor m => IO a -> Plan fs m a
+inlineUnsafePerformMIO :: forall fs m a. Monad m => IO a -> Plan fs m a
 inlineUnsafePerformMIO = (return :: forall z. z -> Plan fs m z) . unsafePerformIO
 
 {-# NOINLINE unsafePerformMIO #-}
-unsafePerformMIO :: forall fs m a. Functor m => IO a -> Plan fs m a
+unsafePerformMIO :: forall fs m a. Monad m => IO a -> Plan fs m a
 unsafePerformMIO = (return :: forall z. z -> Plan fs m z) . unsafePerformIO
 
 class Monad m => MIO m where
