@@ -150,9 +150,16 @@ data Plan symbols m a
 lift :: Functor m => m a -> Plan symbols m a
 lift m = M (fmap Pure m)
 
-{-# INLINE symbol #-}
-symbol :: Has x symbols m => x a -> Plan symbols m a
-symbol xa = Step (inj xa) return
+-- | Invoke a method of the parent object. This allows:
+-- > super . super $ something
+{-# INLINE super #-}
+super :: Functor m => Plan fs m a -> Plan gs (Plan fs m) a
+super = lift
+
+-- | Invoke a method in the calling object.
+{-# INLINE self #-}
+self :: Has x symbols m => x a -> Plan symbols m a
+self xa = Step (inj xa) return
 
 instance Functor m => Functor (Plan symbols m) where
   fmap f p0 = _fmap f p0

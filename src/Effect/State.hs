@@ -20,22 +20,22 @@ instance Pair (Store st) (State st) where
         in pair p (st,k st') stk
 
 get :: Has (State st) fs m => Plan fs m st
-get = symbol (Modify id id)
+get = self (Modify id id)
 
 gets :: Has (State st) fs m => (st -> a) -> Plan fs m a
-gets f = symbol (Modify id f)
+gets f = self (Modify id f)
 
 put :: Has (State st) fs m => st -> Plan fs m ()
-put st = symbol (Modify (const st) (const ()))
+put st = self (Modify (const st) (const ()))
 
 puts :: Has (State st) fs m => (a -> st) -> a -> Plan fs m ()
-puts f a = symbol (Modify (const (f a)) (const ()))
+puts f a = self (Modify (const (f a)) (const ()))
 
 swap :: Has (State st) fs m => st -> Plan fs m st
-swap st = symbol (Modify (const st) id)
+swap st = self (Modify (const st) id)
 
 modify :: Has (State st) fs m => (st -> st) -> Plan fs m ()
-modify f = symbol (Modify f (const ()))
+modify f = self (Modify f (const ()))
 
 modify' :: Has (State st) fs m => (st -> st) -> Plan fs m ()
 modify' f = do

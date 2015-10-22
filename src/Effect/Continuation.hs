@@ -15,7 +15,7 @@ data Continuations k = Continuations Integer k
 enter :: Has Continuation fs m => ((forall b. a -> Plan fs m b) -> Plan fs m a) -> Plan fs m a
 enter x = do
     scope <- freshScope
-    transform scope $ x (\a -> symbol (Continuation scope a))
+    transform scope $ x (\a -> self (Continuation scope a))
   where
     transform scope = go where
         go p = case p of
@@ -31,7 +31,7 @@ enter x = do
             Pure r -> Pure r
 
 freshScope :: Has Continuation fs m => Plan fs m Integer
-freshScope = symbol (FreshScope id)
+freshScope = self (FreshScope id)
 
 continuations :: Uses Continuations gs m => Attribute Continuations gs m
 continuations = Continuations 0 $ \fs ->

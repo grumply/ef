@@ -18,16 +18,16 @@ newPromiseIO :: IO (Promise a)
 newPromiseIO = Promise <$> newEmptyMVar
 
 newPromise :: (MIO m,Has Throw fs m) => Plan fs m (Promise a)
-newPromise = mio newPromiseIO
+newPromise = io newPromiseIO
 
 demand :: (MIO m,Has Throw fs m) => Promise a -> Plan fs m a
-demand = mio . demandIO
+demand = io . demandIO
 
 demandIO :: Promise a -> IO a
 demandIO = readMVar . getPromise
 
 fulfill :: (MIO m,Has Throw fs m) => Promise a -> a -> Plan fs m Bool
-fulfill = (mio .) . fulfillIO
+fulfill = (io .) . fulfillIO
 
 fulfillIO :: Promise a -> a -> IO Bool
 fulfillIO (Promise p) a = tryPutMVar p a

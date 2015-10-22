@@ -14,10 +14,10 @@ instance Pair (Reader r) (Env r) where
     pair p (Reader r k) (Env rk) = pair p (r,k) rk
 
 ask :: Has (Env r) fs m => Plan fs m r
-ask = symbol (Env id)
+ask = self (Env id)
 
 asks :: Has (Env r) fs m => (r -> a) -> Plan fs m a
-asks f = symbol (Env f)
+asks f = self (Env f)
 
 reader :: Uses (Reader r) fs m => r -> Attribute (Reader r) fs m
 reader r = Reader r pure

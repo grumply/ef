@@ -24,13 +24,13 @@ possible = Possible 0 $ \fs ->
     in pure $ fs .= Possible (succ i) k
 
 freshScope :: Has May fs m => Plan fs m Integer
-freshScope = symbol (FreshScope id)
+freshScope = self (FreshScope id)
 
 -- use: may $ \success failure ...
 tryMaybe :: Has May fs m => ((forall b. a -> Plan fs m b) -> (forall b. Plan fs m b) -> Plan fs m (Maybe a)) -> Plan fs m (Maybe a)
 tryMaybe x = do
     scope <- freshScope
-    transform scope $ x (\a -> symbol (Success scope a)) (symbol (Failure scope))
+    transform scope $ x (\a -> self (Success scope a)) (self (Failure scope))
   where
     transform scope = go
       where

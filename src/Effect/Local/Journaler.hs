@@ -45,11 +45,11 @@ intercept Journal{..} f w m = do
 journaling :: forall fs m a w r. (Has Journaling fs m,Monoid w)
        => (a -> w -> w) -> w -> (Journal fs m a w -> Plan fs m r) -> Plan fs m (w,r)
 journaling c w f = do
-    scope <- symbol (FreshScope id)
+    scope <- self (FreshScope id)
     transform scope c w $ f Journal
-        { log = \w -> symbol (Log scope w)
-        , eavesdrop = \w' p -> symbol (Eavesdrop scope w' p)
-        , reconfigure = \c' -> symbol (Reconfigure scope c')
+        { log = \w -> self (Log scope w)
+        , eavesdrop = \w' p -> self (Eavesdrop scope w' p)
+        , reconfigure = \c' -> self (Reconfigure scope c')
         }
   where
     transform scope = go where

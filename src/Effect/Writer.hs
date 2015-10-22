@@ -15,7 +15,7 @@ instance Pair (Writer r) (Trace r) where
     pair p (Writer _ rk) (Trace r k) = pair p rk (r,k)
 
 tell :: (Has (Trace w) fs m) => w -> Plan fs m ()
-tell w = symbol (Trace w ())
+tell w = self (Trace w ())
 
 writer :: (Monoid w,Uses (Writer w) fs m) => Attribute (Writer w) fs m
 writer = tracer mempty (<>)

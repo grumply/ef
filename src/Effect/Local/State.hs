@@ -45,10 +45,10 @@ swap Var{..} st_new = get >>= \st_old -> put st_new >> return st_old
 state :: forall fs m st r. Has State fs m
       => st -> (Var fs m st -> Plan fs m r) -> Plan fs m (st,r)
 state st f = do
-    scope <- symbol (FreshScope id)
+    scope <- self (FreshScope id)
     transform scope st $ f Var
-        { get = symbol (Get scope)
-        , put = \st -> symbol (Put scope st)
+        { get = self (Get scope)
+        , put = \st -> self (Put scope st)
         }
   where
     transform scope = go where

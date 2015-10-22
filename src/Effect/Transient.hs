@@ -1,3 +1,10 @@
+{- |
+-}
+{-
+TODO: Spell out the exact semantics of this module. Notably, the approach
+      with deallocate not being removed by a child scope but unregister
+      being removed could be confusing.
+-}
 module Effect.Transient
   ( Transient, Transience, transience, transiently
   , TransientScope
@@ -18,7 +25,7 @@ import Unsafe.Coerce
 
 -- this module does not have the same sort of asynchronous exception safety
 -- as in resourcet, but still admits a nice interface for allocate/deallocate
--- as well as onEnd/finalize and register/unregister.
+-- as well as onEnd/register/unregister.
 
 -- I believe the only approach that will fix the asynchronous exception safety
 -- issue is attaching transient to the top-level scope by embedding it inside
@@ -39,13 +46,13 @@ newtype Token a = Token Integer
 data Transient k
     = FreshScope (Integer -> k)
 
-    | forall a fs m . Allocate   Integer (Plan fs m a) (a -> Plan fs m ()) ((a,Token a) -> k)
+    | forall fs m a . Allocate   Integer (Plan fs m a) (a -> Plan fs m ()) ((a,Token a) -> k)
 
     | forall fs m a . OnEnd      Integer           (Plan fs m ()) (Token () -> k)
     | forall fs m a . Register   Integer (Token a) (Plan fs m ()) k
 
-    | forall a      . Unregister Integer (Token a) k
-    | forall a      . Deallocate         (Token a) k
+    | forall      a . Unregister Integer (Token a) k
+    | forall      a . Deallocate         (Token a) k
 
 data Transience k = Transience (IORef Integer) k k
 transience :: Uses Transience fs m => Attribute Transience fs m
@@ -70,10 +77,10 @@ instance Pair Transience Transient where
     pair p _ (Unregister _ _ _) = transientMisuse "Unregister"
 
 freshScope :: Has Transient fs m => Plan fs m Integer
-freshScope = symbol (FreshScope id)
+freshScope = self (FreshScope id)
 
 deallocate :: Has Transient fs m => Token a -> Plan fs m ()
-deallocate rsrc = symbol (Deallocate rsrc ())
+deallocate rsrc = self (Deallocate rsrc ())
 
 data TransientScope fs m = TransientScope
     { allocate   :: forall a. Plan fs m a -> (a -> Plan fs m ()) -> Plan fs m (a,Token a)
@@ -95,10 +102,10 @@ transiently :: forall fs m r.
                ) -> Plan fs m r
 transiently x = do
     scope <- freshScope
-    let alloc create onEnd = symbol (Allocate scope create onEnd id)
-        register token onEnd = symbol (Register scope token onEnd ())
-        unregister token = symbol (Unregister scope token ())
-        onEnd oE = symbol (OnEnd scope oE id)
+    let alloc create onEnd = self (Allocate scope create onEnd id)
+        register token onEnd = self (Register scope token onEnd ())
+        unregister token = self (Unregister scope token ())
+        onEnd oE = self (OnEnd scope oE id)
     transform scope [] $ x $ TransientScope alloc register unregister onEnd
   where
     transform scope store = go store

@@ -32,7 +32,7 @@ nondet = Nondet (unsafePerformIO (newIORef 0)) $ \fs ->
 
 {-# INLINABLE freshScope #-}
 freshScope :: Has Logic fs m => Plan fs m Integer
-freshScope = symbol (FreshScope id)
+freshScope = self (FreshScope id)
 
 -- a nondeterministic producer
 -- use: pythag n = logic $ \ch yield cut ->
@@ -52,9 +52,9 @@ logic l =
   producer $ \yield -> do
     scope <- freshScope
     go scope
-      $ l (\as -> symbol (Choose scope as id))
+      $ l (\as -> self (Choose scope as id))
           yield
-          (symbol (Cut scope))
+          (self (Cut scope))
   where
     go scope p0 = go' p0
       where

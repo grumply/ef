@@ -35,10 +35,10 @@ listens Log{..} f m = do
 writer :: forall fs m w r. (Has Writer fs m,Monoid w)
        => (Log fs m w -> Plan fs m r) -> Plan fs m (w,r)
 writer f = do
-    scope <- symbol (FreshScope id)
+    scope <- self (FreshScope id)
     transform scope mempty $ f Log
-        { tell = \w -> symbol (Tell scope w)
-        , listen = \p -> symbol (Listen scope p)
+        { tell = \w -> self (Tell scope w)
+        , listen = \p -> self (Listen scope p)
         }
   where
     transform scope = go where

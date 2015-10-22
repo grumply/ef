@@ -34,7 +34,7 @@ data Weaving k = Weaving (IORef Integer) k
 
 {-# INLINE freshScope #-}
 freshScope :: Has Weave fs m => Plan fs m Integer
-freshScope = symbol (FreshScope id)
+freshScope = self (FreshScope id)
 
 {-# INLINE weaving #-}
 weaving :: Uses Weaving fs m => Attribute Weaving fs m
@@ -66,8 +66,8 @@ instance Pair Weaving Weave where
 linearize :: Has Weave fs m => Effect fs m r -> Plan fs m r
 linearize e = do
     scope <- freshScope
-    go' scope $ runWoven e (\a' ap -> symbol (Request scope a' ap))
-                           (\b b'p -> symbol (Respond scope b b'p))
+    go' scope $ runWoven e (\a' ap -> self (Request scope a' ap))
+                           (\b b'p -> self (Respond scope b b'p))
   where
     go' scope p0 = go p0
       where
@@ -161,7 +161,7 @@ producer :: forall fs m b r. Has Weave fs m
          => ((b -> Plan fs m ()) -> Plan fs m r)
          -> Producer' fs b m r
 producer f = Woven $ \_ dn ->
-  f (\b -> symbol (Respond (getScope dn) b
+  f (\b -> self (Respond (getScope dn) b
                            (return :: forall a. a -> Plan fs m a)
                   )
     )
@@ -173,7 +173,7 @@ consumer :: forall fs m a r. Has Weave fs m
          => (Plan fs m a -> Plan fs m r)
          -> Consumer' fs a m r
 consumer f = Woven $ \up _ ->
-  f (symbol (Request (getScope up) () (return :: forall x. x -> Plan fs m x)))
+  f (self (Request (getScope up) () (return :: forall x. x -> Plan fs m x)))
 
 type Pipe fs a b m r = Woven fs () a () b m r
 -- pipe $ \await yield -> do { .. ; }
@@ -182,8 +182,8 @@ pipe :: forall fs m a b x r. Has Weave fs m
      => (Plan fs m a -> (b -> Plan fs m x) -> Plan fs m r)
      -> Pipe fs a b m r
 pipe f = Woven $ \up dn ->
-  f (symbol (Request (getScope up) () (return :: forall z. z -> Plan fs m z)))
-    (\b -> symbol (Respond (getScope dn) b
+  f (self (Request (getScope up) () (return :: forall z. z -> Plan fs m z)))
+    (\b -> self (Respond (getScope dn) b
                            (return :: forall z. z -> Plan fs m z)
                   )
     )
@@ -195,7 +195,7 @@ client :: forall fs m a' a r. Has Weave fs m
        => ((a -> Plan fs m a') -> Plan fs m r)
        -> Client' fs a' a m r
 client f = Woven $ \up _ ->
-  f (\a -> symbol (Request (getScope up) a
+  f (\a -> self (Request (getScope up) a
                            (return :: forall z. z -> Plan fs m z)
                   )
     )
@@ -207,7 +207,7 @@ server :: forall fs m b' b r. Has Weave fs m
        => ((b' -> Plan fs m b) -> Plan fs m r)
        -> Server' fs b' b m r
 server f = Woven $ \_ dn ->
-  f (\b' -> symbol (Respond (getScope dn) b'
+  f (\b' -> self (Respond (getScope dn) b'
                             (return :: forall z. z -> Plan fs m z)
                    )
     )
@@ -224,11 +224,11 @@ weave :: forall fs a a' b b' m r. Has Weave fs m
       => ((a -> Plan fs m a') -> (b' -> Plan fs m b) -> Plan fs m r)
       -> Woven fs a' a b' b m r
 weave f = Woven $ \up dn ->
-  f (\a -> symbol (Request (getScope up) a
+  f (\a -> self (Request (getScope up) a
                            (return :: forall z. z -> Plan fs m z)
                   )
     )
-    (\b' -> symbol (Respond (getScope dn) b'
+    (\b' -> self (Respond (getScope dn) b'
                             (return :: forall z. z -> Plan fs m z)
                    )
     )

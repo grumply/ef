@@ -21,7 +21,7 @@ data Throw k = Throw SomeException k
 data Exceptions k = Exceptions (SomeException -> k)
 
 throw :: (Has Throw symbols m, Exception e) => e -> Plan symbols m a
-throw e = symbol (Throw (toException e) undefined)
+throw e = self (Throw (toException e) undefined)
 
 class Throws e where
 newtype Catch e = Catch e

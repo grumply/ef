@@ -20,8 +20,8 @@ thread :: Has Thread fs m
      -> Plan fs m a
 thread x = do
     transform emptyQueue
-      $ x (\p -> symbol (Thread (p >> symbol Stop) ()))
-          (symbol (Yield ()))
+      $ x (\p -> self (Thread (p >> self Stop) ()))
+          (self (Yield ()))
   where
     transform q p0 = go p0
       where
