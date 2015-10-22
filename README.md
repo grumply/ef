@@ -23,6 +23,7 @@ This repository is a work in progress. The name is likely to change. Documentati
 ## Work-in-progress
 
 * Actors a la Akka
+* Agents
 * OOP standards
 
 ## Naming
