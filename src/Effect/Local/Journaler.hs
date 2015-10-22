@@ -1,5 +1,14 @@
+{- | This module implements a feature-paired interface with Writer with the
+     addition of a re/configurable combining function. That is, this is a
+     generalization of Writer with the Monoid constraint removed.
+
+     Naming is slightly changed for convenience.
+       'tell' becomes 'log'
+       'listen' becomes 'eavesdrop'
+       'listens' becomes 'intercept'
+-}
 module Effect.Local.Journaler
-    ( Tracer, tracer
+    ( Journaling, journaling
     , Journaler, journaler
     , Journal, log, eavesdrop, reconfigure, intercept
     ) where
@@ -14,26 +23,28 @@ import Unsafe.Coerce
 
 import Prelude hiding (log)
 
-data Tracer k
+data Journaling k
     = FreshScope (Integer -> k)
     | forall a. Log Integer a
     | forall fs m a w. Eavesdrop Integer w (Plan fs m a)
-    | forall fs m w. Reconfigure Integer (w -> w -> w)
+    | forall fs m a w. Reconfigure Integer (a -> w -> w)
 
-data Journal fs m w = Journal
-    { log :: w -> Plan fs m ()
-    , eavesdrop :: forall a. w -> Plan fs m a -> Plan fs m (w,a)
-    , reconfigure :: (w -> w -> w) -> Plan fs m ()
+data Journal fs m a w = Journal
+    { log :: a -> Plan fs m ()
+    , eavesdrop :: forall r. w -> Plan fs m r -> Plan fs m (w,r)
+    , reconfigure :: (a -> w -> w) -> Plan fs m ()
     }
 
-intercept :: Monad m => Journal fs m w -> (w -> b) -> w -> Plan fs m a -> Plan fs m (b,a)
+{-# INLINE intercept #-}
+intercept :: Monad m => Journal fs m a w -> (w -> b) -> w -> Plan fs m r -> Plan fs m (b,r)
 intercept Journal{..} f w m = do
     ~(w, a) <- eavesdrop w m
     return (f w,a)
 
-tracer :: forall fs m w r. (Has Tracer fs m,Monoid w)
-       => (w -> w -> w) -> w -> (Journal fs m w -> Plan fs m r) -> Plan fs m (w,r)
-tracer c w f = do
+{-# INLINE journaling #-}
+journaling :: forall fs m a w r. (Has Journaling fs m,Monoid w)
+       => (a -> w -> w) -> w -> (Journal fs m a w -> Plan fs m r) -> Plan fs m (w,r)
+journaling c w f = do
     scope <- symbol (FreshScope id)
     transform scope c w $ f Journal
         { log = \w -> symbol (Log scope w)
@@ -47,16 +58,16 @@ tracer c w f = do
                 go'' p = case p of
                     Step sym bp -> case prj sym of
                         Just x  -> case x of
-                            Log i w' ->
+                            Log i a ->
                                 if i == scope
-                                then go' (c w (unsafeCoerce w'))
+                                then go' (c (unsafeCoerce a) w)
                                          (bp (unsafeCoerce ()))
                                 else Step sym (\b -> go'' (bp b))
                             Eavesdrop i w' p ->
                                 if i == scope
                                 then do
-                                  ~(w'',a) <- go' (unsafeCoerce w') (unsafeCoerce p)
-                                  go' (c w w'') (bp (unsafeCoerce (w'',a)))
+                                  ~(w'',r) <- go' (unsafeCoerce w') (unsafeCoerce p)
+                                  go' (w <> w'') (bp (unsafeCoerce (w'',r)))
                                 else Step sym (\b -> go'' (bp b))
                             Reconfigure i c' ->
                                 if i == scope
@@ -69,6 +80,7 @@ tracer c w f = do
 
 data Journaler k = Journaler (IORef Integer) k
 
+{-# INLINE journaler #-}
 journaler :: Uses Journaler fs m => Attribute Journaler fs m
 journaler = Journaler (unsafePerformIO $ newIORef 0) $ \fs ->
     let Journaler i k = (fs&)
@@ -80,10 +92,10 @@ journalMisuse method = error $
   "Journal misuse: " ++ method ++ " used outside of its 'writer' block. \
   \Do not return a Log or its internal fields from its instantiation block."
 
-instance Pair Journaler Tracer where
+instance Pair Journaler Journaling where
     pair p (Journaler i k) (FreshScope ik) =
         let n = unsafePerformIO (readIORef i)
         in n `seq` p k (ik n)
-    pair p _ (Log _ _) = journalMisuse "Effect.Local.Tracer.Lazy.Log"
-    pair p _ (Eavesdrop _ _ _) = journalMisuse "Effect.Local.Tracer.Lazy.Eavesdrop"
-    pair p _ (Reconfigure _ _) = journalMisuse "Effect.Local.Tracer.Lazy.Reconfigure"
+    pair p _ (Log _ _) = journalMisuse "Effect.Local.Journaler.Lazy.Log"
+    pair p _ (Eavesdrop _ _ _) = journalMisuse "Effect.Local.Journaler.Lazy.Eavesdrop"
+    pair p _ (Reconfigure _ _) = journalMisuse "Effect.Local.Journaler.Lazy.Reconfigure"

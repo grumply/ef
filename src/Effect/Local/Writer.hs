@@ -1,3 +1,6 @@
+{- | This module implements a simple scoped Writer interface in the API style of
+     mtl's Control.Monad.Writer.
+-}
 module Effect.Local.Writer
    ( Writer, writer
    , Logger, logger
@@ -22,11 +25,13 @@ data Log fs m w = Log
     , listen :: forall a. Plan fs m a -> Plan fs m (w,a)
     }
 
+{-# INLINE listens #-}
 listens :: Monad m => Log fs m w -> (w -> b) -> Plan fs m a -> Plan fs m (b,a)
 listens Log{..} f m = do
     ~(w, a) <- listen m
     return (f w,a)
 
+{-# INLINE writer #-}
 writer :: forall fs m w r. (Has Writer fs m,Monoid w)
        => (Log fs m w -> Plan fs m r) -> Plan fs m (w,r)
 writer f = do
@@ -58,6 +63,7 @@ writer f = do
 
 data Logger k = Logger (IORef Integer) k
 
+{-# INLINE logger #-}
 logger :: Uses Logger fs m => Attribute Logger fs m
 logger = Logger (unsafePerformIO $ newIORef 0) $ \fs ->
     let Logger i k = (fs&)

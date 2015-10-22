@@ -1,5 +1,3 @@
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ExistentialQuantification #-}
 module Effect.Weave
   ( Weaving, weaving
   , Weave, linearize
@@ -34,7 +32,7 @@ data Weave k
 
 data Weaving k = Weaving (IORef Integer) k
 
-{-# INLINABLE freshScope #-}
+{-# INLINE freshScope #-}
 freshScope :: Has Weave fs m => Plan fs m Integer
 freshScope = symbol (FreshScope id)
 
@@ -45,6 +43,7 @@ weaving = Weaving (unsafePerformIO (newIORef 0)) $ \fs ->
         n' = unsafePerformIO (modifyIORef n succ)
     in n' `seq` return fs
 
+{-# INLINE getScope #-}
 getScope p = case p (unsafeCoerce ()) (unsafeCoerce ()) of
     Step sym bp -> case prj sym of
         Just x  -> case x of
@@ -149,7 +148,7 @@ instance MTrans (Woven fs a' a b' b) where
 
 newtype X = X X
 
-{-# INLINABLE closed #-}
+{-# INLINE closed #-}
 closed :: X -> a
 closed (X x) = closed x
 
@@ -157,7 +156,7 @@ type Effect fs m r = Woven fs X () () X m r
 
 type Producer fs b m r = Woven fs X () () b m r
 -- producer $ \yield -> do { .. ; }
-{-# INLINABLE producer #-}
+{-# INLINE producer #-}
 producer :: forall fs m b r. Has Weave fs m
          => ((b -> Plan fs m ()) -> Plan fs m r)
          -> Producer' fs b m r
@@ -169,7 +168,7 @@ producer f = Woven $ \_ dn ->
 
 type Consumer fs a m r = Woven fs () a () X m r
 -- consumer $ \await -> do { .. ; }
-{-# INLINABLE consumer #-}
+{-# INLINE consumer #-}
 consumer :: forall fs m a r. Has Weave fs m
          => (Plan fs m a -> Plan fs m r)
          -> Consumer' fs a m r
@@ -178,7 +177,7 @@ consumer f = Woven $ \up _ ->
 
 type Pipe fs a b m r = Woven fs () a () b m r
 -- pipe $ \await yield -> do { .. ; }
-{-# INLINABLE pipe #-}
+{-# INLINE pipe #-}
 pipe :: forall fs m a b x r. Has Weave fs m
      => (Plan fs m a -> (b -> Plan fs m x) -> Plan fs m r)
      -> Pipe fs a b m r
@@ -191,7 +190,7 @@ pipe f = Woven $ \up dn ->
 
 type Client fs a' a m r = Woven fs a' a () X m r
 -- client $ \request -> do { .. ; }
-{-# INLINABLE client #-}
+{-# INLINE client #-}
 client :: forall fs m a' a r. Has Weave fs m
        => ((a -> Plan fs m a') -> Plan fs m r)
        -> Client' fs a' a m r
@@ -203,7 +202,7 @@ client f = Woven $ \up _ ->
 
 type Server fs b' b m r = Woven fs X () b' b m r
 -- server $ \respond -> do { .. ; }
-{-# INLINABLE server #-}
+{-# INLINE server #-}
 server :: forall fs m b' b r. Has Weave fs m
        => ((b' -> Plan fs m b) -> Plan fs m r)
        -> Server' fs b' b m r
@@ -220,7 +219,7 @@ newtype Woven fs a' a b' b m r
              -> Plan fs m r
   }
 -- weave $ \request respond -> do { .. ; }
-{-# INLINABLE weave #-}
+{-# INLINE weave #-}
 weave :: forall fs a a' b b' m r. Has Weave fs m
       => ((a -> Plan fs m a') -> (b' -> Plan fs m b) -> Plan fs m r)
       -> Woven fs a' a b' b m r
@@ -247,7 +246,7 @@ type Client' fs a' a m r = forall y' y . Woven fs a' a y' y m r
 --------------------------------------------------------------------------------
 -- Respond; substitute yields with a function
 
-{-# INLINABLE (//>) #-}
+{-# INLINE (//>) #-}
 infixl 3 //>
 (//>) :: forall fs x' x b' b c' c m a'. Has Weave fs m
       =>       Woven fs x' x b' b m a'
@@ -273,14 +272,14 @@ p0 //> fb = Woven $ \up dn -> transform (getScope up) up dn
             M m -> M (fmap go m)
             Pure r -> Pure r
 
-{-# INLINABLE for #-}
+{-# INLINE for #-}
 for :: Has Weave fs m
     =>       Woven fs x' x b' b m a'
     -> (b -> Woven fs x' x c' c m b')
     ->       Woven fs x' x c' c m a'
 for = (//>)
 
-{-# INLINABLE (<\\) #-}
+{-# INLINE (<\\) #-}
 infixr 3 <\\
 (<\\) :: Has Weave fs m
       => (b -> Woven fs x' x c' c m b')
@@ -288,7 +287,7 @@ infixr 3 <\\
       ->       Woven fs x' x c' c m a'
 f <\\ p = p //> f
 
-{-# INLINABLE (\<\) #-}
+{-# INLINE (\<\) #-}
 infixl 4 \<\
 (\<\) :: Has Weave fs m
       => (b -> Woven fs x' x c' c m b')
@@ -296,7 +295,7 @@ infixl 4 \<\
       ->  a -> Woven fs x' x c' c m a'
 p1 \<\ p2 = p2 />/ p1
 
-{-# INLINABLE (~>) #-}
+{-# INLINE (~>) #-}
 infixr 4 ~>
 (~>) :: Has Weave fs m
      => (a -> Woven fs x' x b' b m a')
@@ -304,7 +303,7 @@ infixr 4 ~>
      ->  a -> Woven fs x' x c' c m a'
 (~>) = (/>/)
 
-{-# INLINABLE (<~) #-}
+{-# INLINE (<~) #-}
 infixl 4 <~
 (<~) :: Has Weave fs m
      => (b -> Woven fs x' x c' c m b')
@@ -312,7 +311,7 @@ infixl 4 <~
      ->  a -> Woven fs x' x c' c m a'
 g <~ f = f ~> g
 
-{-# INLINABLE (/>/) #-}
+{-# INLINE (/>/) #-}
 infixr 4 />/
 (/>/) :: Has Weave fs m
       => (a -> Woven fs x' x b' b m a')
@@ -323,7 +322,7 @@ infixr 4 />/
 --------------------------------------------------------------------------------
 -- Request; substitute awaits with a function
 
-{-# INLINABLE (>\\) #-}
+{-# INLINE (>\\) #-}
 infixr 4 >\\
 (>\\) :: forall fs y' y a' a b' b m c. Has Weave fs m
       => (b' -> Woven fs a' a y' y m b)
@@ -349,7 +348,7 @@ fb' >\\ p0 = Woven $ \up dn -> transform (getScope up) up dn
             M m -> M (fmap go m)
             Pure r -> Pure r
 
-{-# INLINABLE (/</) #-}
+{-# INLINE (/</) #-}
 infixr 5 /</
 (/</) :: Has Weave fs m
       => (c' -> Woven fs b' b x' x m c)
@@ -357,7 +356,7 @@ infixr 5 /</
       ->  c' -> Woven fs a' a x' x m c
 p1 /</ p2 = p2 \>\ p1
 
-{-# INLINABLE (>~) #-}
+{-# INLINE (>~) #-}
 infixr 5 >~
 (>~) :: Has Weave fs m
      => Woven fs a' a y' y m b
@@ -365,7 +364,7 @@ infixr 5 >~
      -> Woven fs a' a y' y m c
 p1 >~ p2 = (\() -> p1) >\\ p2
 
-{-# INLINABLE (~<) #-}
+{-# INLINE (~<) #-}
 infixl 5 ~<
 (~<) :: Has Weave fs m
      => Woven fs () b y' y m c
@@ -373,7 +372,7 @@ infixl 5 ~<
      -> Woven fs a' a y' y m c
 p2 ~< p1 = p1 >~ p2
 
-{-# INLINABLE (\>\) #-}
+{-# INLINE (\>\) #-}
 infixl 5 \>\
 (\>\) :: Has Weave fs m
       => (b' -> Woven fs a' a y' y m b)
@@ -381,7 +380,7 @@ infixl 5 \>\
       ->  c' -> Woven fs a' a y' y m c
 (fb' \>\ fc') c' = fb' >\\ fc' c'
 
-{-# INLINABLE (\\<) #-}
+{-# INLINE (\\<) #-}
 infixl 4 \\<
 (\\<) :: forall fs y' y a' a b' b m c. Has Weave fs m
       =>        Woven fs b' b y' y m c
@@ -392,7 +391,7 @@ p \\< f = f >\\ p
 --------------------------------------------------------------------------------
 -- Push; substitute responds with requests
 
-{-# INLINABLE (>>~) #-}
+{-# INLINE (>>~) #-}
 infixl 7 >>~
 (>>~) :: forall fs a' a b' b c' c m r. Has Weave fs m
       =>       Woven fs a' a b' b m r
@@ -436,7 +435,7 @@ p0 >>~ fb0 = Woven $ \up dn -> transform (getScope up) up dn
                     M m -> M (fmap goRight' m)
                     Pure r -> Pure r
 
-{-# INLINABLE (<~<) #-}
+{-# INLINE (<~<) #-}
 infixl 8 <~<
 (<~<) :: Has Weave fs m
       => (b -> Woven fs b' b c' c m r)
@@ -444,7 +443,7 @@ infixl 8 <~<
       ->  a -> Woven fs a' a c' c m r
 p1 <~< p2 = p2 >~> p1
 
-{-# INLINABLE (>~>) #-}
+{-# INLINE (>~>) #-}
 infixr 8 >~>
 (>~>) :: Has Weave fs m
       => (_a -> Woven fs a' a b' b m r)
@@ -452,7 +451,7 @@ infixr 8 >~>
       ->  _a -> Woven fs a' a c' c m r
 (fa >~> fb) a = fa a >>~ fb
 
-{-# INLINABLE (~<<) #-}
+{-# INLINE (~<<) #-}
 infixr 7 ~<<
 (~<<) :: Has Weave fs m
       => (b -> Woven fs b' b c' c m r)
@@ -464,7 +463,7 @@ k ~<< p = p >>~ k
 --------------------------------------------------------------------------------
 -- Pull; substitute requests with responds
 
-{-# INLINABLE (+>>) #-}
+{-# INLINE (+>>) #-}
 infixr 6 +>>
 (+>>) :: forall fs m a' a b' b c' c r. Has Weave fs m
       => (b' -> Woven fs a' a b' b m r)
@@ -510,7 +509,7 @@ fb' +>> p0 = Woven $ \up dn -> transform (getScope up) up dn
                     M m -> M (fmap goLeft' m)
                     Pure r -> Pure r
 
-{-# INLINABLE (>->) #-}
+{-# INLINE (>->) #-}
 infixl 7 >->
 (>->) :: Has Weave fs m
       => Woven fs a' a () b m r
@@ -518,7 +517,7 @@ infixl 7 >->
       -> Woven fs a' a c' c m r
 p1 >-> p2 = (\() -> p1) +>> p2
 
-{-# INLINABLE (<-<) #-}
+{-# INLINE (<-<) #-}
 infixr 7 <-<
 (<-<) :: Has Weave fs m
       => Woven fs () b c' c m r
@@ -526,7 +525,7 @@ infixr 7 <-<
       -> Woven fs a' a c' c m r
 p2 <-< p1 = p1 >-> p2
 
-{-# INLINABLE (<+<) #-}
+{-# INLINE (<+<) #-}
 infixr 7 <+<
 (<+<) :: Has Weave fs m
       => (c' -> Woven fs b' b c' c m r)
@@ -534,7 +533,7 @@ infixr 7 <+<
       ->  c' -> Woven fs a' a c' c m r
 p1 <+< p2 = p2 >+> p1
 
-{-# INLINABLE (>+>) #-}
+{-# INLINE (>+>) #-}
 infixl 7 >+>
 (>+>) :: Has Weave fs m
       => ( b' -> Woven fs a' a b' b m r)
@@ -542,7 +541,7 @@ infixl 7 >+>
       ->  _c' -> Woven fs a' a c' c m r
 (fb' >+> fc') c' = fb' +>> fc' c'
 
-{-# INLINABLE (<<+) #-}
+{-# INLINE (<<+) #-}
 infixl 6 <<+
 (<<+) :: forall fs m a' a b' b c' c r. Has Weave fs m
       =>        Woven fs b' b c' c m r
