@@ -4,7 +4,7 @@ module Effect.Logic
     , module Effect.Weave
     ) where
 
-import Mop
+import Mop.Core
 import Effect.Weave
 import Unsafe.Coerce
 import Data.IORef

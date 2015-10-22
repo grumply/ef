@@ -3,7 +3,7 @@ module Effect.Thread
   , Threading, threads
   ) where
 
-import Mop
+import Mop.Core
 
 import Unsafe.Coerce
 import Control.Monad

@@ -23,8 +23,8 @@ Flag TRANSFORMERS_SAFE
 
                      
 library
-  exposed-modules:     Mop.Base
-                       Mop
+  exposed-modules:     Mop
+                       Mop.Core
                        Mop.IO
                        Data.Promise
                        Effect.Concurrent

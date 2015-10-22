@@ -1,7 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 module Effect.List where
 
-import Mop
+import Mop.Core
 import Effect.Weave
 
 import Control.Applicative

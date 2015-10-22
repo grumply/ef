@@ -15,7 +15,7 @@ module Effect.Weave
   , (<<+), (<+<), (<-<), (>->), (>+>), (+>>)
   ) where
 
-import Mop
+import Mop.Core
 
 import Control.Applicative
 import Control.Monad

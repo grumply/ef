@@ -3,7 +3,7 @@ module Effect.Maybe
     , possible, Possible
     ) where
 
-import Mop
+import Mop.Core
 import Unsafe.Coerce
 import Data.Maybe
 

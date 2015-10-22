@@ -9,7 +9,7 @@ module Effect.Exception
   , Exception,SomeException(..)
   ) where
 
-import Mop
+import Mop.Core
 import Control.Exception (SomeException(..),Exception(..))
 import qualified Control.Exception as Exc
 

@@ -3,7 +3,7 @@ module Effect.Continuation
   ,Continuations,continuations
   ) where
 
-import Mop
+import Mop.Core
 import Unsafe.Coerce
 
 data Continuation k

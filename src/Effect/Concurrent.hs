@@ -1,6 +1,6 @@
 module Effect.Concurrent (fork,forkOS,forkOn) where
 
-import Mop
+import Mop.Core
 import Mop.IO
 import Data.Promise
 import Effect.Exception

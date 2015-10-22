@@ -3,7 +3,7 @@
 {-# LANGUAGE ImpredicativeTypes #-}
 module Mop.IO where
 
-import Mop
+import Mop.Core
 import Effect.Exception
 import qualified Control.Exception as Exc
 

@@ -4,7 +4,7 @@ module Data.Promise
   , fulfill, fulfillIO
   ) where
 
-import Mop
+import Mop.Core
 import Mop.IO
 import Effect.Exception
 

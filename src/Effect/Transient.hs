@@ -12,7 +12,7 @@ module Effect.Transient
   , deallocate, allocate, register, unregister, onEnd
   ) where
 
-import Mop
+import Mop.Core
 import Mop.IO
 import Effect.Exception
 
