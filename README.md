@@ -33,6 +33,6 @@ The name `mop` is an homage to MP Ward's work on Language-oriented programming.
 
 ### References
 
-<a name="alan-kay-oopsla-97">[<sup>2</sup>](#alan-kay):</a> Alan Kay - The computer revolution hasn't happened yet - OOPSLA '97 <a href="https://www.youtube.com/watch?v=oKg1hTOQXoY">Video</a>
-
 <a name="middle-out-def">[<sup>1</sup>](#middle-out):</a> MP Ward - Language Oriented Programming: <a href="http://www.cse.dmu.ac.uk/~mward/martin/papers/middle-out-t.ps.gz">PDF</a>
+
+<a name="alan-kay-oopsla-97">[<sup>2</sup>](#alan-kay):</a> Alan Kay - The computer revolution hasn't happened yet - OOPSLA '97 <a href="https://www.youtube.com/watch?v=oKg1hTOQXoY">Video</a>
