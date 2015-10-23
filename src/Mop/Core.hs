@@ -118,7 +118,7 @@ instance (Denies x xs',xs ~ (x ': xs')) => Allows' x xs 'Z where
   prj' _ (Symbol sa) = Just sa
   prj' _ (Further _) = Nothing
 
-class Pair f g | f -> g, g -> f where
+class Pair f g | g -> f, f -> g where
   pair :: (a -> b -> r) -> f a -> g b -> r
 instance Pair ((->) a) ((,) a) where
   pair p f g = uncurry (p . f) g
@@ -237,6 +237,15 @@ _mappend p0 p1 = go p0
           Step sym bp -> Step sym (\b -> go (bp b))
           M m -> M (fmap go m)
           Pure r -> fmap (mappend r) p1
+
+(#) :: (Pair (Attrs is) (Symbol symbols),Monad m)
+    => m (Object is m)
+    -> Plan symbols m a
+    -> m (Object is m)
+(#) mobj p = do
+  obj <- mobj
+  (obj',_) <- delta obj p
+  return obj'
 
 delta :: (Pair (Attrs is) (Symbol symbols),Monad m)
        => Object is m

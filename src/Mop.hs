@@ -38,21 +38,22 @@ type Main
      ]
 
 main' :: Plan Main IO a -> IO a
-main' = fmap snd . delta root
-  where
-    root :: Object Mop IO
-    root = Object $ transience
-                *:* continuations
-                *:* nondet
-                *:* weaving
-                *:* exceptions
-                *:* possible
-                *:* threads
-                *:* Empty
+main' = fmap snd . delta base
 
-class Base m m' where
-  base :: Plan Main m a -> m' a
-instance Base m (Plan Main m) where
-  base = id
-instance (Functor m',Base m m') => Base m (Plan gs m') where
-  base = lift . base
+
+base :: Monad m => Object Mop m
+base = Object $ transience
+            *:* continuations
+            *:* nondet
+            *:* weaving
+            *:* exceptions
+            *:* possible
+            *:* threads
+            *:* Empty
+
+-- class Base m m' where
+--   base :: Plan Main m a -> m' a
+-- instance Base m (Plan Main m) where
+--   base = id
+-- instance (Functor m',Base m m') => Base m (Plan gs m') where
+--   base = lift . base
