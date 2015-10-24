@@ -37,9 +37,8 @@ type Main
      ,Thread
      ]
 
-main' :: Plan Main IO a -> IO a
-main' = fmap snd . delta base
-
+main' :: Monad m => Plan Main m b -> m b
+main' = fmap snd . _delta base
 
 base :: Monad m => Object Mop m
 base = Object $ transience

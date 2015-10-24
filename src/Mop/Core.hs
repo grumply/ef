@@ -14,6 +14,7 @@
 {-# LANGUAGE UndecidableInstances               #-}
 {-# LANGUAGE CPP                                #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE IncoherentInstances #-}
 {-# OPTIONS_GHC -fno-warn-missing-methods       #-}
 #if __GLASGOW_HASKELL__ > 710
 {-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
@@ -22,7 +23,8 @@ module Mop.Core where
 
 import Control.Applicative
 import Control.Monad
-import Data.Typeable
+import Data.Typeable hiding (cast)
+import Unsafe.Coerce
 
 type family (:++:) (xs :: [k]) (ys :: [k]) :: [k] where
   xs        :++: '[] = xs
@@ -86,7 +88,7 @@ instance (Denies x xs,Admits' x ys (IndexOf x ys),AdmitsSubset xs ys) => AdmitsS
   pushSubset (Attr xa xs) ys = pushSubset xs (push xa ys)
   pullSubset ys = Attr (pull ys) (pullSubset ys)
 
-data Symbol (symbols :: [* -> *]) a where
+data Symbol symbols a where
   Symbol  :: Denies s ss => s a -> Symbol (s ': ss) a
   Further :: Denies s ss => Symbol ss a -> Symbol (s ': ss) a
 
@@ -118,7 +120,7 @@ instance (Denies x xs',xs ~ (x ': xs')) => Allows' x xs 'Z where
   prj' _ (Symbol sa) = Just sa
   prj' _ (Further _) = Nothing
 
-class Pair f g | g -> f, f -> g where
+class Pair f g | f -> g, g -> f where
   pair :: (a -> b -> r) -> f a -> g b -> r
 instance Pair ((->) a) ((,) a) where
   pair p f g = uncurry (p . f) g
@@ -130,6 +132,27 @@ instance (Pair i s,Pair (Attrs is) (Symbol ss))
   where
     pair p (Attr ia _) (Symbol  sa) = pair p ia sa
     pair p (Attr _ is) (Further ss) = pair p is ss
+
+cast :: forall fs gs m a. (Functor m,As (Symbol fs) (Symbol gs)) => Plan fs m a -> Plan gs m a
+cast (Step sym bp) = Step (conv sym) (unsafeCoerce bp)
+cast (M m) = M (fmap cast m)
+cast (Pure r) = Pure r
+
+rearrange :: (Functor m, Allows' (Symbol s) s' (IndexOf (Symbol s) s'))
+       => Plan s m a -> Plan s' m a
+rearrange (Step sym bp) = Step (inj sym) (unsafeCoerce bp)
+rearrange (M m) = M (fmap rearrange m)
+rearrange (Pure r) = Pure r
+
+class As x y where
+  conv :: x a -> y a
+instance As x x where
+  conv = id
+instance As (Symbol '[]) (Symbol '[])
+instance {-# OVERLAPPABLE #-} (As x y,As (Symbol xs) (Symbol ys),Denies y ys)
+  => As (Symbol (x ': xs)) (Symbol (y ': ys)) where
+  conv (Symbol sa) = Symbol (conv sa)
+  conv (Further ss) = Further (conv ss)
 
 type family End (xs :: [k]) :: k where
   End '[x] = x
@@ -247,7 +270,13 @@ _mappend p0 p1 = go p0
   (obj',_) <- delta obj p
   return obj'
 
-delta :: (Pair (Attrs is) (Symbol symbols),Monad m)
+deltaCast :: forall fs gs is m a. (Pair (Attrs is) (Symbol gs),Monad m,As (Symbol fs) (Symbol gs))
+          => Object is m
+          -> Plan fs m a
+          -> m (Object is m,a)
+deltaCast o = _delta o . (cast :: Plan fs m a -> Plan gs m a)
+
+delta :: forall symbols is m a. (Pair (Attrs is) (Symbol symbols),Monad m)
        => Object is m
        -> Plan symbols m a
        -> m (Object is m,a)
@@ -260,7 +289,6 @@ _delta :: forall is symbols m a. (Pair (Attrs is) (Symbol symbols),Monad m)
        -> m (Object is m,a)
 _delta is p0 = go p0
   where
-    go :: Plan symbols m a -> m (Object is m,a)
     go p =
       case p of
         Step syms k ->
