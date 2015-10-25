@@ -13,8 +13,6 @@
 {-# LANGUAGE GADTs                              #-}
 {-# LANGUAGE UndecidableInstances               #-}
 {-# LANGUAGE CPP                                #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE IncoherentInstances #-}
 {-# OPTIONS_GHC -fno-warn-missing-methods       #-}
 #if __GLASGOW_HASKELL__ > 710
 {-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
@@ -39,12 +37,12 @@ class Subset xs ys
 instance Subset '[] ys
 instance (In x ys ~ 'True,Subset xs ys) => Subset (x ': xs) ys
 
-type family NotEq (x :: k) (y :: k) :: Bool where
-  NotEq x x = 'False
-  NotEq x y = 'True
+type family Equal (x :: k) (y :: k) :: Bool where
+  Equal x x = 'True
+  Equal x y = 'False
 class Denies (x :: k) (ys :: [k])
 instance Denies x '[]
-instance (NotEq x y ~ 'True,Denies x ys) => Denies x (y ': ys)
+instance (Equal x y ~ 'False,Denies x ys) => Denies x (y ': ys)
 
 data Nat = Z | S Nat
 data Index (n :: Nat)= Index
@@ -55,7 +53,6 @@ type family IndexOf (f :: k) (fs :: [k]) :: Nat where
 data Attrs (is :: [* -> *]) a where
   Empty :: Attrs '[] a
   Attr :: Denies f fs => f a -> Attrs fs a -> Attrs (f ': fs) a
-
 instance Functor (Attrs '[]) where
   fmap _ Empty = Empty
 instance (Functor f,Functor (Attrs fs)) => Functor (Attrs (f ': fs)) where
@@ -67,7 +64,6 @@ class Admits (x :: * -> *) (xs :: [* -> *]) where
 instance (Admits' x xs (IndexOf x xs)) => Admits x xs where
   push xa = push' (Index :: Index (IndexOf x xs)) xa
   pull xs = pull' (Index :: Index (IndexOf x xs)) xs
-
 class Admits' (x :: * -> *) (xs :: [* -> *]) (n :: Nat) where
   push' :: Index n -> x a -> Attrs xs a -> Attrs xs a
   pull' :: Index n -> Attrs xs a -> x a
@@ -75,23 +71,26 @@ instance (xs ~ (x ': xs')) => Admits' x xs 'Z where
   push' _ xa (Attr _ fs) = Attr xa fs
   pull' _ (Attr fa _) = fa
 instance (Admits' x xs' (IndexOf x xs')) => Admits' x (x' ': xs') ('S n) where
-  push' _ xa (Attr fa xs) = Attr fa (push' (Index :: Index (IndexOf x xs')) xa xs)
+  push' _ xa (Attr fa xs)
+    = Attr fa (push' (Index :: Index (IndexOf x xs')) xa xs)
   pull' _ (Attr _ xs) = pull' (Index :: Index (IndexOf x xs')) xs
-
 class AdmitsSubset (xs :: [* -> *]) (ys :: [* -> *]) where
   pushSubset :: Attrs xs a -> Attrs ys a -> Attrs ys a
   pullSubset :: Attrs ys a -> Attrs xs a
 instance AdmitsSubset '[] ys where
   pushSubset _ ys = ys
   pullSubset _ = Empty
-instance (Denies x xs,Admits' x ys (IndexOf x ys),AdmitsSubset xs ys) => AdmitsSubset (x ': xs) ys where
+instance (Denies x xs,Admits' x ys (IndexOf x ys),AdmitsSubset xs ys)
+  => AdmitsSubset (x ': xs) ys where
   pushSubset (Attr xa xs) ys = pushSubset xs (push xa ys)
   pullSubset ys = Attr (pull ys) (pullSubset ys)
+type Uses f fs m = (Monad m,Admits' f fs (IndexOf f fs))
+type Extends extended orig m = (Monad m,AdmitsSubset orig extended)
+type (extended :=> orig) m = Extends extended orig m
 
 data Symbol symbols a where
   Symbol  :: Denies s ss => s a -> Symbol (s ': ss) a
   Further :: Denies s ss => Symbol ss a -> Symbol (s ': ss) a
-
 instance Functor (Symbol '[])
 instance (Functor s,Functor (Symbol ss)) => Functor (Symbol (s ': ss)) where
   fmap f (Symbol sb) = Symbol (fmap f sb)
@@ -103,47 +102,24 @@ class Allows x xs where
 instance (Allows' x xs (IndexOf x xs)) => Allows x xs where
   inj xa = inj' (Index :: Index (IndexOf x xs)) xa
   prj xs = prj' (Index :: Index (IndexOf x xs)) xs
-
 class Allows' x xs (n :: Nat) where
   inj' :: Index n -> x a -> Symbol xs a
   prj' :: Index n -> Symbol xs a -> Maybe (x a)
 instance (Denies x' xs',xs ~ (x' ': xs'),Allows' x xs' (IndexOf x xs')) => Allows' x xs ('S n) where
-  {-# INLINE inj' #-}
   inj' _ xa = Further (inj' (Index :: Index (IndexOf x xs')) xa)
-  {-# INLINE prj' #-}
   prj' _ (Further ss) = prj' (Index :: Index (IndexOf x xs')) ss
   prj' _ _ = Nothing
 instance (Denies x xs',xs ~ (x ': xs')) => Allows' x xs 'Z where
-  {-# INLINE inj' #-}
   inj' _ = Symbol
-  {-# INLINE prj' #-}
   prj' _ (Symbol sa) = Just sa
   prj' _ (Further _) = Nothing
-
-class Pair f g | f -> g, g -> f where
-  pair :: (a -> b -> r) -> f a -> g b -> r
-instance Pair ((->) a) ((,) a) where
-  pair p f g = uncurry (p . f) g
-instance Pair ((,) a) ((->) a) where
-  pair p ~(l,r) g = p r (g l)
-instance Pair (Attrs '[]) (Symbol '[])
-instance (Pair i s,Pair (Attrs is) (Symbol ss))
-    => Pair (Attrs (i ': is)) (Symbol (s ': ss))
-  where
-    pair p (Attr ia _) (Symbol  sa) = pair p ia sa
-    pair p (Attr _ is) (Further ss) = pair p is ss
-
-cast :: forall fs gs m a. (Functor m,As (Symbol fs) (Symbol gs)) => Plan fs m a -> Plan gs m a
-cast (Step sym bp) = Step (conv sym) (unsafeCoerce bp)
-cast (M m) = M (fmap cast m)
-cast (Pure r) = Pure r
-
-rearrange :: (Functor m, Allows' (Symbol s) s' (IndexOf (Symbol s) s'))
-       => Plan s m a -> Plan s' m a
-rearrange (Step sym bp) = Step (inj sym) (unsafeCoerce bp)
-rearrange (M m) = M (fmap rearrange m)
-rearrange (Pure r) = Pure r
-
+class AllowsSubset fs' fs
+instance AllowsSubset '[] fs
+instance (Allows' f fs (IndexOf f fs),AllowsSubset fs' fs)
+  => AllowsSubset (f ': fs') fs
+type Has f fs m = (Monad m,Allows' f fs (IndexOf f fs))
+type (f :< fs) m = Has f fs m
+type Invokes fs' fs m = (Monad m,AllowsSubset fs' fs)
 class As x y where
   conv :: x a -> y a
 instance As x x where
@@ -154,36 +130,55 @@ instance {-# OVERLAPPABLE #-} (As x y,As (Symbol xs) (Symbol ys),Denies y ys)
   conv (Symbol sa) = Symbol (conv sa)
   conv (Further ss) = Further (conv ss)
 
-type family End (xs :: [k]) :: k where
-  End '[x] = x
-  End (x ': xs) = End xs
+{-# INLINE cast #-}
+cast :: forall fs gs m a. (Functor m,As (Symbol fs) (Symbol gs))
+     => Plan fs m a -> Plan gs m a
+cast (Step sym bp) = Step (conv sym) (unsafeCoerce bp)
+cast (M m) = M (fmap cast m)
+cast (Pure r) = Pure r
+
+class Pair f g | f -> g, g -> f where
+  pair :: (a -> b -> r) -> f a -> g b -> r
+instance Pair ((->) a) ((,) a) where
+  pair p f g = uncurry (p . f) g
+instance Pair ((,) a) ((->) a) where
+  pair p (l,r) g = p r (g l)
+instance Pair (Attrs '[]) (Symbol '[]) where
+  pair _ _ _ = undefined
+instance (Pair i s,Pair (Attrs is) (Symbol ss))
+    => Pair (Attrs (i ': is)) (Symbol (s ': ss))
+  where
+    pair p (Attr ia _) (Symbol  sa) = pair p ia sa
+    pair p (Attr _ is) (Further ss) = pair p is ss
+
+newtype Object fs m = Object { objectAttrs :: Attrs fs (Method fs m) }
+type Method fs m = Object fs m -> m (Object fs m)
+type Attribute f fs m = f (Method fs m)
 
 data Plan symbols m a
   = Pure a
   | M (m (Plan symbols m a))
   | forall b. Step (Symbol symbols b) (b -> Plan symbols m a)
 
-{-# INLINE lift #-}
-lift :: Functor m => m a -> Plan symbols m a
-lift m = M (fmap Pure m)
-
--- | Invoke a method of the parent object. This allows:
--- > super . super $ something
-{-# INLINE super #-}
-super :: Functor m => Plan fs m a -> Plan gs (Plan fs m) a
-super = lift
-
--- | Invoke a method in the calling object.
-{-# INLINE self #-}
-self :: Has x symbols m => x a -> Plan symbols m a
-self xa = Step (inj xa) return
-
 instance Functor m => Functor (Plan symbols m) where
-  fmap f p0 = _fmap f p0
+  fmap f = go
+    where
+      go p =
+        case p of
+          Pure a -> Pure (f a)
+          M m -> M (fmap go m)
+          Step syms bp -> Step syms (\b -> go (bp b))
 
 instance Monad m => Applicative (Plan symbols m) where
   pure = Pure
-  (<*>) = ap
+  pf <*> px = go pf
+    where
+      go p =
+        case p of
+          Step sym bp -> Step sym (\b -> go (bp b))
+          M m -> M (fmap go m)
+          Pure f -> fmap f px
+  (*>) = (>>)
 
 instance Monad m => Monad (Plan symbols m) where
 #ifdef TRANSFORMERS_SAFE
@@ -192,25 +187,6 @@ instance Monad m => Monad (Plan symbols m) where
   return = Pure
 #endif
   (>>=) = _bind
-
-{-# NOINLINE _fmap #-}
-_fmap :: Functor m => (a -> b) -> Plan symbols m a -> Plan symbols m b
-_fmap f p0 = go p0
-  where
-    go p =
-      case p of
-        Pure a -> Pure (f a)
-        M m -> M (fmap go m)
-        Step syms bp -> Step syms (\b -> go (bp b))
-
-{-# RULES
-  "_fmap f (Step syms k)" forall syms k f.
-      _fmap f (Step syms k) = Step syms (\a -> _fmap f (k a));
-  "_fmap f (M m)" forall f m.
-      _fmap f (M m) = M (fmap (_fmap f) m);
-  "_fmap f (Pure r)" forall f r.
-      _fmap f (Pure r) = Pure (f r);
-  #-}
 
 {-# NOINLINE _bind #-}
 _bind :: Functor m => Plan symbols m a -> (a -> Plan symbols m a') -> Plan symbols m a'
@@ -237,30 +213,37 @@ instance MonadPlus m => Alternative (Plan fs m) where
 
 instance MonadPlus m => MonadPlus (Plan fs m) where
   mzero = lift mzero
-  mplus = _mplus
-
-_mplus :: MonadPlus m => Plan fs m a -> Plan fs m a -> Plan fs m a
-_mplus p0 p1 = go p0
-  where
-    go p =
-      case p of
-        Step sym bp -> Step sym (\b -> go (bp b))
-        Pure r -> Pure r
-        M m -> M (fmap go m `mplus` return p1)
+  mplus pl pr = go pl
+    where
+      go p =
+        case p of
+          Step sym bp -> Step sym (\b -> go (bp b))
+          Pure r -> Pure r
+          M m -> M (fmap go m `mplus` return pr)
 
 instance (Monad m,Monoid r) => Monoid (Plan fs m r) where
   mempty = pure mempty
-  mappend = _mappend
-
-_mappend :: (Monad m,Monoid r) => Plan fs m r -> Plan fs m r -> Plan fs m r
-_mappend p0 p1 = go p0
+  mappend pl pr = go pl
     where
       go p =
         case p of
           Step sym bp -> Step sym (\b -> go (bp b))
           M m -> M (fmap go m)
-          Pure r -> fmap (mappend r) p1
+          Pure r -> fmap (mappend r) pr
 
+{-# INLINE lift #-}
+lift :: Functor m => m a -> Plan symbols m a
+lift m = M (fmap Pure m)
+
+{-# INLINE super #-}
+super :: Functor m => Plan fs m a -> Plan gs (Plan fs m) a
+super = lift
+
+{-# INLINE self #-}
+self :: Has x symbols m => x a -> Plan symbols m a
+self xa = Step (inj xa) return
+
+{-# INLINE (#) #-}
 (#) :: (Pair (Attrs is) (Symbol symbols),Monad m)
     => m (Object is m)
     -> Plan symbols m a
@@ -270,12 +253,15 @@ _mappend p0 p1 = go p0
   (obj',_) <- delta obj p
   return obj'
 
-deltaCast :: forall fs gs is m a. (Pair (Attrs is) (Symbol gs),Monad m,As (Symbol fs) (Symbol gs))
+{-# INLINE deltaCast #-}
+deltaCast :: forall fs gs is m a.
+             (Pair (Attrs is) (Symbol gs),Monad m,As (Symbol fs) (Symbol gs))
           => Object is m
           -> Plan fs m a
           -> m (Object is m,a)
 deltaCast o = _delta o . (cast :: Plan fs m a -> Plan gs m a)
 
+{-# INLINE delta #-}
 delta :: forall symbols is m a. (Pair (Attrs is) (Symbol symbols),Monad m)
        => Object is m
        -> Plan symbols m a
@@ -287,33 +273,18 @@ _delta :: forall is symbols m a. (Pair (Attrs is) (Symbol symbols),Monad m)
        => Object is m
        -> Plan symbols m a
        -> m (Object is m,a)
-_delta is p0 = go p0
+_delta = go
   where
-    go p =
-      case p of
-        Step syms k ->
-          let (trans,b) = pair (,) (objectAttrs is) syms
-          in do is' <- trans is
-                _delta is' (k b)
-        Pure res -> pure (is,res)
-        M mp -> mp >>= go
-
-type Uses f fs m = (Monad m,Admits' f fs (IndexOf f fs))
-type Extends extended orig m = (Monad m,AdmitsSubset orig extended)
-type (extended :=> orig) m = Extends extended orig m
-
-type Has f fs m = (Monad m,Allows' f fs (IndexOf f fs))
-type (f :< fs) m = Has f fs m
-type Invokes fs' fs m = (Monad m,AllowsSubset fs' fs)
-
-class AllowsSubset fs' fs
-instance AllowsSubset '[] fs
-instance (Allows' f fs (IndexOf f fs),AllowsSubset fs' fs)
-  => AllowsSubset (f ': fs') fs
-
-type Method fs m = Object fs m -> m (Object fs m)
-type Attribute f fs m = f (Method fs m)
-newtype Object fs m = Object { objectAttrs :: Attrs fs (Method fs m) }
+    go is = go'
+      where
+        go' p =
+          case p of
+            Step syms k ->
+              let (trans,b) = pair (,) (objectAttrs is) syms
+              in do is' <- trans is
+                    go is' (k b)
+            M mp -> mp >>= go'
+            Pure res -> pure (is,res)
 
 class UnsafeBuild fs where
   unsafeBuild :: Attrs fs a
