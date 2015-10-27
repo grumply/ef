@@ -184,6 +184,7 @@ instance Functor m => Functor (Plan symbols m) where
 instance Monad m => Applicative (Plan symbols m) where
   pure = Pure
   (<*>) = ap
+  (*>) = (>>)
 
 instance Monad m => Monad (Plan symbols m) where
 #ifdef TRANSFORMERS_SAFE
@@ -260,6 +261,17 @@ _mappend p0 p1 = go p0
           Step sym bp -> Step sym (\b -> go (bp b))
           M m -> M (fmap go m)
           Pure r -> fmap (mappend r) p1
+
+observe :: forall fs m a. Monad m => Plan fs m a -> Plan fs m a
+observe p = M (go p)
+  where
+    go p =
+      case p of
+        Step sym bp -> return (Step sym (\b -> observe (bp b)))
+        M m -> m >>= go
+        Pure r -> return (Pure r)
+
+
 
 (#) :: (Pair (Attrs is) (Symbol symbols),Monad m)
     => m (Object is m)
