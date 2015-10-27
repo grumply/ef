@@ -13,7 +13,7 @@ module Effect.Local.Journaler
     , Journal, log, eavesdrop, reconfigure, intercept
     ) where
 
-import Mop
+import Mop hiding (FreshScope) -- temporary workaround
 
 import Data.Monoid
 

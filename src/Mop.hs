@@ -17,6 +17,8 @@ import Effect.Thread              as Base
 import Effect.Transient           as Base
 import Effect.Weave               as Base
 
+import Data.Function              as Base (fix)
+
 type Mop
   = '[Transience
      ,Continuations
@@ -38,7 +40,7 @@ type Main
      ]
 
 main' :: Monad m => Plan Main m b -> m b
-main' = fmap snd . _delta base
+main' = fmap snd . delta base
 
 base :: Monad m => Object Mop m
 base = Object $ transience

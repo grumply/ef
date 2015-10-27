@@ -8,11 +8,12 @@ module Effect.Weave
   , server, Server, Server'
   , weave, Woven(..)
   , X
-  , for
+  , cat, for
   , (<\\), (\<\), (~>),  (<~) , (/>/), (//>)
   , (\\<), (/</), (>~),  (~<) , (\>\), (>\\)
   ,        (<~<), (~<<), (>>~), (>~>)
   , (<<+), (<+<), (<-<), (>->), (>+>), (+>>)
+  , getScope, Weave(..)
   ) where
 
 import Mop.Core
@@ -43,7 +44,7 @@ weaving = Weaving (unsafePerformIO (newIORef 0)) $ \fs ->
     in n' `seq` return fs
 
 {-# INLINE getScope #-}
-getScope p = case p (unsafeCoerce ()) (unsafeCoerce ()) of
+getScope p = case p of
     Step sym bp -> case prj sym of
         Just x  -> case x of
             Request i _ _ -> i
@@ -51,6 +52,8 @@ getScope p = case p (unsafeCoerce ()) (unsafeCoerce ()) of
             _ -> error "getScope got FreshScope"
         _ -> error "getScope got non-Weave"
     _ -> error "getScope got non-step"
+
+
 
 instance Pair Weaving Weave where
     pair p (Weaving i k) (FreshScope ik) =
@@ -160,7 +163,7 @@ producer :: forall fs m b r. Has Weave fs m
          => ((b -> Plan fs m ()) -> Plan fs m r)
          -> Producer' fs b m r
 producer f = Woven $ \_ dn ->
-  f (\b -> self (Respond (getScope dn) b
+  f (\b -> self (Respond (getScope  (dn (unsafeCoerce ()) (unsafeCoerce ()))) b
                            (return :: forall a. a -> Plan fs m a)
                   )
     )
@@ -172,7 +175,7 @@ consumer :: forall fs m a r. Has Weave fs m
          => (Plan fs m a -> Plan fs m r)
          -> Consumer' fs a m r
 consumer f = Woven $ \up _ ->
-  f (self (Request (getScope up) () (return :: forall x. x -> Plan fs m x)))
+  f (self (Request (getScope (up (unsafeCoerce ()) (unsafeCoerce ()))) () (return :: forall x. x -> Plan fs m x)))
 
 type Pipe fs a b m r = Woven fs () a () b m r
 -- pipe $ \await yield -> do { .. ; }
@@ -181,8 +184,8 @@ pipe :: forall fs m a b x r. Has Weave fs m
      => (Plan fs m a -> (b -> Plan fs m x) -> Plan fs m r)
      -> Pipe fs a b m r
 pipe f = Woven $ \up dn ->
-  f (self (Request (getScope up) () (return :: forall z. z -> Plan fs m z)))
-    (\b -> self (Respond (getScope dn) b
+  f (self (Request (getScope (up (unsafeCoerce ()) (unsafeCoerce ()))) () (return :: forall z. z -> Plan fs m z)))
+    (\b -> self (Respond (getScope (dn (unsafeCoerce ()) (unsafeCoerce ()))) b
                            (return :: forall z. z -> Plan fs m z)
                   )
     )
@@ -191,24 +194,24 @@ type Client fs a' a m r = Woven fs a' a () X m r
 -- client $ \request -> do { .. ; }
 {-# INLINE client #-}
 client :: forall fs m a' a r. Has Weave fs m
-       => ((a -> Plan fs m a') -> Plan fs m r)
+       => ((a' -> Plan fs m a) -> Plan fs m r)
        -> Client' fs a' a m r
 client f = Woven $ \up _ ->
-  f (\a -> self (Request (getScope up) a
-                           (return :: forall z. z -> Plan fs m z)
-                  )
+  f (\a -> self (Request (getScope (up (unsafeCoerce ()) (unsafeCoerce ()))) a
+                         (return :: forall z. z -> Plan fs m z)
+                )
     )
 
 type Server fs b' b m r = Woven fs X () b' b m r
 -- server $ \respond -> do { .. ; }
 {-# INLINE server #-}
 server :: forall fs m b' b r. Has Weave fs m
-       => ((b' -> Plan fs m b) -> Plan fs m r)
+       => ((b -> Plan fs m b') -> Plan fs m r)
        -> Server' fs b' b m r
 server f = Woven $ \_ dn ->
-  f (\b' -> self (Respond (getScope dn) b'
-                            (return :: forall z. z -> Plan fs m z)
-                   )
+  f (\b' -> self (Respond (getScope (dn (unsafeCoerce ()) (unsafeCoerce ()))) b'
+                          (return :: forall z. z -> Plan fs m z)
+                 )
     )
 
 newtype Woven fs a' a b' b m r
@@ -223,11 +226,11 @@ weave :: forall fs a a' b b' m r. Has Weave fs m
       => ((a -> Plan fs m a') -> (b' -> Plan fs m b) -> Plan fs m r)
       -> Woven fs a' a b' b m r
 weave f = Woven $ \up dn ->
-  f (\a -> self (Request (getScope up) a
+  f (\a -> self (Request (getScope (up (unsafeCoerce ()) (unsafeCoerce ()))) a
                            (return :: forall z. z -> Plan fs m z)
                   )
     )
-    (\b' -> self (Respond (getScope dn) b'
+    (\b' -> self (Respond (getScope (dn (unsafeCoerce ()) (unsafeCoerce ()))) b'
                             (return :: forall z. z -> Plan fs m z)
                    )
     )
@@ -242,8 +245,14 @@ type Server' fs b' b m r = forall x' x . Woven fs x' x b' b m r
 
 type Client' fs a' a m r = forall y' y . Woven fs a' a y' y m r
 
+
+
+
 --------------------------------------------------------------------------------
 -- Respond; substitute yields with a function
+
+cat :: Has Weave fs m => Pipe fs a a m r
+cat = pipe $ \awt yld -> forever (awt >>= yld)
 
 {-# INLINE (//>) #-}
 infixl 3 //>
@@ -251,7 +260,7 @@ infixl 3 //>
       =>       Woven fs x' x b' b m a'
       -> (b -> Woven fs x' x c' c m b')
       ->       Woven fs x' x c' c m a'
-p0 //> fb = Woven $ \up dn -> transform (getScope up) up dn
+p0 //> fb = Woven $ \up dn -> transform (getScope (up (unsafeCoerce ()) (unsafeCoerce ()))) up dn
                                         (runWoven p0 up (unsafeCoerce dn))
   where
     transform scope up dn p0 = go p0
@@ -327,7 +336,7 @@ infixr 4 >\\
       => (b' -> Woven fs a' a y' y m b)
       ->        Woven fs b' b y' y m c
       ->        Woven fs a' a y' y m c
-fb' >\\ p0 = Woven $ \up dn -> transform (getScope up) up dn
+fb' >\\ p0 = Woven $ \up dn -> transform (getScope (up (unsafeCoerce ()) (unsafeCoerce ()))) up dn
                                          (runWoven p0 (unsafeCoerce up) dn)
   where
     transform scope up dn p1 = go p1
@@ -396,7 +405,7 @@ infixl 7 >>~
       =>       Woven fs a' a b' b m r
       -> (b -> Woven fs b' b c' c m r)
       ->       Woven fs a' a c' c m r
-p0 >>~ fb0 = Woven $ \up dn -> transform (getScope up) up dn
+p0 >>~ fb0 = Woven $ \up dn -> transform (getScope (up (unsafeCoerce ()) (unsafeCoerce ()))) up dn
                                          (runWoven p0 up (unsafeCoerce dn))
   where
     transform scope up dn p1 = go p1
@@ -468,7 +477,7 @@ infixr 6 +>>
       => (b' -> Woven fs a' a b' b m r)
       ->        Woven fs b' b c' c m r
       ->        Woven fs a' a c' c m r
-fb' +>> p0 = Woven $ \up dn -> transform (getScope up) up dn
+fb' +>> p0 = Woven $ \up dn -> transform (getScope (up (unsafeCoerce ()) (unsafeCoerce ()))) up dn
                                          (runWoven p0 (unsafeCoerce up) dn)
   where
     transform scope up dn p1 = go p1

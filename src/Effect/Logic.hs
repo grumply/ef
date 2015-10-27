@@ -1,11 +1,11 @@
 module Effect.Logic
-    ( Logic, logic
+    ( Logic(), logic
     , Nondet, nondet
     , module Effect.Weave
     ) where
 
 import Mop.Core
-import Effect.Weave
+import Effect.Weave hiding (FreshScope(..))
 import Unsafe.Coerce
 import Data.IORef
 import System.IO.Unsafe
@@ -30,7 +30,7 @@ nondet = Nondet (unsafePerformIO (newIORef 0)) $ \fs ->
 
 {-# INLINABLE freshScope #-}
 freshScope :: Has Logic fs m => Plan fs m Integer
-freshScope = self (FreshScope id)
+freshScope = self (Effect.Logic.FreshScope id)
 
 -- a nondeterministic producer
 -- use: pythag n = logic $ \ch yield cut ->
@@ -88,7 +88,7 @@ logic l =
             Pure r -> Pure r
 
 instance Pair Nondet Logic where
-    pair p (Nondet i k) (FreshScope ik) =
+    pair p (Nondet i k) (Effect.Logic.FreshScope ik) =
         let n = (unsafePerformIO $ readIORef i)
         in n `seq` p k (ik n)
     pair _ _ _ = error "Logic primitive escaped its scope:\n\

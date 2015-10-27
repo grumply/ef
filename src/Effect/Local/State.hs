@@ -5,7 +5,7 @@ module Effect.Local.State
     , gets, puts, swap
     ) where
 
-import Mop
+import Mop hiding (FreshScope) -- temporary workaround
 
 import Data.IORef
 import System.IO.Unsafe
