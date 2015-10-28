@@ -239,9 +239,6 @@ type Server' fs b' b m r = forall x' x . Woven fs x' x b' b m r
 
 type Client' fs a' a m r = forall y' y . Woven fs a' a y' y m r
 
-
-
-
 --------------------------------------------------------------------------------
 -- Respond; substitute yields with a function
 

@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleInstances, ImpredicativeTypes #-}
 module Mop
   ( main', base, Mop, Main
   , module Base
@@ -9,6 +9,7 @@ import Mop.IO                     as Base
 import Data.Promise               as Base
 import Effect.Concurrent          as Base
 import Effect.Continuation        as Base
+import Effect.Contract            as Base
 import Effect.Exception           as Base
 import Effect.List                as Base
 import Effect.Logic               as Base
@@ -16,7 +17,9 @@ import Effect.Maybe               as Base
 import Effect.Thread              as Base
 import Effect.Transient           as Base
 import Effect.Weave               as Base
+import Effect.Divergence          as Base
 
+import Control.Exception          as Base (SomeException,assert)
 import Data.Function              as Base (fix)
 
 type Mop
@@ -27,6 +30,7 @@ type Mop
      ,Exceptions
      ,Possible
      ,Threading
+     ,Divergent
      ]
 
 type Main
@@ -37,9 +41,10 @@ type Main
      ,Throw
      ,May
      ,Thread
+     ,Diverge
      ]
 
-main' :: Monad m => Plan Main m b -> m b
+main' :: Plan Main IO b -> IO b
 main' = fmap snd . delta base
 
 base :: Monad m => Object Mop m
@@ -50,6 +55,7 @@ base = Object $ transience
             *:* exceptions
             *:* possible
             *:* threads
+            *:* divergent
             *:* Empty
 
 -- class Base m m' where
