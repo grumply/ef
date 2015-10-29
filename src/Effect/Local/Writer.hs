@@ -14,9 +14,9 @@ import Data.Monoid
 import Unsafe.Coerce
 
 data Writer k
-    = FreshScope (Integer -> k)
-    | forall a. Tell Integer a
-    | forall fs m a w. Listen Integer (Plan fs m a)
+    = FreshScope (Int -> k)
+    | forall a. Tell Int a
+    | forall fs m a w. Listen Int (Plan fs m a)
 
 data Log fs m w = Log
     { tell :: w -> Plan fs m ()
@@ -59,13 +59,14 @@ writer f = do
                 M m -> M (fmap go' m)
                 Pure r -> Pure (w,r)
 
-data Logger k = Logger Integer k
+data Logger k = Logger Int k
 
 {-# INLINE logger #-}
 logger :: Uses Logger fs m => Attribute Logger fs m
 logger = Logger 0 $ \fs ->
     let Logger i k = (fs&)
-    in pure (fs .= Logger (succ i) k)
+        i' = succ i
+    in i' `seq` pure (fs .= Logger i' k)
 
 logMisuse :: String -> a
 logMisuse method = error $

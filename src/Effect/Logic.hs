@@ -11,11 +11,11 @@ import Unsafe.Coerce
 -- nondeterministic choice with pruning
 
 data Logic k
-    = FreshScope (Integer -> k)
-    | forall a. Choose Integer [a] (a -> k)
-    | Cut Integer
+    = FreshScope (Int -> k)
+    | forall a. Choose Int [a] (a -> k)
+    | Cut Int
 
-data Nondet k = Nondet Integer k
+data Nondet k = Nondet Int k
 
 {-# INLINE nondet #-}
 nondet :: Uses Nondet fs m => Attribute Nondet fs m
@@ -24,8 +24,8 @@ nondet = Nondet 0 $ \fs ->
     in pure $ fs .= Nondet (succ i) k
 
 {-# INLINABLE freshScope #-}
-freshScope :: Has Logic fs m => Plan fs m Integer
-freshScope = self (Effect.Logic.FreshScope id)
+freshScope :: Has Logic fs m => Plan fs m Int
+freshScope = self (FreshScope id)
 
 -- a nondeterministic producer
 -- use: pythag n = logic $ \ch yield cut ->
@@ -83,7 +83,7 @@ logic l =
             Pure r -> Pure r
 
 instance Pair Nondet Logic where
-    pair p (Nondet i k) (Effect.Logic.FreshScope ik) = p k (ik i)
+    pair p (Nondet i k) (FreshScope ik) = p k (ik i)
     pair _ _ _ = error "Logic primitive escaped its scope:\n\
                        \\tAttempting to reuse control flow\
                        \ primitives outside of their scope\

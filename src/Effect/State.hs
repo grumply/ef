@@ -26,7 +26,7 @@ get = self (Modify id id)
 gets :: Has (State st) fs m => (st -> a) -> Plan fs m a
 gets f = self (Modify id f)
 
-{-# INLINE Put #-}
+{-# INLINE put #-}
 put :: Has (State st) fs m => st -> Plan fs m ()
 put st = self (Modify (const st) (const ()))
 

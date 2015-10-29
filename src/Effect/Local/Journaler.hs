@@ -22,10 +22,10 @@ import Unsafe.Coerce
 import Prelude hiding (log)
 
 data Journaling k
-    = FreshScope (Integer -> k)
-    | forall a. Log Integer a
-    | forall fs m a w. Eavesdrop Integer w (Plan fs m a)
-    | forall fs m a w. Reconfigure Integer (a -> w -> w)
+    = FreshScope (Int -> k)
+    | forall a. Log Int a
+    | forall fs m a w. Eavesdrop Int w (Plan fs m a)
+    | forall fs m a w. Reconfigure Int (a -> w -> w)
 
 data Journal fs m a w = Journal
     { log :: a -> Plan fs m ()
@@ -76,13 +76,14 @@ journaling c w f = do
                     M m -> M (fmap go'' m)
                     Pure r -> Pure (w,r)
 
-data Journaler k = Journaler Integer k
+data Journaler k = Journaler Int k
 
 {-# INLINE journaler #-}
 journaler :: Uses Journaler fs m => Attribute Journaler fs m
 journaler = Journaler 0 $ \fs ->
     let Journaler i k = (fs&)
-    in pure (fs .= Journaler (succ i) k)
+        i' = succ i
+    in i' `seq` pure (fs .= Journaler i' k)
 
 journalMisuse :: String -> a
 journalMisuse method = error $

@@ -41,26 +41,27 @@ import Unsafe.Coerce
 -- when using resources and make thoughtful use of exception handling.
 
 
-newtype Token a = Token Integer
+newtype Token a = Token Int
 
 data Transient k
-    = FreshScope (Integer -> k)
+    = FreshScope (Int -> k)
 
-    | forall fs m a . Allocate   Integer (Plan fs m a) (a -> Plan fs m ()) ((a,Token a) -> k)
+    | forall fs m a . Allocate   Int (Plan fs m a) (a -> Plan fs m ()) ((a,Token a) -> k)
 
-    | forall fs m a . OnEnd      Integer           (Plan fs m ()) (Token () -> k)
-    | forall fs m a . Register   Integer (Token a) (Plan fs m ()) k
+    | forall fs m a . OnEnd      Int           (Plan fs m ()) (Token () -> k)
+    | forall fs m a . Register   Int (Token a) (Plan fs m ()) k
 
-    | forall      a . Unregister Integer (Token a) k
-    | forall      a . Deallocate         (Token a) k
+    | forall      a . Unregister Int (Token a) k
+    | forall      a . Deallocate     (Token a) k
 
-data Transience k = Transience Integer k k
+data Transience k = Transience Int k k
 
 {-# INLINE transience #-}
 transience :: Uses Transience fs m => Attribute Transience fs m
 transience = Transience 0 return $ \fs ->
     let Transience i non me = (fs&)
-    in pure (fs .= Transience (succ i) non me)
+        i' = succ i
+    in i' `seq` pure (fs .= Transience i' non me)
 
 transientMisuse :: String -> a
 transientMisuse method = error $
@@ -76,7 +77,7 @@ instance Pair Transience Transient where
     pair p _ (Unregister _ _ _) = transientMisuse "Unregister"
 
 {-# INLINE freshScope #-}
-freshScope :: Has Transient fs m => Plan fs m Integer
+freshScope :: Has Transient fs m => Plan fs m Int
 freshScope = self (FreshScope id)
 
 {-# INLINE deallocate #-}

@@ -10,11 +10,11 @@ import Data.Maybe
 -- Maybe implements short-circuiting plans with success and non-specific failure.
 
 data May k
-    = forall a. Success Integer a
-    | Failure Integer
-    | FreshScope (Integer -> k)
+    = forall a. Success Int a
+    | Failure Int
+    | FreshScope (Int -> k)
 
-data Possible k = Possible Integer k
+data Possible k = Possible Int k
 
 {-# INLINE possible #-}
 possible :: Uses Possible fs m => Attribute Possible fs m
@@ -23,11 +23,10 @@ possible = Possible 0 $ \fs ->
     in pure $ fs .= Possible (succ i) k
 
 {-# INLINE freshScope #-}
-freshScope :: Has May fs m => Plan fs m Integer
+freshScope :: Has May fs m => Plan fs m Int
 freshScope = self (FreshScope id)
 
-{-# INLINE may #-}
--- use: may $ \success failure ...
+{-# INLINE tryMaybe #-}
 tryMaybe :: Has May fs m => ((forall b. a -> Plan fs m b) -> (forall b. Plan fs m b) -> Plan fs m (Maybe a)) -> Plan fs m (Maybe a)
 tryMaybe x = do
     scope <- freshScope

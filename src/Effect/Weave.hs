@@ -23,24 +23,25 @@ import Data.Function hiding ((&))
 import Unsafe.Coerce
 
 data Weave k
-    = FreshScope (Integer -> k)
-    | forall fs a' a m r. Request Integer a' (a  -> Plan fs m r)
-    | forall fs b' b m r. Respond Integer b  (b' -> Plan fs m r)
+    = FreshScope (Int -> k)
+    | forall fs a' a m r. Request Int a' (a  -> Plan fs m r)
+    | forall fs b' b m r. Respond Int b  (b' -> Plan fs m r)
 
-data Weaving k = Weaving Integer k
+data Weaving k = Weaving Int k
 
 {-# INLINE freshScope #-}
-freshScope :: Has Weave fs m => Plan fs m Integer
+freshScope :: Has Weave fs m => Plan fs m Int
 freshScope = self (FreshScope id)
 
 {-# INLINE weaving #-}
 weaving :: Uses Weaving fs m => Attribute Weaving fs m
 weaving = Weaving 0 $ \fs ->
     let Weaving n k = (fs&)
-    in pure (fs .= Weaving (succ n) k)
+        n' = succ n
+    in n' `seq` pure (fs .= Weaving n' k)
 
 {-# INLINE getScope #-}
-getScope :: Has Weave fs m => Plan fs m a -> m Integer
+getScope :: Has Weave fs m => Plan fs m a -> m Int
 getScope p = case p of
     Step sym bp -> case prj sym of
         Just x  -> case x of

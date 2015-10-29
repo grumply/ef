@@ -10,9 +10,9 @@ import Mop hiding (FreshScope) -- temporary workaround
 import Unsafe.Coerce
 
 data State k
-    = FreshScope (Integer -> k)
-    | Get Integer
-    | forall a. Put Integer a
+    = FreshScope (Int -> k)
+    | Get Int
+    | forall a. Put Int a
 
 data Var fs m st = Var
     { get :: Plan fs m st
@@ -68,13 +68,14 @@ state st f = do
                 M m -> M (fmap go' m)
                 Pure r -> Pure (st,r)
 
-data Store k = Store Integer k
+data Store k = Store Int k
 
 {-# INLINE store #-}
 store :: Uses Store fs m => Attribute Store fs m
 store = Store 0 $ \fs ->
     let Store i k = (fs&)
-    in pure (fs .= Store (succ i) k)
+        i' = succ i
+    in i' `seq` pure (fs .= Store i' k)
 
 varMisuse :: String -> a
 varMisuse method = error $
