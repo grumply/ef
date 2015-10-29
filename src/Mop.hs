@@ -1,6 +1,6 @@
-{-# LANGUAGE FlexibleInstances, ImpredicativeTypes #-}
+{-# LANGUAGE FlexibleInstances, IncoherentInstances #-}
 module Mop
-  ( main', base, Mop, Main
+  ( main', base, Mop, Main, Embed(..)
   , module Base
   ) where
 
@@ -58,9 +58,11 @@ base = Object $ transience
             *:* divergent
             *:* Empty
 
--- class Base m m' where
---   base :: Plan Main m a -> m' a
--- instance Base m (Plan Main m) where
---   base = id
--- instance (Functor m',Base m m') => Base m (Plan gs m') where
---   base = lift . base
+class Monad m => Embed m where
+  embed :: Plan Main IO a -> m a
+instance Embed IO where
+  embed = main'
+instance Embed (Plan Main IO) where
+  embed = id
+instance (Embed m,Monad m) => Embed (Plan fs m) where
+  embed = lift . embed

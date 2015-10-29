@@ -1,8 +1,14 @@
-{-# LANGUAGE KindSignatures #-}
-module Effect.Divergence where
+{-# LANGUAGE GADTs #-}
+module Effect.Divergence
+   ( modself, typeOfSelf
+   , divergent
+   , Divergent, Diverge
+   )
+   where
 
 import Mop.Core
 import Unsafe.Coerce
+import Control.Monad
 import Data.Typeable
 
 data Divergent k = forall gs m. Divergent
@@ -49,7 +55,6 @@ data Introspection fs gs m = Introspection
   , inject :: Object gs m -> Plan fs m ()
   }
 
-{-# WARNING introspect "introspect permits action at a distance; use carefully." #-}
 introspect :: forall fs gs m r. (Pair (Attrs gs) (Symbol fs),Has Diverge fs m)
             => (    Introspection fs gs m
                  -> Plan fs m r
@@ -60,6 +65,16 @@ introspect f =  f Introspection
           self (Project id)
     , inject = \o -> self (Inject o ())
     }
+
+-- NotEq here is used to help prevent misuse. It catches the simplest case only:
+--   a ~ Object gs m; you can bypass it by returning (b,Object gs m)
+modself :: (Monad m, Pair (Attrs gs) (Symbol fs),Has Diverge fs m, NotEq (Object gs m) a ~ True)
+        => (Object gs m -> Plan fs m (Object gs m,a)) -> Plan fs m a
+modself f = introspect $ \i -> do
+  slf <- project i
+  (slf',a) <- f slf
+  inject i slf'
+  return a
 
 typeOfSelf :: forall fs gs m.
             (Pair (Attrs gs) (Symbol fs),Has Diverge fs m,Typeable gs,Typeable m)

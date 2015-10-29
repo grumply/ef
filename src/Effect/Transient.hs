@@ -54,12 +54,11 @@ data Transient k
     | forall      a . Unregister Integer (Token a) k
     | forall      a . Deallocate         (Token a) k
 
-data Transience k = Transience (IORef Integer) k k
+data Transience k = Transience Integer k k
 transience :: Uses Transience fs m => Attribute Transience fs m
-transience = flip (Transience (unsafePerformIO (newIORef 0))) return $ \fs ->
+transience = Transience 0 return $ \fs ->
     let Transience i non me = (fs&)
-        next = unsafePerformIO (modifyIORef i succ)
-    in next `seq` return fs
+    in pure (fs .= Transience (succ i) non me)
 
 transientMisuse :: String -> a
 transientMisuse method = error $
@@ -69,9 +68,7 @@ transientMisuse method = error $
 
 instance Pair Transience Transient where
     pair p (Transience _ _ k) (Deallocate _ k') = p k k'
-    pair p (Transience i k _) (FreshScope ik)   =
-        let n = unsafePerformIO $ readIORef i
-        in n `seq` p k (ik n)
+    pair p (Transience i k _) (FreshScope ik)   = p k (ik i)
     pair p _ (OnEnd _ _ _)      = transientMisuse "OnEnd"
     pair p _ (Register _ _ _ _) = transientMisuse "Register"
     pair p _ (Unregister _ _ _) = transientMisuse "Unregister"

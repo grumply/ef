@@ -11,8 +11,6 @@ import Mop hiding (FreshScope) -- temporary workaround
 
 import Data.Monoid
 
-import Data.IORef
-import System.IO.Unsafe
 import Unsafe.Coerce
 
 data Writer k
@@ -61,14 +59,13 @@ writer f = do
                 M m -> M (fmap go' m)
                 Pure r -> Pure (w,r)
 
-data Logger k = Logger (IORef Integer) k
+data Logger k = Logger Integer k
 
 {-# INLINE logger #-}
 logger :: Uses Logger fs m => Attribute Logger fs m
-logger = Logger (unsafePerformIO $ newIORef 0) $ \fs ->
+logger = Logger 0 $ \fs ->
     let Logger i k = (fs&)
-        x = unsafePerformIO (modifyIORef i succ)
-    in x `seq` return fs
+    in pure (fs .= Logger (succ i) k)
 
 logMisuse :: String -> a
 logMisuse method = error $
@@ -76,8 +73,6 @@ logMisuse method = error $
   \Do not return a Log or its internal fields from its instantiation block."
 
 instance Pair Logger Writer where
-    pair p (Logger i k) (FreshScope ik) =
-        let n = unsafePerformIO (readIORef i)
-        in n `seq` p k (ik n)
+    pair p (Logger i k) (FreshScope ik) = p k (ik i)
     pair p _ (Tell _ _) = logMisuse "Effect.Local.Writer.Strict.Tell"
     pair p _ (Listen _ _) = logMisuse "Effect.Local.Writer.Strict.Listen"

@@ -68,6 +68,12 @@ instance (Admits' x xs (IndexOf x xs)) => Admits x xs where
   push xa = push' (Index :: Index (IndexOf x xs)) xa
   pull xs = pull' (Index :: Index (IndexOf x xs)) xs
 
+stretch :: (Admits' x xs (IndexOf x xs))
+        => (forall z. x z -> x z)
+        -> Attrs xs a
+        -> Attrs xs a
+stretch f xs = push (f $ pull xs) xs
+
 class Admits' (x :: * -> *) (xs :: [* -> *]) (n :: Nat) where
   push' :: Index n -> x a -> Attrs xs a -> Attrs xs a
   pull' :: Index n -> Attrs xs a -> x a
@@ -271,8 +277,6 @@ observe p = M (go p)
         M m -> m >>= go
         Pure r -> return (Pure r)
 
-
-
 (#) :: (Pair (Attrs is) (Symbol symbols),Monad m)
     => m (Object is m)
     -> Plan symbols m a
@@ -306,7 +310,7 @@ _delta = go
         go' p =
           case p of
             Step syms k ->
-              let ~(trans,b) = pair (,) (objectAttrs is) syms
+              let ~(trans,b) = pair (,) (deconstruct is) syms
               in do is' <- trans is
                     go is' (k b)
             Pure res -> pure (is,res)
@@ -327,7 +331,7 @@ instance (Allows' f fs (IndexOf f fs),AllowsSubset fs' fs)
 
 type Method fs m = Object fs m -> m (Object fs m)
 type Attribute f fs m = f (Method fs m)
-newtype Object fs m = Object { objectAttrs :: Attrs fs (Method fs m) }
+newtype Object fs m = Object { deconstruct :: Attrs fs (Method fs m) }
 
 class UnsafeBuild fs where
   unsafeBuild :: Attrs fs a
@@ -359,12 +363,12 @@ infixr 6 *:*
 
 {-# INLINE (&) #-}
 (&) :: Admits f fs => Object fs m -> Attribute f fs m
-(&) xs = pull $ objectAttrs xs
+(&) xs = pull $ deconstruct xs
 
 infixl 5 .=
 {-# INLINE (.=) #-}
 (.=) :: Uses f fs m => Object fs m -> Attribute f fs m -> Object fs m
-is .= x = Object $ push x $ objectAttrs is
+is .= x = Object $ push x $ deconstruct is
 
 cutoff :: Monad m => Integer -> Plan fs m a -> Plan fs m (Maybe a)
 cutoff n _ | n <= 0 = return Nothing

@@ -20,8 +20,6 @@ import Mop.Core
 import Control.Applicative
 import Control.Monad
 import Data.Function hiding ((&))
-import Data.IORef
-import System.IO.Unsafe
 import Unsafe.Coerce
 
 data Weave k
@@ -29,7 +27,7 @@ data Weave k
     | forall fs a' a m r. Request Integer a' (a  -> Plan fs m r)
     | forall fs b' b m r. Respond Integer b  (b' -> Plan fs m r)
 
-data Weaving k = Weaving (IORef Integer) k
+data Weaving k = Weaving Integer k
 
 {-# INLINE freshScope #-}
 freshScope :: Has Weave fs m => Plan fs m Integer
@@ -37,10 +35,9 @@ freshScope = self (FreshScope id)
 
 {-# INLINE weaving #-}
 weaving :: Uses Weaving fs m => Attribute Weaving fs m
-weaving = Weaving (unsafePerformIO (newIORef 0)) $ \fs ->
+weaving = Weaving 0 $ \fs ->
     let Weaving n k = (fs&)
-        n' = unsafePerformIO (modifyIORef n succ)
-    in n' `seq` return fs
+    in pure (fs .= Weaving (succ n) k)
 
 {-# INLINE getScope #-}
 getScope :: Has Weave fs m => Plan fs m a -> m Integer
@@ -54,12 +51,8 @@ getScope p = case p of
     M m -> m >>= getScope
     _ -> error "getScope error"
 
-
-
 instance Pair Weaving Weave where
-    pair p (Weaving i k) (FreshScope ik) =
-        let n = unsafePerformIO (readIORef i)
-        in n `seq` p k (ik n)
+    pair p (Weaving i k) (FreshScope ik) = p k (ik i)
     pair _ _ _ = error "Pipe primitive escaped its scope:\n\
                        \\tAttempting to reuse control flow\
                        \ primitives outside of their scope\

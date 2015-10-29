@@ -7,9 +7,6 @@ module Effect.Logic
 import Mop.Core
 import Effect.Weave hiding (FreshScope(..))
 import Unsafe.Coerce
-import Data.IORef
-import System.IO.Unsafe
-import Debug.Trace
 
 -- nondeterministic choice with pruning
 
@@ -18,15 +15,13 @@ data Logic k
     | forall a. Choose Integer [a] (a -> k)
     | Cut Integer
 
-data Nondet k = Nondet (IORef Integer) k
+data Nondet k = Nondet Integer k
 
 {-# INLINE nondet #-}
 nondet :: Uses Nondet fs m => Attribute Nondet fs m
-nondet = Nondet (unsafePerformIO (newIORef 0)) $ \fs ->
+nondet = Nondet 0 $ \fs ->
     let Nondet i k = (fs&)
-        next = unsafePerformIO (modifyIORef i succ)
-    in next `seq` return fs
-
+    in pure $ fs .= Nondet (succ i) k
 
 {-# INLINABLE freshScope #-}
 freshScope :: Has Logic fs m => Plan fs m Integer
@@ -88,9 +83,7 @@ logic l =
             Pure r -> Pure r
 
 instance Pair Nondet Logic where
-    pair p (Nondet i k) (Effect.Logic.FreshScope ik) =
-        let n = (unsafePerformIO $ readIORef i)
-        in n `seq` p k (ik n)
+    pair p (Nondet i k) (Effect.Logic.FreshScope ik) = p k (ik i)
     pair _ _ _ = error "Logic primitive escaped its scope:\n\
                        \\tAttempting to reuse control flow\
                        \ primitives outside of their scope\

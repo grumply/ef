@@ -13,12 +13,10 @@ module Effect.Local.Journaler
     , Journal, log, eavesdrop, reconfigure, intercept
     ) where
 
-import Mop hiding (FreshScope) -- temporary workaround
+import Mop
 
 import Data.Monoid
 
-import Data.IORef
-import System.IO.Unsafe
 import Unsafe.Coerce
 
 import Prelude hiding (log)
@@ -78,14 +76,13 @@ journaling c w f = do
                     M m -> M (fmap go'' m)
                     Pure r -> Pure (w,r)
 
-data Journaler k = Journaler (IORef Integer) k
+data Journaler k = Journaler Integer k
 
 {-# INLINE journaler #-}
 journaler :: Uses Journaler fs m => Attribute Journaler fs m
-journaler = Journaler (unsafePerformIO $ newIORef 0) $ \fs ->
+journaler = Journaler 0 $ \fs ->
     let Journaler i k = (fs&)
-        x = unsafePerformIO (modifyIORef i succ)
-    in x `seq` return fs
+    in pure (fs .= Journaler (succ i) k)
 
 journalMisuse :: String -> a
 journalMisuse method = error $
@@ -93,9 +90,7 @@ journalMisuse method = error $
   \Do not return a Log or its internal fields from its instantiation block."
 
 instance Pair Journaler Journaling where
-    pair p (Journaler i k) (FreshScope ik) =
-        let n = unsafePerformIO (readIORef i)
-        in n `seq` p k (ik n)
+    pair p (Journaler i k) (FreshScope ik) = p k (ik i)
     pair p _ (Log _ _) = journalMisuse "Effect.Local.Journaler.Lazy.Log"
     pair p _ (Eavesdrop _ _ _) = journalMisuse "Effect.Local.Journaler.Lazy.Eavesdrop"
     pair p _ (Reconfigure _ _) = journalMisuse "Effect.Local.Journaler.Lazy.Reconfigure"

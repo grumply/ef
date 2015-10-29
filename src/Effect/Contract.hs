@@ -95,8 +95,9 @@ analyze :: (Has Throw fs m,Has Diverge fs m,Pair (Attrs gs) (Symbol fs),Typeable
 analyze (pre,precondition) (post,postcondition) method vs =
 #ifndef NO_CONTRACTS
   flip catch c $ do
-    slf <- introspect project
-    preconditionResult <- precondition vs slf
+    preconditionResult <- modself $ \slf -> do
+      pr <- precondition vs slf
+      return (slf,pr)
     unless preconditionResult $ do
       ty <- typeOfSelf
       throw (Contract ("analyze: pre-condition failed: " ++ pre ++ "\n\tin: " ++ show ty))
@@ -105,8 +106,9 @@ analyze (pre,precondition) (post,postcondition) method vs =
 #endif
     a <- method vs
 #ifndef NO_CONTRACTS
-    slf <- introspect project
-    postconditionResult <- postcondition a slf
+    postconditionResult <- modself $ \slf -> do
+      pr <- postcondition a slf
+      return (slf,pr)
     unless postconditionResult $ do
       ty <- typeOfSelf
       throw (Contract ("contract: post-condition failed: " ++ post ++ "\n\tin: " ++ show ty))

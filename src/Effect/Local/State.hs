@@ -7,8 +7,6 @@ module Effect.Local.State
 
 import Mop hiding (FreshScope) -- temporary workaround
 
-import Data.IORef
-import System.IO.Unsafe
 import Unsafe.Coerce
 
 data State k
@@ -70,14 +68,13 @@ state st f = do
                 M m -> M (fmap go' m)
                 Pure r -> Pure (st,r)
 
-data Store k = Store (IORef Integer) k
+data Store k = Store Integer k
 
 {-# INLINE store #-}
 store :: Uses Store fs m => Attribute Store fs m
-store = Store (unsafePerformIO $ newIORef 0) $ \fs ->
+store = Store 0 $ \fs ->
     let Store i k = (fs&)
-        x = unsafePerformIO (modifyIORef i succ)
-    in x `seq` return fs
+    in pure (fs .= Store (succ i) k)
 
 varMisuse :: String -> a
 varMisuse method = error $
@@ -85,8 +82,6 @@ varMisuse method = error $
   \Do not return a Var or its internal fields from its instantiation block."
 
 instance Pair Store State where
-    pair p (Store i k) (FreshScope ik) =
-        let n = unsafePerformIO (readIORef i)
-        in n `seq` p k (ik n)
+    pair p (Store i k) (FreshScope ik) = p k (ik i)
     pair p _ (Get _) = varMisuse "Effect.Local.State.Lazy.Get"
     pair p _ (Put _ _) = varMisuse "Effect.Local.State.Lazy.Put"
