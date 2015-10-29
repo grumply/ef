@@ -7,10 +7,11 @@ import Mop.Core
 import Unsafe.Coerce
 
 data Continuation k
-    = FreshScope (Integer -> k)
-    | forall a. Continuation Integer a
-data Continuations k = Continuations Integer k
+    = FreshScope (Int -> k)
+    | forall a. Continuation Int a
+data Continuations k = Continuations Int k
 
+{-# INLINE enter #-}
 -- use: enter $ \exit -> do { .. ; }
 enter :: Has Continuation fs m => ((forall b. a -> Plan fs m b) -> Plan fs m a) -> Plan fs m a
 enter x = do
@@ -30,13 +31,16 @@ enter x = do
             M m -> M (fmap go m)
             Pure r -> Pure r
 
-freshScope :: Has Continuation fs m => Plan fs m Integer
+{-# INLINE freshScope #-}
+freshScope :: Has Continuation fs m => Plan fs m Int
 freshScope = self (FreshScope id)
 
+{-# INLINE continuations #-}
 continuations :: Uses Continuations gs m => Attribute Continuations gs m
 continuations = Continuations 0 $ \fs ->
     let Continuations i k = (fs&)
-    in pure $ fs .= Continuations (succ i) k
+        i' = succ i
+    in i' `seq` pure $ fs .= Continuations i' k
 
 instance Pair Continuations Continuation where
     pair p (Continuations i k) (FreshScope ik) = p k (ik i)

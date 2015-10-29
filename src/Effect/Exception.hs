@@ -17,24 +17,20 @@ import Data.Coerce
 import Data.Proxy
 
 data Throw k = Throw SomeException k
-data Exceptions k = Exceptions (SomeException -> k)
 
+newtype Catch e = Catch e
+
+class Throws e
+type role Throws representational
+instance Throws (Catch e)
+
+{-# INLINE throw #-}
 throw :: (Has Throw symbols m, Exception e) => e -> Plan symbols m a
 throw e = self (Throw (toException e) undefined)
 
-class Throws e where
-newtype Catch e = Catch e
-instance Throws (Catch e) where
-type role Throws representational
-
+{-# INLINE throwChecked #-}
 throwChecked :: (Exception e,Throws e,Has Throw fs m) => e -> Plan fs m a
 throwChecked = throw
-
-catchChecked :: forall e fs m a. (Exception e,Has Throw fs m)
-             => (Throws e => Plan fs m a)
-             -> (e -> Plan fs m a)
-             -> Plan fs m a
-catchChecked act = catch (unthrow (Proxy :: Proxy e) (act :: Throws e => Plan fs m a))
 
 unthrow :: proxy e -> (Throws e => a) -> a
 unthrow _ = unWrap . coerceWrap . Wrap
@@ -44,11 +40,19 @@ newtype Wrap e a = Wrap { unWrap :: Throws e => a }
 coerceWrap :: Wrap e a -> Wrap (Catch e) a
 coerceWrap = coerce
 
+{-# INLINE catchChecked #-}
+catchChecked :: forall e fs m a. (Exception e,Has Throw fs m)
+             => (Throws e => Plan fs m a)
+             -> (e -> Plan fs m a)
+             -> Plan fs m a
+catchChecked act = catch (unthrow (Proxy :: Proxy e) (act :: Throws e => Plan fs m a))
+
 data Handler fs m a = forall e. Exception e => Handler (e -> Plan fs m a)
 
 instance Functor m => Functor (Handler fs m) where
     fmap f (Handler h) = Handler (fmap f . h)
 
+{-# INLINE catches #-}
 catches :: Has Throw fs m => Plan fs m a -> [Handler fs m a] -> Plan fs m a
 catches p handlers = p `catch` catchesHandler handlers
 
@@ -59,9 +63,7 @@ catchesHandler handlers e = foldr tryHandler (throw e) handlers
        Just e' -> handler e'
        Nothing -> res
 
-exceptions :: Attribute Exceptions gs k
-exceptions = Exceptions (\se -> error $ "Uncaught exception: " ++ show se)
-
+{-# INLINE catch #-}
 catch :: (Has Throw symbols m, Exception e)
       => Plan symbols m a -> (e -> Plan symbols m a) -> Plan symbols m a
 catch plan handler = go plan
@@ -75,12 +77,14 @@ catch plan handler = go plan
         M m -> M (fmap go m)
         Pure r -> Pure r
 
+{-# INLINE handle #-}
 handle :: (Has Throw symbols m,Exception e)
        => (e -> Plan symbols m a)
        -> Plan symbols m a
        -> Plan symbols m a
 handle = flip catch
 
+{-# INLINE catchJust #-}
 catchJust :: (Exception e,Has Throw symbols m)
           => (e -> Maybe b)
           -> Plan symbols m a
@@ -92,6 +96,7 @@ catchJust p a handler = catch a handler'
         Nothing -> throw e
         Just b -> handler b
 
+{-# INLINE handleJust #-}
 handleJust :: (Has Throw symbols m,Exception e)
            => (e -> Maybe b)
            -> (b -> Plan symbols m a)
@@ -99,13 +104,16 @@ handleJust :: (Has Throw symbols m,Exception e)
            -> Plan symbols m a
 handleJust p = flip (catchJust p)
 
+{-# INLINE mapException #-}
 mapException :: (Exception e, Exception e', Has Throw symbols m)
              => (e -> e') -> Plan symbols m a -> Plan symbols m a
 mapException f p = catch p (\e -> throw (f e))
 
+{-# INLINE try #-}
 try :: (Exception e,Has Throw symbols m) => Plan symbols m a -> Plan symbols m (Either e a)
 try a = catch (a >>= \v -> return (Right v)) (\e -> return (Left e))
 
+{-# INLINE tryJust #-}
 tryJust :: (Exception e,Has Throw symbols m)
         => (e -> Maybe b)
         -> Plan symbols m a
@@ -119,6 +127,7 @@ tryJust p a = do
                 Nothing -> throw e
                 Just b -> return (Left b)
 
+{-# INLINE onException #-}
 onException :: Has Throw symbols m
             => Plan symbols m a
             -> Plan symbols m b
@@ -127,7 +136,7 @@ onException p what = p `catch` \e -> do
     _ <- what
     throw (e :: SomeException)
 
--- this seems incorrect; sequel might actually run twice
+{-# INLINE finally #-}
 finally :: Has Throw symbols m
         => Plan symbols m a
         -> Plan symbols m b
@@ -137,6 +146,7 @@ finally a sequel = do
     _ <- sequel
     return r
 
+{-# INLINE bracket #-}
 bracket :: Has Throw symbols m
         => Plan symbols m a
         -> (a -> Plan symbols m b)
@@ -148,6 +158,7 @@ bracket before after thing = do
     _ <- after a
     return r
 
+{-# INLINE bracket_ #-}
 bracket_ :: Has Throw symbols m
          => Plan symbols m a
          -> Plan symbols m b
@@ -155,6 +166,7 @@ bracket_ :: Has Throw symbols m
          -> Plan symbols m c
 bracket_ before after thing = bracket before (const after) (const thing)
 
+{-# INLINE bracketOnError #-}
 bracketOnError :: Has Throw symbols m
                => Plan symbols m a
                -> (a -> Plan symbols m b)
@@ -163,6 +175,12 @@ bracketOnError :: Has Throw symbols m
 bracketOnError before after thing = do
     a <- before
     (thing a) `onException` (after a)
+
+data Exceptions k = Exceptions (SomeException -> k)
+
+{-# INLINE exceptions#-}
+exceptions :: Attribute Exceptions gs k
+exceptions = Exceptions (\se -> error $ "Uncaught exception: " ++ show se)
 
 instance Pair Exceptions Throw where
     pair p (Exceptions k) (Throw e k') = p (k e) k'

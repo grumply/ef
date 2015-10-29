@@ -29,6 +29,8 @@ library
                        Data.Promise
                        Effect.Concurrent
                        Effect.Continuation
+                       Effect.Contract
+                       Effect.Divergence
                        Effect.Exception
                        Effect.List
                        Effect.Local.State

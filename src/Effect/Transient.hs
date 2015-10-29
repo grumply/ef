@@ -55,6 +55,8 @@ data Transient k
     | forall      a . Deallocate         (Token a) k
 
 data Transience k = Transience Integer k k
+
+{-# INLINE transience #-}
 transience :: Uses Transience fs m => Attribute Transience fs m
 transience = Transience 0 return $ \fs ->
     let Transience i non me = (fs&)
@@ -73,9 +75,11 @@ instance Pair Transience Transient where
     pair p _ (Register _ _ _ _) = transientMisuse "Register"
     pair p _ (Unregister _ _ _) = transientMisuse "Unregister"
 
+{-# INLINE freshScope #-}
 freshScope :: Has Transient fs m => Plan fs m Integer
 freshScope = self (FreshScope id)
 
+{-# INLINE deallocate #-}
 deallocate :: Has Transient fs m => Token a -> Plan fs m ()
 deallocate rsrc = self (Deallocate rsrc ())
 
@@ -86,12 +90,12 @@ data TransientScope fs m = TransientScope
     , onEnd      ::           Plan fs m () -> Plan fs m (Token ())
     }
 
+{-# INLINE transiently #-}
 -- use: transiently $ \transient -> do
 --        (a,key) <- allocate transient _ _
 --        transient&unregister key
 --        onEnd transient _
 --        deallocate key
-
 transiently :: forall fs m r.
                (Has Transient fs m,Has Throw fs m,MIO m)
             => (    TransientScope fs m

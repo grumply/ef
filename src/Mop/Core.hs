@@ -39,12 +39,12 @@ class Subset xs ys
 instance Subset '[] ys
 instance (In x ys ~ 'True,Subset xs ys) => Subset (x ': xs) ys
 
-type family NotEq (x :: k) (y :: k) :: Bool where
-  NotEq x x = 'False
-  NotEq x y = 'True
+type family (/==) (x :: k) (y :: k) :: Bool where
+  (/==) x x = 'False
+  (/==) x y = 'True
 class Denies (x :: k) (ys :: [k])
 instance Denies x '[]
-instance (NotEq x y ~ 'True,Denies x ys) => Denies x (y ': ys)
+instance ((x /== y) ~ 'True,Denies x ys) => Denies x (y ': ys)
 
 data Nat = Z | S Nat
 data Index (n :: Nat)= Index
@@ -52,7 +52,7 @@ type family IndexOf (f :: k) (fs :: [k]) :: Nat where
   IndexOf f (f ': fs) = 'Z
   IndexOf f (any ': fs) = 'S (IndexOf f fs)
 
-data Attrs (is :: [* -> *]) a where
+data Attrs (as :: [* -> *]) a where
   Empty :: Attrs '[] a
   Attr :: Denies f fs => f a -> Attrs fs a -> Attrs (f ': fs) a
 

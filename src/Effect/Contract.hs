@@ -16,6 +16,7 @@ import Data.Typeable
 data Contract = Contract String deriving Show
 instance Exception Contract
 
+{-# INLINE contract #-}
 -- | instrument a contract that guarantees pre- and post- conditions
 --   of a given method. Failure of a condition causes an asynchronous
 --   exception to be thrown.
@@ -65,6 +66,7 @@ contract (pre,precondition) (post,postcondition) method vs =
 #endif
 
 
+{-# INLINE analyze #-}
 -- | analyze permits slightly stronger analyses than 'contract' by including
 --   object introspection. Failure of a condition causes an asynchronous
 --   exception to be thrown.

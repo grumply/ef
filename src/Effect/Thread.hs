@@ -13,6 +13,7 @@ data Thread k
   | Yield k
   | Stop
 
+{-# INLINE thread #-}
 -- round-robin threading
 -- use: thread $ \fork yield -> do { .. ; }
 thread :: Has Thread fs m
@@ -48,19 +49,24 @@ instance Pair Threading Thread where
 
 data Threading k = Threading k
 
+{-# INLINE threads #-}
 threads :: Monad m => Attribute Threading gs m
 threads = Threading return
 
 -- amortized constant-time queue
 data Queue = forall fs m a. Queue [Plan fs m a] [Plan fs m a]
 
+{-# INLINE emptyQueue #-}
 emptyQueue = Queue [] []
 
+{-# INLINE newQueue #-}
 newQueue stack = Queue stack []
 
+{-# INLINE enqueue #-}
 enqueue :: (forall fs m a. Plan fs m a) -> Queue -> Queue
 enqueue a (Queue l r) = Queue l (a:r)
 
+{-# INLINE dequeue #-}
 dequeue :: Queue -> Maybe (Queue,Plan fs m a)
 dequeue (Queue [] []) = Nothing
 dequeue (Queue [] xs) =

@@ -18,6 +18,7 @@ data Divergent k = forall gs m. Divergent
   , getter :: k
   }
 
+{-# INLINE divergent #-}
 divergent :: forall gs m. (Uses Divergent gs m)
           => Attribute Divergent gs m
 divergent = Divergent undefined snapshot_ overwrite_ return
@@ -55,6 +56,7 @@ data Introspection fs gs m = Introspection
   , inject :: Object gs m -> Plan fs m ()
   }
 
+{-# INLINE introspect #-}
 introspect :: forall fs gs m r. (Pair (Attrs gs) (Symbol fs),Has Diverge fs m)
             => (    Introspection fs gs m
                  -> Plan fs m r
@@ -66,9 +68,10 @@ introspect f =  f Introspection
     , inject = \o -> self (Inject o ())
     }
 
+{-# INLINE modself #-}
 -- NotEq here is used to help prevent misuse. It catches the simplest case only:
 --   a ~ Object gs m; you can bypass it by returning (b,Object gs m)
-modself :: (Monad m, Pair (Attrs gs) (Symbol fs),Has Diverge fs m, NotEq (Object gs m) a ~ True)
+modself :: (Monad m, Pair (Attrs gs) (Symbol fs),Has Diverge fs m, (Object gs m /== a) ~ True)
         => (Object gs m -> Plan fs m (Object gs m,a)) -> Plan fs m a
 modself f = introspect $ \i -> do
   slf <- project i
@@ -76,6 +79,7 @@ modself f = introspect $ \i -> do
   inject i slf'
   return a
 
+{-# INLINE typeOfSelf #-}
 typeOfSelf :: forall fs gs m.
             (Pair (Attrs gs) (Symbol fs),Has Diverge fs m,Typeable gs,Typeable m)
          => Plan fs m TypeRep

@@ -16,14 +16,17 @@ data May k
 
 data Possible k = Possible Integer k
 
+{-# INLINE possible #-}
 possible :: Uses Possible fs m => Attribute Possible fs m
 possible = Possible 0 $ \fs ->
     let Possible i k = (fs&)
     in pure $ fs .= Possible (succ i) k
 
+{-# INLINE freshScope #-}
 freshScope :: Has May fs m => Plan fs m Integer
 freshScope = self (FreshScope id)
 
+{-# INLINE may #-}
 -- use: may $ \success failure ...
 tryMaybe :: Has May fs m => ((forall b. a -> Plan fs m b) -> (forall b. Plan fs m b) -> Plan fs m (Maybe a)) -> Plan fs m (Maybe a)
 tryMaybe x = do
@@ -47,10 +50,6 @@ tryMaybe x = do
                 _ -> Step sym (\b -> go (bp b))
             M m -> M (fmap go m)
             Pure r -> Pure r
-
--- unsafe; rewrite this without the Maybe over the scoped result.
--- tryEither :: Has May fs m => ((forall b. l -> Plan fs m b) -> (forall b. r -> Plan fs m b) -> Plan fs m (Maybe (Either l r))) -> Plan fs m (Either l r)
--- tryEither x = fromJust <$> tryMaybe (\success _ -> x (success . Left) (success . Right))
 
 instance Pair Possible May where
     pair p (Possible i k) (FreshScope ik) = p k (ik i)

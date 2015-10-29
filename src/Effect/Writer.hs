@@ -14,16 +14,20 @@ data Writer r k = Writer r (r -> k)
 instance Pair (Writer r) (Trace r) where
     pair p (Writer _ rk) (Trace r k) = pair p rk (r,k)
 
+{-# INLINE tell #-}
 tell :: (Has (Trace w) fs m) => w -> Plan fs m ()
 tell w = self (Trace w ())
 
+{-# INLINE writer #-}
 writer :: (Monoid w,Uses (Writer w) fs m) => Attribute (Writer w) fs m
 writer = tracer mempty (<>)
 
+{-# INLINE tracer #-}
 tracer :: Uses (Writer w) fs m => w -> (w -> w -> w) -> Attribute (Writer w) fs m
 tracer w0 f = Writer w0 $ \w' is ->
     let Writer w k = (is&)
     in pure $ is .= Writer (f w w') k
 
+{-# INLINE written #-}
 written :: Uses (Writer w) fs m => Object fs m -> w
 written fs = let Writer w _ = (fs&) in w
