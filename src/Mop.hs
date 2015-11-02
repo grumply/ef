@@ -11,10 +11,11 @@ import Effect.Concurrent          as Base
 import Effect.Continuation        as Base
 import Effect.Contract            as Base
 import Effect.Exception           as Base
-import Effect.Interleave          as Base
+import Effect.Interleave          as Base hiding (FreshScope)
 import Effect.List                as Base
 import Effect.Logic               as Base
 import Effect.Maybe               as Base
+import Effect.Reactive            as Base hiding (FreshScope)
 import Effect.Thread              as Base
 import Effect.Transient           as Base
 import Effect.Weave               as Base
@@ -32,6 +33,7 @@ type Mop
      ,Exceptions
      ,Possible
      ,Threading
+     ,Reactive
      ,Divergent
      ]
 
@@ -44,6 +46,7 @@ type Main
      ,Throw
      ,May
      ,Thread
+     ,React
      ,Diverge
      ]
 
@@ -59,6 +62,7 @@ base = Object $ transience
             *:* exceptions
             *:* possible
             *:* threads
+            *:* reactive
             *:* divergent
             *:* Empty
 
