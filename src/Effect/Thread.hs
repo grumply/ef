@@ -4,6 +4,7 @@ module Effect.Thread
   ) where
 
 import Mop.Core
+import Data.Queue
 
 import Unsafe.Coerce
 import Control.Monad
@@ -26,7 +27,7 @@ thread x = do
       $ x (\p -> self (Thread scope (p >> self (Stop scope)) ()))
           (self (Yield scope ()))
   where
-    transform scope q p0 = go p0
+    transform scope q = go
       where
         go p = case p of
             Step syms bp -> case prj syms of
@@ -65,24 +66,3 @@ threads = Threading 0 $ \fs ->
   let Threading i k = (fs&)
       i' = succ i
   in i' `seq` pure (fs .= Threading i' k)
-
--- amortized constant-time queue
-data Queue = forall fs m a. Queue [Plan fs m a] [Plan fs m a]
-
-{-# INLINE emptyQueue #-}
-emptyQueue = Queue [] []
-
-{-# INLINE newQueue #-}
-newQueue stack = Queue stack []
-
-{-# INLINE enqueue #-}
-enqueue :: (forall fs m a. Plan fs m a) -> Queue -> Queue
-enqueue a (Queue l r) = Queue l (a:r)
-
-{-# INLINE dequeue #-}
-dequeue :: Queue -> Maybe (Queue,Plan fs m a)
-dequeue (Queue [] []) = Nothing
-dequeue (Queue [] xs) =
-    let stack = reverse xs
-    in Just (Queue (tail stack) [],unsafeCoerce (head stack))
-dequeue (Queue xs ys) = Just (Queue (tail xs) ys,unsafeCoerce (head xs))

@@ -11,6 +11,7 @@ import Effect.Concurrent          as Base
 import Effect.Continuation        as Base
 import Effect.Contract            as Base
 import Effect.Exception           as Base
+import Effect.Interleave          as Base
 import Effect.List                as Base
 import Effect.Logic               as Base
 import Effect.Maybe               as Base
@@ -25,6 +26,7 @@ import Data.Function              as Base (fix)
 type Mop
   = '[Transience
      ,Continuations
+     ,Interleaving
      ,Nondet
      ,Weaving
      ,Exceptions
@@ -36,6 +38,7 @@ type Mop
 type Main
   = '[Transient
      ,Continuation
+     ,Interleave
      ,Logic
      ,Weave
      ,Throw
@@ -50,6 +53,7 @@ main' = fmap snd . delta base
 base :: Monad m => Object Mop m
 base = Object $ transience
             *:* continuations
+            *:* interleaves
             *:* nondet
             *:* weaving
             *:* exceptions
