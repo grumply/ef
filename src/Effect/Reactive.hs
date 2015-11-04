@@ -71,7 +71,7 @@ react :: forall fs m a. (Has React fs m,Has Interleave fs m,MIO m,Has Throw fs m
          -> Plan fs m a
 react f = do
   scope <- self (FreshScope id)
-  sys_ <- io (newIORef (Brain 0 0 []))
+  sys_ <- unsafe (newIORef (Brain 0 0 []))
   interleave $ \frk _ ->
     transform scope frk sys_ $ f React
       { newN = self (NewN scope id)
@@ -97,10 +97,10 @@ react f = do
                      case x of
 
                        NewN i _ -> check i $ do
-                         sys <- io (readIORef sys_)
+                         sys <- unsafe (readIORef sys_)
                          let eS = neuronCount sys
                              eS' = eS + 1
-                         io $ writeIORef sys_ $ sys { neuronCount = eS' }
+                         unsafe $ writeIORef sys_ $ sys { neuronCount = eS' }
                          eS' `seq`
                            Step sym $ const $ tangible $
                              bp (unsafeCoerce (Neuron eS))
@@ -109,7 +109,6 @@ react f = do
                          Step sym $ const $ tangible $ do
                            triggerNeuron ev a
                            bp (unsafeCoerce ())
-
 
                        TriggerA i b a _ -> check i $
                          Step sym $ const $ tangible $ do
@@ -122,11 +121,11 @@ react f = do
                            bp (unsafeCoerce ())
 
                        NewA i ev@(Neuron e) f _ -> check i $ do
-                         sys <- io $ readIORef sys_
+                         sys <- unsafe $ readIORef sys_
                          let bS = axonCount sys
                              bS' = bS + 1
                              b = Axon (e,bS)
-                         io $ writeIORef sys_ $ sys { axonCount = bS' }
+                         unsafe $ writeIORef sys_ $ sys { axonCount = bS' }
                          newAxon b f
                          bS' `seq`
                            Step sym $ const $ tangible $
@@ -153,10 +152,10 @@ react f = do
                    Just x ->
                      case x of
                        NewN i _ -> check i $ do
-                         sys <- io $ readIORef sys_
+                         sys <- unsafe $ readIORef sys_
                          let eS = neuronCount sys
                              eS' = eS + 1
-                         io $ writeIORef sys_ $ sys { neuronCount = eS' }
+                         unsafe $ writeIORef sys_ $ sys { neuronCount = eS' }
                          eS' `seq` intangible $ bp (unsafeCoerce (Neuron eS))
 
                        TriggerN i ev a _ -> check i $ intangible $ do
@@ -172,11 +171,11 @@ react f = do
                          intangible $ bp (unsafeCoerce ())
 
                        NewA i ev@(Neuron e) f _ -> check i $ do
-                         sys <- io $ readIORef sys_
+                         sys <- unsafe $ readIORef sys_
                          let bS = axonCount sys
                              bS' = bS + 1
                              b = Axon (e,bS)
-                         io $ writeIORef sys_ $ sys { axonCount = bS' }
+                         unsafe $ writeIORef sys_ $ sys { axonCount = bS' }
                          newAxon b f
                          bS' `seq` intangible $ bp (unsafeCoerce b)
 
@@ -191,7 +190,7 @@ react f = do
 
         {-# INLINE triggerNeuron #-}
         triggerNeuron (Neuron e) a = do
-            sys <- io $ readIORef sys_
+            sys <- unsafe $ readIORef sys_
             go $ neuronalConfiguration sys
           where
             go [] = return ()
@@ -204,7 +203,7 @@ react f = do
 
         {-# INLINE triggerAxon #-}
         triggerAxon (Axon (n,i)) a = do
-            sys <- io $ readIORef sys_
+            sys <- unsafe $ readIORef sys_
             go $ neuronalConfiguration sys
           where
             go [] = return ()
@@ -218,7 +217,7 @@ react f = do
                   | otherwise = go' bs
 
         {-# INLINE destroyNeuron #-}
-        destroyNeuron (Neuron e) = io $ modifyIORef sys_ $ \sys ->
+        destroyNeuron (Neuron e) = unsafe $ modifyIORef sys_ $ \sys ->
             sys { neuronalConfiguration = go (neuronalConfiguration sys) }
           where
             go [] = []
@@ -227,7 +226,7 @@ react f = do
               | otherwise = eb:go ebs
 
         {-# INLINE newAxon #-}
-        newAxon b@(Axon (e,bh)) f = io $ modifyIORef sys_ $ \sys ->
+        newAxon b@(Axon (e,bh)) f = unsafe $ modifyIORef sys_ $ \sys ->
             sys { neuronalConfiguration = go (neuronalConfiguration sys) }
           where
             go [] = [(unsafeCoerce (Neuron bh),[(unsafeCoerce b,unsafeCoerce f)])]
@@ -237,7 +236,7 @@ react f = do
               | otherwise = eb:go ebs
 
         {-# INLINE destroyAxon #-}
-        destroyAxon (Axon (e,b)) = io $ modifyIORef sys_ $ \sys ->
+        destroyAxon (Axon (e,b)) = unsafe $ modifyIORef sys_ $ \sys ->
             sys { neuronalConfiguration = go' (neuronalConfiguration sys) }
           where
             go' [] = []
