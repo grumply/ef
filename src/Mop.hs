@@ -12,11 +12,11 @@ import Effect.Concurrent          as Base
 import Effect.Continuation        as Base
 import Effect.Contract            as Base
 import Effect.Exception           as Base
-import Effect.Interleave          as Base hiding (FreshScope)
+import Effect.Interleave          as Base
 import Effect.List                as Base
 import Effect.Logic               as Base
 import Effect.Maybe               as Base
-import Effect.Reactive            as Base hiding (FreshScope)
+import Effect.Reactive            as Base
 import Effect.Thread              as Base
 import Effect.Transient           as Base
 import Effect.Weave               as Base
