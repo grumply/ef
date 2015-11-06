@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 module Data.Promise
   ( Promise, newPromiseIO, newPromise
   , demand, demandIO

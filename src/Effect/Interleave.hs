@@ -1,11 +1,14 @@
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE PostfixOperators  #-}
 module Effect.Interleave where
 
 import Mop.Core
 import Data.Queue
 
 import Unsafe.Coerce
-
--- this appears to work correctly but is in need of extensive testing
 
 data Interleave k
   = forall fs m a. Fork Int (Plan fs m a)
@@ -38,10 +41,8 @@ interleave f = do
          (\p -> self (Atomically scope p))
       )
   where
-    {-# INLINE scoped #-}
     scoped scope = start
       where
-        {-# INLINE start #-}
         start p =
           case p of
             Step sym bp ->
@@ -65,7 +66,6 @@ interleave f = do
             M m -> M (m >>= \p' -> return $ start p')
             Pure r -> Pure r
 
-        {-# INLINE rooted #-}
         rooted rest p =
           case p of
             Step sym bp ->

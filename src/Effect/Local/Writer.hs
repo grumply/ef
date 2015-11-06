@@ -1,3 +1,9 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE PostfixOperators #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecordWildCards #-}
 {- | This module implements a simple scoped Writer interface in the API style of
      mtl's Control.Monad.Writer.
 -}

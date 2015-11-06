@@ -1,3 +1,8 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE PostfixOperators #-}
+{-# LANGUAGE RankNTypes #-}
 module Effect.Writer
     ( Trace, tell
     , Writer, tracer, writer, written

@@ -22,6 +22,7 @@
 #endif
 module Mop.Core where
 
+
 import Control.Applicative
 import Control.Monad
 import Data.Typeable hiding (cast)

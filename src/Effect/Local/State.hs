@@ -1,3 +1,8 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE PostfixOperators #-}
+{-# LANGUAGE RankNTypes #-}
 module Effect.Local.State
     ( State, state
     , Store, store

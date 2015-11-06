@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances, IncoherentInstances #-}
+{-# LANGUAGE DataKinds #-}
 module Mop
   ( main', base, debug, Mop, Main, Embed(..)
   , module Base

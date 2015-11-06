@@ -1,5 +1,10 @@
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE IncoherentInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ExistentialQuantification #-}
 module Effect.Exception
   ( Throw, throw,  catch, handle, catchJust, handleJust, try, tryJust
          , catches, Handler(..)

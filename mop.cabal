@@ -28,7 +28,6 @@ library
                        Mop.IO
                        Data.Promise
                        Data.Queue
-                       Data.Message
                        Effect.Concurrent
                        Effect.Continuation
                        Effect.Contract
@@ -65,3 +64,10 @@ library
   build-depends:       base >=4.8 && <4.9
   hs-source-dirs:      src
   default-language:    Haskell2010
+
+test-suite doctests
+  type:           exitcode-stdio-1.0
+  ghc-options:    -threaded
+  main-is:        doctests.hs
+  hs-source-dirs: src
+  build-depends:  base, doctest >= 0.8

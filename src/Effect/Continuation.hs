@@ -1,3 +1,8 @@
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE PostfixOperators #-}
 module Effect.Continuation
   (Continuation,enter
   ,Continuations,continuations

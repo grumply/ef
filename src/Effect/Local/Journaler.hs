@@ -1,3 +1,9 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE PostfixOperators #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecordWildCards #-}
 {- | This module implements a feature-paired interface with Writer with the
      addition of a re/configurable combining function. That is, this is a
      generalization of Writer with the Monoid constraint removed.

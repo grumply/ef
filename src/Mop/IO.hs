@@ -1,6 +1,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE ImpredicativeTypes #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Mop.IO where
 
 import Mop.Core
