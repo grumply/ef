@@ -5,7 +5,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RankNTypes #-}
 module Effect.Divergence
    ( modself, typeOfSelf
@@ -16,7 +15,6 @@ module Effect.Divergence
 
 import Mop.Core
 import Unsafe.Coerce
-import Control.Monad
 import Data.Typeable
 
 data Divergent k = forall gs m. Divergent
@@ -32,7 +30,7 @@ divergent :: forall gs m. (Uses Divergent gs m)
 divergent = Divergent undefined snapshot_ overwrite_ return
   where
     snapshot_ fs =
-      case (fs&) of
+      case view fs of
         (Divergent _ s o d :: Divergent (Method gs m)) ->
           pure $ fs .= Divergent { current = fs
                                  , reification = s
@@ -40,7 +38,7 @@ divergent = Divergent undefined snapshot_ overwrite_ return
                                  , getter = d
                                  }
     overwrite_ obj fs =
-      case (fs&) of
+      case view fs of
         (Divergent _ s o d :: Divergent (Method gs m)) ->
           pure $ fs .= Divergent { current = unsafeCoerce obj
                                  , reification = s

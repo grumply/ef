@@ -1,7 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {- | This module implements a feature-paired interface with Writer with the
@@ -16,7 +15,7 @@
 module Effect.Local.Journaler
     ( Journaler, journaling
     , Journaling, journal
-    , Journal, log, eavesdrop, reconfigure, intercept
+    , Journal(..), intercept
     ) where
 
 import Mop.Core
@@ -31,7 +30,7 @@ data Journaler k
     = FreshScope (Int -> k)
     | forall a. Log Int a
     | forall fs m a w. Eavesdrop Int w (Plan fs m a)
-    | forall fs m a w. Reconfigure Int (a -> w -> w)
+    | forall a w. Reconfigure Int (a -> w -> w)
 
 data Journal fs m a w = Journal
     { log :: a -> Plan fs m ()
@@ -87,7 +86,7 @@ data Journaling k = Journaling Int k
 {-# INLINE journaling #-}
 journaling :: Uses Journaling fs m => Attribute Journaling fs m
 journaling = Journaling 0 $ \fs ->
-    let Journaling i k = (fs&)
+    let Journaling i k = view fs
         i' = succ i
     in i' `seq` pure (fs .= Journaling i' k)
 

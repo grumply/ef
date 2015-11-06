@@ -1,7 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RankNTypes #-}
 module Effect.Writer
     ( Trace, tell
@@ -29,10 +28,10 @@ writer = tracer mempty (<>)
 
 {-# INLINE tracer #-}
 tracer :: Uses (Writer w) fs m => w -> (w -> w -> w) -> Attribute (Writer w) fs m
-tracer w0 f = Writer w0 $ \w' is ->
-    let Writer w k = (is&)
-    in pure $ is .= Writer (f w w') k
+tracer w0 f = Writer w0 $ \w' fs ->
+    let Writer w k = view fs
+    in pure $ fs .= Writer (f w w') k
 
 {-# INLINE written #-}
 written :: Uses (Writer w) fs m => Object fs m -> w
-written fs = let Writer w _ = (fs&) in w
+written fs = let Writer w _ = view fs in w

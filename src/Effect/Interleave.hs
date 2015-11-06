@@ -2,8 +2,10 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE PostfixOperators  #-}
-module Effect.Interleave where
+module Effect.Interleave
+  ( Interleave, interleave
+  , Interleaving, interleaves
+  ) where
 
 import Mop.Core
 import Data.Queue
@@ -20,7 +22,7 @@ data Interleaving k = Interleaving Int k
 {-# INLINE interleaves #-}
 interleaves :: Uses Interleaving gs m => Attribute Interleaving gs m
 interleaves = Interleaving 0 $ \fs ->
-  let Interleaving i k = (fs&)
+  let Interleaving i k = view fs
       i' = succ i
   in i' `seq` pure $ fs .= Interleaving i' k
 

@@ -1,18 +1,21 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds #-}
-module Effect.Reactive where
+module Effect.Reactive
+  ( Behavior, Culture
+  , React, react
+  , Reactive, reactive
+  , ReactorSystem(..)
+  ) where
 
 import Mop.Core
 import Mop.IO
-import Effect.Interleave hiding (FreshScope)
-import Effect.Exception hiding (FreshScope)
+import Effect.Interleave
 
 import Data.IORef
 import System.IO.Unsafe
@@ -46,7 +49,7 @@ reactive :: Uses Reactive fs m => Attribute Reactive fs m
 reactive = Reactive 0 nextS
   where
     nextS fs =
-      let Reactive s ns = (fs&)
+      let Reactive s ns = view fs
           s' = succ s
       in s' `seq` pure (fs .= Reactive s' ns)
 
@@ -64,7 +67,7 @@ data ReactorSystem fs m = Reactor
   }
 
 {-# INLINE react #-}
-react :: forall fs m a. (Has React fs m,Has Throw fs m,MIO m,Has Interleave fs m)
+react :: forall fs m a. (Has React fs m,Lift IO m,Has Interleave fs m)
       => (    ReactorSystem fs m
            -> Plan fs m a
          ) -> Plan fs m a

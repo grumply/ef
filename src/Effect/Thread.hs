@@ -1,7 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RankNTypes #-}
 module Effect.Thread
   ( Thread,thread
@@ -12,7 +11,6 @@ import Mop.Core
 import Data.Queue
 
 import Unsafe.Coerce
-import Control.Monad
 
 data Thread k
   = forall fs m a. Thread Int (Plan fs m a) k
@@ -68,6 +66,6 @@ data Threading k = Threading Int k
 {-# INLINE threads #-}
 threads :: Uses Threading gs m => Attribute Threading gs m
 threads = Threading 0 $ \fs ->
-  let Threading i k = (fs&)
+  let Threading i k = view fs
       i' = succ i
   in i' `seq` pure (fs .= Threading i' k)

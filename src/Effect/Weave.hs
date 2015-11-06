@@ -1,7 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -26,7 +25,6 @@ import Mop.Core
 
 import Control.Applicative
 import Control.Monad
-import Data.Function hiding ((&))
 import Unsafe.Coerce
 
 data Weave k
@@ -43,7 +41,7 @@ freshScope = self (FreshScope id)
 {-# INLINE weaving #-}
 weaving :: Uses Weaving fs m => Attribute Weaving fs m
 weaving = Weaving 0 $ \fs ->
-    let Weaving n k = (fs&)
+    let Weaving n k = view fs
         n' = succ n
     in n' `seq` pure (fs .= Weaving n' k)
 
@@ -131,7 +129,7 @@ instance MonadPlus m => Alternative (Woven fs a' a b' b m) where
     (<|>) = mplus
 
 instance MonadPlus m => MonadPlus (Woven fs a' a b' b m) where
-    mzero = Woven $ \_ _ -> lift mzero
+    mzero = Woven $ \_ _ -> lift_ mzero
     mplus w0 w1 = Woven $ \up dn ->
         transform up dn (runWoven w0 (unsafeCoerce up) (unsafeCoerce dn))
       where

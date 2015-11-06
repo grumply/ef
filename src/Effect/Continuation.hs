@@ -2,7 +2,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE PostfixOperators #-}
 module Effect.Continuation
   (Continuation,enter
   ,Continuations,continuations
@@ -43,7 +42,7 @@ freshScope = self (FreshScope id)
 {-# INLINE continuations #-}
 continuations :: Uses Continuations gs m => Attribute Continuations gs m
 continuations = Continuations 0 $ \fs ->
-    let Continuations i k = (fs&)
+    let Continuations i k = view fs
         i' = succ i
     in i' `seq` pure $ fs .= Continuations i' k
 

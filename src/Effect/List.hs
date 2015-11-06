@@ -1,9 +1,10 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RankNTypes #-}
-module Effect.List where
+module Effect.List
+  ( List(..), runList, each, discard, every
+  ) where
 
 import Mop.Core
 import Effect.Weave
@@ -50,6 +51,7 @@ instance Monoid (List fs m a) where
     mappend = (<|>)
 
 {-# INLINE runList #-}
+runList :: Has Weave fs m => List fs m a -> Plan fs m ()
 runList l = linearize (enumerate (l >> mzero))
 
 {-# INLINE each #-}

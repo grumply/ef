@@ -82,15 +82,3 @@ base = Object $ transience
             *:* logger
             *:* journaling
             *:* Empty
-
-class Monad m => Embed m where
-  embed :: Plan Main IO a -> m a
-instance Embed IO where
-  {-# INLINE embed #-}
-  embed = main'
-instance Embed (Plan Main IO) where
-  {-# INLINE embed #-}
-  embed = id
-instance (Embed m,Monad m) => Embed (Plan fs m) where
-  {-# INLINE embed #-}
-  embed = lift . embed

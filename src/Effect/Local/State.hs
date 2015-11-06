@@ -1,7 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RankNTypes #-}
 module Effect.Local.State
     ( State, state
@@ -67,14 +66,9 @@ data Store k = Store Int k
 {-# INLINE store #-}
 store :: Uses Store fs m => Attribute Store fs m
 store = Store 0 $ \fs ->
-    let Store i k = (fs&)
+    let Store i k = view fs
         i' = succ i
     in i' `seq` pure (fs .= Store i' k)
-
-varMisuse :: String -> a
-varMisuse method = error $
-  "Var misuse: " ++ method ++ " used outside of its 'state' block. \
-  \Do not return a Var or its internal fields from its instantiation block."
 
 instance Pair Store State where
     pair p (Store i k) (FreshScope ik) = p k (ik i)

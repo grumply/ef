@@ -1,6 +1,10 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
+{-
+TODO: I should clean this up. Not happy with the current interface; I would
+      like to tie this in with Async and Divergence for a better story here.
+-}
 module Effect.Concurrent (fork,forkOS,forkOn) where
 
 import Mop.Core
@@ -17,7 +21,7 @@ type Ref gs m a = (ThreadId,Promise (Either SomeException (Object gs m,a)))
 
 fork :: forall fs fs' gs m m' a.
         (Pair (Attrs gs) (Symbol fs)
-        ,MIO m'
+        ,Lift IO m'
         ,Has Throw fs' m'
         ,Has Throw fs m
         ) => Object gs m
@@ -41,7 +45,7 @@ fork comp plan lft = do
 
 forkOS :: forall fs fs' gs m m' a.
           (Pair (Attrs gs) (Symbol fs)
-          ,MIO m'
+          ,Lift IO m'
           ,Has Throw fs' m'
           ,Has Throw fs m
           ) => Object gs m
@@ -65,7 +69,7 @@ forkOS comp plan lft = do
 
 forkOn :: forall fs fs' gs m m' a.
           (Pair (Attrs gs) (Symbol fs)
-          ,MIO m'
+          ,Lift IO m'
           ,Has Throw fs' m'
           ,Has Throw fs m
           ) => Int

@@ -1,7 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RankNTypes #-}
 module Effect.State
     ( State, get, gets, put, puts, swap, modify, modify'
@@ -9,10 +8,6 @@ module Effect.State
     ) where
 
 import Mop.Core
-
-import Data.IORef
-import System.IO.Unsafe
-import Unsafe.Coerce
 
 data State st k = Modify (st -> st) (st -> k)
 

@@ -10,7 +10,6 @@ module Effect.Reader
     ) where
 
 import Mop.Core
-import Unsafe.Coerce
 
 data Env r k = Env (r -> k)
 

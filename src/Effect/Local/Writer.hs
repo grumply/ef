@@ -1,7 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {- | This module implements a simple scoped Writer interface in the API style of
@@ -22,7 +21,7 @@ import Unsafe.Coerce
 data Writer k
     = FreshScope (Int -> k)
     | forall a. Tell Int a
-    | forall fs m a w. Listen Int (Plan fs m a)
+    | forall fs m a. Listen Int (Plan fs m a)
 
 data Log fs m w = Log
     { tell :: w -> Plan fs m ()
@@ -70,16 +69,9 @@ data Logger k = Logger Int k
 {-# INLINE logger #-}
 logger :: Uses Logger fs m => Attribute Logger fs m
 logger = Logger 0 $ \fs ->
-    let Logger i k = (fs&)
+    let Logger i k = view fs
         i' = succ i
     in i' `seq` pure (fs .= Logger i' k)
 
-logMisuse :: String -> a
-logMisuse method = error $
-  "Log misuse: " ++ method ++ " used outside of its 'writer' block. \
-  \Do not return a Log or its internal fields from its instantiation block."
-
 instance Pair Logger Writer where
     pair p (Logger i k) (FreshScope ik) = p k (ik i)
-    pair p _ (Tell _ _) = logMisuse "Effect.Local.Writer.Strict.Tell"
-    pair p _ (Listen _ _) = logMisuse "Effect.Local.Writer.Strict.Listen"

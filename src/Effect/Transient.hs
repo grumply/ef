@@ -1,7 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {- |
@@ -19,14 +18,9 @@ module Effect.Transient
   ) where
 
 import Mop.Core
-import Mop.IO
-import Effect.Exception
 
-import Control.Monad
 import Data.Either
 
-import Data.IORef
-import System.IO.Unsafe
 import Unsafe.Coerce
 
 -- this module does not have the same sort of asynchronous exception safety
@@ -54,7 +48,7 @@ data Transient k
 
     | forall fs m a . Allocate   Int (Plan fs m a) (a -> Plan fs m ()) ((a,Token a) -> k)
 
-    | forall fs m a . OnEnd      Int           (Plan fs m ()) (Token () -> k)
+    | forall fs m   . OnEnd      Int           (Plan fs m ()) (Token () -> k)
     | forall fs m a . Register   Int (Token a) (Plan fs m ()) k
 
     | forall      a . Unregister Int (Token a) k
@@ -65,7 +59,7 @@ data Transience k = Transience Int k k
 {-# INLINE transience #-}
 transience :: Uses Transience fs m => Attribute Transience fs m
 transience = Transience 0 return $ \fs ->
-    let Transience i non me = (fs&)
+    let Transience i non me = view fs
         i' = succ i
     in i' `seq` pure (fs .= Transience i' non me)
 
@@ -103,8 +97,7 @@ data TransientScope fs m = TransientScope
 --        transient&unregister key
 --        onEnd transient _
 --        deallocate key
-transiently :: forall fs m r.
-               (Has Transient fs m,Has Throw fs m,MIO m)
+transiently :: forall fs m r. Has Transient fs m
             => (    TransientScope fs m
                  -> Plan fs m r
                ) -> Plan fs m r

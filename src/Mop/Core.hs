@@ -168,8 +168,15 @@ data Plan symbols m a
   | M (m (Plan symbols m a))
   | Pure a
 
-lift :: Functor m => m a -> Plan symbols m a
-lift m = M (fmap Pure m)
+class Functor m' => Lift m m' where
+  lift :: m a -> m' a
+instance Functor m => Lift m (Plan fs m) where
+  lift = lift_
+instance Lift m m' => Lift m (Plan fs m') where
+  lift = lift_ . lift
+
+lift_ :: Functor m => m a -> Plan symbols m a
+lift_ m = M (fmap Pure m)
 
 -- | Invoke a method of the parent object. This allows:
 -- > super . super $ something
@@ -239,7 +246,7 @@ instance MonadPlus m => Alternative (Plan fs m) where
   (<|>) = mplus
 
 instance MonadPlus m => MonadPlus (Plan fs m) where
-  mzero = lift mzero
+  mzero = lift_ mzero
   mplus = _mplus
 
 _mplus :: MonadPlus m => Plan fs m a -> Plan fs m a -> Plan fs m a
@@ -372,16 +379,13 @@ build :: UnsafeBuild attrs
       -> Object attrs m
 build f = Object $ f unsafeBuild
 
-add :: (Denies f fs) => f a -> Attrs fs a -> Attrs (f ': fs) a
-add fa Empty = Attr fa Empty
-add fa i = Attr fa i
-
 (*:*) :: Denies f fs => f a -> Attrs fs a -> Attrs (f ': fs) a
-(*:*) = add
+(*:*) fa Empty = Attr fa Empty
+(*:*) fa i = Attr fa i
 infixr 6 *:*
 
-(&) :: Admits f fs => Object fs m -> Attribute f fs m
-(&) xs = pull $ deconstruct xs
+view :: Admits f fs => Object fs m -> Attribute f fs m
+view xs = pull $ deconstruct xs
 
 infixl 5 .=
 (.=) :: Uses f fs m => Object fs m -> Attribute f fs m -> Object fs m
@@ -394,6 +398,9 @@ cutoff n p =
     Pure a -> Pure (Just a)
     M m -> M (cutoff (n - 1) `liftM` m)
     Step sym k -> Step sym (cutoff (n - 1) . k)
+
+--------------------------------------------------------------------------------
+-- Codensity
 
 newtype Codensity fs m a = Codensity
   { runCodensity :: forall b. (a -> Plan fs m b) -> Plan fs m b

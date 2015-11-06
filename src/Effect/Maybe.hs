@@ -1,7 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RankNTypes #-}
 module Effect.Maybe
     ( tryMaybe, May
@@ -9,8 +8,8 @@ module Effect.Maybe
     ) where
 
 import Mop.Core
+
 import Unsafe.Coerce
-import Data.Maybe
 
 -- Maybe implements short-circuiting plans with success and non-specific failure.
 
@@ -24,7 +23,7 @@ data Possible k = Possible Int k
 {-# INLINE possible #-}
 possible :: Uses Possible fs m => Attribute Possible fs m
 possible = Possible 0 $ \fs ->
-    let Possible i k = (fs&)
+    let Possible i k = view fs
     in pure $ fs .= Possible (succ i) k
 
 {-# INLINE freshScope #-}

@@ -1,21 +1,18 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 module Effect.Logic
-    ( Logic(), logic
+    ( Logic, logic
     , Nondet, nondet
-    , module Effect.Weave
     ) where
 
 import Mop.Core
-import Effect.Weave hiding (FreshScope(..))
-import Unsafe.Coerce
+import Effect.Weave
 
--- nondeterministic choice with pruning
+import Unsafe.Coerce
 
 data Logic k
     = FreshScope (Int -> k)
@@ -27,7 +24,7 @@ data Nondet k = Nondet Int k
 {-# INLINE nondet #-}
 nondet :: Uses Nondet fs m => Attribute Nondet fs m
 nondet = Nondet 0 $ \fs ->
-    let Nondet i k = (fs&)
+    let Nondet i k = view fs
     in pure $ fs .= Nondet (succ i) k
 
 {-# INLINABLE freshScope #-}
