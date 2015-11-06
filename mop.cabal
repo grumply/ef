@@ -27,17 +27,21 @@ library
                        Mop.Core
                        Mop.IO
                        Data.Promise
+                       Data.Queue
+                       Data.Message
                        Effect.Concurrent
                        Effect.Continuation
                        Effect.Contract
                        Effect.Divergence
                        Effect.Exception
+                       Effect.Interleave
                        Effect.List
                        Effect.Local.State
                        Effect.Local.Journaler
                        Effect.Local.Writer
                        Effect.Logic
                        Effect.Maybe
+                       Effect.Reactive
                        Effect.Reader
                        Effect.State
                        Effect.Thread

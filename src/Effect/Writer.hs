@@ -3,7 +3,7 @@ module Effect.Writer
     , Writer, tracer, writer, written
     ) where
 
-import Mop
+import Mop.Core
 
 import Data.Monoid
 

@@ -9,242 +9,168 @@ import Data.IORef
 import System.IO.Unsafe
 import Unsafe.Coerce
 
--- | Neuron represents the identity of a specific unknown set of axons that can
--- be used for triggering all axons contained therein.
-newtype Neuron a = Neuron Int
-
--- | Axon represents the location of a specific behavior as the identity of a
--- specific Neuron combined with the identity of the behavior itself.
-newtype Axon a = Axon (Int,Int)
-
--- | React is the DSL for Reactive programming. These language primitives are
--- implemented in 'ReactiveScope' and used in 'react' scopes.
-data React k
-  = FreshScope (Int -> k)
-
-  | forall a.            NewN Int (Neuron a -> k)
-  | forall a.        TriggerN Int (Neuron a) a k
-  | forall fs m a.   DestroyN Int (Neuron a) k
-
-  | forall fs m a b.     NewA Int (Neuron a) (a -> Plan fs m ()) (Axon a -> k)
-  | forall a.        TriggerA Int (Axon a) a k
-  | forall fs m a.   DestroyA Int (Axon a) k
-
--- | Reactive is the attribute that enables 'React' capabilities.
-data Reactive k = Reactive Int k k
-reactive :: Uses Reactive fs m => Attribute Reactive fs m
-reactive = flip (Reactive 0) return $ \fs ->
-  let Reactive i k k' = (fs&)
-      i' = succ i
-  in i' `seq` pure (fs .= Reactive i' k k')
-
-instance Pair Reactive React where
-  pair p (Reactive i k _) (FreshScope ik)     = p k (ik i)
-  pair p (Reactive _ _ k) (TriggerN _ _ _ k') = p k k'
-  pair p (Reactive _ _ k) (TriggerA _ _ _ k') = p k k'
-  pair p (Reactive _ _ k) (DestroyA _ _ k')   = p k k'
-  pair p (Reactive _ _ k) (NewA _ _ _ bk)     = p k (bk undefined)
-  pair p (Reactive _ _ k) (NewN _ ek)         = p k (ek undefined)
-
--- | ReactScope represents the capabilities for a reactive component. Use of
--- these capabilities is enabled inside a 'react' scope.
-data ReactScope fs m = React
-  { newN     :: !(forall a. Plan fs m (Neuron a))
-  , triggerN :: !(forall a. Neuron a -> a -> Plan fs m ())
-  , destroyN :: !(forall a. Neuron a -> Plan fs m ())
-  , newA     :: !(forall a. Neuron a -> (a -> Plan fs m ()) -> Plan fs m (Axon a))
-  , triggerA :: !(forall a. Axon a -> a -> Plan fs m ())
-  , destroyA :: !(forall a. Axon a -> Plan fs m ())
+data Behavior a fs m = Behavior
+  { cultured :: Int
+  , behavior :: IORef (a -> Plan fs m ())
   }
 
-data Brain fs m = Brain
-  { neuronCount :: Int
-  , axonCount :: Int
-  , neuronalConfiguration :: !(forall a. [(Neuron a,[(Axon a,a -> Plan fs m ())])])
+data Culture a fs m = Culture
+  { cultureId :: Int
+  , culture :: IORef (a -> Plan fs m ())
+  , behaviors :: IORef [Behavior a fs m]
+  }
+
+data React k
+  = FreshScope (Int -> k)
+  | forall a fs m. NewCulture Int (Culture a fs m -> k)
+  | forall a fs m. NewBehavior Int (Culture a fs m) (a -> Plan fs m ()) (Behavior a fs m -> k)
+  | forall a fs m. ModifyBehavior Int (Behavior a fs m) (a -> Plan fs m ()) k
+  | forall a fs m. TriggerBehavior Int (Behavior a fs m) a k
+  | forall a fs m. TriggerCulture Int (Culture a fs m) a k
+  | forall a fs m. DestroyBehavior Int (Behavior a fs m) k
+  | forall a fs m. DestroyCulture Int (Culture a fs m) k
+
+data Reactive k = Reactive Int k
+
+{-# INLINE reactive #-}
+reactive :: Uses Reactive fs m => Attribute Reactive fs m
+reactive = Reactive 0 nextS
+  where
+    nextS fs =
+      let Reactive s ns = (fs&)
+          s' = succ s
+      in s' `seq` pure (fs .= Reactive s' ns)
+
+instance Pair Reactive React where
+  pair p (Reactive i k) (FreshScope ik) = p k (ik i)
+
+data ReactorSystem fs m = Reactor
+  { newC :: forall a. Plan fs m (Culture a fs m)
+  , newB :: forall a. Culture a fs m -> (a -> Plan fs m ()) -> Plan fs m (Behavior a fs m)
+  , modB :: forall a. Behavior a fs m -> (a -> Plan fs m ()) -> Plan fs m ()
+  , triggerB :: forall a. Behavior a fs m -> a -> Plan fs m ()
+  , triggerC :: forall a. Culture a fs m -> a -> Plan fs m ()
+  , destroyB :: forall a. Behavior a fs m -> Plan fs m ()
+  , destroyC :: forall a. Culture a fs m -> Plan fs m ()
   }
 
 {-# INLINE react #-}
-react :: forall fs m a. (Has React fs m,Has Interleave fs m,MIO m,Has Throw fs m)
-         => (    ReactScope fs m
-              -> Plan fs m a
-            )
-         -> Plan fs m a
+react :: forall fs m a. (Has React fs m,Has Throw fs m,MIO m,Has Interleave fs m)
+      => (    ReactorSystem fs m
+           -> Plan fs m a
+         ) -> Plan fs m a
 react f = do
   scope <- self (FreshScope id)
-  sys_ <- unsafe (newIORef (Brain 0 0 []))
-  interleave $ \frk _ ->
-    transform scope frk sys_ $ f React
-      { newN = self (NewN scope id)
-      , triggerN = \ev a -> self (TriggerN scope ev a ())
-      , destroyN = \ev -> self (DestroyN scope ev ())
-      , newA = \ev f -> self (NewA scope ev f id)
-      , triggerA = \b a -> self (TriggerA scope b a ())
-      , destroyA = \b -> self (DestroyA scope b ())
+  sys <- unsafe $ newIORef []
+  transform sys scope 0 $ f Reactor
+      { newC = self (NewCulture scope id)
+      , newB = \c f -> self (NewBehavior scope c f id)
+      , modB = \b f -> self (ModifyBehavior scope b f ())
+      , triggerB = \b a -> self (TriggerBehavior scope b a ())
+      , triggerC = \c a -> self (TriggerCulture scope c a ())
+      , destroyB = \b -> self (DestroyBehavior scope b ())
+      , destroyC = \c -> self (DestroyCulture scope c ())
       }
   where
-    {-# INLINE transform #-}
-    transform scope frk sys_ = tangible
+    transform sys scope = go
       where
-        {-# INLINE tangible #-}
-        tangible :: forall b. Plan fs m b -> Plan fs m b
-        tangible p =
-          case p of
-            Step sym bp ->
-              let check i x = if i == scope then x else ignore
-                  ignore = Step sym (\b -> tangible (bp b))
-              in case prj sym of
-                   Just x ->
-                     case x of
-
-                       NewN i _ -> check i $ do
-                         sys <- unsafe (readIORef sys_)
-                         let eS = neuronCount sys
-                             eS' = eS + 1
-                         unsafe $ writeIORef sys_ $ sys { neuronCount = eS' }
-                         eS' `seq`
-                           Step sym $ const $ tangible $
-                             bp (unsafeCoerce (Neuron eS))
-
-                       TriggerN i ev a _ -> check i $
-                         Step sym $ const $ tangible $ do
-                           triggerNeuron ev a
-                           bp (unsafeCoerce ())
-
-                       TriggerA i b a _ -> check i $
-                         Step sym $ const $ tangible $ do
-                           triggerAxon b a
-                           bp (unsafeCoerce ())
-
-                       DestroyN i ev _ -> check i $ do
-                         destroyNeuron ev
-                         Step sym $ const $ tangible $
-                           bp (unsafeCoerce ())
-
-                       NewA i ev@(Neuron e) f _ -> check i $ do
-                         sys <- unsafe $ readIORef sys_
-                         let bS = axonCount sys
-                             bS' = bS + 1
-                             b = Axon (e,bS)
-                         unsafe $ writeIORef sys_ $ sys { axonCount = bS' }
-                         newAxon b f
-                         bS' `seq`
-                           Step sym $ const $ tangible $
-                             bp (unsafeCoerce b)
-
-                       DestroyA i b _ -> check i $ do
-                         destroyAxon b
-                         Step sym $ const $ tangible $
-                           bp (unsafeCoerce ())
-
+        go :: forall b. Int -> Plan fs m b -> Plan fs m b
+        go c = go'
+          where
+            go' :: forall b. Plan fs m b -> Plan fs m b
+            go' p =
+              case p of
+                Step sym bp ->
+                  let check i x = if i == scope then x else ignore
+                      ignore = Step sym (\b -> go' (bp b))
+                  in case prj sym of
+                       Just x ->
+                         case x of
+                           NewCulture i _ -> check i $ do
+                             cu <- newCulture c
+                             let c' = c + 1
+                             c' `seq` go c' (bp (unsafeCoerce cu))
+                           NewBehavior i cu f _ -> check i $ do
+                             b <- newBehavior (unsafeCoerce cu) f
+                             go' (bp (unsafeCoerce b))
+                           ModifyBehavior i b f _ -> check i $ do
+                             modifyBehavior b f
+                             go' (bp (unsafeCoerce ()))
+                           TriggerBehavior i b a _ -> check i $ do
+                             triggerBehavior b a
+                             go' (bp (unsafeCoerce ()))
+                           TriggerCulture i c a _ -> check i $ do
+                             triggerCulture c a
+                             go' (bp (unsafeCoerce ()))
+                           DestroyBehavior i b _ -> check i $ do
+                             unsafe $ destroyBehavior (unsafeCoerce b)
+                             go' (bp (unsafeCoerce ()))
+                           DestroyCulture i c _ -> check i $ do
+                             unsafe $ destroyCulture (unsafeCoerce c)
+                             go' (bp (unsafeCoerce ()))
+                           _ -> ignore
                        _ -> ignore
-                   Nothing -> ignore
-            M m -> M (fmap tangible m)
-            Pure r -> Pure r
+                M m -> M (fmap go' m)
+                Pure r -> Pure r
 
-        {-# INLINE intangible #-}
-        intangible :: forall b. Plan fs m b -> Plan fs m b
-        intangible p =
-          case p of
-            Step sym bp ->
-              let check i x = if i == scope then x else ignore
-                  ignore = Step sym (\b -> intangible (bp b))
-              in case prj sym of
-                   Just x ->
-                     case x of
-                       NewN i _ -> check i $ do
-                         sys <- unsafe $ readIORef sys_
-                         let eS = neuronCount sys
-                             eS' = eS + 1
-                         unsafe $ writeIORef sys_ $ sys { neuronCount = eS' }
-                         eS' `seq` intangible $ bp (unsafeCoerce (Neuron eS))
+            newCulture cultureId = unsafe $ do
+              culture <- newIORef (const (return ()) :: forall a. a -> Plan fs m ())
+              behaviors <- newIORef []
+              let cu = Culture{..}
+              modifyIORef sys (cu:)
+              return cu
 
-                       TriggerN i ev a _ -> check i $ intangible $ do
-                         triggerNeuron ev a
-                         bp (unsafeCoerce ())
-
-                       TriggerA i b a _ -> check i $ intangible $ do
-                         triggerAxon b a
-                         bp (unsafeCoerce ())
-
-                       DestroyN i ev _ -> check i $ do
-                         destroyNeuron ev
-                         intangible $ bp (unsafeCoerce ())
-
-                       NewA i ev@(Neuron e) f _ -> check i $ do
-                         sys <- unsafe $ readIORef sys_
-                         let bS = axonCount sys
-                             bS' = bS + 1
-                             b = Axon (e,bS)
-                         unsafe $ writeIORef sys_ $ sys { axonCount = bS' }
-                         newAxon b f
-                         bS' `seq` intangible $ bp (unsafeCoerce b)
-
-                       DestroyA i b _ -> check i $ do
-                         destroyAxon b
-                         intangible $ bp (unsafeCoerce ())
-
-                       _ -> ignore
-                   Nothing -> ignore
-            M m -> M (fmap intangible m)
-            Pure r -> Pure r
-
-        {-# INLINE triggerNeuron #-}
-        triggerNeuron (Neuron e) a = do
-            sys <- unsafe $ readIORef sys_
-            go $ neuronalConfiguration sys
-          where
-            go [] = return ()
-            go (eb@(Neuron i,bs):ebs)
-              | i == e = go' bs
-              | otherwise = go ebs
+            newBehavior cu f = unsafe $ do
+              let cultured = cultureId cu
+              b0_ <- newIORef f
+              let b0 = Behavior cultured b0_
+              modifyIORef (behaviors cu) $ \bs ->
+                let bs' = (unsafeCoerce b0):bs
+                in bs' `seq` bs'
+              bhs <- mapM (readIORef . behavior) =<< readIORef (behaviors cu)
+              writeIORef (culture cu) $ \a -> go' (compile a bhs)
+              return b0
               where
-                go' [] = return ()
-                go' ((_,f):bs) = frk (intangible $ f (unsafeCoerce a)) >> go' bs
+                compile a = compile'
+                  where
+                    compile' [] = return () :: Plan fs m ()
+                    compile' (b:bs) = do
+                      b a
+                      compile' bs
 
-        {-# INLINE triggerAxon #-}
-        triggerAxon (Axon (n,i)) a = do
-            sys <- unsafe $ readIORef sys_
-            go $ neuronalConfiguration sys
-          where
-            go [] = return ()
-            go (eb@(Neuron i,bs):ebs)
-              | i == n = go' bs
-              | otherwise = go ebs
+            modifyBehavior b f = unsafe $ do
+              let c = cultured b
+              writeIORef (behavior b) f
+              cus <- lookupCulture c
+              case cus of
+                (cu:_) -> recompile cu
+                _ -> return ()
               where
-                go' [] = return ()
-                go' ((Axon (_,a'),f):bs)
-                  | i == a' = frk (intangible $ f (unsafeCoerce a))
-                  | otherwise = go' bs
+                lookupCulture c = do
+                  cs <- readIORef sys
+                  return $ filter (\Culture{..} -> cultureId == c) cs
+                recompile Culture{..} = do
+                  bhs <- mapM (readIORef . behavior) =<< readIORef behaviors
+                  writeIORef culture $ \a -> go' (compile a bhs)
+                  where
+                    compile a = compile'
+                      where
+                        compile' [] = return () :: Plan fs m ()
+                        compile' (b:bs) = do
+                          b a
+                          compile' bs
 
-        {-# INLINE destroyNeuron #-}
-        destroyNeuron (Neuron e) = unsafe $ modifyIORef sys_ $ \sys ->
-            sys { neuronalConfiguration = go (neuronalConfiguration sys) }
-          where
-            go [] = []
-            go (eb@(Neuron i,_):ebs)
-              | i == e = ebs
-              | otherwise = eb:go ebs
+            triggerBehavior b a = do
+              let bh = unsafePerformIO $ readIORef (behavior b)
+              bh `seq` go' (unsafeCoerce bh a)
 
-        {-# INLINE newAxon #-}
-        newAxon b@(Axon (e,bh)) f = unsafe $ modifyIORef sys_ $ \sys ->
-            sys { neuronalConfiguration = go (neuronalConfiguration sys) }
-          where
-            go [] = [(unsafeCoerce (Neuron bh),[(unsafeCoerce b,unsafeCoerce f)])]
-            go (eb@(Neuron i,bs):ebs)
-              -- performance leak to guarantee FIFO
-              | i == e = (Neuron i,bs ++ [(unsafeCoerce b,unsafeCoerce f)]):ebs
-              | otherwise = eb:go ebs
+            triggerCulture c a = do
+              let cu = unsafePerformIO $ readIORef (culture c)
+              cu `seq` go' (unsafeCoerce cu a)
 
-        {-# INLINE destroyAxon #-}
-        destroyAxon (Axon (e,b)) = unsafe $ modifyIORef sys_ $ \sys ->
-            sys { neuronalConfiguration = go' (neuronalConfiguration sys) }
-          where
-            go' [] = []
-            go' (eb@(Neuron i,bs):ebs)
-              | i == e = (Neuron i,go'' bs):ebs
-              | otherwise = eb:go' ebs
-
-            go'' [] = []
-            go'' (bh@(Axon (_,b'),_):bs)
-              | b == b' = bs
-              | otherwise = bh:go'' bs
+            destroyBehavior b = do
+              writeIORef (behavior b) (const (return ()) :: forall a. a -> Plan fs m ())
+            destroyCulture c = do
+              writeIORef (culture c) (const (return ()) :: forall a. a -> Plan fs m ())
+              bs <- readIORef (behaviors c)
+              mapM_ destroyBehavior bs

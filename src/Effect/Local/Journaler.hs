@@ -8,12 +8,12 @@
        'listens' becomes 'intercept'
 -}
 module Effect.Local.Journaler
-    ( Journaling, journaling
-    , Journaler, journaler
+    ( Journaler, journaling
+    , Journaling, journal
     , Journal, log, eavesdrop, reconfigure, intercept
     ) where
 
-import Mop
+import Mop.Core
 
 import Data.Monoid
 
@@ -21,7 +21,7 @@ import Unsafe.Coerce
 
 import Prelude hiding (log)
 
-data Journaling k
+data Journaler k
     = FreshScope (Int -> k)
     | forall a. Log Int a
     | forall fs m a w. Eavesdrop Int w (Plan fs m a)
@@ -39,10 +39,10 @@ intercept Journal{..} f w m = do
     ~(w, a) <- eavesdrop w m
     return (f w,a)
 
-{-# INLINE journaling #-}
-journaling :: forall fs m a w r. (Has Journaling fs m,Monoid w)
+{-# INLINE journal #-}
+journal :: forall fs m a w r. (Has Journaler fs m,Monoid w)
        => (a -> w -> w) -> w -> (Journal fs m a w -> Plan fs m r) -> Plan fs m (w,r)
-journaling c w f = do
+journal c w f = do
     scope <- self (FreshScope id)
     transform scope c w $ f Journal
         { log = \w -> self (Log scope w)
@@ -76,22 +76,22 @@ journaling c w f = do
                     M m -> M (fmap go'' m)
                     Pure r -> Pure (w,r)
 
-data Journaler k = Journaler Int k
+data Journaling k = Journaling Int k
 
-{-# INLINE journaler #-}
-journaler :: Uses Journaler fs m => Attribute Journaler fs m
-journaler = Journaler 0 $ \fs ->
-    let Journaler i k = (fs&)
+{-# INLINE journaling #-}
+journaling :: Uses Journaling fs m => Attribute Journaling fs m
+journaling = Journaling 0 $ \fs ->
+    let Journaling i k = (fs&)
         i' = succ i
-    in i' `seq` pure (fs .= Journaler i' k)
+    in i' `seq` pure (fs .= Journaling i' k)
 
 journalMisuse :: String -> a
 journalMisuse method = error $
   "Journal misuse: " ++ method ++ " used outside of its 'writer' block. \
   \Do not return a Log or its internal fields from its instantiation block."
 
-instance Pair Journaler Journaling where
-    pair p (Journaler i k) (FreshScope ik) = p k (ik i)
+instance Pair Journaling Journaler where
+    pair p (Journaling i k) (FreshScope ik) = p k (ik i)
     pair p _ (Log _ _) = journalMisuse "Effect.Local.Journaler.Lazy.Log"
     pair p _ (Eavesdrop _ _ _) = journalMisuse "Effect.Local.Journaler.Lazy.Eavesdrop"
     pair p _ (Reconfigure _ _) = journalMisuse "Effect.Local.Journaler.Lazy.Reconfigure"

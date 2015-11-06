@@ -1,43 +1,28 @@
 module Effect.Local.State
     ( State, state
     , Store, store
-    , get, put, modify, modify'
-    , gets, puts, swap
+    , Var(..)
     ) where
 
-import Mop hiding (FreshScope) -- temporary workaround
+import Mop.Core
 
 import Unsafe.Coerce
 
+data Eagerness = Strict | Lazy deriving Eq
+
 data State k
     = FreshScope (Int -> k)
-    | Get Int
-    | forall a. Put Int a
+    | forall a. Modify Int Eagerness (a -> a) (a -> k)
 
 data Var fs m st = Var
-    { get :: Plan fs m st
-    , put :: st -> Plan fs m ()
-    }
-
-{-# INLINE modify #-}
-modify :: Monad m => Var fs m st -> (st -> st) -> Plan fs m ()
-modify Var{..} f = get >>= \a -> put (f a)
-
-{-# INLINE modify' #-}
-modify' :: Monad m => Var fs m st -> (st -> st) -> Plan fs m ()
-modify' Var{..} f = get >>= \a -> put $! f a
-
-{-# INLINE gets #-}
-gets :: Monad m => Var fs m st -> (st -> a) -> Plan fs m a
-gets Var{..} f = f <$> get
-
-{-# INLINE puts #-}
-puts :: Monad m => Var fs m st -> (a -> st) -> a -> Plan fs m ()
-puts Var{..} f new = put (f new)
-
-{-# INLINE swap #-}
-swap :: Monad m => Var fs m st -> st -> Plan fs m st
-swap Var{..} st_new = get >>= \st_old -> put st_new >> return st_old
+  { modify :: (st -> st) -> Plan fs m ()
+  , modify' :: (st -> st) -> Plan fs m ()
+  , get :: Plan fs m st
+  , gets :: forall a. (st -> a) -> Plan fs m a
+  , put :: st -> Plan fs m ()
+  , puts :: forall a. (a -> st) -> a -> Plan fs m ()
+  , swap :: st -> Plan fs m st
+  }
 
 {-# INLINE state #-}
 state :: forall fs m st r. Has State fs m
@@ -45,23 +30,27 @@ state :: forall fs m st r. Has State fs m
 state st f = do
     scope <- self (FreshScope id)
     transform scope st $ f Var
-        { get = self (Get scope)
-        , put = \st -> self (Put scope st)
-        }
+      { modify = \f -> self (Modify scope Lazy f (const ()))
+      , modify' = \f -> self (Modify scope Strict f (const ()))
+      , get = self (Modify scope Lazy id id)
+      , gets = \f -> self (Modify scope Lazy id f)
+      , put = \st -> self (Modify scope Lazy (const st) (const ()))
+      , puts = \f a -> self (Modify scope Lazy (const (f a)) (const ()))
+      , swap = \a -> self (Modify scope Lazy (const a) id)
+      }
   where
     transform scope = go where
         go st = go' where
             go' p = case p of
                 Step sym bp -> case prj sym of
                     Just x  -> case x of
-                        Get i ->
+                        Modify i sl f g ->
                             if i == scope
-                            then go' (bp (unsafeCoerce st))
-                            else Step sym (\b -> go' (bp b))
-                        Put i st' ->
-                            if i == scope
-                            then go (unsafeCoerce st')
-                                    (bp (unsafeCoerce ()))
+                            then
+                              if sl == Strict
+                              then let st' = unsafeCoerce f st
+                                    in st' `seq` go st' (bp (unsafeCoerce g st))
+                              else go (unsafeCoerce f st) (bp (unsafeCoerce g st))
                             else Step sym (\b -> go' (bp b))
                         _ -> Step sym (\b -> go' (bp b))
                     Nothing -> Step sym (\b -> go' (bp b))
@@ -84,5 +73,3 @@ varMisuse method = error $
 
 instance Pair Store State where
     pair p (Store i k) (FreshScope ik) = p k (ik i)
-    pair p _ (Get _) = varMisuse "Effect.Local.State.Lazy.Get"
-    pair p _ (Put _ _) = varMisuse "Effect.Local.State.Lazy.Put"

@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleInstances, IncoherentInstances #-}
 module Mop
-  ( main', base, Mop, Main, Embed(..)
+  ( main', base, debug, Mop, Main, Embed(..)
   , module Base
   ) where
 
@@ -21,6 +21,10 @@ import Effect.Transient           as Base
 import Effect.Weave               as Base
 import Effect.Divergence          as Base
 
+import Effect.Local.State         as Base
+import Effect.Local.Writer        as Base
+import Effect.Local.Journaler     as Base
+
 import Control.Exception          as Base (SomeException,assert)
 import Data.Function              as Base (fix)
 
@@ -35,6 +39,9 @@ type Mop
      ,Threading
      ,Reactive
      ,Divergent
+     ,Store
+     ,Logger
+     ,Journaling
      ]
 
 type Main
@@ -48,10 +55,16 @@ type Main
      ,Thread
      ,React
      ,Diverge
+     ,State
+     ,Writer
+     ,Journaler
      ]
 
 main' :: Plan Main IO b -> IO b
 main' = fmap snd . delta base
+
+debug :: Plan Main IO b -> IO (Int,b)
+debug = fmap snd. deltaDebug base
 
 base :: Monad m => Object Mop m
 base = Object $ transience
@@ -64,6 +77,9 @@ base = Object $ transience
             *:* threads
             *:* reactive
             *:* divergent
+            *:* store
+            *:* logger
+            *:* journaling
             *:* Empty
 
 class Monad m => Embed m where

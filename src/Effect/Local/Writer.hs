@@ -7,7 +7,7 @@ module Effect.Local.Writer
    , Log, tell, listen, listens
    ) where
 
-import Mop hiding (FreshScope) -- temporary workaround
+import Mop.Core
 
 import Data.Monoid
 

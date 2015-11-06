@@ -3,7 +3,7 @@ module Effect.State
     , Store, store
     ) where
 
-import Mop
+import Mop.Core
 
 import Data.IORef
 import System.IO.Unsafe

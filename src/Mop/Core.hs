@@ -15,6 +15,7 @@
 {-# LANGUAGE CPP                                #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE IncoherentInstances #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# OPTIONS_GHC -fno-warn-missing-methods       #-}
 #if __GLASGOW_HASKELL__ > 710
 {-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
@@ -25,6 +26,7 @@ import Control.Applicative
 import Control.Monad
 import Data.Typeable hiding (cast)
 import Unsafe.Coerce
+import Debug.Trace
 
 type family (:++:) (xs :: [k]) (ys :: [k]) :: [k] where
   xs        :++: '[] = xs
@@ -114,15 +116,11 @@ class Allows' x xs (n :: Nat) where
   inj' :: Index n -> x a -> Symbol xs a
   prj' :: Index n -> Symbol xs a -> Maybe (x a)
 instance (Denies x' xs',xs ~ (x' ': xs'),Allows' x xs' (IndexOf x xs')) => Allows' x xs ('S n) where
-  {-# INLINE inj' #-}
   inj' _ xa = Further (inj' (Index :: Index (IndexOf x xs')) xa)
-  {-# INLINE prj' #-}
   prj' _ (Further ss) = prj' (Index :: Index (IndexOf x xs')) ss
   prj' _ _ = Nothing
 instance (Denies x xs',xs ~ (x ': xs')) => Allows' x xs 'Z where
-  {-# INLINE inj' #-}
   inj' _ = Symbol
-  {-# INLINE prj' #-}
   prj' _ (Symbol sa) = Just sa
   prj' _ (Further _) = Nothing
 
@@ -169,19 +167,16 @@ data Plan symbols m a
   | M (m (Plan symbols m a))
   | Pure a
 
-{-# INLINE lift #-}
 lift :: Functor m => m a -> Plan symbols m a
 lift m = M (fmap Pure m)
 
 -- | Invoke a method of the parent object. This allows:
 -- > super . super $ something
-{-# INLINE super #-}
 super :: Functor m => Plan fs m a -> Plan gs (Plan fs m) a
 super = lift
 
 -- | Invoke a method in the calling object.
-{-# INLINE self #-}
-self :: Has x symbols m => x a -> Plan symbols m a
+self :: (Has x symbols m) => x a -> Plan symbols m a
 self xa = Step (inj xa) return
 
 instance Functor m => Functor (Plan symbols m) where
@@ -313,8 +308,34 @@ _delta = go
               let ~(trans,b) = pair (,) (deconstruct is) syms
               in do is' <- trans is
                     go is' (k b)
-            Pure res -> pure (is,res)
             M mp -> mp >>= go'
+            Pure res -> pure (is,res)
+
+deltaDebug :: forall is symbols m a. (Pair (Attrs is) (Symbol symbols),Monad m,Typeable symbols,Typeable is)
+           => Object is m
+           -> Plan symbols m a
+           -> m (Object is m,(Int,a))
+deltaDebug = _deltaDebug
+
+{-# NOINLINE _deltaDebug #-}
+_deltaDebug :: forall is symbols m a. (Pair (Attrs is) (Symbol symbols),Monad m,Typeable symbols,Typeable is)
+            => Object is m
+            -> Plan symbols m a
+            -> m (Object is m,(Int,a))
+_deltaDebug = go 0
+  where
+    go n is = go'
+      where
+        go' p =
+          case p of
+            Step syms k ->
+              let ~(trans,b) = pair (,) (deconstruct is) syms
+              in do is' <- trans is
+                    let n' = n + 1
+                    trace (show (typeOf (unsafeCoerce syms :: Symbol symbols ()))) $ n' `seq` go n' is' (k b)
+            M m -> m >>= go'
+            Pure r -> pure (is,(n,r))
+
 
 type Uses f fs m = (Monad m,Admits' f fs (IndexOf f fs))
 type Extends extended orig m = (Monad m,AdmitsSubset orig extended)
@@ -343,7 +364,6 @@ instance (Typeable f,Denies f fs,UnsafeBuild fs) => UnsafeBuild (f ': fs) where
         msg = "Attribute (" ++ attr ++ ") uninitialized."
     in Attr (error msg) unsafeBuild
 
-{-# INLINE build #-}
 build :: UnsafeBuild attrs
       => (    Attrs attrs (Method attrs m)
            -> Attrs attrs (Method attrs m)
@@ -351,22 +371,18 @@ build :: UnsafeBuild attrs
       -> Object attrs m
 build f = Object $ f unsafeBuild
 
-{-# INLINE add #-}
 add :: (Denies f fs) => f a -> Attrs fs a -> Attrs (f ': fs) a
 add fa Empty = Attr fa Empty
 add fa i = Attr fa i
 
-{-# INLINE (*:*)#-}
 (*:*) :: Denies f fs => f a -> Attrs fs a -> Attrs (f ': fs) a
 (*:*) = add
 infixr 6 *:*
 
-{-# INLINE (&) #-}
 (&) :: Admits f fs => Object fs m -> Attribute f fs m
 (&) xs = pull $ deconstruct xs
 
 infixl 5 .=
-{-# INLINE (.=) #-}
 (.=) :: Uses f fs m => Object fs m -> Attribute f fs m -> Object fs m
 is .= x = Object $ push x $ deconstruct is
 
@@ -384,31 +400,22 @@ newtype Codensity fs m a = Codensity
 
 instance Functor (Codensity fs k) where
   fmap f (Codensity m) = Codensity (\k -> m (k . f))
-  {-# INLINE fmap #-}
 
 instance Applicative (Codensity fs f) where
   pure x = Codensity (\k -> k x)
-  {-# INLINE pure #-}
   (<*>) = ap
-  {-# INLINE (<*>) #-}
 
 instance Monad (Codensity fs f) where
   return x = Codensity (\k -> k x)
-  {-# INLINE return #-}
   m >>= k = Codensity (\c -> runCodensity m (\a -> runCodensity (k a) c))
-  {-# INLINE (>>=) #-}
 
 instance (Alternative v,MonadPlus v) => Alternative (Codensity fs v) where
   empty = Codensity (\_ -> empty)
-  {-# INLINE empty #-}
   Codensity m <|> Codensity n = Codensity (\k -> m k <|> n k)
-  {-# INLINE (<|>) #-}
 
 instance MonadPlus v => MonadPlus (Codensity fs v) where
   mzero = Codensity (\_ -> mzero)
-  {-# INLINE mzero #-}
   Codensity m `mplus` Codensity n = Codensity (\k -> m k `mplus` n k)
-  {-# INLINE mplus #-}
 
 toCodensity :: Monad m => Plan fs m a -> Codensity fs m a
 toCodensity f = Codensity (f >>=)
