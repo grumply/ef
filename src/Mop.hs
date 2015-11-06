@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances, IncoherentInstances #-}
 {-# LANGUAGE DataKinds #-}
 module Mop
-  ( main', base, debug, Mop, Main, Embed(..)
+  ( main', base, debug, Mop, Main
   , module Base
   ) where
 
