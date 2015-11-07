@@ -10,7 +10,6 @@ import Mop.Core
 import Effect.Exception
 import Effect.Divergence
 
-import Control.Exception (Exception(..))
 import Control.Monad (unless)
 import Data.Typeable
 

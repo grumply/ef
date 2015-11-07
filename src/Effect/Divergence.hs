@@ -31,7 +31,7 @@ divergent = Divergent undefined snapshot_ overwrite_ return
   where
     snapshot_ fs =
       case view fs of
-        (Divergent _ s o d :: Divergent (Method gs m)) ->
+        (Divergent _ s _ d :: Divergent (Method gs m)) ->
           pure $ fs .= Divergent { current = fs
                                  , reification = s
                                  , setter = overwrite_
@@ -77,7 +77,7 @@ introspect f =  f Introspection
 {-# INLINE modself #-}
 -- NotEq here is used to help prevent misuse. It catches the simplest case only:
 --   a ~ Object gs m; you can bypass it by returning (b,Object gs m)
-modself :: (Monad m, Pair (Attrs gs) (Symbol fs),Has Diverge fs m, (Object gs m /== a) ~ True)
+modself :: (Monad m, Pair (Attrs gs) (Symbol fs),Has Diverge fs m, (Object gs m /== a) ~ 'True)
         => (Object gs m -> Plan fs m (Object gs m,a)) -> Plan fs m a
 modself f = introspect $ \i -> do
   slf <- project i

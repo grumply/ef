@@ -26,9 +26,6 @@ import Effect.Local.State         as Base
 import Effect.Local.Writer        as Base
 import Effect.Local.Journaler     as Base
 
-import Control.Exception          as Base (Exception(..),SomeException,assert)
-import Data.Function              as Base (fix)
-
 type Mop
   = '[Transience
      ,Continuations

@@ -24,10 +24,10 @@ data Thread k
 thread :: Has Thread fs m
      => ((forall b. Plan fs m b -> Plan fs m ()) -> Plan fs m () -> Plan fs m a)
      -> Plan fs m a
-thread x = do
+thread f = do
     scope <- self (FreshScope id)
     transform scope emptyQueue
-      $ x (\p -> self (Thread scope (p >> self (Stop scope)) ()))
+      $ f (\p -> self (Thread scope (p >> self (Stop scope)) ()))
           (self (Yield scope ()))
   where
     transform scope q = go

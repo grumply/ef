@@ -11,12 +11,11 @@ module Effect.Exception
          , onException, finally, bracket, bracket_, bracketOnError, mapException
   , exceptions, Exceptions
   , Throws, catchChecked, throwChecked
-  , Exception,SomeException(..)
+  , Exception(..),SomeException(..),assert
   ) where
 
 import Mop.Core
-import Control.Exception (SomeException(..),Exception(..))
-import qualified Control.Exception as Exc
+import Control.Exception (SomeException(..),Exception(..),assert)
 
 import Data.Coerce
 import Data.Proxy

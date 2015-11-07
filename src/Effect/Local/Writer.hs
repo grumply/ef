@@ -53,10 +53,10 @@ writer f = do
                             if i == scope
                             then go (w <> (unsafeCoerce w')) (bp (unsafeCoerce ()))
                             else Step sym (\b -> go' (bp b))
-                        Listen i p ->
+                        Listen i p' ->
                             if i == scope
                             then do
-                              ~(w',a) <- go mempty (unsafeCoerce p)
+                              ~(w',a) <- go mempty (unsafeCoerce p')
                               go (w <> w') (bp (unsafeCoerce (w',a)))
                             else Step sym (\b -> go' (bp b))
                         _ -> Step sym (\b -> go' (bp b))

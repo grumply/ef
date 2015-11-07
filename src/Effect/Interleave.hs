@@ -95,7 +95,7 @@ interleave f = do
                 Nothing -> Step sym $ \b ->
                   case dequeue rest of
                     Nothing -> start (bp b)
-                    Just (rest',nxt) -> Step sym $ \b -> rooted (enqueue (bp b) rest') nxt
+                    Just (rest',nxt) -> Step sym $ \b' -> rooted (enqueue (bp b') rest') nxt
             M m -> M (m >>= \p' ->
                         case dequeue rest of
                           Nothing -> return $ start p'
@@ -106,4 +106,4 @@ interleave f = do
             Pure r ->
               case dequeue rest of
                 Nothing -> Pure r
-                Just (rest,nxt) -> rooted rest nxt >> Pure r
+                Just (rest',nxt) -> rooted rest' nxt >> Pure r

@@ -18,9 +18,9 @@ data Continuations k = Continuations Int k
 {-# INLINE enter #-}
 -- use: enter $ \exit -> do { .. ; }
 enter :: Has Continuation fs m => ((forall b. a -> Plan fs m b) -> Plan fs m a) -> Plan fs m a
-enter x = do
+enter f = do
     scope <- freshScope
-    transform scope $ x (\a -> self (Continuation scope a))
+    transform scope $ f (\a -> self (Continuation scope a))
   where
     transform scope = go where
         go p = case p of
@@ -48,4 +48,3 @@ continuations = Continuations 0 $ \fs ->
 
 instance Pair Continuations Continuation where
     pair p (Continuations i k) (FreshScope ik) = p k (ik i)
-    pair p _ (Continuation _ _) = error "Unscoped continuation."

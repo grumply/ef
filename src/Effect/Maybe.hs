@@ -32,9 +32,9 @@ freshScope = self (FreshScope id)
 
 {-# INLINE tryMaybe #-}
 tryMaybe :: Has May fs m => ((forall b. a -> Plan fs m b) -> (forall b. Plan fs m b) -> Plan fs m (Maybe a)) -> Plan fs m (Maybe a)
-tryMaybe x = do
+tryMaybe f = do
     scope <- freshScope
-    transform scope $ x (\a -> self (Success scope a)) (self (Failure scope))
+    transform scope $ f (\a -> self (Success scope a)) (self (Failure scope))
   where
     transform scope = go
       where
@@ -56,4 +56,3 @@ tryMaybe x = do
 
 instance Pair Possible May where
     pair p (Possible i k) (FreshScope ik) = p k (ik i)
-    pair p _ _ = error "Unscoped try continuation."

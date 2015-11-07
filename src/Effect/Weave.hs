@@ -13,6 +13,7 @@ module Effect.Weave
   , client, Client, Client'
   , server, Server, Server'
   , weave, Woven(..)
+  , Effect, Effect'
   , X
   , cat, for
   , (<\\), (\<\), (~>),  (<~) , (/>/), (//>)
@@ -48,7 +49,7 @@ weaving = Weaving 0 $ \fs ->
 {-# INLINE getScope #-}
 getScope :: Has Weave fs m => Plan fs m a -> m Int
 getScope p = case p of
-    Step sym bp -> case prj sym of
+    Step sym _ -> case prj sym of
         Just x  -> case x of
             Request i _ _ -> return i
             Respond i _ _ -> return i
@@ -59,16 +60,12 @@ getScope p = case p of
 
 instance Pair Weaving Weave where
     pair p (Weaving i k) (FreshScope ik) = p k (ik i)
-    pair _ _ _ = error "Pipe primitive escaped its scope:\n\
-                       \\tAttempting to reuse control flow\
-                       \ primitives outside of their scope\
-                       \ is unsupported."
 
 {-# INLINE linearize #-}
 linearize :: Has Weave fs m => Effect fs m r -> Plan fs m r
 linearize e = do
     scope <- freshScope
-    go' scope $ runWoven e (\a' ap -> self (Request scope a' ap))
+    go' scope $ runWoven e (\a' apl -> self (Request scope a' apl))
                            (\b b'p -> self (Respond scope b b'p))
   where
     go' scope p0 = go p0
@@ -76,15 +73,15 @@ linearize e = do
         go p = case p of
             Step sym bp -> case prj sym of
                 Just x  -> case x of
-                    Request i x _ ->
+                    Request i a' _ ->
                         if i == scope
-                        then closed (unsafeCoerce x)
-                        else Step sym (\b -> go (bp b))
-                    Respond i x _ ->
+                        then closed (unsafeCoerce a')
+                        else Step sym (go . bp)
+                    Respond i b _ ->
                         if i == scope
-                        then closed (unsafeCoerce x)
-                        else Step sym (\b -> go (bp b))
-                Nothing -> Step sym (\b -> go (bp b))
+                        then closed (unsafeCoerce b)
+                        else Step sym (go . bp)
+                Nothing -> Step sym (go . bp)
             M m -> M (fmap go m)
             Pure r -> Pure r
 
@@ -184,7 +181,7 @@ type Pipe fs a b m r = Woven fs () a () b m r
 pipe :: forall fs m a b x r. Has Weave fs m
      => (Plan fs m a -> (b -> Plan fs m x) -> Plan fs m r)
      -> Pipe fs a b m r
-pipe f = Woven $ \up dn -> do
+pipe f = Woven $ \up _ -> do
   i <- lift (getScope (up (unsafeCoerce ()) (unsafeCoerce ())))
   f (self (Request i () (return :: forall z. z -> Plan fs m z)))
     (\b -> self (Respond i b (return :: forall z. z -> Plan fs m z)))
@@ -223,7 +220,7 @@ newtype Woven fs a' a b' b m r
 weave :: forall fs a a' b b' m r. Has Weave fs m
       => ((a -> Plan fs m a') -> (b' -> Plan fs m b) -> Plan fs m r)
       -> Woven fs a' a b' b m r
-weave f = Woven $ \up dn -> do
+weave f = Woven $ \up _ -> do
   i <- lift (getScope (up (unsafeCoerce ()) (unsafeCoerce ())))
   f (\a -> self (Request i a (return :: forall z. z -> Plan fs m z)))
     (\b' -> self (Respond i b' (return :: forall z. z -> Plan fs m z)))
@@ -254,7 +251,7 @@ p0 //> fb = Woven $ \up dn -> do
   i <- lift (getScope (up (unsafeCoerce ()) (unsafeCoerce ())))
   transform i up dn (runWoven p0 up (unsafeCoerce dn))
   where
-    transform scope up dn p0 = go p0
+    transform scope up dn = go
       where
         go p = case p of
             Step sym bp -> case prj sym of
@@ -265,9 +262,9 @@ p0 //> fb = Woven $ \up dn -> do
                                                 (unsafeCoerce up)
                                                 (unsafeCoerce dn)
                                 go (bp (unsafeCoerce res))
-                        else Step sym (\b -> go (bp b))
-                    _ -> Step sym (\b -> go (bp b))
-                Nothing -> Step sym (\b -> go (bp b))
+                        else Step sym (go . bp)
+                    _ -> Step sym (go . bp)
+                Nothing -> Step sym (go . bp)
             M m -> M (fmap go m)
             Pure r -> Pure r
 
@@ -415,7 +412,7 @@ p0 >>~ fb0 = Woven $ \up dn -> do
                                 if i == scope
                                 then goRight (unsafeCoerce bp)
                                              (fb (unsafeCoerce b))
-                                else Step sym (\b -> goLeft' (bp b))
+                                else Step sym (goLeft' . bp)
                             _ -> Step sym (\b -> goLeft' (bp b))
                         Nothing -> Step sym (\b -> goLeft' (bp b))
                     M m -> M (fmap goLeft' m)
@@ -481,7 +478,7 @@ fb' +>> p0 = Woven $ \up dn -> do
                      )
           where
             goRight :: (b' -> Plan fs m r) -> Plan fs m r -> Plan fs m r
-            goRight fb' = goRight'
+            goRight fb'' = goRight'
               where
                 goRight' p = case p of
                     Step sym bp -> case prj sym of
@@ -489,7 +486,7 @@ fb' +>> p0 = Woven $ \up dn -> do
                             Request i b' _ ->
                                 if i == scope
                                 then goLeft (unsafeCoerce bp)
-                                            (fb' (unsafeCoerce b'))
+                                            (fb'' (unsafeCoerce b'))
                                 else Step sym (\b -> goRight' (bp b))
                             _ -> Step sym (\b -> goRight' (bp b))
                         Nothing -> Step sym (\b -> goRight' (bp b))

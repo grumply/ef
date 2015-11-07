@@ -272,7 +272,7 @@ _mappend p0 p1 = go p0
           Pure r -> fmap (mappend r) p1
 
 observe :: forall fs m a. Monad m => Plan fs m a -> Plan fs m a
-observe p = M (go p)
+observe = M . go
   where
     go p =
       case p of

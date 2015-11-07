@@ -40,16 +40,16 @@ data Journal fs m a w = Journal
 
 {-# INLINE intercept #-}
 intercept :: Monad m => Journal fs m a w -> (w -> b) -> w -> Plan fs m r -> Plan fs m (b,r)
-intercept Journal{..} f w m = do
-    ~(w, a) <- eavesdrop w m
+intercept Journal{..} f w0 m = do
+    ~(w, a) <- eavesdrop w0 m
     return (f w,a)
 
 {-# INLINE journal #-}
 journal :: forall fs m a w r. (Has Journaler fs m,Monoid w)
        => (a -> w -> w) -> w -> (Journal fs m a w -> Plan fs m r) -> Plan fs m (w,r)
-journal c w f = do
+journal c0 w0 f = do
     scope <- self (FreshScope id)
-    transform scope c w $ f Journal
+    transform scope c0 w0 $ f Journal
         { log = \w -> self (Log scope w)
         , eavesdrop = \w' p -> self (Eavesdrop scope w' p)
         , reconfigure = \c' -> self (Reconfigure scope c')
@@ -66,10 +66,10 @@ journal c w f = do
                                 then go' (c (unsafeCoerce a) w)
                                          (bp (unsafeCoerce ()))
                                 else Step sym (\b -> go'' (bp b))
-                            Eavesdrop i w' p ->
+                            Eavesdrop i w' p' ->
                                 if i == scope
                                 then do
-                                  ~(w'',r) <- go' (unsafeCoerce w') (unsafeCoerce p)
+                                  ~(w'',r) <- go' (unsafeCoerce w') (unsafeCoerce p')
                                   go' (w <> w'') (bp (unsafeCoerce (w'',r)))
                                 else Step sym (\b -> go'' (bp b))
                             Reconfigure i c' ->
@@ -90,13 +90,5 @@ journaling = Journaling 0 $ \fs ->
         i' = succ i
     in i' `seq` pure (fs .= Journaling i' k)
 
-journalMisuse :: String -> a
-journalMisuse method = error $
-  "Journal misuse: " ++ method ++ " used outside of its 'writer' block. \
-  \Do not return a Log or its internal fields from its instantiation block."
-
 instance Pair Journaling Journaler where
     pair p (Journaling i k) (FreshScope ik) = p k (ik i)
-    pair p _ (Log _ _) = journalMisuse "Effect.Local.Journaler.Lazy.Log"
-    pair p _ (Eavesdrop _ _ _) = journalMisuse "Effect.Local.Journaler.Lazy.Eavesdrop"
-    pair p _ (Reconfigure _ _) = journalMisuse "Effect.Local.Journaler.Lazy.Reconfigure"

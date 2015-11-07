@@ -71,10 +71,10 @@ react :: forall fs m a. (Has React fs m,Lift IO m,Has Interleave fs m)
       => (    ReactorSystem fs m
            -> Plan fs m a
          ) -> Plan fs m a
-react f = do
+react r = do
   scope <- self (FreshScope id)
   sys <- unsafe $ newIORef []
-  transform sys scope 0 $ f Reactor
+  transform sys scope 0 $ r Reactor
       { newC = self (NewCulture scope id)
       , newB = \c f -> self (NewBehavior scope c f id)
       , modB = \b f -> self (ModifyBehavior scope b f ())
@@ -89,7 +89,7 @@ react f = do
         go :: forall b. Int -> Plan fs m b -> Plan fs m b
         go c = go'
           where
-            go' :: forall b. Plan fs m b -> Plan fs m b
+            go' :: forall c. Plan fs m c -> Plan fs m c
             go' p =
               case p of
                 Step sym bp ->
@@ -111,22 +111,22 @@ react f = do
                            TriggerBehavior i b a _ -> check i $ do
                              triggerBehavior b a
                              go' (bp (unsafeCoerce ()))
-                           TriggerCulture i c a _ -> check i $ do
-                             triggerCulture c a
+                           TriggerCulture i cu a _ -> check i $ do
+                             triggerCulture cu a
                              go' (bp (unsafeCoerce ()))
                            DestroyBehavior i b _ -> check i $ do
                              unsafe $ destroyBehavior (unsafeCoerce b)
                              go' (bp (unsafeCoerce ()))
-                           DestroyCulture i c _ -> check i $ do
-                             unsafe $ destroyCulture (unsafeCoerce c)
+                           DestroyCulture i cu _ -> check i $ do
+                             unsafe $ destroyCulture (unsafeCoerce cu)
                              go' (bp (unsafeCoerce ()))
                            _ -> ignore
                        _ -> ignore
                 M m -> M (fmap go' m)
-                Pure r -> Pure r
+                Pure res -> Pure res
 
             newCulture cultureId = unsafe $ do
-              culture <- newIORef (const (return ()) :: forall a. a -> Plan fs m ())
+              culture <- newIORef (const (return ()) :: forall d. d -> Plan fs m ())
               behaviors <- newIORef []
               let cu = Culture{..}
               modifyIORef sys (cu:)
@@ -151,16 +151,16 @@ react f = do
                       compile' bs
 
             modifyBehavior b f = unsafe $ do
-              let c = cultured b
+              let cu = cultured b
               writeIORef (behavior b) f
-              cus <- lookupCulture c
+              cus <- lookupCulture cu
               case cus of
-                (cu:_) -> recompile cu
+                (cid:_) -> recompile cid
                 _ -> return ()
               where
-                lookupCulture c = do
+                lookupCulture cid = do
                   cs <- readIORef sys
-                  return $ filter (\Culture{..} -> cultureId == c) cs
+                  return $ filter (\Culture{..} -> cultureId == cid) cs
                 recompile Culture{..} = do
                   bhs <- mapM (readIORef . behavior) =<< readIORef behaviors
                   writeIORef culture $ \a -> go' (compile a bhs)
@@ -168,21 +168,21 @@ react f = do
                     compile a = compile'
                       where
                         compile' [] = return () :: Plan fs m ()
-                        compile' (b:bs) = do
-                          b a
-                          compile' bs
+                        compile' (bh:bhs) = do
+                          bh a
+                          compile' bhs
 
             triggerBehavior b a = do
               let bh = unsafePerformIO $ readIORef (behavior b)
               bh `seq` go' (unsafeCoerce bh a)
 
-            triggerCulture c a = do
-              let cu = unsafePerformIO $ readIORef (culture c)
-              cu `seq` go' (unsafeCoerce cu a)
+            triggerCulture cu a = do
+              let cul = unsafePerformIO $ readIORef (culture cu)
+              cul `seq` go' (unsafeCoerce cul a)
 
             destroyBehavior b = do
-              writeIORef (behavior b) (const (return ()) :: forall a. a -> Plan fs m ())
-            destroyCulture c = do
-              writeIORef (culture c) (const (return ()) :: forall a. a -> Plan fs m ())
-              bs <- readIORef (behaviors c)
+              writeIORef (behavior b) (const (return ()) :: forall d. d -> Plan fs m ())
+            destroyCulture cu = do
+              writeIORef (culture cu) (const (return ()) :: forall d. d -> Plan fs m ())
+              bs <- readIORef (behaviors cu)
               mapM_ destroyBehavior bs

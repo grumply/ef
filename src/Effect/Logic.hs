@@ -37,7 +37,7 @@ freshScope = self (FreshScope id)
 --          when (x*x + y*y /= z*z) (yield (x,y,z))
 --          cut
 {-# INLINE logic #-}
-logic :: forall fs m r b.
+logic :: forall fs m b.
          (Has Logic fs m,Has Weave fs m)
       => (   (forall a. [a] -> Plan fs m a)
           -> (b -> Plan fs m ())
@@ -56,23 +56,23 @@ logic l =
     go scope p0 = go' p0
       where
         try :: forall a. [a] -> (a -> Plan fs m ()) -> Plan fs m () -> Plan fs m ()
-        try [] bp or = or
-        try (a:as) bp or = try' (bp a)
+        try [] _ or_ = or_
+        try (a:as) bp or_ = try' (bp a)
           where
             try' p = case p of
                 Step sym bp' -> case prj sym of
                     Just x -> case x of
                         Choose i as' _ ->
                             if i == scope
-                            then try as' (unsafeCoerce bp') (try as bp or)
+                            then try as' (unsafeCoerce bp') (try as bp or_)
                             else Step sym (\b -> try' (bp' b))
                         Cut i ->
                             if i == scope
-                            then try as bp or
+                            then try as bp or_
                             else Step sym (\b -> try' (bp' b))
                     Nothing -> Step sym (\b -> try' (bp' b))
                 M m -> M (fmap try' m)
-                Pure r -> try as bp or
+                Pure _ -> try as bp or_
         go' p = case p of
             Step sym bp -> case prj sym of
                 Just x -> case x of
@@ -88,7 +88,3 @@ logic l =
 
 instance Pair Nondet Logic where
     pair p (Nondet i k) (FreshScope ik) = p k (ik i)
-    pair _ _ _ = error "Logic primitive escaped its scope:\n\
-                       \\tAttempting to reuse control flow\
-                       \ primitives outside of their scope\
-                       \ is unsupported."

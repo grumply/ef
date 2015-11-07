@@ -31,9 +31,9 @@ data Var fs m st = Var
 {-# INLINE state #-}
 state :: forall fs m st r. Has State fs m
       => st -> (Var fs m st -> Plan fs m r) -> Plan fs m (st,r)
-state st f = do
+state st0 f0 = do
     scope <- self (FreshScope id)
-    transform scope st $ f Var
+    transform scope st0 $ f0 Var
       { modify = \f -> self (Modify scope Lazy f (const ()))
       , modify' = \f -> self (Modify scope Strict f (const ()))
       , get = self (Modify scope Lazy id id)

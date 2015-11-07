@@ -63,18 +63,9 @@ transience = Transience 0 return $ \fs ->
         i' = succ i
     in i' `seq` pure (fs .= Transience i' non me)
 
-transientMisuse :: String -> a
-transientMisuse method = error $
-  "Transient misuse: " ++ method ++ " used outside of a 'transiently' block. \
-  \Do not return a TransientScope or its internal fields from its instantiation\
-  \ block."
-
 instance Pair Transience Transient where
     pair p (Transience _ _ k) (Deallocate _ k') = p k k'
     pair p (Transience i k _) (FreshScope ik)   = p k (ik i)
-    pair p _ (OnEnd _ _ _)      = transientMisuse "OnEnd"
-    pair p _ (Register _ _ _ _) = transientMisuse "Register"
-    pair p _ (Unregister _ _ _) = transientMisuse "Unregister"
 
 {-# INLINE freshScope #-}
 freshScope :: Has Transient fs m => Plan fs m Int
@@ -101,15 +92,15 @@ transiently :: forall fs m r. Has Transient fs m
             => (    TransientScope fs m
                  -> Plan fs m r
                ) -> Plan fs m r
-transiently x = do
+transiently f = do
     scope <- freshScope
-    let alloc create onEnd = self (Allocate scope create onEnd id)
-        register token onEnd = self (Register scope token onEnd ())
-        unregister token = self (Unregister scope token ())
-        onEnd oE = self (OnEnd scope oE id)
-    transform scope [] $ x $ TransientScope alloc register unregister onEnd
+    let a create oe = self (Allocate scope create oe id)
+        r token oe = self (Register scope token oe ())
+        u token = self (Unregister scope token ())
+        o oE = self (OnEnd scope oE id)
+    transform scope [] $ f $ TransientScope a r u o
   where
-    transform scope store = go store
+    transform scope = go
       where
         go store = go'
           where
@@ -130,9 +121,9 @@ transiently x = do
                             Just (store',cleanup) ->
                                 Step sym (\b -> go store' (cleanup >> bp b))
                             Nothing -> Step sym (\b -> go' (bp b))
-                        Register i (Token t) p _ ->
+                        Register i (Token t) p' _ ->
                             if i == scope
-                            then go (unsafeCoerce (t,p):store)
+                            then go (unsafeCoerce (t,p'):store)
                                     (bp (unsafeCoerce ()))
                             else Step sym (\b -> go' (bp b))
                         Unregister i (Token t) _ ->
@@ -156,7 +147,7 @@ transiently x = do
 
     extract n = finish . partitionEithers . map go
       where
-        finish (xs,[]) = Nothing
+        finish (_,[]) = Nothing
         finish (xs,[a]) = Just (xs,a)
         finish (xs,rs) = Just (xs,foldr1 (>>) rs :: Plan fs m ())
         go (t,x) = if t == n then Right x else Left (t,x)
