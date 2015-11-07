@@ -1,12 +1,13 @@
 module Data.Queue where
 
--- amortized constant-time queue
 data Queue a = Queue [a] [a]
 
 {-# INLINE emptyQueue #-}
+emptyQueue :: Queue a
 emptyQueue = Queue [] []
 
 {-# INLINE newQueue #-}
+newQueue :: [a] -> Queue a
 newQueue stack = Queue stack []
 
 {-# INLINE enqueue #-}
