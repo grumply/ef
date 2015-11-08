@@ -141,10 +141,6 @@ instance MonadPlus m => MonadPlus (Woven fs a' a b' b m) where
                                                    )
                          )
 
-
-instance Trans (Woven fs a' a b' b) where
-    lift' ma = Woven $ \_ _ -> lift ma
-
 newtype X = X X
 
 {-# INLINE closed #-}

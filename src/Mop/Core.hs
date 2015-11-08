@@ -29,6 +29,12 @@ import Data.Typeable hiding (cast)
 import Unsafe.Coerce
 import Debug.Trace
 
+-- $setup
+-- >>> :set -XScopedTypeVariables
+-- >>> :set -XNoMonomorphismRestriction
+-- >>> :set -XFlexibleContexts
+-- >>> :set -XDataKinds
+
 type family (:++:) (xs :: [k]) (ys :: [k]) :: [k] where
   xs        :++: '[] = xs
   '[]       :++: ys  = ys
@@ -295,6 +301,9 @@ deltaCast :: forall fs gs is m a. (Pair (Attrs is) (Symbol gs),Monad m,As (Symbo
           -> m (Object is m,a)
 deltaCast o = _delta o . (cast :: Plan fs m a -> Plan gs m a)
 
+run :: Monad m => Plan '[] m a -> m a
+run = fmap snd . delta simple
+
 delta :: forall symbols is m a. (Pair (Attrs is) (Symbol symbols),Monad m)
        => Object is m
        -> Plan symbols m a
@@ -362,6 +371,9 @@ type Method fs m = Object fs m -> m (Object fs m)
 type Attribute f fs m = f (Method fs m)
 newtype Object fs m = Object { deconstruct :: Attrs fs (Method fs m) }
 
+simple :: Monad m => Object '[] m
+simple = Object Empty
+
 class UnsafeBuild fs where
   unsafeBuild :: Attrs fs a
 instance UnsafeBuild '[] where
@@ -391,6 +403,28 @@ infixl 5 .=
 (.=) :: Uses f fs m => Object fs m -> Attribute f fs m -> Object fs m
 is .= x = Object $ push x $ deconstruct is
 
+-- | cutoffSteps limits the number of Step constructors in a 'Plan'. To limit
+-- the number of (Step constructors + M constructors), use 'cutoff'.
+--
+-- >>> import Mop.Core
+-- >>> import Effect.State
+-- >>> newtype St = St Int
+-- >>> :{
+--  let inc (St n) = St (n + 1)
+--  in do (o,_) <- delta (Object $ store (St 0) *:* Empty) $
+--                   cutoffSteps 3 $ replicateM_ 5 (modify inc)
+--        (_,St i) <- delta o get
+--        print i
+-- :}
+--3
+cutoffSteps :: Monad m => Integer -> Plan fs m a -> Plan fs m (Maybe a)
+cutoffSteps n _ | n <= 0 = return Nothing
+cutoffSteps n p =
+  case p of
+    Pure a -> Pure (Just a)
+    M m -> M (cutoff (n - 1) `liftM` m)
+    Step sym k -> Step sym (cutoff (n - 1) . k)
+
 cutoff :: Monad m => Integer -> Plan fs m a -> Plan fs m (Maybe a)
 cutoff n _ | n <= 0 = return Nothing
 cutoff n p =
@@ -400,7 +434,24 @@ cutoff n p =
     Step sym k -> Step sym (cutoff (n - 1) . k)
 
 --------------------------------------------------------------------------------
--- Codensity
+-- | Codensity improves asymptotics of repeated left-associated binds (>>=) by
+--   conversion to right-associated binds (>>=).
+--
+-- This example demonstrates a performance improvement over the standard
+-- replicateM when used with the Plan monad.
+--
+-- >>> import Data.Time
+-- >>> import System.Timeout
+-- >>> :{
+--   let
+--     time f = do { s <- getCurrentTime; r <- f; e <- r `seq` getCurrentTime
+--                 ; return (diffUTCTime e s,r) }
+--     replicateP n = fromCodensity . Control.Monad.replicateM n . toCodensity
+--   in do (conventionalTime,res0) <- time (run (replicateM 10 (return ())))
+--         (codensityTime,res1)    <- time (run (replicateP 10 (return ())))
+--         return (conventionalTime - codensityTime > 0)
+-- :}
+--True
 
 newtype Codensity fs m a = Codensity
   { runCodensity :: forall b. (a -> Plan fs m b) -> Plan fs m b
@@ -430,20 +481,3 @@ toCodensity f = Codensity (f >>=)
 
 fromCodensity :: Monad m => Codensity fs m a -> Plan fs m a
 fromCodensity a = runCodensity a return
-
-{-
--- Example usages for asymptotic improvements:
-
-replicateM :: Monad m => Int -> Plan fs m a -> Plan fs m [a]
-replicateM n f = fromCodensity $ Control.Monad.replicateM n (toCodensity f)
-
-sequence :: Monad m => [Plan fs m a] -> Plan fs m [a]
-sequence = fromCodensity . Control.Monad.sequence . map toCodensity
-
-mapM :: Monad m => (a -> Plan fs m b) -> [a] -> Plan fs m [b]
-mapM f = fromCodensity . Control.Monad.mapM (toCodensity . f)
-
--}
-
-class Trans t where
-  lift' :: Monad m => m a -> t m a

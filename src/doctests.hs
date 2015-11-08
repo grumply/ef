@@ -1,3 +1,3 @@
 import Test.DocTest
 
-main = doctest ["-isrc","src/"]
+main = doctest ["src/Mop/Core.hs"]
