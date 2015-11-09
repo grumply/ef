@@ -3,13 +3,13 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
-{- | This module implements a simple scoped Writer interface in the API style of
-     mtl's Control.Monad.Writer.
+{- | This module implements a simple scoped Notating interface in the API style of
+     mtl's Control.Monad.Notating.
 -}
-module Effect.Local.Writer
-   ( Writer, writer
-   , Logger, logger
-   , Log, tell, listen, listens
+module Lang.Scoped.Notate
+   ( Notating, notates
+   , Notatable, notator
+   , Notes, tell, listen, listens
    ) where
 
 import Mop.Core
@@ -18,28 +18,44 @@ import Data.Monoid
 
 import Unsafe.Coerce
 
-data Writer k
+-- | Symbols
+
+data Notating k
     = FreshScope (Int -> k)
     | forall a. Tell Int a
     | forall fs m a. Listen Int (Plan fs m a)
 
-data Log fs m w = Log
+-- | Symbol Module
+
+data Notes w fs m = Notes
     { tell :: w -> Plan fs m ()
     , listen :: forall a. Plan fs m a -> Plan fs m (w,a)
     }
 
-{-# INLINE listens #-}
-listens :: Monad m => Log fs m w -> (w -> b) -> Plan fs m a -> Plan fs m (b,a)
-listens Log{..} f m = do
-    ~(w, a) <- listen m
-    return (f w,a)
+-- | Attribute
 
-{-# INLINE writer #-}
-writer :: forall fs m w r. (Has Writer fs m,Monoid w)
-       => (Log fs m w -> Plan fs m r) -> Plan fs m (w,r)
-writer f = do
+data Notatable k = Notatable Int k
+
+-- | Attribute Construct
+
+{-# INLINE notator #-}
+notator :: Uses Notatable fs m => Attribute Notatable fs m
+notator = Notatable 0 $ \fs ->
+    let Notatable i k = view fs
+        i' = succ i
+    in i' `seq` pure (fs .= Notatable i' k)
+
+-- | Symbol/Attribute Symmetry
+
+instance Symmetry Notatable Notating where
+    symmetry use (Notatable i k) (FreshScope ik) = use k (ik i)
+
+{-# INLINE notates #-}
+notates :: forall fs m w r. (Is Notating fs m,Monoid w)
+       => (Notes w fs m -> Plan fs m r) -> Plan fs m (w,r)
+notates f = do
     scope <- self (FreshScope id)
-    transform scope mempty $ f Log
+    transform scope mempty $ f Notes
         { tell = \w -> self (Tell scope w)
         , listen = \p -> self (Listen scope p)
         }
@@ -64,14 +80,10 @@ writer f = do
                 M m -> M (fmap go' m)
                 Pure r -> Pure (w,r)
 
-data Logger k = Logger Int k
+-- | Extended API
 
-{-# INLINE logger #-}
-logger :: Uses Logger fs m => Attribute Logger fs m
-logger = Logger 0 $ \fs ->
-    let Logger i k = view fs
-        i' = succ i
-    in i' `seq` pure (fs .= Logger i' k)
-
-instance Pair Logger Writer where
-    pair p (Logger i k) (FreshScope ik) = p k (ik i)
+{-# INLINE listens #-}
+listens :: Monad m => Notes w fs m -> (w -> b) -> Plan fs m a -> Plan fs m (b,a)
+listens Notes{..} f m = do
+    ~(w, a) <- listen m
+    return (f w,a)

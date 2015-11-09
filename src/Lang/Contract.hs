@@ -1,14 +1,14 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
-module Effect.Contract
+module Lang.Contract
    ( contract
    , analyze
    ) where
 -- Note: does not export Contract; thus only catchable by catching SomeException
 
 import Mop.Core
-import Effect.Exception
-import Effect.Divergence
+import Lang.Global.Except
+import Lang.Scoped.Diverge
 
 import Control.Monad (unless)
 import Data.Typeable
@@ -28,7 +28,7 @@ instance Exception Contract
 --       precondition vars = _
 --       postcondition a = _
 -- @
-contract :: (Has Throw fs m,Has Diverge fs m,Pair (Attrs gs) (Symbol fs),Typeable gs,Typeable m)
+contract :: (Is Excepting fs m,Is Diverging fs m,Symmetry (Attrs gs) (Symbol fs),Typeable gs,Typeable m)
          => (    String
             ,    vars
               -> Plan fs m Bool
@@ -78,7 +78,7 @@ contract (pre,precondition) (post,postcondition) method vs =
 --       precondition vars obj = _
 --       postcondition a obj = _
 -- @
-analyze :: (Has Throw fs m,Has Diverge fs m,Pair (Attrs gs) (Symbol fs),Typeable gs,Typeable m)
+analyze :: (Is Excepting fs m,Is Diverging fs m,Symmetry (Attrs gs) (Symbol fs),Typeable gs,Typeable m)
         => (    String
            ,    vars
              -> Object gs m

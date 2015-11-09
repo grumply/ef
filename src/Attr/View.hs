@@ -4,38 +4,38 @@
 {-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Effect.Reader
-    ( Env, ask, asks, local
-    , Reader, reader
+module Attr.View
+    ( Viewing, ask, asks, local
+    , Viewable, reader
     ) where
 
 import Mop.Core
 
-data Env r k = Env (r -> k)
+data Viewing r k = Viewing (r -> k)
 
-data Reader r k = Reader r k
+data Viewable r k = Viewable r k
 
-instance Pair (Reader r) (Env r) where
-    pair p (Reader r k) (Env rk) = pair p (r,k) rk
+instance Symmetry (Viewable r) (Viewing r) where
+    symmetry use (Viewable r k) (Viewing rk) = symmetry use (r,k) rk
 
 {-# INLINE ask #-}
-ask :: Has (Env r) fs m => Plan fs m r
-ask = self (Env id)
+ask :: Is (Viewing r) fs m => Plan fs m r
+ask = self (Viewing id)
 
 {-# INLINE asks #-}
-asks :: Has (Env r) fs m => (r -> a) -> Plan fs m a
-asks f = self (Env f)
+asks :: Is (Viewing r) fs m => (r -> a) -> Plan fs m a
+asks f = self (Viewing f)
 
 {-# INLINE reader #-}
-reader :: Uses (Reader r) fs m => r -> Attribute (Reader r) fs m
-reader r = Reader r pure
+reader :: Uses (Viewable r) fs m => r -> Attribute (Viewable r) fs m
+reader r = Viewable r pure
 
 {-# INLINE local #-}
-local :: forall fs m r. Has (Env r) fs m => (r -> r) -> Plan fs m r -> Plan fs m r
+local :: forall fs m r. Is (Viewing r) fs m => (r -> r) -> Plan fs m r -> Plan fs m r
 local f p0 = go p0 where
     go p = case p of
         Step sym bp -> case prj sym of
-            Just (Env (r :: r -> b)) -> Step (inj (Env (r . f)))
+            Just (Viewing (r :: r -> b)) -> Step (inj (Viewing (r . f)))
                                              (\b -> go (bp b))
             Nothing -> Step sym (\b -> go (bp b))
         M m -> M (fmap go m)

@@ -2,9 +2,9 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
-module Effect.Interleave
-  ( Interleave, interleave
-  , Interleaving, interleaves
+module Lang.Scoped.Alternate
+  ( Alternating, Alternate(..), alternate
+  , Alternatable, alternator
   ) where
 
 import Mop.Core
@@ -12,36 +12,52 @@ import Data.Queue
 
 import Unsafe.Coerce
 
-data Interleave k
+-- | Symbol
+
+data Alternating k
   = forall fs m a. Fork Int (Plan fs m a)
   | forall fs m a. Atomically Int (Plan fs m a)
   | Stop Int
   | FreshScope (Int -> k)
 
-data Interleaving k = Interleaving Int k
-{-# INLINE interleaves #-}
-interleaves :: Uses Interleaving gs m => Attribute Interleaving gs m
-interleaves = Interleaving 0 $ \fs ->
-  let Interleaving i k = view fs
+-- | Symbol Module
+
+data Alternate fs m = Alternate
+  { alt :: Plan fs m () -> Plan fs m ()
+  , atomically :: forall b. Plan fs m b -> Plan fs m b
+  }
+
+-- | Attribute
+
+data Alternatable k = Alternatable Int k
+
+-- | Attribute Construct
+
+{-# INLINE alternator #-}
+alternator :: Uses Alternatable gs m => Attribute Alternatable gs m
+alternator = Alternatable 0 $ \fs ->
+  let Alternatable i k = view fs
       i' = succ i
-  in i' `seq` pure $ fs .= Interleaving i' k
+  in i' `seq` pure $ fs .= Alternatable i' k
 
-instance Pair Interleaving Interleave where
-  pair p (Interleaving i k) (FreshScope ik) = p k (ik i)
+-- | Symbol/Attribute Symmetry
 
-{-# INLINE interleave #-}
--- interleave $ \fork atomically ->
-interleave :: forall fs m a. Has Interleave fs m
-           => (    (Plan fs m () -> Plan fs m ())
-                -> (forall b. Plan fs m b -> Plan fs m b)
+instance Symmetry Alternatable Alternating where
+  symmetry p (Alternatable i k) (FreshScope ik) = p k (ik i)
+
+-- | Local Scoping Construct + Substitution
+
+{-# INLINE alternate #-}
+alternate :: forall fs m a. Is Alternating fs m
+           => (    Alternate fs m
                 -> Plan fs m a
               ) -> Plan fs m a
-interleave f = do
+alternate f = do
   scope <- self (FreshScope id)
-  scoped scope $
-      (f (\p -> self (Fork scope (p >> self (Stop scope))) >> Pure ())
-         (\p -> self (Atomically scope p))
-      )
+  scoped scope $ f Alternate
+    { alt = \p -> self (Fork scope (p >> self (Stop scope)))
+    , atomically = \p -> self (Atomically scope p)
+    }
   where
     scoped scope = start
       where

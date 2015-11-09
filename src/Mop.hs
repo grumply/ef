@@ -6,56 +6,61 @@ module Mop
   ) where
 
 import Mop.Core                   as Base
-import Mop.IO                     as Base
 import Data.Promise               as Base
-import Effect.Concurrent          as Base
-import Effect.Continuation        as Base
-import Effect.Contract            as Base
-import Effect.Exception           as Base
-import Effect.Interleave          as Base
-import Effect.List                as Base
-import Effect.Logic               as Base
-import Effect.Maybe               as Base
-import Effect.Reactive            as Base
-import Effect.Thread              as Base
-import Effect.Transient           as Base
-import Effect.Weave               as Base
-import Effect.Divergence          as Base
+import Lang.Global.IO             as Base
+import Lang.Global.Fork           as Base
+import Lang.Global.Except         as Base
+import Lang.Global.Except.Checked as Base
+import Lang.Scoped.Diverge        as Base
+import Lang.Scoped.Exit           as Base
+import Lang.Contract              as Base
+import Lang.Scoped.Act            as Base
+import Lang.Scoped.Alternate      as Base
+import Lang.Scoped.Generate       as Base
+import Lang.Scoped.Guard          as Base
+import Lang.Scoped.Try            as Base
+import Lang.Scoped.React          as Base
+import Lang.Scoped.Thread         as Base
+import Lang.Scoped.Manage         as Base
+import Lang.Scoped.Weave          as Base
+import Lang.Scoped.Vary           as Base
+import Lang.Scoped.Notate         as Base
+import Lang.Scoped.Log            as Base
 
-import Effect.Local.State         as Base
-import Effect.Local.Writer        as Base
-import Effect.Local.Journaler     as Base
-
+-- Mop language attributes
 type Mop
-  = '[Transience
-     ,Continuations
-     ,Interleaving
-     ,Nondet
-     ,Weaving
-     ,Exceptions
-     ,Possible
-     ,Threading
-     ,Reactive
-     ,Divergent
-     ,Store
-     ,Logger
-     ,Journaling
+  = '[Manageable
+     ,Exitable
+     ,Alternatable
+     ,Threadable
+     ,Weavable
+     ,Exceptable
+     ,Tryable
+     ,Guardable
+     ,Notatable
+     ,Variable
+     ,Loggable
+     ,Reactable
+     ,Actable
+     ,Divergable
      ]
 
+-- Mop language symbols
 type Main
-  = '[Transient
-     ,Continuation
-     ,Interleave
-     ,Logic
-     ,Weave
-     ,Throw
-     ,May
-     ,Thread
-     ,React
-     ,Diverge
-     ,State
-     ,Writer
-     ,Journaler
+  = '[Managing
+     ,Exiting
+     ,Alternating
+     ,Threading
+     ,Weaving
+     ,Excepting
+     ,Trying
+     ,Guarding
+     ,Notating
+     ,Varying
+     ,Logging
+     ,Reacting
+     ,Acting
+     ,Diverging
      ]
 
 main' :: Plan Main IO b -> IO b
@@ -65,17 +70,18 @@ debug :: Plan Main IO b -> IO (Int,b)
 debug = fmap snd. deltaDebug base
 
 base :: Monad m => Object Mop m
-base = Object $ transience
-            *:* continuations
-            *:* interleaves
-            *:* nondet
-            *:* weaving
-            *:* exceptions
-            *:* possible
-            *:* threads
-            *:* reactive
-            *:* divergent
-            *:* store
+base = Object $ manager
+            *:* exiter
+            *:* alternator
+            *:* threader
+            *:* weaver
+            *:* excepter
+            *:* trier
+            *:* guarder
+            *:* notator
+            *:* varier
             *:* logger
-            *:* journaling
+            *:* reactor
+            *:* actor
+            *:* diverger
             *:* Empty

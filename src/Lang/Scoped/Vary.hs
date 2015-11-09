@@ -2,23 +2,27 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
-module Effect.Local.State
-    ( State, state
-    , Store, store
-    , Var(..)
+module Lang.Scoped.Vary
+    ( Varying, varies
+    , Variable, varier
+    , Vary(..)
     ) where
 
 import Mop.Core
 
 import Unsafe.Coerce
 
+-- | Symbols
+
 data Eagerness = Strict | Lazy deriving Eq
 
-data State k
+data Varying k
     = FreshScope (Int -> k)
     | forall a. Modify Int Eagerness (a -> a) (a -> k)
 
-data Var fs m st = Var
+-- | Symbol Module
+
+data Vary fs m st = Vary
   { modify :: (st -> st) -> Plan fs m ()
   , modify' :: (st -> st) -> Plan fs m ()
   , get :: Plan fs m st
@@ -28,12 +32,32 @@ data Var fs m st = Var
   , swap :: st -> Plan fs m st
   }
 
-{-# INLINE state #-}
-state :: forall fs m st r. Has State fs m
-      => st -> (Var fs m st -> Plan fs m r) -> Plan fs m (st,r)
-state st0 f0 = do
+-- | Attribute
+
+data Variable k = Variable Int k
+
+-- | Attribute Construct
+
+{-# INLINE varier #-}
+varier :: Uses Variable fs m => Attribute Variable fs m
+varier = Variable 0 $ \fs ->
+    let Variable i k = view fs
+        i' = succ i
+    in i' `seq` pure (fs .= Variable i' k)
+
+-- | Attribute/Symbol Symmetry
+
+instance Symmetry Variable Varying where
+    symmetry use (Variable i k) (FreshScope ik) = use k (ik i)
+
+-- | Local Scoping Construct + Substitution
+
+{-# INLINE varies #-}
+varies :: forall fs m st r. Is Varying fs m
+      => st -> (Vary fs m st -> Plan fs m r) -> Plan fs m (st,r)
+varies st0 f0 = do
     scope <- self (FreshScope id)
-    transform scope st0 $ f0 Var
+    transform scope st0 $ f0 Vary
       { modify = \f -> self (Modify scope Lazy f (const ()))
       , modify' = \f -> self (Modify scope Strict f (const ()))
       , get = self (Modify scope Lazy id id)
@@ -60,15 +84,3 @@ state st0 f0 = do
                     Nothing -> Step sym (\b -> go' (bp b))
                 M m -> M (fmap go' m)
                 Pure r -> Pure (st,r)
-
-data Store k = Store Int k
-
-{-# INLINE store #-}
-store :: Uses Store fs m => Attribute Store fs m
-store = Store 0 $ \fs ->
-    let Store i k = view fs
-        i' = succ i
-    in i' `seq` pure (fs .= Store i' k)
-
-instance Pair Store State where
-    pair p (Store i k) (FreshScope ik) = p k (ik i)

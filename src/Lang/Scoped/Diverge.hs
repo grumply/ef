@@ -6,10 +6,11 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
-module Effect.Divergence
+module Lang.Scoped.Diverge
    ( modself, typeOfSelf
-   , divergent
-   , Divergent, Diverge
+   , diverger
+   , Divergable, Diverging
+   , Introspection, introspect
    )
    where
 
@@ -17,53 +18,63 @@ import Mop.Core
 import Unsafe.Coerce
 import Data.Typeable
 
-data Divergent k = forall gs m. Divergent
+-- | Symbol
+
+data Diverging k
+  = Snapshot k
+  | forall gs m. Inject (Object gs m) k
+  | forall gs m. Project (Object gs m -> k)
+
+-- | Symbol Modules
+
+data Divergable k = forall gs m. Divergable
   { current :: Object gs m
   , reification :: k
   , setter :: Object gs m -> k
   , getter :: k
   }
 
-{-# INLINE divergent #-}
-divergent :: forall gs m. (Uses Divergent gs m)
-          => Attribute Divergent gs m
-divergent = Divergent undefined snapshot_ overwrite_ return
+data Introspection fs gs m = Introspection
+  { project :: Plan fs m (Object gs m)
+  , inject :: Object gs m -> Plan fs m ()
+  }
+
+
+-- | Attribute
+
+{-# INLINE diverger #-}
+diverger :: forall gs m. (Uses Divergable gs m)
+          => Attribute Divergable gs m
+diverger = Divergable undefined snapshot_ overwrite_ return
   where
     snapshot_ fs =
       case view fs of
-        (Divergent _ s _ d :: Divergent (Method gs m)) ->
-          pure $ fs .= Divergent { current = fs
+        (Divergable _ s _ d :: Divergable (Method gs m)) ->
+          pure $ fs .= Divergable { current = fs
                                  , reification = s
                                  , setter = overwrite_
                                  , getter = d
                                  }
     overwrite_ obj fs =
       case view fs of
-        (Divergent _ s o d :: Divergent (Method gs m)) ->
-          pure $ fs .= Divergent { current = unsafeCoerce obj
+        (Divergable _ s o d :: Divergable (Method gs m)) ->
+          pure $ fs .= Divergable { current = unsafeCoerce obj
                                  , reification = s
                                  , setter = o
                                  , getter = d
                                  }
 
+-- | Symbol/Attribute Symmetry
 
-instance Pair Divergent Diverge where
-  pair p (Divergent _ ss _ _) (Snapshot k) = p ss k
-  pair p (Divergent _ _ ow _) (Inject obj k) = p (ow (unsafeCoerce obj)) k
-  pair p (Divergent obj _ _ k) (Project ok) = p k (ok (unsafeCoerce obj))
+instance Symmetry Divergable Diverging where
+  symmetry use (Divergable _ ss _ _) (Snapshot k) = use ss k
+  symmetry use (Divergable _ _ ow _) (Inject obj k) = use (ow (unsafeCoerce obj)) k
+  symmetry use (Divergable obj _ _ k) (Project ok) = use k (ok (unsafeCoerce obj))
 
-data Diverge k
-  = Snapshot k
-  | forall gs m. Inject (Object gs m) k
-  | forall gs m. Project (Object gs m -> k)
-
-data Introspection fs gs m = Introspection
-  { project :: Plan fs m (Object gs m)
-  , inject :: Object gs m -> Plan fs m ()
-  }
+-- | Local Scoping Construct
 
 {-# INLINE introspect #-}
-introspect :: forall fs gs m r. (Pair (Attrs gs) (Symbol fs),Has Diverge fs m)
+introspect :: forall fs gs m r. (Symmetry (Attrs gs) (Symbol fs),Is Diverging fs m)
             => (    Introspection fs gs m
                  -> Plan fs m r
                ) -> Plan fs m r
@@ -74,10 +85,12 @@ introspect f =  f Introspection
     , inject = \o -> self (Inject o ())
     }
 
+-- | Extended API
+
 {-# INLINE modself #-}
 -- NotEq here is used to help prevent misuse. It catches the simplest case only:
 --   a ~ Object gs m; you can bypass it by returning (b,Object gs m)
-modself :: (Monad m, Pair (Attrs gs) (Symbol fs),Has Diverge fs m, (Object gs m /== a) ~ 'True)
+modself :: (Monad m, Symmetry (Attrs gs) (Symbol fs),Is Diverging fs m, (Object gs m /== a) ~ 'True)
         => (Object gs m -> Plan fs m (Object gs m,a)) -> Plan fs m a
 modself f = introspect $ \i -> do
   slf <- project i
@@ -87,7 +100,7 @@ modself f = introspect $ \i -> do
 
 {-# INLINE typeOfSelf #-}
 typeOfSelf :: forall fs gs m.
-            (Pair (Attrs gs) (Symbol fs),Has Diverge fs m,Typeable gs,Typeable m)
+            (Symmetry (Attrs gs) (Symbol fs),Is Diverging fs m,Typeable gs,Typeable m)
          => Plan fs m TypeRep
 typeOfSelf = introspect $ \(i :: Introspection fs gs m) -> do
   Object slf <- project i

@@ -2,36 +2,48 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
-module Effect.Writer
-    ( Trace, tell
-    , Writer, tracer, writer, written
+module Attr.Notate
+    ( Noting, note
+    , Notatable, notator, writer, noted
     ) where
 
 import Mop.Core
 
 import Data.Monoid
 
-data Trace r k = Trace r k
+-- | Symbol
 
-data Writer r k = Writer r (r -> k)
+data Noting r k = Noting r k
 
-instance Pair (Writer r) (Trace r) where
-    pair p (Writer _ rk) (Trace r k) = pair p rk (r,k)
+-- | Symbol Construct
 
-{-# INLINE tell #-}
-tell :: (Has (Trace w) fs m) => w -> Plan fs m ()
-tell w = self (Trace w ())
+{-# INLINE note #-}
+note :: (Is (Noting w) fs m) => w -> Plan fs m ()
+note w = self (Noting w ())
+
+-- | Attribute
+
+data Notatable r k = Notatable r (r -> k)
+
+-- | Attribute Construct
+
+{-# INLINE notator #-}
+notator :: Uses (Notatable w) fs m => w -> (w -> w -> w) -> Attribute (Notatable w) fs m
+notator w0 f = Notatable w0 $ \w' fs ->
+    let Notatable w k = view fs
+    in pure $ fs .= Notatable (f w w') k
 
 {-# INLINE writer #-}
-writer :: (Monoid w,Uses (Writer w) fs m) => Attribute (Writer w) fs m
-writer = tracer mempty (<>)
+writer :: (Monoid w,Uses (Notatable w) fs m) => Attribute (Notatable w) fs m
+writer = notator mempty (<>)
 
-{-# INLINE tracer #-}
-tracer :: Uses (Writer w) fs m => w -> (w -> w -> w) -> Attribute (Writer w) fs m
-tracer w0 f = Writer w0 $ \w' fs ->
-    let Writer w k = view fs
-    in pure $ fs .= Writer (f w w') k
+-- | Attribute/Symbol Symmetry
 
-{-# INLINE written #-}
-written :: Uses (Writer w) fs m => Object fs m -> w
-written fs = let Writer w _ = view fs in w
+instance Symmetry (Notatable r) (Noting r) where
+    symmetry use (Notatable _ rk) (Noting r k) = symmetry use rk (r,k)
+
+-- | Extended API
+
+{-# INLINE noted #-}
+noted :: Uses (Notatable w) fs m => Object fs m -> w
+noted fs = let Notatable w _ = view fs in w

@@ -2,9 +2,10 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
-module Effect.Thread
-  ( Thread,thread
-  , Threading, threads
+module Lang.Scoped.Thread
+  ( Threading, threads
+  , Threadable, threader
+  , Thread(..)
   ) where
 
 import Mop.Core
@@ -12,30 +13,60 @@ import Data.Queue
 
 import Unsafe.Coerce
 
-data Thread k
-  = forall fs m a. Thread Int (Plan fs m a) k
+-- | Symbols
+
+data Threading k
+  = forall fs m a. Fork Int (Plan fs m a) k
   | Yield Int k
   | Stop Int
   | FreshScope (Int -> k)
 
-{-# INLINE thread #-}
+-- | Symbol Module
+
+data Thread fs m = Thread
+  { fork :: Plan fs m () -> Plan fs m ()
+  , yield :: Plan fs m ()
+  }
+
+-- | Attribute
+
+data Threadable k = Threadable Int k
+
+-- | Attribute Construct
+
+{-# INLINE threader #-}
+threader :: Uses Threadable gs m => Attribute Threadable gs m
+threader = Threadable 0 $ \fs ->
+  let Threadable i k = view fs
+      i' = succ i
+  in i' `seq` pure (fs .= Threadable i' k)
+
+-- | Attribute/Symbol Symmetry
+
+instance Symmetry Threadable Threading where
+    symmetry use (Threadable i k) (FreshScope ik) = use k (ik i)
+
+-- | Local Scoping Construct + Substitution
+
+{-# INLINE threads #-}
 -- round-robin threading
 -- use: thread $ \fork yield -> do { .. ; }
-thread :: Has Thread fs m
-     => ((forall b. Plan fs m b -> Plan fs m ()) -> Plan fs m () -> Plan fs m a)
+threads :: Is Threading fs m
+     => (Thread fs m -> Plan fs m a)
      -> Plan fs m a
-thread f = do
+threads f = do
     scope <- self (FreshScope id)
-    transform scope emptyQueue
-      $ f (\p -> self (Thread scope (p >> self (Stop scope)) ()))
-          (self (Yield scope ()))
+    transform scope emptyQueue $ f Thread
+      { fork = \p -> self (Fork scope (p >> self (Stop scope)) ())
+      , yield = self (Yield scope ())
+      }
   where
     transform scope q = go
       where
         go p = case p of
             Step syms bp -> case prj syms of
                 Just x -> case x of
-                    Thread i child k ->
+                    Fork i child k ->
                         if i == scope
                         then transform scope (enqueue (unsafeCoerce child) q) (bp k)
                         else Step syms (\b -> go (bp b))
@@ -57,15 +88,3 @@ thread f = do
             Pure r -> case dequeue q of
                 Nothing -> Pure r
                 Just (rest,nxt) -> transform scope rest (unsafeCoerce nxt)
-
-instance Pair Threading Thread where
-    pair p (Threading i k) (FreshScope ik) = p k (ik i)
-
-data Threading k = Threading Int k
-
-{-# INLINE threads #-}
-threads :: Uses Threading gs m => Attribute Threading gs m
-threads = Threading 0 $ \fs ->
-  let Threading i k = view fs
-      i' = succ i
-  in i' `seq` pure (fs .= Threading i' k)

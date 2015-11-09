@@ -2,22 +2,25 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
-module Mop.IO where
+module Lang.Global.IO
+  ( unsafe, io
+  , masked, masked_
+  ) where
 
 import Mop.Core
-import Effect.Exception
+import Lang.Global.Except
 import qualified Control.Exception as Exc
 
 unsafe  :: Lift IO m => IO a -> Plan fs m a
 unsafe   = lift
 
-masked_ :: (Has Throw fs m,Lift IO m) => IO a -> Plan fs m a
+masked_ :: (Is Excepting fs m,Lift IO m) => IO a -> Plan fs m a
 masked_  = lift . Exc.mask_
 
-masked  :: (Has Throw fs m,Lift IO m) => ((forall (a :: *). IO a -> IO a) -> IO b) -> Plan fs m b
+masked  :: (Is Excepting fs m,Lift IO m) => ((forall (a :: *). IO a -> IO a) -> IO b) -> Plan fs m b
 masked   = lift . Exc.mask
 
-io      :: (Has Throw fs m,Lift IO m) => IO a -> Plan fs m a
+io      :: (Is Excepting fs m,Lift IO m) => IO a -> Plan fs m a
 io ioa   = do
   ea <- lift (Exc.try ioa)
   case ea of

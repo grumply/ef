@@ -6,8 +6,8 @@ module Data.Promise
   ) where
 
 import Mop.Core
-import Mop.IO
-import Effect.Exception
+import Lang.Global.IO
+import Lang.Global.Except
 
 import Control.Concurrent
 
@@ -18,16 +18,16 @@ newtype Promise a = Promise { getPromise :: MVar a }
 newPromiseIO :: IO (Promise a)
 newPromiseIO = Promise <$> newEmptyMVar
 
-newPromise :: (Lift IO m,Has Throw fs m) => Plan fs m (Promise a)
+newPromise :: (Lift IO m,Is Excepting fs m) => Plan fs m (Promise a)
 newPromise = io newPromiseIO
 
-demand :: (Lift IO m,Has Throw fs m) => Promise a -> Plan fs m a
+demand :: (Lift IO m,Is Excepting fs m) => Promise a -> Plan fs m a
 demand = io . demandIO
 
 demandIO :: Promise a -> IO a
 demandIO = readMVar . getPromise
 
-fulfill :: (Lift IO m,Has Throw fs m) => Promise a -> a -> Plan fs m Bool
+fulfill :: (Lift IO m,Is Excepting fs m) => Promise a -> a -> Plan fs m Bool
 fulfill = (io .) . fulfillIO
 
 fulfillIO :: Promise a -> a -> IO Bool

@@ -4,15 +4,15 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Effect.Weave
-  ( Weaving, weaving
-  , Weave, linearize
+module Lang.Scoped.Weave
+  ( Weavable, weaver
+  , Weaving, weave
   , producer, Producer, Producer'
   , consumer, Consumer, Consumer'
   , pipe, Pipe
   , client, Client, Client'
   , server, Server, Server'
-  , weave, Woven(..)
+  , woven, Woven(..)
   , Effect, Effect'
   , X
   , cat, for
@@ -28,42 +28,42 @@ import Control.Applicative
 import Control.Monad
 import Unsafe.Coerce
 
-data Weave k
+data Weaving k
     = FreshScope (Int -> k)
     | forall fs a' a m r. Request Int a' (a  -> Plan fs m r)
     | forall fs b' b m r. Respond Int b  (b' -> Plan fs m r)
 
-data Weaving k = Weaving Int k
+data Weavable k = Weavable Int k
 
 {-# INLINE freshScope #-}
-freshScope :: Has Weave fs m => Plan fs m Int
+freshScope :: Is Weaving fs m => Plan fs m Int
 freshScope = self (FreshScope id)
 
-{-# INLINE weaving #-}
-weaving :: Uses Weaving fs m => Attribute Weaving fs m
-weaving = Weaving 0 $ \fs ->
-    let Weaving n k = view fs
+{-# INLINE weaver #-}
+weaver :: Uses Weavable fs m => Attribute Weavable fs m
+weaver = Weavable 0 $ \fs ->
+    let Weavable n k = view fs
         n' = succ n
-    in n' `seq` pure (fs .= Weaving n' k)
+    in n' `seq` pure (fs .= Weavable n' k)
 
 {-# INLINE getScope #-}
-getScope :: Has Weave fs m => Plan fs m a -> m Int
+getScope :: Is Weaving fs m => Plan fs m a -> m Int
 getScope p = case p of
     Step sym _ -> case prj sym of
         Just x  -> case x of
             Request i _ _ -> return i
             Respond i _ _ -> return i
             _ -> error "getScope got FreshScope"
-        _ -> error "getScope got non-Weave"
+        _ -> error "getScope got non-Weaving"
     M m -> m >>= getScope
     _ -> error "getScope error"
 
-instance Pair Weaving Weave where
-    pair p (Weaving i k) (FreshScope ik) = p k (ik i)
+instance Symmetry Weavable Weaving where
+    symmetry p (Weavable i k) (FreshScope ik) = p k (ik i)
 
-{-# INLINE linearize #-}
-linearize :: Has Weave fs m => Effect fs m r -> Plan fs m r
-linearize e = do
+{-# INLINE weave #-}
+weave :: Is Weaving fs m => Effect fs m r -> Plan fs m r
+weave e = do
     scope <- freshScope
     go' scope $ runWoven e (\a' apl -> self (Request scope a' apl))
                            (\b b'p -> self (Respond scope b b'p))
@@ -149,55 +149,55 @@ closed (X x) = closed x
 
 type Effect fs m r = Woven fs X () () X m r
 
-type Producer fs b m r = Woven fs X () () b m r
+type Producer b fs m r = Woven fs X () () b m r
 -- producer $ \yield -> do { .. ; }
 {-# INLINE producer #-}
-producer :: forall fs m b r. Has Weave fs m
+producer :: forall fs m b r. Is Weaving fs m
          => ((b -> Plan fs m ()) -> Plan fs m r)
-         -> Producer' fs b m r
+         -> Producer' b fs m r
 producer f = Woven $ \_ dn -> do
   i <- lift (getScope (dn (unsafeCoerce ()) (unsafeCoerce ())))
   f (\b -> self (Respond i b (return :: forall a. a -> Plan fs m a)
                 )
     )
 
-type Consumer fs a m r = Woven fs () a () X m r
+type Consumer a fs m r = Woven fs () a () X m r
 -- consumer $ \await -> do { .. ; }
 {-# INLINE consumer #-}
-consumer :: forall fs m a r. Has Weave fs m
+consumer :: forall fs m a r. Is Weaving fs m
          => (Plan fs m a -> Plan fs m r)
-         -> Consumer' fs a m r
+         -> Consumer' a fs m r
 consumer f = Woven $ \up _ -> do
   i <- lift (getScope (up (unsafeCoerce ()) (unsafeCoerce ())))
   f (self (Request i () (return :: forall x. x -> Plan fs m x)))
 
-type Pipe fs a b m r = Woven fs () a () b m r
+type Pipe a b fs m r = Woven fs () a () b m r
 -- pipe $ \await yield -> do { .. ; }
 {-# INLINE pipe #-}
-pipe :: forall fs m a b x r. Has Weave fs m
+pipe :: forall fs m a b x r. Is Weaving fs m
      => (Plan fs m a -> (b -> Plan fs m x) -> Plan fs m r)
-     -> Pipe fs a b m r
+     -> Pipe a b fs m r
 pipe f = Woven $ \up _ -> do
   i <- lift (getScope (up (unsafeCoerce ()) (unsafeCoerce ())))
   f (self (Request i () (return :: forall z. z -> Plan fs m z)))
     (\b -> self (Respond i b (return :: forall z. z -> Plan fs m z)))
 
-type Client fs a' a m r = Woven fs a' a () X m r
+type Client a' a fs m r = Woven fs a' a () X m r
 -- client $ \request -> do { .. ; }
 {-# INLINE client #-}
-client :: forall fs m a' a r. Has Weave fs m
+client :: forall fs m a' a r. Is Weaving fs m
        => ((a' -> Plan fs m a) -> Plan fs m r)
-       -> Client' fs a' a m r
+       -> Client' a' a fs m r
 client f = Woven $ \up _ -> do
   i <- lift (getScope (up (unsafeCoerce ()) (unsafeCoerce ())))
   f (\a -> self (Request i a (return :: forall z. z -> Plan fs m z)))
 
-type Server fs b' b m r = Woven fs X () b' b m r
+type Server b' b fs m r = Woven fs X () b' b m r
 -- server $ \respond -> do { .. ; }
 {-# INLINE server #-}
-server :: forall fs m b' b r. Has Weave fs m
+server :: forall fs m b' b r. Is Weaving fs m
        => ((b -> Plan fs m b') -> Plan fs m r)
-       -> Server' fs b' b m r
+       -> Server' b' b fs m r
 server f = Woven $ \_ dn -> do
   i <- lift (getScope (dn (unsafeCoerce ()) (unsafeCoerce ())))
   f (\b' -> self (Respond i b'
@@ -212,34 +212,34 @@ newtype Woven fs a' a b' b m r
              -> Plan fs m r
   }
 -- weave $ \request respond -> do { .. ; }
-{-# INLINE weave #-}
-weave :: forall fs a a' b b' m r. Has Weave fs m
+{-# INLINE woven #-}
+woven :: forall fs a a' b b' m r. Is Weaving fs m
       => ((a -> Plan fs m a') -> (b' -> Plan fs m b) -> Plan fs m r)
       -> Woven fs a' a b' b m r
-weave f = Woven $ \up _ -> do
+woven f = Woven $ \up _ -> do
   i <- lift (getScope (up (unsafeCoerce ()) (unsafeCoerce ())))
   f (\a -> self (Request i a (return :: forall z. z -> Plan fs m z)))
     (\b' -> self (Respond i b' (return :: forall z. z -> Plan fs m z)))
 
 type Effect' fs m r = forall x' x y' y . Woven fs x' x y' y m r
 
-type Producer' fs b m r = forall x' x . Woven fs x' x () b m r
+type Producer' b fs m r = forall x' x . Woven fs x' x () b m r
 
-type Consumer' fs a m r = forall y' y . Woven fs () a y' y m r
+type Consumer' a fs m r = forall y' y . Woven fs () a y' y m r
 
-type Server' fs b' b m r = forall x' x . Woven fs x' x b' b m r
+type Server' b' b fs m r = forall x' x . Woven fs x' x b' b m r
 
-type Client' fs a' a m r = forall y' y . Woven fs a' a y' y m r
+type Client' a' a fs m r = forall y' y . Woven fs a' a y' y m r
 
 --------------------------------------------------------------------------------
 -- Respond; substitute yields with a function
 
-cat :: Has Weave fs m => Pipe fs a a m r
+cat :: Is Weaving fs m => Pipe a a fs m r
 cat = pipe $ \awt yld -> forever (awt >>= yld)
 
 {-# INLINE (//>) #-}
 infixl 3 //>
-(//>) :: forall fs x' x b' b c' c m a'. Has Weave fs m
+(//>) :: forall fs x' x b' b c' c m a'. Is Weaving fs m
       =>       Woven fs x' x b' b m a'
       -> (b -> Woven fs x' x c' c m b')
       ->       Woven fs x' x c' c m a'
@@ -265,7 +265,7 @@ p0 //> fb = Woven $ \up dn -> do
             Pure r -> Pure r
 
 {-# INLINE for #-}
-for :: Has Weave fs m
+for :: Is Weaving fs m
     =>       Woven fs x' x b' b m a'
     -> (b -> Woven fs x' x c' c m b')
     ->       Woven fs x' x c' c m a'
@@ -273,7 +273,7 @@ for = (//>)
 
 {-# INLINE (<\\) #-}
 infixr 3 <\\
-(<\\) :: Has Weave fs m
+(<\\) :: Is Weaving fs m
       => (b -> Woven fs x' x c' c m b')
       ->       Woven fs x' x b' b m a'
       ->       Woven fs x' x c' c m a'
@@ -281,7 +281,7 @@ f <\\ p = p //> f
 
 {-# INLINE (\<\) #-}
 infixl 4 \<\
-(\<\) :: Has Weave fs m
+(\<\) :: Is Weaving fs m
       => (b -> Woven fs x' x c' c m b')
       -> (a -> Woven fs x' x b' b m a')
       ->  a -> Woven fs x' x c' c m a'
@@ -289,7 +289,7 @@ p1 \<\ p2 = p2 />/ p1
 
 {-# INLINE (~>) #-}
 infixr 4 ~>
-(~>) :: Has Weave fs m
+(~>) :: Is Weaving fs m
      => (a -> Woven fs x' x b' b m a')
      -> (b -> Woven fs x' x c' c m b')
      ->  a -> Woven fs x' x c' c m a'
@@ -297,7 +297,7 @@ infixr 4 ~>
 
 {-# INLINE (<~) #-}
 infixl 4 <~
-(<~) :: Has Weave fs m
+(<~) :: Is Weaving fs m
      => (b -> Woven fs x' x c' c m b')
      -> (a -> Woven fs x' x b' b m a')
      ->  a -> Woven fs x' x c' c m a'
@@ -305,7 +305,7 @@ g <~ f = f ~> g
 
 {-# INLINE (/>/) #-}
 infixr 4 />/
-(/>/) :: Has Weave fs m
+(/>/) :: Is Weaving fs m
       => (a -> Woven fs x' x b' b m a')
       -> (b -> Woven fs x' x c' c m b')
       ->  a -> Woven fs x' x c' c m a'
@@ -316,7 +316,7 @@ infixr 4 />/
 
 {-# INLINE (>\\) #-}
 infixr 4 >\\
-(>\\) :: forall fs y' y a' a b' b m c. Has Weave fs m
+(>\\) :: forall fs y' y a' a b' b m c. Is Weaving fs m
       => (b' -> Woven fs a' a y' y m b)
       ->        Woven fs b' b y' y m c
       ->        Woven fs a' a y' y m c
@@ -343,7 +343,7 @@ fb' >\\ p0 = Woven $ \up dn -> do
 
 {-# INLINE (/</) #-}
 infixr 5 /</
-(/</) :: Has Weave fs m
+(/</) :: Is Weaving fs m
       => (c' -> Woven fs b' b x' x m c)
       -> (b' -> Woven fs a' a x' x m b)
       ->  c' -> Woven fs a' a x' x m c
@@ -351,7 +351,7 @@ p1 /</ p2 = p2 \>\ p1
 
 {-# INLINE (>~) #-}
 infixr 5 >~
-(>~) :: Has Weave fs m
+(>~) :: Is Weaving fs m
      => Woven fs a' a y' y m b
      -> Woven fs () b y' y m c
      -> Woven fs a' a y' y m c
@@ -359,7 +359,7 @@ p1 >~ p2 = (\() -> p1) >\\ p2
 
 {-# INLINE (~<) #-}
 infixl 5 ~<
-(~<) :: Has Weave fs m
+(~<) :: Is Weaving fs m
      => Woven fs () b y' y m c
      -> Woven fs a' a y' y m b
      -> Woven fs a' a y' y m c
@@ -367,7 +367,7 @@ p2 ~< p1 = p1 >~ p2
 
 {-# INLINE (\>\) #-}
 infixl 5 \>\
-(\>\) :: Has Weave fs m
+(\>\) :: Is Weaving fs m
       => (b' -> Woven fs a' a y' y m b)
       -> (c' -> Woven fs b' b y' y m c)
       ->  c' -> Woven fs a' a y' y m c
@@ -375,7 +375,7 @@ infixl 5 \>\
 
 {-# INLINE (\\<) #-}
 infixl 4 \\<
-(\\<) :: forall fs y' y a' a b' b m c. Has Weave fs m
+(\\<) :: forall fs y' y a' a b' b m c. Is Weaving fs m
       =>        Woven fs b' b y' y m c
       -> (b' -> Woven fs a' a y' y m b)
       ->        Woven fs a' a y' y m c
@@ -386,7 +386,7 @@ p \\< f = f >\\ p
 
 {-# INLINE (>>~) #-}
 infixl 7 >>~
-(>>~) :: forall fs a' a b' b c' c m r. Has Weave fs m
+(>>~) :: forall fs a' a b' b c' c m r. Is Weaving fs m
       =>       Woven fs a' a b' b m r
       -> (b -> Woven fs b' b c' c m r)
       ->       Woven fs a' a c' c m r
@@ -431,7 +431,7 @@ p0 >>~ fb0 = Woven $ \up dn -> do
 
 {-# INLINE (<~<) #-}
 infixl 8 <~<
-(<~<) :: Has Weave fs m
+(<~<) :: Is Weaving fs m
       => (b -> Woven fs b' b c' c m r)
       -> (a -> Woven fs a' a b' b m r)
       ->  a -> Woven fs a' a c' c m r
@@ -439,7 +439,7 @@ p1 <~< p2 = p2 >~> p1
 
 {-# INLINE (>~>) #-}
 infixr 8 >~>
-(>~>) :: Has Weave fs m
+(>~>) :: Is Weaving fs m
       => (_a -> Woven fs a' a b' b m r)
       -> ( b -> Woven fs b' b c' c m r)
       ->  _a -> Woven fs a' a c' c m r
@@ -447,7 +447,7 @@ infixr 8 >~>
 
 {-# INLINE (~<<) #-}
 infixr 7 ~<<
-(~<<) :: Has Weave fs m
+(~<<) :: Is Weaving fs m
       => (b -> Woven fs b' b c' c m r)
       ->       Woven fs a' a b' b m r
       ->       Woven fs a' a c' c m r
@@ -459,7 +459,7 @@ k ~<< p = p >>~ k
 
 {-# INLINE (+>>) #-}
 infixr 6 +>>
-(+>>) :: forall fs m a' a b' b c' c r. Has Weave fs m
+(+>>) :: forall fs m a' a b' b c' c r. Is Weaving fs m
       => (b' -> Woven fs a' a b' b m r)
       ->        Woven fs b' b c' c m r
       ->        Woven fs a' a c' c m r
@@ -506,7 +506,7 @@ fb' +>> p0 = Woven $ \up dn -> do
 
 {-# INLINE (>->) #-}
 infixl 7 >->
-(>->) :: Has Weave fs m
+(>->) :: Is Weaving fs m
       => Woven fs a' a () b m r
       -> Woven fs () b c' c m r
       -> Woven fs a' a c' c m r
@@ -514,7 +514,7 @@ p1 >-> p2 = (\() -> p1) +>> p2
 
 {-# INLINE (<-<) #-}
 infixr 7 <-<
-(<-<) :: Has Weave fs m
+(<-<) :: Is Weaving fs m
       => Woven fs () b c' c m r
       -> Woven fs a' a () b m r
       -> Woven fs a' a c' c m r
@@ -522,7 +522,7 @@ p2 <-< p1 = p1 >-> p2
 
 {-# INLINE (<+<) #-}
 infixr 7 <+<
-(<+<) :: Has Weave fs m
+(<+<) :: Is Weaving fs m
       => (c' -> Woven fs b' b c' c m r)
       -> (b' -> Woven fs a' a b' b m r)
       ->  c' -> Woven fs a' a c' c m r
@@ -530,7 +530,7 @@ p1 <+< p2 = p2 >+> p1
 
 {-# INLINE (>+>) #-}
 infixl 7 >+>
-(>+>) :: Has Weave fs m
+(>+>) :: Is Weaving fs m
       => ( b' -> Woven fs a' a b' b m r)
       -> (_c' -> Woven fs b' b c' c m r)
       ->  _c' -> Woven fs a' a c' c m r
@@ -538,7 +538,7 @@ infixl 7 >+>
 
 {-# INLINE (<<+) #-}
 infixl 6 <<+
-(<<+) :: forall fs m a' a b' b c' c r. Has Weave fs m
+(<<+) :: forall fs m a' a b' b c' c r. Is Weaving fs m
       =>        Woven fs b' b c' c m r
       -> (b' -> Woven fs a' a b' b m r)
       ->        Woven fs a' a c' c m r

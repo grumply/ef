@@ -6,20 +6,22 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds #-}
-module Effect.Reactive
+module Lang.Scoped.React
   ( Behavior, Culture
-  , React, react
-  , Reactive, reactive
-  , ReactorSystem(..)
+  , Reacting, reacts
+  , Reactable, reactor
+  , React(..)
   ) where
 
 import Mop.Core
-import Mop.IO
-import Effect.Interleave
+import Lang.Global.IO
+import Lang.Scoped.Alternate
 
 import Data.IORef
 import System.IO.Unsafe
 import Unsafe.Coerce
+
+-- | Symbol
 
 data Behavior a fs m = Behavior
   { cultured :: Int
@@ -32,7 +34,7 @@ data Culture a fs m = Culture
   , behaviors :: IORef [Behavior a fs m]
   }
 
-data React k
+data Reacting k
   = FreshScope (Int -> k)
   | forall a fs m. NewCulture Int (Culture a fs m -> k)
   | forall a fs m. NewBehavior Int (Culture a fs m) (a -> Plan fs m ()) (Behavior a fs m -> k)
@@ -42,21 +44,9 @@ data React k
   | forall a fs m. DestroyBehavior Int (Behavior a fs m) k
   | forall a fs m. DestroyCulture Int (Culture a fs m) k
 
-data Reactive k = Reactive Int k
+-- | Symbol Module
 
-{-# INLINE reactive #-}
-reactive :: Uses Reactive fs m => Attribute Reactive fs m
-reactive = Reactive 0 nextS
-  where
-    nextS fs =
-      let Reactive s ns = view fs
-          s' = succ s
-      in s' `seq` pure (fs .= Reactive s' ns)
-
-instance Pair Reactive React where
-  pair p (Reactive i k) (FreshScope ik) = p k (ik i)
-
-data ReactorSystem fs m = Reactor
+data React fs m = React
   { newC :: forall a. Plan fs m (Culture a fs m)
   , newB :: forall a. Culture a fs m -> (a -> Plan fs m ()) -> Plan fs m (Behavior a fs m)
   , modB :: forall a. Behavior a fs m -> (a -> Plan fs m ()) -> Plan fs m ()
@@ -66,15 +56,37 @@ data ReactorSystem fs m = Reactor
   , destroyC :: forall a. Culture a fs m -> Plan fs m ()
   }
 
-{-# INLINE react #-}
-react :: forall fs m a. (Has React fs m,Lift IO m,Has Interleave fs m)
-      => (    ReactorSystem fs m
+-- | Attribute
+
+data Reactable k = Reactable Int k
+
+-- | Attribute Construct
+
+{-# INLINE reactor #-}
+reactor :: Uses Reactable fs m => Attribute Reactable fs m
+reactor = Reactable 0 nextS
+  where
+    nextS fs =
+      let Reactable s ns = view fs
+          s' = succ s
+      in s' `seq` pure (fs .= Reactable s' ns)
+
+-- | Attribute/Symbol Symmetry
+
+instance Symmetry Reactable Reacting where
+  symmetry use (Reactable i k) (FreshScope ik) = use k (ik i)
+
+-- | Local Scoping Construct + Substitution
+
+{-# INLINE reacts #-}
+reacts :: forall fs m a. (Is Reacting fs m,Lift IO m,Is Alternating fs m)
+      => (    React fs m
            -> Plan fs m a
          ) -> Plan fs m a
-react r = do
+reacts r = do
   scope <- self (FreshScope id)
   sys <- unsafe $ newIORef []
-  transform sys scope 0 $ r Reactor
+  transform sys scope 0 $ r React
       { newC = self (NewCulture scope id)
       , newB = \c f -> self (NewBehavior scope c f id)
       , modB = \b f -> self (ModifyBehavior scope b f ())

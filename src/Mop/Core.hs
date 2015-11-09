@@ -131,18 +131,19 @@ instance (Denies x xs',xs ~ (x ': xs')) => Allows' x xs 'Z where
   prj' _ (Symbol sa) = Just sa
   prj' _ (Further _) = Nothing
 
-class Pair f g | f -> g, g -> f where
-  pair :: (a -> b -> r) -> f a -> g b -> r
-instance Pair ((->) a) ((,) a) where
-  pair p f g = uncurry (p . f) g
-instance Pair ((,) a) ((->) a) where
-  pair p ~(l,r) g = p r (g l)
-instance Pair (Attrs '[]) (Symbol '[])
-instance (Pair i s,Pair (Attrs is) (Symbol ss))
-    => Pair (Attrs (i ': is)) (Symbol (s ': ss))
+-- Witness a symmetry between f and g with a specific use case
+class Symmetry f g | f -> g, g -> f where
+  symmetry :: (a -> b -> r) -> f a -> g b -> r
+instance Symmetry ((->) a) ((,) a) where
+  symmetry use f g = uncurry (use . f) g
+instance Symmetry ((,) a) ((->) a) where
+  symmetry use ~(l,r) g = use r (g l)
+instance Symmetry (Attrs '[]) (Symbol '[])
+instance (Symmetry i s,Symmetry (Attrs is) (Symbol ss))
+    => Symmetry (Attrs (i ': is)) (Symbol (s ': ss))
   where
-    pair p (Attr ia _) (Symbol  sa) = pair p ia sa
-    pair p (Attr _ is) (Further ss) = pair p is ss
+    symmetry use (Attr ia _) (Symbol  sa) = symmetry use ia sa
+    symmetry use (Attr _ is) (Further ss) = symmetry use is ss
 
 cast :: forall fs gs m a. (Functor m,As (Symbol fs) (Symbol gs)) => Plan fs m a -> Plan gs m a
 cast (Step sym bp) = Step (conv sym) (unsafeCoerce bp)
@@ -190,7 +191,7 @@ super :: Functor m => Plan fs m a -> Plan gs (Plan fs m) a
 super = lift
 
 -- | Invoke a method in the calling object.
-self :: (Has x symbols m) => x a -> Plan symbols m a
+self :: (Is x symbols m) => x a -> Plan symbols m a
 self xa = Step (inj xa) return
 
 instance Functor m => Functor (Plan symbols m) where
@@ -286,7 +287,7 @@ observe = M . go
         M m -> m >>= go
         Pure r -> return (Pure r)
 
-(#) :: (Pair (Attrs is) (Symbol symbols),Monad m)
+(#) :: (Symmetry (Attrs is) (Symbol symbols),Monad m)
     => m (Object is m)
     -> Plan symbols m a
     -> m (Object is m)
@@ -295,7 +296,7 @@ observe = M . go
   (obj',_) <- delta obj p
   return obj'
 
-deltaCast :: forall fs gs is m a. (Pair (Attrs is) (Symbol gs),Monad m,As (Symbol fs) (Symbol gs))
+deltaCast :: forall fs gs is m a. (Symmetry (Attrs is) (Symbol gs),Monad m,As (Symbol fs) (Symbol gs))
           => Object is m
           -> Plan fs m a
           -> m (Object is m,a)
@@ -304,14 +305,14 @@ deltaCast o = _delta o . (cast :: Plan fs m a -> Plan gs m a)
 run :: Monad m => Plan '[] m a -> m a
 run = fmap snd . delta simple
 
-delta :: forall symbols is m a. (Pair (Attrs is) (Symbol symbols),Monad m)
+delta :: forall symbols is m a. (Symmetry (Attrs is) (Symbol symbols),Monad m)
        => Object is m
        -> Plan symbols m a
        -> m (Object is m,a)
 delta = _delta
 
 {-# NOINLINE _delta #-}
-_delta :: forall is symbols m a. (Pair (Attrs is) (Symbol symbols),Monad m)
+_delta :: forall is symbols m a. (Symmetry (Attrs is) (Symbol symbols),Monad m)
        => Object is m
        -> Plan symbols m a
        -> m (Object is m,a)
@@ -322,20 +323,20 @@ _delta = go
         go' p =
           case p of
             Step syms k ->
-              let ~(trans,b) = pair (,) (deconstruct is) syms
+              let ~(trans,b) = symmetry (,) (deconstruct is) syms
               in do is' <- trans is
                     go is' (k b)
             M mp -> mp >>= go'
             Pure res -> pure (is,res)
 
-deltaDebug :: forall is symbols m a. (Pair (Attrs is) (Symbol symbols),Monad m,Typeable symbols,Typeable is)
+deltaDebug :: forall is symbols m a. (Symmetry (Attrs is) (Symbol symbols),Monad m,Typeable symbols,Typeable is)
            => Object is m
            -> Plan symbols m a
            -> m (Object is m,(Int,a))
 deltaDebug = _deltaDebug
 
 {-# NOINLINE _deltaDebug #-}
-_deltaDebug :: forall is symbols m a. (Pair (Attrs is) (Symbol symbols),Monad m,Typeable symbols,Typeable is)
+_deltaDebug :: forall is symbols m a. (Symmetry (Attrs is) (Symbol symbols),Monad m,Typeable symbols,Typeable is)
             => Object is m
             -> Plan symbols m a
             -> m (Object is m,(Int,a))
@@ -346,7 +347,7 @@ _deltaDebug = go 0
         go' p =
           case p of
             Step syms k ->
-              let ~(trans,b) = pair (,) (deconstruct is) syms
+              let ~(trans,b) = symmetry (,) (deconstruct is) syms
               in do is' <- trans is
                     let n' = n + 1
                     trace (show (typeOf (unsafeCoerce syms :: Symbol symbols ()))) $ n' `seq` go n' is' (k b)
@@ -358,8 +359,8 @@ type Uses f fs m = (Monad m,Admits' f fs (IndexOf f fs))
 type Extends extended orig m = (Monad m,AdmitsSubset orig extended)
 type (extended :=> orig) m = Extends extended orig m
 
-type Has f fs m = (Monad m,Allows' f fs (IndexOf f fs))
-type (f :< fs) m = Has f fs m
+type Is f fs m = (Monad m,Allows' f fs (IndexOf f fs))
+type (f :< fs) m = Is f fs m
 type Invokes fs' fs m = (Monad m,AllowsSubset fs' fs)
 
 class AllowsSubset fs' fs
@@ -434,11 +435,11 @@ cutoff n p =
     Step sym k -> Step sym (cutoff (n - 1) . k)
 
 --------------------------------------------------------------------------------
--- | Codensity improves asymptotics of repeated left-associated binds (>>=) by
---   conversion to right-associated binds (>>=).
+-- | Codensity improves asymptotics of repeated left-associated binds by
+--   conversion to right-associated binds.
 --
 -- This example demonstrates a performance improvement over the standard
--- replicateM when used with the Plan monad.
+-- replicateM.
 --
 -- >>> import Data.Time
 -- >>> import System.Timeout

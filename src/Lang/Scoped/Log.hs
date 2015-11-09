@@ -12,10 +12,10 @@
        'listen' becomes 'eavesdrop'
        'listens' becomes 'intercept'
 -}
-module Effect.Local.Journaler
-    ( Journaler, journaling
-    , Journaling, journal
-    , Journal(..), intercept
+module Lang.Scoped.Log
+    ( Logging, logger
+    , Loggable, logs
+    , Log(..), intercept
     ) where
 
 import Mop.Core
@@ -26,31 +26,49 @@ import Unsafe.Coerce
 
 import Prelude hiding (log)
 
-data Journaler k
+-- | Symbol
+
+data Logging k
     = FreshScope (Int -> k)
-    | forall a. Log Int a
+    | forall a. Logs Int a
     | forall fs m a w. Eavesdrop Int w (Plan fs m a)
     | forall a w. Reconfigure Int (a -> w -> w)
 
-data Journal fs m a w = Journal
+-- | Symbol Module
+
+data Log fs m a w = Log
     { log :: a -> Plan fs m ()
     , eavesdrop :: forall r. w -> Plan fs m r -> Plan fs m (w,r)
     , reconfigure :: (a -> w -> w) -> Plan fs m ()
     }
 
-{-# INLINE intercept #-}
-intercept :: Monad m => Journal fs m a w -> (w -> b) -> w -> Plan fs m r -> Plan fs m (b,r)
-intercept Journal{..} f w0 m = do
-    ~(w, a) <- eavesdrop w0 m
-    return (f w,a)
+-- | Attribute
 
-{-# INLINE journal #-}
-journal :: forall fs m a w r. (Has Journaler fs m,Monoid w)
-       => (a -> w -> w) -> w -> (Journal fs m a w -> Plan fs m r) -> Plan fs m (w,r)
-journal c0 w0 f = do
+data Loggable k = Loggable Int k
+
+-- | Attribute Construct
+
+{-# INLINE logger #-}
+logger :: Uses Loggable fs m => Attribute Loggable fs m
+logger = Loggable 0 $ \fs ->
+    let Loggable i k = view fs
+        i' = succ i
+    in i' `seq` pure (fs .= Loggable i' k)
+
+-- | Symbol/Attribute Symmetry
+
+instance Symmetry Loggable Logging where
+    symmetry use (Loggable i k) (FreshScope ik) = use k (ik i)
+
+-- | Local Scoping Construct + Substitution
+
+{-# INLINE logs #-}
+logs :: forall fs m a w r. (Is Logging fs m,Monoid w)
+       => (a -> w -> w) -> w -> (Log fs m a w -> Plan fs m r) -> Plan fs m (w,r)
+logs c0 w0 f = do
     scope <- self (FreshScope id)
-    transform scope c0 w0 $ f Journal
-        { log = \w -> self (Log scope w)
+    transform scope c0 w0 $ f Log
+        { log = \w -> self (Logs scope w)
         , eavesdrop = \w' p -> self (Eavesdrop scope w' p)
         , reconfigure = \c' -> self (Reconfigure scope c')
         }
@@ -61,7 +79,7 @@ journal c0 w0 f = do
                 go'' p = case p of
                     Step sym bp -> case prj sym of
                         Just x  -> case x of
-                            Log i a ->
+                            Logs i a ->
                                 if i == scope
                                 then go' (c (unsafeCoerce a) w)
                                          (bp (unsafeCoerce ()))
@@ -81,14 +99,10 @@ journal c0 w0 f = do
                     M m -> M (fmap go'' m)
                     Pure r -> Pure (w,r)
 
-data Journaling k = Journaling Int k
+-- | Extended API
 
-{-# INLINE journaling #-}
-journaling :: Uses Journaling fs m => Attribute Journaling fs m
-journaling = Journaling 0 $ \fs ->
-    let Journaling i k = view fs
-        i' = succ i
-    in i' `seq` pure (fs .= Journaling i' k)
-
-instance Pair Journaling Journaler where
-    pair p (Journaling i k) (FreshScope ik) = p k (ik i)
+{-# INLINE intercept #-}
+intercept :: Monad m => Log fs m a w -> (w -> b) -> w -> Plan fs m r -> Plan fs m (b,r)
+intercept Log{..} f w0 m = do
+    ~(w, a) <- eavesdrop w0 m
+    return (f w,a)

@@ -10,9 +10,9 @@ TODO: Spell out the exact semantics of this module. Notably, the approach
       with deallocate not being removed by a child scope but unregister
       being removed could be confusing.
 -}
-module Effect.Transient
-  ( Transient, Transience, transience, transiently
-  , TransientScope
+module Lang.Scoped.Manage
+  ( Managing, Manageable, manager, manages
+  , ManagingScope
   , Token
   , deallocate, allocate, register, unregister, onEnd
   ) where
@@ -43,7 +43,7 @@ import Unsafe.Coerce
 
 newtype Token a = Token Int
 
-data Transient k
+data Managing k
     = FreshScope (Int -> k)
 
     | forall fs m a . Allocate   Int (Plan fs m a) (a -> Plan fs m ()) ((a,Token a) -> k)
@@ -54,51 +54,51 @@ data Transient k
     | forall      a . Unregister Int (Token a) k
     | forall      a . Deallocate     (Token a) k
 
-data Transience k = Transience Int k k
+data Manageable k = Manageable Int k k
 
-{-# INLINE transience #-}
-transience :: Uses Transience fs m => Attribute Transience fs m
-transience = Transience 0 return $ \fs ->
-    let Transience i non me = view fs
+{-# INLINE manager #-}
+manager :: Uses Manageable fs m => Attribute Manageable fs m
+manager = Manageable 0 return $ \fs ->
+    let Manageable i non me = view fs
         i' = succ i
-    in i' `seq` pure (fs .= Transience i' non me)
+    in i' `seq` pure (fs .= Manageable i' non me)
 
-instance Pair Transience Transient where
-    pair p (Transience _ _ k) (Deallocate _ k') = p k k'
-    pair p (Transience i k _) (FreshScope ik)   = p k (ik i)
+instance Symmetry Manageable Managing where
+    symmetry use (Manageable _ _ k) (Deallocate _ k') = use k k'
+    symmetry use (Manageable i k _) (FreshScope ik)   = use k (ik i)
 
 {-# INLINE freshScope #-}
-freshScope :: Has Transient fs m => Plan fs m Int
+freshScope :: Is Managing fs m => Plan fs m Int
 freshScope = self (FreshScope id)
 
 {-# INLINE deallocate #-}
-deallocate :: Has Transient fs m => Token a -> Plan fs m ()
+deallocate :: Is Managing fs m => Token a -> Plan fs m ()
 deallocate rsrc = self (Deallocate rsrc ())
 
-data TransientScope fs m = TransientScope
+data ManagingScope fs m = ManagingScope
     { allocate   :: forall a. Plan fs m a -> (a -> Plan fs m ()) -> Plan fs m (a,Token a)
     , register   :: forall a. Token a -> Plan fs m () -> Plan fs m ()
     , unregister :: forall a. Token a -> Plan fs m ()
     , onEnd      ::           Plan fs m () -> Plan fs m (Token ())
     }
 
-{-# INLINE transiently #-}
--- use: transiently $ \transient -> do
+{-# INLINE manages #-}
+-- use: manages $ \transient -> do
 --        (a,key) <- allocate transient _ _
 --        transient&unregister key
 --        onEnd transient _
 --        deallocate key
-transiently :: forall fs m r. Has Transient fs m
-            => (    TransientScope fs m
+manages :: forall fs m r. Is Managing fs m
+            => (    ManagingScope fs m
                  -> Plan fs m r
                ) -> Plan fs m r
-transiently f = do
+manages f = do
     scope <- freshScope
     let a create oe = self (Allocate scope create oe id)
         r token oe = self (Register scope token oe ())
         u token = self (Unregister scope token ())
         o oE = self (OnEnd scope oE id)
-    transform scope [] $ f $ TransientScope a r u o
+    transform scope [] $ f $ ManagingScope a r u o
   where
     transform scope = go
       where

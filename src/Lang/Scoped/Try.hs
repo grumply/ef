@@ -2,39 +2,57 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
-module Effect.Maybe
-    ( tryMaybe, May
-    , possible, Possible
+module Lang.Scoped.Try
+    ( tries, Trying
+    , trier, Tryable
+    , Try(..)
     ) where
 
 import Mop.Core
 
 import Unsafe.Coerce
 
--- Maybe implements short-circuiting plans with success and non-specific failure.
+-- | Symbols
 
-data May k
+data Trying k
     = forall a. Success Int a
     | Failure Int
     | FreshScope (Int -> k)
 
-data Possible k = Possible Int k
+-- | Symbol Module
 
-{-# INLINE possible #-}
-possible :: Uses Possible fs m => Attribute Possible fs m
-possible = Possible 0 $ \fs ->
-    let Possible i k = view fs
-    in pure $ fs .= Possible (succ i) k
+data Try a fs m = Try
+  { success :: forall b. a -> Plan fs m b
+  , failure :: forall b. Plan fs m b
+  }
 
-{-# INLINE freshScope #-}
-freshScope :: Has May fs m => Plan fs m Int
-freshScope = self (FreshScope id)
+-- | Attribute
 
-{-# INLINE tryMaybe #-}
-tryMaybe :: Has May fs m => ((forall b. a -> Plan fs m b) -> (forall b. Plan fs m b) -> Plan fs m (Maybe a)) -> Plan fs m (Maybe a)
-tryMaybe f = do
-    scope <- freshScope
-    transform scope $ f (\a -> self (Success scope a)) (self (Failure scope))
+data Tryable k = Tryable Int k
+
+-- | Attribute Construct
+
+{-# INLINE trier #-}
+trier :: Uses Tryable fs m => Attribute Tryable fs m
+trier = Tryable 0 $ \fs ->
+    let Tryable i k = view fs
+    in pure $ fs .= Tryable (succ i) k
+
+-- | Attribute/Symbol Symmetry
+
+instance Symmetry Tryable Trying where
+    symmetry use (Tryable i k) (FreshScope ik) = use k (ik i)
+
+-- | Local Scoping Construct + Substitution
+
+{-# INLINE tries #-}
+tries :: Is Trying fs m => (Try a fs m -> Plan fs m (Maybe a)) -> Plan fs m (Maybe a)
+tries f = do
+    scope <- self (FreshScope id)
+    transform scope $ f Try
+      { success = \a -> self (Success scope a)
+      , failure = self (Failure scope)
+      }
   where
     transform scope = go
       where
@@ -53,6 +71,3 @@ tryMaybe f = do
                 _ -> Step sym (\b -> go (bp b))
             M m -> M (fmap go m)
             Pure r -> Pure r
-
-instance Pair Possible May where
-    pair p (Possible i k) (FreshScope ik) = p k (ik i)

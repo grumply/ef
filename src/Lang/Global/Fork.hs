@@ -5,12 +5,12 @@
 TODO: I should clean this up. Not happy with the current interface; I would
       like to tie this in with Async and Divergence for a better story here.
 -}
-module Effect.Concurrent (fork,forkOS,forkOn) where
+module Lang.Global.Fork (forkWith,forkOSWith,forkOnWith) where
 
 import Mop.Core
-import Mop.IO
+import Lang.Global.IO
+import Lang.Global.Except
 import Data.Promise
-import Effect.Exception
 
 import qualified Control.Concurrent
 import Control.Concurrent (ThreadId)
@@ -19,16 +19,16 @@ import Control.Monad
 
 type Ref gs m a = (ThreadId,Promise (Either SomeException (Object gs m,a)))
 
-fork :: forall fs fs' gs m m' a.
-        (Pair (Attrs gs) (Symbol fs)
+forkWith :: forall fs fs' gs m m' a.
+        (Symmetry (Attrs gs) (Symbol fs)
         ,Lift IO m'
-        ,Has Throw fs' m'
-        ,Has Throw fs m
+        ,Is Excepting fs' m'
+        ,Is Excepting fs m
         ) => Object gs m
           -> Plan fs m a
           -> (forall x. m x -> IO x)
           -> Plan fs' m' (Ref gs m a)
-fork comp plan lft = do
+forkWith comp plan lft = do
     p <- io newPromiseIO
     mv <- io newEmptyMVar
     (`catch` (\(e :: SomeException) -> void $ fulfill p (Left e))) $ do
@@ -43,16 +43,16 @@ fork comp plan lft = do
     tid <- io (takeMVar mv)
     return (tid,p)
 
-forkOS :: forall fs fs' gs m m' a.
-          (Pair (Attrs gs) (Symbol fs)
+forkOSWith :: forall fs fs' gs m m' a.
+          (Symmetry (Attrs gs) (Symbol fs)
           ,Lift IO m'
-          ,Has Throw fs' m'
-          ,Has Throw fs m
+          ,Is Excepting fs' m'
+          ,Is Excepting fs m
           ) => Object gs m
             -> Plan fs m a
             -> (forall x. m x -> IO x)
             -> Plan fs' m' (Ref gs m a)
-forkOS comp plan lft = do
+forkOSWith comp plan lft = do
     p <- io newPromiseIO
     mv <- io newEmptyMVar
     (`catch` (\(e :: SomeException) -> void $ fulfill p (Left e))) $ do
@@ -67,17 +67,17 @@ forkOS comp plan lft = do
     tid <- io (takeMVar mv)
     return (tid,p)
 
-forkOn :: forall fs fs' gs m m' a.
-          (Pair (Attrs gs) (Symbol fs)
+forkOnWith :: forall fs fs' gs m m' a.
+          (Symmetry (Attrs gs) (Symbol fs)
           ,Lift IO m'
-          ,Has Throw fs' m'
-          ,Has Throw fs m
+          ,Is Excepting fs' m'
+          ,Is Excepting fs m
           ) => Int
             -> Object gs m
             -> Plan fs m a
             -> (forall x. m x -> IO x)
             -> Plan fs' m' (Ref gs m a)
-forkOn n comp plan lft = do
+forkOnWith n comp plan lft = do
     p <- io newPromiseIO
     mv <- io newEmptyMVar
     (`catch` (\(e :: SomeException) -> void $ fulfill p (Left e))) $ do

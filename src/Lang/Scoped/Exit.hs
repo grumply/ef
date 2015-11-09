@@ -2,31 +2,52 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
-module Effect.Continuation
-  (Continuation,enter
-  ,Continuations,continuations
+module Lang.Scoped.Exit
+  (Exiting,exits
+  ,Exitable,exiter
   ) where
 
 import Mop.Core
 import Unsafe.Coerce
 
-data Continuation k
-    = FreshScope (Int -> k)
-    | forall a. Continuation Int a
-data Continuations k = Continuations Int k
+-- | Symbol
 
-{-# INLINE enter #-}
--- use: enter $ \exit -> do { .. ; }
-enter :: Has Continuation fs m => ((forall b. a -> Plan fs m b) -> Plan fs m a) -> Plan fs m a
-enter f = do
-    scope <- freshScope
-    transform scope $ f (\a -> self (Continuation scope a))
+data Exiting k
+    = FreshScope (Int -> k)
+    | forall a. Exit Int a
+
+-- | Attribute
+
+data Exitable k = Exitable Int k
+
+-- | Attribute Construct
+
+{-# INLINE exiter #-}
+exiter :: Uses Exitable gs m => Attribute Exitable gs m
+exiter = Exitable 0 $ \fs ->
+    let Exitable i k = view fs
+        i' = succ i
+    in i' `seq` pure $ fs .= Exitable i' k
+
+-- | Symbol/Attribute Symmetry
+
+instance Symmetry Exitable Exiting where
+    symmetry use (Exitable i k) (FreshScope ik) = use k (ik i)
+
+-- | Local Scoping Construct + Symbol Substitution
+
+{-# INLINE exits #-}
+-- use: exits $ \exit -> do { .. ; }
+exits :: Is Exiting fs m => ((forall b. a -> Plan fs m b) -> Plan fs m a) -> Plan fs m a
+exits f = do
+    scope <- self (FreshScope id)
+    transform scope $ f (\a -> self (Exit scope a))
   where
     transform scope = go where
         go p = case p of
             Step sym bp -> case prj sym of
                 Just x -> case x of
-                    Continuation i a ->
+                    Exit i a ->
                         if i == scope
                         then return (unsafeCoerce a)
                         else Step sym (\b -> go (bp b))
@@ -34,17 +55,3 @@ enter f = do
                 _ -> Step sym (\b -> go (bp b))
             M m -> M (fmap go m)
             Pure r -> Pure r
-
-{-# INLINE freshScope #-}
-freshScope :: Has Continuation fs m => Plan fs m Int
-freshScope = self (FreshScope id)
-
-{-# INLINE continuations #-}
-continuations :: Uses Continuations gs m => Attribute Continuations gs m
-continuations = Continuations 0 $ \fs ->
-    let Continuations i k = view fs
-        i' = succ i
-    in i' `seq` pure $ fs .= Continuations i' k
-
-instance Pair Continuations Continuation where
-    pair p (Continuations i k) (FreshScope ik) = p k (ik i)

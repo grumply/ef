@@ -25,28 +25,30 @@ Flag TRANSFORMERS_SAFE
 library
   exposed-modules:     Mop
                        Mop.Core
-                       Mop.IO
                        Data.Promise
                        Data.Queue
-                       Effect.Concurrent
-                       Effect.Continuation
-                       Effect.Contract
-                       Effect.Divergence
-                       Effect.Exception
-                       Effect.Interleave
-                       Effect.List
-                       Effect.Local.State
-                       Effect.Local.Journaler
-                       Effect.Local.Writer
-                       Effect.Logic
-                       Effect.Maybe
-                       Effect.Reactive
-                       Effect.Reader
-                       Effect.State
-                       Effect.Thread
-                       Effect.Transient
-                       Effect.Weave
-                       Effect.Writer
+                       Attr.Notate
+                       Attr.Vary
+                       Attr.View
+                       Lang.Contract
+                       Lang.Global.IO
+                       Lang.Global.Fork
+                       Lang.Global.Except
+                       Lang.Global.Except.Checked
+                       Lang.Scoped.Exit
+                       Lang.Scoped.Diverge
+                       Lang.Scoped.Alternate
+                       Lang.Scoped.Act
+                       Lang.Scoped.Generate
+                       Lang.Scoped.Guard
+                       Lang.Scoped.Log
+                       Lang.Scoped.Manage
+                       Lang.Scoped.Notate
+                       Lang.Scoped.React
+                       Lang.Scoped.Thread
+                       Lang.Scoped.Try
+                       Lang.Scoped.Vary
+                       Lang.Scoped.Weave
 
   -- other-modules:       
   -- other-extensions:    
