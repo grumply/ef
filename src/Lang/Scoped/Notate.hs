@@ -23,13 +23,13 @@ import Unsafe.Coerce
 data Notating k
     = FreshScope (Int -> k)
     | forall a. Tell Int a
-    | forall fs m a. Listen Int (Plan fs m a)
+    | forall fs m a. Listen Int (Pattern fs m a)
 
 -- | Symbol Module
 
 data Notes w fs m = Notes
-    { tell :: w -> Plan fs m ()
-    , listen :: forall a. Plan fs m a -> Plan fs m (w,a)
+    { tell :: w -> Pattern fs m ()
+    , listen :: forall a. Pattern fs m a -> Pattern fs m (w,a)
     }
 
 -- | Attribute
@@ -52,7 +52,7 @@ instance Symmetry Notatable Notating where
 
 {-# INLINE notates #-}
 notates :: forall fs m w r. (Is Notating fs m,Monoid w)
-       => (Notes w fs m -> Plan fs m r) -> Plan fs m (w,r)
+       => (Notes w fs m -> Pattern fs m r) -> Pattern fs m (w,r)
 notates f = do
     scope <- self (FreshScope id)
     transform scope mempty $ f Notes
@@ -83,7 +83,7 @@ notates f = do
 -- | Extended API
 
 {-# INLINE listens #-}
-listens :: Monad m => Notes w fs m -> (w -> b) -> Plan fs m a -> Plan fs m (b,a)
+listens :: Monad m => Notes w fs m -> (w -> b) -> Pattern fs m a -> Pattern fs m (b,a)
 listens Notes{..} f m = do
     ~(w, a) <- listen m
     return (f w,a)

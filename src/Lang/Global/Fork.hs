@@ -25,9 +25,9 @@ forkWith :: forall fs fs' gs m m' a.
         ,Is Excepting fs' m'
         ,Is Excepting fs m
         ) => Object gs m
-          -> Plan fs m a
+          -> Pattern fs m a
           -> (forall x. m x -> IO x)
-          -> Plan fs' m' (Ref gs m a)
+          -> Pattern fs' m' (Ref gs m a)
 forkWith comp plan lft = do
     p <- io newPromiseIO
     mv <- io newEmptyMVar
@@ -49,9 +49,9 @@ forkOSWith :: forall fs fs' gs m m' a.
           ,Is Excepting fs' m'
           ,Is Excepting fs m
           ) => Object gs m
-            -> Plan fs m a
+            -> Pattern fs m a
             -> (forall x. m x -> IO x)
-            -> Plan fs' m' (Ref gs m a)
+            -> Pattern fs' m' (Ref gs m a)
 forkOSWith comp plan lft = do
     p <- io newPromiseIO
     mv <- io newEmptyMVar
@@ -74,9 +74,9 @@ forkOnWith :: forall fs fs' gs m m' a.
           ,Is Excepting fs m
           ) => Int
             -> Object gs m
-            -> Plan fs m a
+            -> Pattern fs m a
             -> (forall x. m x -> IO x)
-            -> Plan fs' m' (Ref gs m a)
+            -> Pattern fs' m' (Ref gs m a)
 forkOnWith n comp plan lft = do
     p <- io newPromiseIO
     mv <- io newEmptyMVar

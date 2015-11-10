@@ -17,17 +17,17 @@ import Data.Proxy
 -- | Symbol Construct
 
 {-# INLINE throwChecked #-}
-throwChecked :: (Exception e,Throws e,Is Excepting fs m) => e -> Plan fs m a
+throwChecked :: (Exception e,Throws e,Is Excepting fs m) => e -> Pattern fs m a
 throwChecked = throw
 
 -- | Global Scoping Construct
 
 {-# INLINE catchChecked #-}
 catchChecked :: forall e fs m a. (Exception e,Is Excepting fs m)
-             => (Throws e => Plan fs m a)
-             -> (e -> Plan fs m a)
-             -> Plan fs m a
-catchChecked act = catch (unthrow (Proxy :: Proxy e) (act :: Throws e => Plan fs m a))
+             => (Throws e => Pattern fs m a)
+             -> (e -> Pattern fs m a)
+             -> Pattern fs m a
+catchChecked act = catch (unthrow (Proxy :: Proxy e) (act :: Throws e => Pattern fs m a))
   where
     unthrow :: forall proxy e a. proxy e -> (Throws e => a) -> a
     unthrow _ = unWrap . coerceWrap . Wrap

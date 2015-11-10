@@ -18,7 +18,7 @@ data Noting r k = Noting r k
 -- | Symbol Construct
 
 {-# INLINE note #-}
-note :: (Is (Noting w) fs m) => w -> Plan fs m ()
+note :: (Is (Noting w) fs m) => w -> Pattern fs m ()
 note w = self (Noting w ())
 
 -- | Attribute

@@ -15,16 +15,16 @@ import Unsafe.Coerce
 -- | Symbol
 
 data Alternating k
-  = forall fs m a. Fork Int (Plan fs m a)
-  | forall fs m a. Atomically Int (Plan fs m a)
+  = forall fs m a. Fork Int (Pattern fs m a)
+  | forall fs m a. Atomically Int (Pattern fs m a)
   | Stop Int
   | FreshScope (Int -> k)
 
 -- | Symbol Module
 
 data Alternate fs m = Alternate
-  { alt :: Plan fs m () -> Plan fs m ()
-  , atomically :: forall b. Plan fs m b -> Plan fs m b
+  { alt :: Pattern fs m () -> Pattern fs m ()
+  , atomically :: forall b. Pattern fs m b -> Pattern fs m b
   }
 
 -- | Attribute
@@ -50,8 +50,8 @@ instance Symmetry Alternatable Alternating where
 {-# INLINE alternate #-}
 alternate :: forall fs m a. Is Alternating fs m
            => (    Alternate fs m
-                -> Plan fs m a
-              ) -> Plan fs m a
+                -> Pattern fs m a
+              ) -> Pattern fs m a
 alternate f = do
   scope <- self (FreshScope id)
   scoped scope $ f Alternate

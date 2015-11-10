@@ -23,13 +23,13 @@ data Varying k
 -- | Symbol Module
 
 data Vary fs m st = Vary
-  { modify :: (st -> st) -> Plan fs m ()
-  , modify' :: (st -> st) -> Plan fs m ()
-  , get :: Plan fs m st
-  , gets :: forall a. (st -> a) -> Plan fs m a
-  , put :: st -> Plan fs m ()
-  , puts :: forall a. (a -> st) -> a -> Plan fs m ()
-  , swap :: st -> Plan fs m st
+  { modify :: (st -> st) -> Pattern fs m ()
+  , modify' :: (st -> st) -> Pattern fs m ()
+  , get :: Pattern fs m st
+  , gets :: forall a. (st -> a) -> Pattern fs m a
+  , put :: st -> Pattern fs m ()
+  , puts :: forall a. (a -> st) -> a -> Pattern fs m ()
+  , swap :: st -> Pattern fs m st
   }
 
 -- | Attribute
@@ -54,7 +54,7 @@ instance Symmetry Variable Varying where
 
 {-# INLINE varies #-}
 varies :: forall fs m st r. Is Varying fs m
-      => st -> (Vary fs m st -> Plan fs m r) -> Plan fs m (st,r)
+      => st -> (Vary fs m st -> Pattern fs m r) -> Pattern fs m (st,r)
 varies st0 f0 = do
     scope <- self (FreshScope id)
     transform scope st0 $ f0 Vary

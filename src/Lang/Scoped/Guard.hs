@@ -26,9 +26,9 @@ data Guarding k
 -- | Symbol Module
 
 data Guard a fs m = Guard
-  { choose :: forall f. Foldable f => f a -> Plan fs m a
-  , cut :: forall b. Plan fs m b
-  , yields :: a -> Plan fs m ()
+  { choose :: forall f. Foldable f => f a -> Pattern fs m a
+  , cut :: forall b. Pattern fs m b
+  , yields :: a -> Pattern fs m ()
   }
 
 -- | Attribute
@@ -54,7 +54,7 @@ instance Symmetry Guardable Guarding where
 guards :: forall fs m a.
          (Is Guarding fs m,Is Weaving fs m)
       => (   Guard a fs m
-          -> Plan fs m ()
+          -> Pattern fs m ()
          )
       -> Producer a fs m ()
 guards l =
@@ -68,7 +68,7 @@ guards l =
   where
     go scope p0 = go' p0
       where
-        try :: forall a. [a] -> (a -> Plan fs m ()) -> Plan fs m () -> Plan fs m ()
+        try :: forall a. [a] -> (a -> Pattern fs m ()) -> Pattern fs m () -> Pattern fs m ()
         try [] _ or_ = or_
         try (a:as) bp or_ = try' (bp a)
           where

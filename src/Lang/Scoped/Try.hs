@@ -22,8 +22,8 @@ data Trying k
 -- | Symbol Module
 
 data Try a fs m = Try
-  { success :: forall b. a -> Plan fs m b
-  , failure :: forall b. Plan fs m b
+  { success :: forall b. a -> Pattern fs m b
+  , failure :: forall b. Pattern fs m b
   }
 
 -- | Attribute
@@ -46,7 +46,7 @@ instance Symmetry Tryable Trying where
 -- | Local Scoping Construct + Substitution
 
 {-# INLINE tries #-}
-tries :: Is Trying fs m => (Try a fs m -> Plan fs m (Maybe a)) -> Plan fs m (Maybe a)
+tries :: Is Trying fs m => (Try a fs m -> Pattern fs m (Maybe a)) -> Pattern fs m (Maybe a)
 tries f = do
     scope <- self (FreshScope id)
     transform scope $ f Try

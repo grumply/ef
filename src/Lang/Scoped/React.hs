@@ -25,20 +25,20 @@ import Unsafe.Coerce
 
 data Behavior a fs m = Behavior
   { cultured :: Int
-  , behavior :: IORef (a -> Plan fs m ())
+  , behavior :: IORef (a -> Pattern fs m ())
   }
 
 data Culture a fs m = Culture
   { cultureId :: Int
-  , culture :: IORef (a -> Plan fs m ())
+  , culture :: IORef (a -> Pattern fs m ())
   , behaviors :: IORef [Behavior a fs m]
   }
 
 data Reacting k
   = FreshScope (Int -> k)
   | forall a fs m. NewCulture Int (Culture a fs m -> k)
-  | forall a fs m. NewBehavior Int (Culture a fs m) (a -> Plan fs m ()) (Behavior a fs m -> k)
-  | forall a fs m. ModifyBehavior Int (Behavior a fs m) (a -> Plan fs m ()) k
+  | forall a fs m. NewBehavior Int (Culture a fs m) (a -> Pattern fs m ()) (Behavior a fs m -> k)
+  | forall a fs m. ModifyBehavior Int (Behavior a fs m) (a -> Pattern fs m ()) k
   | forall a fs m. TriggerBehavior Int (Behavior a fs m) a k
   | forall a fs m. TriggerCulture Int (Culture a fs m) a k
   | forall a fs m. DestroyBehavior Int (Behavior a fs m) k
@@ -47,13 +47,13 @@ data Reacting k
 -- | Symbol Module
 
 data React fs m = React
-  { newC :: forall a. Plan fs m (Culture a fs m)
-  , newB :: forall a. Culture a fs m -> (a -> Plan fs m ()) -> Plan fs m (Behavior a fs m)
-  , modB :: forall a. Behavior a fs m -> (a -> Plan fs m ()) -> Plan fs m ()
-  , triggerB :: forall a. Behavior a fs m -> a -> Plan fs m ()
-  , triggerC :: forall a. Culture a fs m -> a -> Plan fs m ()
-  , destroyB :: forall a. Behavior a fs m -> Plan fs m ()
-  , destroyC :: forall a. Culture a fs m -> Plan fs m ()
+  { newC :: forall a. Pattern fs m (Culture a fs m)
+  , newB :: forall a. Culture a fs m -> (a -> Pattern fs m ()) -> Pattern fs m (Behavior a fs m)
+  , modB :: forall a. Behavior a fs m -> (a -> Pattern fs m ()) -> Pattern fs m ()
+  , triggerB :: forall a. Behavior a fs m -> a -> Pattern fs m ()
+  , triggerC :: forall a. Culture a fs m -> a -> Pattern fs m ()
+  , destroyB :: forall a. Behavior a fs m -> Pattern fs m ()
+  , destroyC :: forall a. Culture a fs m -> Pattern fs m ()
   }
 
 -- | Attribute
@@ -81,8 +81,8 @@ instance Symmetry Reactable Reacting where
 {-# INLINE reacts #-}
 reacts :: forall fs m a. (Is Reacting fs m,Lift IO m,Is Alternating fs m)
       => (    React fs m
-           -> Plan fs m a
-         ) -> Plan fs m a
+           -> Pattern fs m a
+         ) -> Pattern fs m a
 reacts r = do
   scope <- self (FreshScope id)
   sys <- unsafe $ newIORef []
@@ -98,10 +98,10 @@ reacts r = do
   where
     transform sys scope = go
       where
-        go :: forall b. Int -> Plan fs m b -> Plan fs m b
+        go :: forall b. Int -> Pattern fs m b -> Pattern fs m b
         go c = go'
           where
-            go' :: forall c. Plan fs m c -> Plan fs m c
+            go' :: forall c. Pattern fs m c -> Pattern fs m c
             go' p =
               case p of
                 Step sym bp ->
@@ -138,7 +138,7 @@ reacts r = do
                 Pure res -> Pure res
 
             newCulture cultureId = unsafe $ do
-              culture <- newIORef (const (return ()) :: forall d. d -> Plan fs m ())
+              culture <- newIORef (const (return ()) :: forall d. d -> Pattern fs m ())
               behaviors <- newIORef []
               let cu = Culture{..}
               modifyIORef sys (cu:)
@@ -157,7 +157,7 @@ reacts r = do
               where
                 compile a = compile'
                   where
-                    compile' [] = return () :: Plan fs m ()
+                    compile' [] = return () :: Pattern fs m ()
                     compile' (b:bs) = do
                       b a
                       compile' bs
@@ -179,7 +179,7 @@ reacts r = do
                   where
                     compile a = compile'
                       where
-                        compile' [] = return () :: Plan fs m ()
+                        compile' [] = return () :: Pattern fs m ()
                         compile' (bh:bhs) = do
                           bh a
                           compile' bhs
@@ -193,8 +193,8 @@ reacts r = do
               cul `seq` go' (unsafeCoerce cul a)
 
             destroyBehavior b = do
-              writeIORef (behavior b) (const (return ()) :: forall d. d -> Plan fs m ())
+              writeIORef (behavior b) (const (return ()) :: forall d. d -> Pattern fs m ())
             destroyCulture cu = do
-              writeIORef (culture cu) (const (return ()) :: forall d. d -> Plan fs m ())
+              writeIORef (culture cu) (const (return ()) :: forall d. d -> Pattern fs m ())
               bs <- readIORef (behaviors cu)
               mapM_ destroyBehavior bs

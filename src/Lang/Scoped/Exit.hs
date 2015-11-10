@@ -38,7 +38,7 @@ instance Symmetry Exitable Exiting where
 
 {-# INLINE exits #-}
 -- use: exits $ \exit -> do { .. ; }
-exits :: Is Exiting fs m => ((forall b. a -> Plan fs m b) -> Plan fs m a) -> Plan fs m a
+exits :: Is Exiting fs m => ((forall b. a -> Pattern fs m b) -> Pattern fs m a) -> Pattern fs m a
 exits f = do
     scope <- self (FreshScope id)
     transform scope $ f (\a -> self (Exit scope a))

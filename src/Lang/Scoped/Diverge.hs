@@ -35,8 +35,8 @@ data Divergable k = forall gs m. Divergable
   }
 
 data Introspection fs gs m = Introspection
-  { project :: Plan fs m (Object gs m)
-  , inject :: Object gs m -> Plan fs m ()
+  { project :: Pattern fs m (Object gs m)
+  , inject :: Object gs m -> Pattern fs m ()
   }
 
 
@@ -76,8 +76,8 @@ instance Symmetry Divergable Diverging where
 {-# INLINE introspect #-}
 introspect :: forall fs gs m r. (Symmetry (Attrs gs) (Symbol fs),Is Diverging fs m)
             => (    Introspection fs gs m
-                 -> Plan fs m r
-               ) -> Plan fs m r
+                 -> Pattern fs m r
+               ) -> Pattern fs m r
 introspect f =  f Introspection
     { project = do
           self (Snapshot ())
@@ -91,7 +91,7 @@ introspect f =  f Introspection
 -- NotEq here is used to help prevent misuse. It catches the simplest case only:
 --   a ~ Object gs m; you can bypass it by returning (b,Object gs m)
 modself :: (Monad m, Symmetry (Attrs gs) (Symbol fs),Is Diverging fs m, (Object gs m /== a) ~ 'True)
-        => (Object gs m -> Plan fs m (Object gs m,a)) -> Plan fs m a
+        => (Object gs m -> Pattern fs m (Object gs m,a)) -> Pattern fs m a
 modself f = introspect $ \i -> do
   slf <- project i
   (slf',a) <- f slf
@@ -101,7 +101,7 @@ modself f = introspect $ \i -> do
 {-# INLINE typeOfSelf #-}
 typeOfSelf :: forall fs gs m.
             (Symmetry (Attrs gs) (Symbol fs),Is Diverging fs m,Typeable gs,Typeable m)
-         => Plan fs m TypeRep
+         => Pattern fs m TypeRep
 typeOfSelf = introspect $ \(i :: Introspection fs gs m) -> do
   Object slf <- project i
   return (typeOf slf)

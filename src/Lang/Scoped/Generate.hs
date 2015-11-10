@@ -51,7 +51,7 @@ instance Monoid (Generator fs m a) where
     mappend = (<|>)
 
 {-# INLINE generate #-}
-generate :: Is Weaving fs m => Generator fs m a -> Plan fs m ()
+generate :: Is Weaving fs m => Generator fs m a -> Pattern fs m ()
 generate l = weave (enumerate (l >> mzero))
 
 {-# INLINE each #-}

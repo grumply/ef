@@ -11,16 +11,16 @@ import Mop.Core
 import Lang.Global.Except
 import qualified Control.Exception as Exc
 
-unsafe  :: Lift IO m => IO a -> Plan fs m a
+unsafe  :: Lift IO m => IO a -> Pattern fs m a
 unsafe   = lift
 
-masked_ :: (Is Excepting fs m,Lift IO m) => IO a -> Plan fs m a
+masked_ :: (Is Excepting fs m,Lift IO m) => IO a -> Pattern fs m a
 masked_  = lift . Exc.mask_
 
-masked  :: (Is Excepting fs m,Lift IO m) => ((forall (a :: *). IO a -> IO a) -> IO b) -> Plan fs m b
+masked  :: (Is Excepting fs m,Lift IO m) => ((forall (a :: *). IO a -> IO a) -> IO b) -> Pattern fs m b
 masked   = lift . Exc.mask
 
-io      :: (Is Excepting fs m,Lift IO m) => IO a -> Plan fs m a
+io      :: (Is Excepting fs m,Lift IO m) => IO a -> Pattern fs m a
 io ioa   = do
   ea <- lift (Exc.try ioa)
   case ea of

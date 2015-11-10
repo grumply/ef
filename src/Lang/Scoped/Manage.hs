@@ -46,10 +46,10 @@ newtype Token a = Token Int
 data Managing k
     = FreshScope (Int -> k)
 
-    | forall fs m a . Allocate   Int (Plan fs m a) (a -> Plan fs m ()) ((a,Token a) -> k)
+    | forall fs m a . Allocate   Int (Pattern fs m a) (a -> Pattern fs m ()) ((a,Token a) -> k)
 
-    | forall fs m   . OnEnd      Int           (Plan fs m ()) (Token () -> k)
-    | forall fs m a . Register   Int (Token a) (Plan fs m ()) k
+    | forall fs m   . OnEnd      Int           (Pattern fs m ()) (Token () -> k)
+    | forall fs m a . Register   Int (Token a) (Pattern fs m ()) k
 
     | forall      a . Unregister Int (Token a) k
     | forall      a . Deallocate     (Token a) k
@@ -68,18 +68,18 @@ instance Symmetry Manageable Managing where
     symmetry use (Manageable i k _) (FreshScope ik)   = use k (ik i)
 
 {-# INLINE freshScope #-}
-freshScope :: Is Managing fs m => Plan fs m Int
+freshScope :: Is Managing fs m => Pattern fs m Int
 freshScope = self (FreshScope id)
 
 {-# INLINE deallocate #-}
-deallocate :: Is Managing fs m => Token a -> Plan fs m ()
+deallocate :: Is Managing fs m => Token a -> Pattern fs m ()
 deallocate rsrc = self (Deallocate rsrc ())
 
 data ManagingScope fs m = ManagingScope
-    { allocate   :: forall a. Plan fs m a -> (a -> Plan fs m ()) -> Plan fs m (a,Token a)
-    , register   :: forall a. Token a -> Plan fs m () -> Plan fs m ()
-    , unregister :: forall a. Token a -> Plan fs m ()
-    , onEnd      ::           Plan fs m () -> Plan fs m (Token ())
+    { allocate   :: forall a. Pattern fs m a -> (a -> Pattern fs m ()) -> Pattern fs m (a,Token a)
+    , register   :: forall a. Token a -> Pattern fs m () -> Pattern fs m ()
+    , unregister :: forall a. Token a -> Pattern fs m ()
+    , onEnd      ::           Pattern fs m () -> Pattern fs m (Token ())
     }
 
 {-# INLINE manages #-}
@@ -90,8 +90,8 @@ data ManagingScope fs m = ManagingScope
 --        deallocate key
 manages :: forall fs m r. Is Managing fs m
             => (    ManagingScope fs m
-                 -> Plan fs m r
-               ) -> Plan fs m r
+                 -> Pattern fs m r
+               ) -> Pattern fs m r
 manages f = do
     scope <- freshScope
     let a create oe = self (Allocate scope create oe id)
@@ -104,7 +104,7 @@ manages f = do
       where
         go store = go'
           where
-            go' :: Plan fs m r -> Plan fs m r
+            go' :: Pattern fs m r -> Pattern fs m r
             go' p = case p of
                 Step sym bp -> case prj sym of
                     Just x  -> case x of
@@ -149,5 +149,5 @@ manages f = do
       where
         finish (_,[]) = Nothing
         finish (xs,[a]) = Just (xs,a)
-        finish (xs,rs) = Just (xs,foldr1 (>>) rs :: Plan fs m ())
+        finish (xs,rs) = Just (xs,foldr1 (>>) rs :: Pattern fs m ())
         go (t,x) = if t == n then Right x else Left (t,x)

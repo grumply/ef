@@ -16,7 +16,7 @@ import Unsafe.Coerce
 -- | Symbols
 
 data Threading k
-  = forall fs m a. Fork Int (Plan fs m a) k
+  = forall fs m a. Fork Int (Pattern fs m a) k
   | Yield Int k
   | Stop Int
   | FreshScope (Int -> k)
@@ -24,8 +24,8 @@ data Threading k
 -- | Symbol Module
 
 data Thread fs m = Thread
-  { fork :: Plan fs m () -> Plan fs m ()
-  , yield :: Plan fs m ()
+  { fork :: Pattern fs m () -> Pattern fs m ()
+  , yield :: Pattern fs m ()
   }
 
 -- | Attribute
@@ -52,8 +52,8 @@ instance Symmetry Threadable Threading where
 -- round-robin threading
 -- use: thread $ \fork yield -> do { .. ; }
 threads :: Is Threading fs m
-     => (Thread fs m -> Plan fs m a)
-     -> Plan fs m a
+     => (Thread fs m -> Pattern fs m a)
+     -> Pattern fs m a
 threads f = do
     scope <- self (FreshScope id)
     transform scope emptyQueue $ f Thread

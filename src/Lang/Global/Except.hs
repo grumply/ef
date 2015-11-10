@@ -21,7 +21,7 @@ data Excepting k = Throw SomeException k
 -- | Global Symbol Construct
 
 {-# INLINE throw #-}
-throw :: (Is Excepting fs m, Exception e) => e -> Plan fs m a
+throw :: (Is Excepting fs m, Exception e) => e -> Pattern fs m a
 throw e = self (Throw (toException e) undefined)
 
 -- | Attribute
@@ -43,7 +43,7 @@ instance Symmetry Exceptable Excepting where
 
 {-# INLINE catch #-}
 catch :: (Is Excepting fs m, Exception e)
-      => Plan fs m a -> (e -> Plan fs m a) -> Plan fs m a
+      => Pattern fs m a -> (e -> Pattern fs m a) -> Pattern fs m a
 catch plan handler = go plan
   where
     go p = case p of
@@ -59,17 +59,17 @@ catch plan handler = go plan
 
 {-# INLINE handle #-}
 handle :: (Is Excepting fs m,Exception e)
-       => (e -> Plan fs m a)
-       -> Plan fs m a
-       -> Plan fs m a
+       => (e -> Pattern fs m a)
+       -> Pattern fs m a
+       -> Pattern fs m a
 handle = flip catch
 
 {-# INLINE catchJust #-}
 catchJust :: (Exception e,Is Excepting fs m)
           => (e -> Maybe b)
-          -> Plan fs m a
-          -> (b -> Plan fs m a)
-          -> Plan fs m a
+          -> Pattern fs m a
+          -> (b -> Pattern fs m a)
+          -> Pattern fs m a
 catchJust p a handler = catch a handler'
   where
     handler' e = case p e of
@@ -79,25 +79,25 @@ catchJust p a handler = catch a handler'
 {-# INLINE handleJust #-}
 handleJust :: (Is Excepting fs m,Exception e)
            => (e -> Maybe b)
-           -> (b -> Plan fs m a)
-           -> Plan fs m a
-           -> Plan fs m a
+           -> (b -> Pattern fs m a)
+           -> Pattern fs m a
+           -> Pattern fs m a
 handleJust p = flip (catchJust p)
 
 {-# INLINE mapException #-}
 mapException :: (Exception e, Exception e', Is Excepting fs m)
-             => (e -> e') -> Plan fs m a -> Plan fs m a
+             => (e -> e') -> Pattern fs m a -> Pattern fs m a
 mapException f p = catch p (\e -> throw (f e))
 
 {-# INLINE try #-}
-try :: (Exception e,Is Excepting fs m) => Plan fs m a -> Plan fs m (Either e a)
+try :: (Exception e,Is Excepting fs m) => Pattern fs m a -> Pattern fs m (Either e a)
 try a = catch (a >>= \v -> return (Right v)) (\e -> return (Left e))
 
 {-# INLINE tryJust #-}
 tryJust :: (Exception e,Is Excepting fs m)
         => (e -> Maybe b)
-        -> Plan fs m a
-        -> Plan fs m (Either b a)
+        -> Pattern fs m a
+        -> Pattern fs m (Either b a)
 tryJust p a = do
     r <- try a
     case r of
@@ -109,18 +109,18 @@ tryJust p a = do
 
 {-# INLINE onException #-}
 onException :: Is Excepting fs m
-            => Plan fs m a
-            -> Plan fs m b
-            -> Plan fs m a
+            => Pattern fs m a
+            -> Pattern fs m b
+            -> Pattern fs m a
 onException p what = p `catch` \e -> do
     _ <- what
     throw (e :: SomeException)
 
 {-# INLINE finally #-}
 finally :: Is Excepting fs m
-        => Plan fs m a
-        -> Plan fs m b
-        -> Plan fs m a
+        => Pattern fs m a
+        -> Pattern fs m b
+        -> Pattern fs m a
 finally a sequel = do
     r <- a `onException` sequel
     _ <- sequel
@@ -128,10 +128,10 @@ finally a sequel = do
 
 {-# INLINE bracket #-}
 bracket :: Is Excepting fs m
-        => Plan fs m a
-        -> (a -> Plan fs m b)
-        -> (a -> Plan fs m c)
-        -> Plan fs m c
+        => Pattern fs m a
+        -> (a -> Pattern fs m b)
+        -> (a -> Pattern fs m c)
+        -> Pattern fs m c
 bracket before after thing = do
     a <- before
     r <- (thing a) `onException` after a
@@ -140,32 +140,32 @@ bracket before after thing = do
 
 {-# INLINE bracket_ #-}
 bracket_ :: Is Excepting fs m
-         => Plan fs m a
-         -> Plan fs m b
-         -> Plan fs m c
-         -> Plan fs m c
+         => Pattern fs m a
+         -> Pattern fs m b
+         -> Pattern fs m c
+         -> Pattern fs m c
 bracket_ before after thing = bracket before (const after) (const thing)
 
 {-# INLINE bracketOnError #-}
 bracketOnError :: Is Excepting fs m
-               => Plan fs m a
-               -> (a -> Plan fs m b)
-               -> (a -> Plan fs m c)
-               -> Plan fs m c
+               => Pattern fs m a
+               -> (a -> Pattern fs m b)
+               -> (a -> Pattern fs m c)
+               -> Pattern fs m c
 bracketOnError before after thing = do
     a <- before
     (thing a) `onException` (after a)
 
-data Handler fs m a = forall e. Exception e => Handler (e -> Plan fs m a)
+data Handler fs m a = forall e. Exception e => Handler (e -> Pattern fs m a)
 
 instance Functor m => Functor (Handler fs m) where
     fmap f (Handler h) = Handler (fmap f . h)
 
 {-# INLINE catches #-}
-catches :: Is Excepting fs m => Plan fs m a -> [Handler fs m a] -> Plan fs m a
+catches :: Is Excepting fs m => Pattern fs m a -> [Handler fs m a] -> Pattern fs m a
 catches p handlers = p `catch` catchesHandler handlers
 
-catchesHandler :: Is Excepting fs m => [Handler fs m a] -> SomeException -> Plan fs m a
+catchesHandler :: Is Excepting fs m => [Handler fs m a] -> SomeException -> Pattern fs m a
 catchesHandler handlers e = foldr tryHandler (throw e) handlers
   where
     tryHandler (Handler handler) res = case fromException e of

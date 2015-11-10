@@ -31,15 +31,15 @@ import Prelude hiding (log)
 data Logging k
     = FreshScope (Int -> k)
     | forall a. Logs Int a
-    | forall fs m a w. Eavesdrop Int w (Plan fs m a)
+    | forall fs m a w. Eavesdrop Int w (Pattern fs m a)
     | forall a w. Reconfigure Int (a -> w -> w)
 
 -- | Symbol Module
 
 data Log fs m a w = Log
-    { log :: a -> Plan fs m ()
-    , eavesdrop :: forall r. w -> Plan fs m r -> Plan fs m (w,r)
-    , reconfigure :: (a -> w -> w) -> Plan fs m ()
+    { log :: a -> Pattern fs m ()
+    , eavesdrop :: forall r. w -> Pattern fs m r -> Pattern fs m (w,r)
+    , reconfigure :: (a -> w -> w) -> Pattern fs m ()
     }
 
 -- | Attribute
@@ -64,7 +64,7 @@ instance Symmetry Loggable Logging where
 
 {-# INLINE logs #-}
 logs :: forall fs m a w r. (Is Logging fs m,Monoid w)
-       => (a -> w -> w) -> w -> (Log fs m a w -> Plan fs m r) -> Plan fs m (w,r)
+       => (a -> w -> w) -> w -> (Log fs m a w -> Pattern fs m r) -> Pattern fs m (w,r)
 logs c0 w0 f = do
     scope <- self (FreshScope id)
     transform scope c0 w0 $ f Log
@@ -102,7 +102,7 @@ logs c0 w0 f = do
 -- | Extended API
 
 {-# INLINE intercept #-}
-intercept :: Monad m => Log fs m a w -> (w -> b) -> w -> Plan fs m r -> Plan fs m (b,r)
+intercept :: Monad m => Log fs m a w -> (w -> b) -> w -> Pattern fs m r -> Pattern fs m (b,r)
 intercept Log{..} f w0 m = do
     ~(w, a) <- eavesdrop w0 m
     return (f w,a)

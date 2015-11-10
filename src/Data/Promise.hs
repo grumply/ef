@@ -18,16 +18,16 @@ newtype Promise a = Promise { getPromise :: MVar a }
 newPromiseIO :: IO (Promise a)
 newPromiseIO = Promise <$> newEmptyMVar
 
-newPromise :: (Lift IO m,Is Excepting fs m) => Plan fs m (Promise a)
+newPromise :: (Lift IO m,Is Excepting fs m) => Pattern fs m (Promise a)
 newPromise = io newPromiseIO
 
-demand :: (Lift IO m,Is Excepting fs m) => Promise a -> Plan fs m a
+demand :: (Lift IO m,Is Excepting fs m) => Promise a -> Pattern fs m a
 demand = io . demandIO
 
 demandIO :: Promise a -> IO a
 demandIO = readMVar . getPromise
 
-fulfill :: (Lift IO m,Is Excepting fs m) => Promise a -> a -> Plan fs m Bool
+fulfill :: (Lift IO m,Is Excepting fs m) => Promise a -> a -> Pattern fs m Bool
 fulfill = (io .) . fulfillIO
 
 fulfillIO :: Promise a -> a -> IO Bool

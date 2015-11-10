@@ -31,17 +31,17 @@ instance Exception Contract
 contract :: (Is Excepting fs m,Is Diverging fs m,Symmetry (Attrs gs) (Symbol fs),Typeable gs,Typeable m)
          => (    String
             ,    vars
-              -> Plan fs m Bool
+              -> Pattern fs m Bool
             )           -- ^ precondition
          -> (    String
             ,    a
-              -> Plan fs m Bool
+              -> Pattern fs m Bool
             )           -- ^ postcondition
          -> (    vars
-              -> Plan fs m a
+              -> Pattern fs m a
             )           -- ^ method
          -> vars
-         -> Plan fs m a
+         -> Pattern fs m a
 contract (pre,precondition) (post,postcondition) method vs =
 #ifndef NO_CONTRACTS
   flip catch c $ do
@@ -82,18 +82,18 @@ analyze :: (Is Excepting fs m,Is Diverging fs m,Symmetry (Attrs gs) (Symbol fs),
         => (    String
            ,    vars
              -> Object gs m
-             -> Plan fs m Bool
+             -> Pattern fs m Bool
            )
         -> (    String
            ,    a
              -> Object gs m
-             -> Plan fs m Bool
+             -> Pattern fs m Bool
            )
         -> (    vars
-             -> Plan fs m a
+             -> Pattern fs m a
            )
         -> vars
-        -> Plan fs m a
+        -> Pattern fs m a
 analyze (pre,precondition) (post,postcondition) method vs =
 #ifndef NO_CONTRACTS
   flip catch c $ do

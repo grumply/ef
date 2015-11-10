@@ -145,13 +145,13 @@ instance (Symmetry i s,Symmetry (Attrs is) (Symbol ss))
     symmetry use (Attr ia _) (Symbol  sa) = symmetry use ia sa
     symmetry use (Attr _ is) (Further ss) = symmetry use is ss
 
-cast :: forall fs gs m a. (Functor m,As (Symbol fs) (Symbol gs)) => Plan fs m a -> Plan gs m a
+cast :: forall fs gs m a. (Functor m,As (Symbol fs) (Symbol gs)) => Pattern fs m a -> Pattern gs m a
 cast (Step sym bp) = Step (conv sym) (unsafeCoerce bp)
 cast (M m) = M (fmap cast m)
 cast (Pure r) = Pure r
 
 rearrange :: (Functor m, Allows' (Symbol s) s' (IndexOf (Symbol s) s'))
-       => Plan s m a -> Plan s' m a
+       => Pattern s m a -> Pattern s' m a
 rearrange (Step sym bp) = Step (inj sym) (unsafeCoerce bp)
 rearrange (M m) = M (fmap rearrange m)
 rearrange (Pure r) = Pure r
@@ -170,39 +170,39 @@ type family End (xs :: [k]) :: k where
   End '[x] = x
   End (x ': xs) = End xs
 
-data Plan symbols m a
-  = forall b. Step (Symbol symbols b) (b -> Plan symbols m a)
-  | M (m (Plan symbols m a))
+data Pattern symbols m a
+  = forall b. Step (Symbol symbols b) (b -> Pattern symbols m a)
+  | M (m (Pattern symbols m a))
   | Pure a
 
 class Functor m' => Lift m m' where
   lift :: m a -> m' a
-instance Functor m => Lift m (Plan fs m) where
+instance Functor m => Lift m (Pattern fs m) where
   lift = lift_
-instance Lift m m' => Lift m (Plan fs m') where
+instance Lift m m' => Lift m (Pattern fs m') where
   lift = lift_ . lift
 
-lift_ :: Functor m => m a -> Plan symbols m a
+lift_ :: Functor m => m a -> Pattern symbols m a
 lift_ m = M (fmap Pure m)
 
 -- | Invoke a method of the parent object. This allows:
 -- > super . super $ something
-super :: Functor m => Plan fs m a -> Plan gs (Plan fs m) a
+super :: Functor m => Pattern fs m a -> Pattern gs (Pattern fs m) a
 super = lift
 
 -- | Invoke a method in the calling object.
-self :: (Is x symbols m) => x a -> Plan symbols m a
+self :: (Is x symbols m) => x a -> Pattern symbols m a
 self xa = Step (inj xa) return
 
-instance Functor m => Functor (Plan symbols m) where
+instance Functor m => Functor (Pattern symbols m) where
   fmap f p0 = _fmap f p0
 
-instance Monad m => Applicative (Plan symbols m) where
+instance Monad m => Applicative (Pattern symbols m) where
   pure = Pure
   (<*>) = ap
   (*>) = (>>)
 
-instance Monad m => Monad (Plan symbols m) where
+instance Monad m => Monad (Pattern symbols m) where
 #ifdef TRANSFORMERS_SAFE
   return = M . return . Pure
 #else
@@ -211,7 +211,7 @@ instance Monad m => Monad (Plan symbols m) where
   (>>=) = _bind
 
 {-# NOINLINE _fmap #-}
-_fmap :: Functor m => (a -> b) -> Plan symbols m a -> Plan symbols m b
+_fmap :: Functor m => (a -> b) -> Pattern symbols m a -> Pattern symbols m b
 _fmap f p0 = go p0
   where
     go p =
@@ -230,7 +230,7 @@ _fmap f p0 = go p0
   #-}
 
 {-# NOINLINE _bind #-}
-_bind :: Functor m => Plan symbols m a -> (a -> Plan symbols m a') -> Plan symbols m a'
+_bind :: Functor m => Pattern symbols m a -> (a -> Pattern symbols m a') -> Pattern symbols m a'
 p0 `_bind` f = go p0
   where
     go p =
@@ -248,15 +248,15 @@ p0 `_bind` f = go p0
         _bind (Pure r) f = f r;
   #-}
 
-instance MonadPlus m => Alternative (Plan fs m) where
+instance MonadPlus m => Alternative (Pattern fs m) where
   empty = mzero
   (<|>) = mplus
 
-instance MonadPlus m => MonadPlus (Plan fs m) where
+instance MonadPlus m => MonadPlus (Pattern fs m) where
   mzero = lift_ mzero
   mplus = _mplus
 
-_mplus :: MonadPlus m => Plan fs m a -> Plan fs m a -> Plan fs m a
+_mplus :: MonadPlus m => Pattern fs m a -> Pattern fs m a -> Pattern fs m a
 _mplus p0 p1 = go p0
   where
     go p =
@@ -265,11 +265,11 @@ _mplus p0 p1 = go p0
         Pure r -> Pure r
         M m -> M (fmap go m `mplus` return p1)
 
-instance (Monad m,Monoid r) => Monoid (Plan fs m r) where
+instance (Monad m,Monoid r) => Monoid (Pattern fs m r) where
   mempty = pure mempty
   mappend = _mappend
 
-_mappend :: (Monad m,Monoid r) => Plan fs m r -> Plan fs m r -> Plan fs m r
+_mappend :: (Monad m,Monoid r) => Pattern fs m r -> Pattern fs m r -> Pattern fs m r
 _mappend p0 p1 = go p0
     where
       go p =
@@ -278,7 +278,7 @@ _mappend p0 p1 = go p0
           M m -> M (fmap go m)
           Pure r -> fmap (mappend r) p1
 
-observe :: forall fs m a. Monad m => Plan fs m a -> Plan fs m a
+observe :: forall fs m a. Monad m => Pattern fs m a -> Pattern fs m a
 observe = M . go
   where
     go p =
@@ -289,7 +289,7 @@ observe = M . go
 
 (#) :: (Symmetry (Attrs is) (Symbol symbols),Monad m)
     => m (Object is m)
-    -> Plan symbols m a
+    -> Pattern symbols m a
     -> m (Object is m)
 (#) mobj p = do
   obj <- mobj
@@ -298,23 +298,23 @@ observe = M . go
 
 deltaCast :: forall fs gs is m a. (Symmetry (Attrs is) (Symbol gs),Monad m,As (Symbol fs) (Symbol gs))
           => Object is m
-          -> Plan fs m a
+          -> Pattern fs m a
           -> m (Object is m,a)
-deltaCast o = _delta o . (cast :: Plan fs m a -> Plan gs m a)
+deltaCast o = _delta o . (cast :: Pattern fs m a -> Pattern gs m a)
 
-run :: Monad m => Plan '[] m a -> m a
+run :: Monad m => Pattern '[] m a -> m a
 run = fmap snd . delta simple
 
 delta :: forall symbols is m a. (Symmetry (Attrs is) (Symbol symbols),Monad m)
        => Object is m
-       -> Plan symbols m a
+       -> Pattern symbols m a
        -> m (Object is m,a)
 delta = _delta
 
 {-# NOINLINE _delta #-}
 _delta :: forall is symbols m a. (Symmetry (Attrs is) (Symbol symbols),Monad m)
        => Object is m
-       -> Plan symbols m a
+       -> Pattern symbols m a
        -> m (Object is m,a)
 _delta = go
   where
@@ -331,14 +331,14 @@ _delta = go
 
 deltaDebug :: forall is symbols m a. (Symmetry (Attrs is) (Symbol symbols),Monad m,Typeable symbols,Typeable is)
            => Object is m
-           -> Plan symbols m a
+           -> Pattern symbols m a
            -> m (Object is m,(Int,a))
 deltaDebug = _deltaDebug
 
 {-# NOINLINE _deltaDebug #-}
 _deltaDebug :: forall is symbols m a. (Symmetry (Attrs is) (Symbol symbols),Monad m,Typeable symbols,Typeable is)
             => Object is m
-            -> Plan symbols m a
+            -> Pattern symbols m a
             -> m (Object is m,(Int,a))
 _deltaDebug = go 0
   where
@@ -404,7 +404,7 @@ infixl 5 .=
 (.=) :: Uses f fs m => Object fs m -> Attribute f fs m -> Object fs m
 is .= x = Object $ push x $ deconstruct is
 
--- | cutoffSteps limits the number of Step constructors in a 'Plan'. To limit
+-- | cutoffSteps limits the number of Step constructors in a 'Pattern'. To limit
 -- the number of (Step constructors + M constructors), use 'cutoff'.
 --
 -- >>> import Mop.Core
@@ -418,7 +418,7 @@ is .= x = Object $ push x $ deconstruct is
 --        print i
 -- :}
 --3
-cutoffSteps :: Monad m => Integer -> Plan fs m a -> Plan fs m (Maybe a)
+cutoffSteps :: Monad m => Integer -> Pattern fs m a -> Pattern fs m (Maybe a)
 cutoffSteps n _ | n <= 0 = return Nothing
 cutoffSteps n p =
   case p of
@@ -426,7 +426,7 @@ cutoffSteps n p =
     M m -> M (cutoff (n - 1) `liftM` m)
     Step sym k -> Step sym (cutoff (n - 1) . k)
 
-cutoff :: Monad m => Integer -> Plan fs m a -> Plan fs m (Maybe a)
+cutoff :: Monad m => Integer -> Pattern fs m a -> Pattern fs m (Maybe a)
 cutoff n _ | n <= 0 = return Nothing
 cutoff n p =
   case p of
@@ -455,7 +455,7 @@ cutoff n p =
 --True
 
 newtype Codensity fs m a = Codensity
-  { runCodensity :: forall b. (a -> Plan fs m b) -> Plan fs m b
+  { runCodensity :: forall b. (a -> Pattern fs m b) -> Pattern fs m b
   }
 
 instance Functor (Codensity fs k) where
@@ -477,8 +477,8 @@ instance MonadPlus v => MonadPlus (Codensity fs v) where
   mzero = Codensity (\_ -> mzero)
   Codensity m `mplus` Codensity n = Codensity (\k -> m k `mplus` n k)
 
-toCodensity :: Monad m => Plan fs m a -> Codensity fs m a
+toCodensity :: Monad m => Pattern fs m a -> Codensity fs m a
 toCodensity f = Codensity (f >>=)
 
-fromCodensity :: Monad m => Codensity fs m a -> Plan fs m a
+fromCodensity :: Monad m => Codensity fs m a -> Pattern fs m a
 fromCodensity a = runCodensity a return

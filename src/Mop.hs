@@ -63,10 +63,10 @@ type Main
      ,Diverging
      ]
 
-main' :: Plan Main IO b -> IO b
+main' :: Pattern Main IO b -> IO b
 main' = fmap snd . delta base
 
-debug :: Plan Main IO b -> IO (Int,b)
+debug :: Pattern Main IO b -> IO (Int,b)
 debug = fmap snd. deltaDebug base
 
 base :: Monad m => Object Mop m

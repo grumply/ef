@@ -30,13 +30,13 @@ import Unsafe.Coerce
 
 data Weaving k
     = FreshScope (Int -> k)
-    | forall fs a' a m r. Request Int a' (a  -> Plan fs m r)
-    | forall fs b' b m r. Respond Int b  (b' -> Plan fs m r)
+    | forall fs a' a m r. Request Int a' (a  -> Pattern fs m r)
+    | forall fs b' b m r. Respond Int b  (b' -> Pattern fs m r)
 
 data Weavable k = Weavable Int k
 
 {-# INLINE freshScope #-}
-freshScope :: Is Weaving fs m => Plan fs m Int
+freshScope :: Is Weaving fs m => Pattern fs m Int
 freshScope = self (FreshScope id)
 
 {-# INLINE weaver #-}
@@ -47,7 +47,7 @@ weaver = Weavable 0 $ \fs ->
     in n' `seq` pure (fs .= Weavable n' k)
 
 {-# INLINE getScope #-}
-getScope :: Is Weaving fs m => Plan fs m a -> m Int
+getScope :: Is Weaving fs m => Pattern fs m a -> m Int
 getScope p = case p of
     Step sym _ -> case prj sym of
         Just x  -> case x of
@@ -62,7 +62,7 @@ instance Symmetry Weavable Weaving where
     symmetry p (Weavable i k) (FreshScope ik) = p k (ik i)
 
 {-# INLINE weave #-}
-weave :: Is Weaving fs m => Effect fs m r -> Plan fs m r
+weave :: Is Weaving fs m => Effect fs m r -> Pattern fs m r
 weave e = do
     scope <- freshScope
     go' scope $ runWoven e (\a' apl -> self (Request scope a' apl))
@@ -153,11 +153,11 @@ type Producer b fs m r = Woven fs X () () b m r
 -- producer $ \yield -> do { .. ; }
 {-# INLINE producer #-}
 producer :: forall fs m b r. Is Weaving fs m
-         => ((b -> Plan fs m ()) -> Plan fs m r)
+         => ((b -> Pattern fs m ()) -> Pattern fs m r)
          -> Producer' b fs m r
 producer f = Woven $ \_ dn -> do
   i <- lift (getScope (dn (unsafeCoerce ()) (unsafeCoerce ())))
-  f (\b -> self (Respond i b (return :: forall a. a -> Plan fs m a)
+  f (\b -> self (Respond i b (return :: forall a. a -> Pattern fs m a)
                 )
     )
 
@@ -165,61 +165,61 @@ type Consumer a fs m r = Woven fs () a () X m r
 -- consumer $ \await -> do { .. ; }
 {-# INLINE consumer #-}
 consumer :: forall fs m a r. Is Weaving fs m
-         => (Plan fs m a -> Plan fs m r)
+         => (Pattern fs m a -> Pattern fs m r)
          -> Consumer' a fs m r
 consumer f = Woven $ \up _ -> do
   i <- lift (getScope (up (unsafeCoerce ()) (unsafeCoerce ())))
-  f (self (Request i () (return :: forall x. x -> Plan fs m x)))
+  f (self (Request i () (return :: forall x. x -> Pattern fs m x)))
 
 type Pipe a b fs m r = Woven fs () a () b m r
 -- pipe $ \await yield -> do { .. ; }
 {-# INLINE pipe #-}
 pipe :: forall fs m a b x r. Is Weaving fs m
-     => (Plan fs m a -> (b -> Plan fs m x) -> Plan fs m r)
+     => (Pattern fs m a -> (b -> Pattern fs m x) -> Pattern fs m r)
      -> Pipe a b fs m r
 pipe f = Woven $ \up _ -> do
   i <- lift (getScope (up (unsafeCoerce ()) (unsafeCoerce ())))
-  f (self (Request i () (return :: forall z. z -> Plan fs m z)))
-    (\b -> self (Respond i b (return :: forall z. z -> Plan fs m z)))
+  f (self (Request i () (return :: forall z. z -> Pattern fs m z)))
+    (\b -> self (Respond i b (return :: forall z. z -> Pattern fs m z)))
 
 type Client a' a fs m r = Woven fs a' a () X m r
 -- client $ \request -> do { .. ; }
 {-# INLINE client #-}
 client :: forall fs m a' a r. Is Weaving fs m
-       => ((a' -> Plan fs m a) -> Plan fs m r)
+       => ((a' -> Pattern fs m a) -> Pattern fs m r)
        -> Client' a' a fs m r
 client f = Woven $ \up _ -> do
   i <- lift (getScope (up (unsafeCoerce ()) (unsafeCoerce ())))
-  f (\a -> self (Request i a (return :: forall z. z -> Plan fs m z)))
+  f (\a -> self (Request i a (return :: forall z. z -> Pattern fs m z)))
 
 type Server b' b fs m r = Woven fs X () b' b m r
 -- server $ \respond -> do { .. ; }
 {-# INLINE server #-}
 server :: forall fs m b' b r. Is Weaving fs m
-       => ((b -> Plan fs m b') -> Plan fs m r)
+       => ((b -> Pattern fs m b') -> Pattern fs m r)
        -> Server' b' b fs m r
 server f = Woven $ \_ dn -> do
   i <- lift (getScope (dn (unsafeCoerce ()) (unsafeCoerce ())))
   f (\b' -> self (Respond i b'
-                          (return :: forall z. z -> Plan fs m z)
+                          (return :: forall z. z -> Pattern fs m z)
                  )
     )
 
 newtype Woven fs a' a b' b m r
   =  Woven
-  { runWoven :: (forall x. a' -> (a -> Plan fs m x) -> Plan fs m x)
-             -> (forall x. b -> (b' -> Plan fs m x) -> Plan fs m x)
-             -> Plan fs m r
+  { runWoven :: (forall x. a' -> (a -> Pattern fs m x) -> Pattern fs m x)
+             -> (forall x. b -> (b' -> Pattern fs m x) -> Pattern fs m x)
+             -> Pattern fs m r
   }
 -- weave $ \request respond -> do { .. ; }
 {-# INLINE woven #-}
 woven :: forall fs a a' b b' m r. Is Weaving fs m
-      => ((a -> Plan fs m a') -> (b' -> Plan fs m b) -> Plan fs m r)
+      => ((a -> Pattern fs m a') -> (b' -> Pattern fs m b) -> Pattern fs m r)
       -> Woven fs a' a b' b m r
 woven f = Woven $ \up _ -> do
   i <- lift (getScope (up (unsafeCoerce ()) (unsafeCoerce ())))
-  f (\a -> self (Request i a (return :: forall z. z -> Plan fs m z)))
-    (\b' -> self (Respond i b' (return :: forall z. z -> Plan fs m z)))
+  f (\a -> self (Request i a (return :: forall z. z -> Pattern fs m z)))
+    (\b' -> self (Respond i b' (return :: forall z. z -> Pattern fs m z)))
 
 type Effect' fs m r = forall x' x y' y . Woven fs x' x y' y m r
 
@@ -398,7 +398,7 @@ p0 >>~ fb0 = Woven $ \up dn -> do
       where
         go = goLeft (\b -> runWoven (fb0 b) (unsafeCoerce up) (unsafeCoerce dn))
           where
-            goLeft :: (b -> Plan fs m r) -> Plan fs m r -> Plan fs m r
+            goLeft :: (b -> Pattern fs m r) -> Pattern fs m r -> Pattern fs m r
             goLeft fb = goLeft'
               where
                 goLeft' p = case p of
@@ -413,7 +413,7 @@ p0 >>~ fb0 = Woven $ \up dn -> do
                         Nothing -> Step sym (\b -> goLeft' (bp b))
                     M m -> M (fmap goLeft' m)
                     Pure r -> Pure r
-            goRight :: (b' -> Plan fs m r) -> Plan fs m r -> Plan fs m r
+            goRight :: (b' -> Pattern fs m r) -> Pattern fs m r -> Pattern fs m r
             goRight b'p = goRight'
               where
                 goRight' p = case p of
@@ -473,7 +473,7 @@ fb' +>> p0 = Woven $ \up dn -> do
                                                (unsafeCoerce dn)
                      )
           where
-            goRight :: (b' -> Plan fs m r) -> Plan fs m r -> Plan fs m r
+            goRight :: (b' -> Pattern fs m r) -> Pattern fs m r -> Pattern fs m r
             goRight fb'' = goRight'
               where
                 goRight' p = case p of
@@ -488,7 +488,7 @@ fb' +>> p0 = Woven $ \up dn -> do
                         Nothing -> Step sym (\b -> goRight' (bp b))
                     M m -> M (fmap goRight' m)
                     Pure r -> Pure r
-            goLeft :: (b -> Plan fs m r) -> Plan fs m r -> Plan fs m r
+            goLeft :: (b -> Pattern fs m r) -> Pattern fs m r -> Pattern fs m r
             goLeft bp = goLeft'
               where
                 goLeft' p = case p of
