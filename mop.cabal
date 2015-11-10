@@ -31,19 +31,20 @@ library
                        Attr.Vary
                        Attr.View
                        Lang.Contract
-                       Lang.Global.IO
-                       Lang.Global.Fork
                        Lang.Global.Except
                        Lang.Global.Except.Checked
-                       Lang.Scoped.Exit
-                       Lang.Scoped.Diverge
-                       Lang.Scoped.Alternate
+                       Lang.Global.Fork
+                       Lang.Global.IO
                        Lang.Scoped.Act
+                       Lang.Scoped.Alternate
+                       Lang.Scoped.Diverge
+                       Lang.Scoped.Exit
                        Lang.Scoped.Generate
                        Lang.Scoped.Guard
                        Lang.Scoped.Log
                        Lang.Scoped.Manage
                        Lang.Scoped.Notate
+                       Lang.Scoped.Or
                        Lang.Scoped.React
                        Lang.Scoped.Thread
                        Lang.Scoped.Try

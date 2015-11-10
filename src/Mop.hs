@@ -35,7 +35,6 @@ type Mop
      ,Threadable
      ,Weavable
      ,Exceptable
-     ,Tryable
      ,Guardable
      ,Notatable
      ,Variable
@@ -53,7 +52,6 @@ type Main
      ,Threading
      ,Weaving
      ,Excepting
-     ,Trying
      ,Guarding
      ,Notating
      ,Varying
@@ -76,7 +74,6 @@ base = Object $ manager
             *:* threader
             *:* weaver
             *:* excepter
-            *:* trier
             *:* guarder
             *:* notator
             *:* varier
