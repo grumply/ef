@@ -3,7 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 module Lang.Scoped.Alternate
-  ( Alternating, Alternate(..), alternate
+  ( Alternating, Alternate(..), alternates
   , Alternatable, alternator
   ) where
 
@@ -43,23 +43,23 @@ alternator = Alternatable 0 $ \fs ->
 -- | Symbol/Attribute Symmetry
 
 instance Symmetry Alternatable Alternating where
-  symmetry p (Alternatable i k) (FreshScope ik) = p k (ik i)
+  symmetry use (Alternatable i k) (FreshScope ik) = use k (ik i)
 
 -- | Local Scoping Construct + Substitution
 
-{-# INLINE alternate #-}
-alternate :: forall fs m a. Is Alternating fs m
+{-# INLINE alternates #-}
+alternates :: forall fs m a. Is Alternating fs m
            => (    Alternate fs m
                 -> Pattern fs m a
               ) -> Pattern fs m a
-alternate f = do
+alternates f = do
   scope <- self (FreshScope id)
-  scoped scope $ f Alternate
+  substitute scope $ f Alternate
     { alt = \p -> self (Fork scope (p >> self (Stop scope)))
     , atomically = \p -> self (Atomically scope p)
     }
   where
-    scoped scope = start
+    substitute scope = start
       where
         start p =
           case p of

@@ -35,15 +35,23 @@ import Debug.Trace
 -- >>> :set -XFlexibleContexts
 -- >>> :set -XDataKinds
 
-type family (:++:) (xs :: [k]) (ys :: [k]) :: [k] where
-  xs        :++: '[] = xs
-  '[]       :++: ys  = ys
-  (x ': xs) :++: ys  = x ': (xs :++: ys)
+-- Insert a into xs treating xs as a set
+type family (:+:) a xs where
+  a :+: '[] = '[a]
+  a :+: (a ': xs) = (a ': xs)
+  a :+: (x ': xs) = x ': a :+: xs
+
+-- Union xs with ys
+-- for emacs: c-x 8 <enter> 222a <enter>
+type family (∪) xs ys where
+  '[] ∪ ys = ys
+  (x ': xs) ∪ ys = x :+: (xs ∪ ys)
 
 type family In (x :: k) (xs :: [k]) :: Bool where
   In x '[] = 'False
   In x (x ': xs) = 'True
   In x (y ': xs) = In x xs
+
 class Subset xs ys
 instance Subset '[] ys
 instance (In x ys ~ 'True,Subset xs ys) => Subset (x ': xs) ys
@@ -51,6 +59,7 @@ instance (In x ys ~ 'True,Subset xs ys) => Subset (x ': xs) ys
 type family (/==) (x :: k) (y :: k) :: Bool where
   (/==) x x = 'False
   (/==) x y = 'True
+
 class Denies (x :: k) (ys :: [k])
 instance Denies x '[]
 instance ((x /== y) ~ 'True,Denies x ys) => Denies x (y ': ys)
