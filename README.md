@@ -7,4 +7,6 @@ Current work is aimed at a reasonable base of integrated utility libraries, like
 
 There's plenty left to do. If you're interested in joining the search for the best general-purpose language, jump in!
 
+Note: the name Ef comes from "Effect" or "endless forms" from Darwin's 'On the Origin of Species.'
+
 [1]: (PDF) [M. P. Ward's Language Oriented Programming](http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.35.6369)
