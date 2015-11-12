@@ -8,7 +8,7 @@ module Lang.Scoped.Act
   , Act(..)
   ) where
 
-import Mop.Core
+import Ef.Core
 
 data Acting k = Acting k
 

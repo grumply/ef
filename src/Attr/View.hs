@@ -9,7 +9,7 @@ module Attr.View
     , Viewable, reader
     ) where
 
-import Mop.Core
+import Ef.Core
 
 data Viewing r k = Viewing (r -> k)
 

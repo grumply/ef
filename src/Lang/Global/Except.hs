@@ -11,7 +11,7 @@ module Lang.Global.Except
   , Exception(..),SomeException(..),assert
   ) where
 
-import Mop.Core
+import Ef.Core
 import Control.Exception (SomeException(..),Exception(..),assert)
 
 -- | Symbol

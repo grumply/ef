@@ -10,7 +10,7 @@ module Lang.Scoped.Guard
     , Guard(..)
     ) where
 
-import Mop.Core
+import Ef.Core
 import Lang.Scoped.Weave
 
 import Data.Foldable

@@ -8,7 +8,7 @@ module Lang.Global.Except.Checked
   , module Lang.Global.Except )
   where
 
-import Mop.Core
+import Ef.Core
 import Lang.Global.Except
 
 import Data.Coerce

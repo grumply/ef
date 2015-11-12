@@ -5,7 +5,7 @@
 module Lang.Global.IfThenElse where
 
 import Prelude
-import Mop.Core
+import Ef.Core
 import Control.Monad
 
 import System.IO.Unsafe

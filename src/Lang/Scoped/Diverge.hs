@@ -14,7 +14,7 @@ module Lang.Scoped.Diverge
    )
    where
 
-import Mop.Core
+import Ef.Core
 import Unsafe.Coerce
 import Data.Typeable
 

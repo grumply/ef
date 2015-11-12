@@ -5,7 +5,7 @@ module Data.Promise
   , fulfill, fulfillIO
   ) where
 
-import Mop.Core
+import Ef.Core
 import Lang.Global.IO
 import Lang.Global.Except
 

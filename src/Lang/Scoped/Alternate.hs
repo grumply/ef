@@ -7,7 +7,7 @@ module Lang.Scoped.Alternate
   , Alternatable, alternator
   ) where
 
-import Mop.Core
+import Ef.Core
 import Data.Queue
 
 import Unsafe.Coerce

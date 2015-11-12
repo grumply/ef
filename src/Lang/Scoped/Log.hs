@@ -18,7 +18,7 @@ module Lang.Scoped.Log
     , Log(..), intercept
     ) where
 
-import Mop.Core
+import Ef.Core
 
 import Data.Monoid
 

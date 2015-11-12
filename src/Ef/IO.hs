@@ -2,9 +2,9 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
-module Mop.IO where
+module Ef.IO where
 
-import Mop.Core
+import Ef.Core
 
 import Control.Monad
 

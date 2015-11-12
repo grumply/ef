@@ -8,7 +8,7 @@ module Lang.Scoped.Thread
   , Thread(..)
   ) where
 
-import Mop.Core
+import Ef.Core
 import Data.Queue
 
 import Unsafe.Coerce

@@ -20,7 +20,7 @@
 #if __GLASGOW_HASKELL__ > 710
 {-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
 #endif
-module Mop.Core where
+module Ef.Core where
 
 
 import Control.Applicative
@@ -416,7 +416,7 @@ is .= x = Object $ push x $ deconstruct is
 -- | cutoffSteps limits the number of Step constructors in a 'Pattern'. To limit
 -- the number of (Step constructors + M constructors), use 'cutoff'.
 --
--- >>> import Mop.Core
+-- >>> import Ef.Core
 -- >>> import Effect.State
 -- >>> newtype St = St Int
 -- >>> :{

@@ -17,7 +17,7 @@ module Lang.Scoped.Manage
   , deallocate, allocate, register, unregister, onEnd
   ) where
 
-import Mop.Core
+import Ef.Core
 
 import Data.Either
 

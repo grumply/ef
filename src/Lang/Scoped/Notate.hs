@@ -12,7 +12,7 @@ module Lang.Scoped.Notate
    , Notes, tell, listen, listens
    ) where
 
-import Mop.Core
+import Ef.Core
 
 import Data.Monoid
 

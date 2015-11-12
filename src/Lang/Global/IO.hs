@@ -7,7 +7,7 @@ module Lang.Global.IO
   , masked, masked_
   ) where
 
-import Mop.Core
+import Ef.Core
 import Lang.Global.Except
 import qualified Control.Exception as Exc
 

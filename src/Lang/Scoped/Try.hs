@@ -6,7 +6,7 @@ module Lang.Scoped.Try
     ( Try(..), tries
     ) where
 
-import Mop.Core
+import Ef.Core
 
 import Lang.Scoped.Exit
 

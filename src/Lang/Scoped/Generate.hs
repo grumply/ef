@@ -6,7 +6,7 @@ module Lang.Scoped.Generate
   ( Generator(..), generate, each, discard, every
   ) where
 
-import Mop.Core
+import Ef.Core
 import Lang.Scoped.Weave
 
 import Control.Applicative

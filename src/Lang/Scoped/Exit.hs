@@ -7,7 +7,7 @@ module Lang.Scoped.Exit
   ,Exitable,exiter
   ) where
 
-import Mop.Core
+import Ef.Core
 import Unsafe.Coerce
 
 -- | Symbol

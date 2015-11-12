@@ -7,7 +7,7 @@ module Attr.Notate
     , Notatable, notator, writer, noted
     ) where
 
-import Mop.Core
+import Ef.Core
 
 import Data.Monoid
 

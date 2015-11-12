@@ -5,7 +5,7 @@ module Lang.Scoped.Or
     , EitherOr(..), eitherOr
     ) where
 
-import Mop.Core
+import Ef.Core
 
 import Lang.Scoped.Exit
 

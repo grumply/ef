@@ -8,7 +8,7 @@ module Lang.Scoped.Vary
     , Vary(..)
     ) where
 
-import Mop.Core
+import Ef.Core
 
 import Unsafe.Coerce
 

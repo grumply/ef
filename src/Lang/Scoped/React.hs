@@ -13,7 +13,7 @@ module Lang.Scoped.React
   , React(..)
   ) where
 
-import Mop.Core
+import Ef.Core
 import Lang.Global.IO
 import Lang.Scoped.Alternate
 

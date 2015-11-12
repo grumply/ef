@@ -7,7 +7,7 @@ module Attr.Vary
     , Variable, store
     ) where
 
-import Mop.Core
+import Ef.Core
 
 data Varying st k = Modify (st -> st) (st -> k)
 

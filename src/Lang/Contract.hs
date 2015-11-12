@@ -6,7 +6,7 @@ module Lang.Contract
    ) where
 -- Note: does not export Contract; thus only catchable by catching SomeException
 
-import Mop.Core
+import Ef.Core
 import Lang.Global.Except
 import Lang.Scoped.Diverge
 

@@ -22,7 +22,7 @@ module Lang.Scoped.Weave
   , (<<+), (<+<), (<-<), (>->), (>+>), (+>>)
   ) where
 
-import Mop.Core
+import Ef.Core
 
 import Control.Applicative
 import Control.Monad

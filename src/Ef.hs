@@ -1,11 +1,11 @@
 {-# LANGUAGE FlexibleInstances, IncoherentInstances #-}
 {-# LANGUAGE DataKinds #-}
-module Mop
-  ( main', base, debug, Mop, Main
+module Ef
+  ( main', base, debug, Ef, Main
   , module Base
   ) where
 
-import Mop.Core                   as Base
+import Ef.Core                    as Base
 import Data.Promise               as Base
 import Lang.Global.IO             as Base
 import Lang.Global.Fork           as Base
@@ -27,8 +27,8 @@ import Lang.Scoped.Vary           as Base
 import Lang.Scoped.Notate         as Base
 import Lang.Scoped.Log            as Base
 
--- Mop language attributes
-type Mop
+-- Ef language attributes
+type Ef
   = '[Manageable
      ,Exitable
      ,Alternatable
@@ -44,7 +44,7 @@ type Mop
      ,Divergable
      ]
 
--- Mop language symbols
+-- Ef language symbols
 type Main
   = '[Managing
      ,Exiting
@@ -67,7 +67,7 @@ main' = fmap snd . delta base
 debug :: Pattern Main IO b -> IO (Int,b)
 debug = fmap snd. deltaDebug base
 
-base :: Monad m => Object Mop m
+base :: Monad m => Object Ef m
 base = Object $ manager
             *:* exiter
             *:* alternator

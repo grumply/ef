@@ -4,7 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Lang.Scoped.Task where
 
-import Mop.Core
+import Ef.Core
 -- import Lang.Global.IO
 -- import Lang.Global.Except
 

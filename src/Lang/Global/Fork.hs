@@ -7,7 +7,7 @@ TODO: I should clean this up. Not happy with the current interface; I would
 -}
 module Lang.Global.Fork (forkWith,forkOSWith,forkOnWith) where
 
-import Mop.Core
+import Ef.Core
 import Lang.Global.IO
 import Lang.Global.Except
 import Data.Promise
