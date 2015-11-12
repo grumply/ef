@@ -23,13 +23,12 @@ import Data.IORef
 -- a per-case basis. If we use the built-in if-then-else, we'll end up requiring
 -- the Bool to be fully evaluated, but what if that Bool depends upon a bound
 -- variable in the Pattern? It might very well be a value we initialized as
--- undefined for dynamic analysis. That works out if we're making an
--- optimization pass of the Pattern statically, but what if we want to optimize
--- the Pattern dynamically? That's where this rebound if-then-else comes in: we
--- put each branch of the conditional in an IORef and use unsafePerformIO to
--- allow analysis of each branch independently. So the hope is for the ability
--- to do dynamic branch prediction as well as dynamic independent branch
--- optimization.
+-- undefined for static analysis. That works out if we're making an optimization
+-- pass of the Pattern dynamically, but what if we want to optimize the Pattern
+-- statically? That's where this rebound if-then-else comes in: we put each
+-- branch of the conditional in an IORef and use unsafePerformIO to allow
+-- analysis of each branch independently. So the hope is for the ability to do
+-- static branch prediction as well as static independent branch optimization.
 
 data ITEing k = forall fs m a. ITE (IORef (Pattern fs m a)) (IORef (Pattern fs m a)) k
 
