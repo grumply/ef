@@ -5,7 +5,7 @@ Ef is a multi-paradigm general-purpose programming language. It's built entirely
 
 Current work is aimed at a reasonable base of integrated utility libraries, like IO. The language is very much still in a state of flux, so if you see an improvement to be made, let's make it! 
 
-There's plenty left to do. If you're interested in joining the search for the best general-purpose language, jump in!
+There's plenty left to do. If you're interested in joining the search for an optimal implementation, jump in!
 
 Note: the name Ef comes from "Effect" or "endless forms" from Darwin's 'On the Origin of Species.'
 
