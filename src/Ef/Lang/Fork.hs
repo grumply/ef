@@ -5,11 +5,11 @@
 TODO: I should clean this up. Not happy with the current interface; I would
       like to tie this in with Async and Divergence for a better story here.
 -}
-module Ef.Lang.Global.Fork (forkWith,forkOSWith,forkOnWith) where
+module Ef.Lang.Fork (forkWith,forkOSWith,forkOnWith) where
 
 import Ef.Core
-import Ef.Lang.Global.IO
-import Ef.Lang.Global.Except
+import Ef.Lang.IO
+import Ef.Lang.Except
 import Ef.Data.Promise
 
 import qualified Control.Concurrent

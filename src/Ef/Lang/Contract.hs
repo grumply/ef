@@ -7,7 +7,7 @@ module Ef.Lang.Contract
 -- Note: does not export Contract; thus only catchable by catching SomeException
 
 import Ef.Core
-import Ef.Lang.Global.Except
+import Ef.Lang.Except
 import Ef.Lang.Scoped.Diverge
 
 import Control.Monad (unless)

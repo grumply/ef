@@ -1,10 +1,11 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
 module Ef.Attr.Vary
     ( Varying, get, gets, put, puts, swap, modify, modify'
-    , Variable, store
+    , Variable, storeAttr, storeObj
     ) where
 
 import Ef.Core
@@ -48,6 +49,10 @@ modify' f = do
     st <- get
     put $! f st
 
-{-# INLINE store #-}
-store :: Uses (Variable st) fs m => st -> Attribute (Variable st) fs m
-store st0 = Variable st0 (\a fs -> pure $ fs .= store a)
+{-# INLINE storeAttr #-}
+storeAttr :: Uses (Variable st) fs m => st -> Attribute (Variable st) fs m
+storeAttr st0 = Variable st0 (\a fs -> pure $ fs .= storeAttr a)
+
+{-# INLINE storeObj #-}
+storeObj :: Monad m => st -> Object '[Variable st] m
+storeObj st = Object (storeAttr st *:* Empty)

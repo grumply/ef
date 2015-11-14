@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
-module Ef.Lang.Global.Except
+module Ef.Lang.Except
   ( Excepting
          , throw,  catch, handle, catchJust, handleJust, try, tryJust
          , catches, Handler(..)

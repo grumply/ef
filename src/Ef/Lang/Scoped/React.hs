@@ -14,7 +14,7 @@ module Ef.Lang.Scoped.React
   ) where
 
 import Ef.Core
-import Ef.Lang.Global.IO
+import Ef.Lang.IO
 import Ef.Lang.Scoped.Alternate
 
 import Data.IORef

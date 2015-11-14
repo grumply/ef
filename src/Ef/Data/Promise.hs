@@ -6,8 +6,8 @@ module Ef.Data.Promise
   ) where
 
 import Ef.Core
-import Ef.Lang.Global.IO
-import Ef.Lang.Global.Except
+import Ef.Lang.IO
+import Ef.Lang.Except
 
 import Control.Concurrent
 

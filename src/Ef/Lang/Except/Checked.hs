@@ -3,13 +3,13 @@
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Ef.Lang.Global.Except.Checked
+module Ef.Lang.Except.Checked
   ( throwChecked, catchChecked, Throws
-  , module Ef.Lang.Global.Except
+  , module Ef.Lang.Except
   ) where
 
 import Ef.Core
-import Ef.Lang.Global.Except
+import Ef.Lang.Except
 
 import Data.Coerce
 import Data.Proxy

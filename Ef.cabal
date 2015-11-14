@@ -34,10 +34,10 @@ library
                        Ef.Attr.Vary
                        Ef.Attr.View
                        Ef.Lang.Contract
-                       Ef.Lang.Global.Except
-                       Ef.Lang.Global.Except.Checked
-                       Ef.Lang.Global.Fork
-                       Ef.Lang.Global.IO
+                       Ef.Lang.Except
+                       Ef.Lang.Except.Checked
+                       Ef.Lang.Fork
+                       Ef.Lang.IO
                        Ef.Lang.Scoped.Act
                        Ef.Lang.Scoped.Alternate
                        Ef.Lang.Scoped.Diverge

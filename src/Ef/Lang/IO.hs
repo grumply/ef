@@ -2,13 +2,13 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
-module Ef.Lang.Global.IO
+module Ef.Lang.IO
   ( unsafe, io
   , masked, masked_
   ) where
 
 import Ef.Core
-import Ef.Lang.Global.Except
+import Ef.Lang.Except
 import qualified Control.Exception as Exc
 
 unsafe  :: Lift IO m => IO a -> Pattern fs m a

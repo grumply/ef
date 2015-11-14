@@ -2,7 +2,7 @@
 {-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-module Ef.Lang.Global.IfThenElse where
+module Ef.Lang.IfThenElse where
 
 import Prelude
 import Ef.Core
