@@ -86,9 +86,12 @@ data InvalidPosixPath
   | InvalidPosixFile
   | InvalidPosixDir
   | InvalidFileInFile
-  | InvalidPosixPathLength
+  | InvalidPosixPathLength Int String
+  | InvalidPosixPathCharacter Char String
   deriving Show
 instance Exception InvalidPosixPath
+
+data Validation = Ok | Err InvalidPosixPath
 
 relative
   :: forall fs m a.
@@ -122,15 +125,13 @@ relative p0 = start (return ()) $ p0 RelativePosixSelector
                     Up k -> start (acc >> self (Up ())) (bp k)
                     Current k -> start (acc >> self (Current ())) (bp k)
                     File v f e k  ->
-                      if validPosixFile f
-                      then if validPosixExt e
-                           then infile (acc >> self (File v f e ())) (bp k)
-                           else throwChecked InvalidPosixExt
-                      else throwChecked InvalidPosixFile
+                      case validPosixFile f e of
+                        Ok -> infile (acc >> self (File v f e ())) (bp k)
+                        Err e -> throwChecked e
                     Dir v d k ->
-                      if validPosixDir d
-                      then indir (acc >> self (Dir v d ())) (bp k)
-                      else throwChecked InvalidPosixDir
+                      case validPosixDir d of
+                        Ok -> indir (acc >> self (Dir v d ())) (bp k)
+                        Err e -> throwChecked e
                     View -> go (bp (accToPosixPath acc))
                 Nothing -> Step sym (\b -> go (bp b))
             M m -> M (fmap go m)
@@ -149,15 +150,13 @@ relative p0 = start (return ()) $ p0 RelativePosixSelector
                     Up k -> go (acc >> self (Up ())) (bp k)
                     Current k -> go (acc >> self (Current ())) (bp k)
                     File v f e k ->
-                      if validPosixFile f
-                      then if validPosixExt e
-                           then infile (acc >> self (File v f e ())) (bp k)
-                           else throwChecked InvalidPosixExt
-                      else throwChecked InvalidPosixFile
+                      case validPosixFile f e of
+                        Ok -> infile (acc >> self (File v f e ())) (bp k)
+                        Err e -> throwChecked e
                     Dir v d k ->
-                      if validPosixDir d
-                      then go (acc >> self (Dir v d ())) (bp k)
-                      else throwChecked InvalidPosixDir
+                      case validPosixDir d of
+                        Ok -> go (acc >> self (Dir v d ())) (bp k)
+                        Err e -> throwChecked e
                     View -> go acc (bp (accToPosixPath acc))
                 Nothing -> Step sym (\b -> go acc (bp b))
             M m -> M (fmap (go acc) m)
@@ -178,14 +177,32 @@ relative p0 = start (return ()) $ p0 RelativePosixSelector
                     File _ "" e k -> go (acc >> self (File Visible "" e ())) (bp k)
                     File _ _ _ _ -> throwChecked InvalidFileInFile
                     Dir v d k ->
-                      if validPosixDir d
-                      then go (acc >> self (Dir v d ())) (bp k)
-                      else throwChecked InvalidPosixDir
+                      case validPosixDir d of
+                        Ok -> go (acc >> self (Dir v d ())) (bp k)
+                        Err e -> throwChecked e
                     View -> go acc (bp (accToPosixPath acc))
                 Nothing -> Step sym (\b -> go acc (bp b))
             M m -> M (fmap (go acc) m)
             Pure r -> Pure (r,accToPosixPath acc)
-    validPosixExt e = True
     accToPosixPath acc = undefined
     validPosixDir d = undefined
-    validPosixFile f = undefined
+    validPosixFile acc f e =
+      if (length f + length e) > 14
+      then Err (InvalidPosixPathLength l (toString accToPosixPath ++ "/" ++ f ++ "." ++ e))
+      else if not (all (`elem` portableFileNameCharset) (f ++ e))
+           then Err (InvalidPosixPathCharacter
+                       (head (filter (not . (`elem` portableFileNameCharset)) (f ++ e))
+                       (toString (accToPosixPath acc) ++ "/" + f ++ "." ++ e))
+                    )
+           else case f of
+                  '-':_ -> Err (InvalidPosixPathCharacter
+                                  '-' (toString (accToPosixPath acc))
+                               )
+                  _ -> Ok
+
+portableFileNameCharset = lower ++ upper ++ nums ++ misc
+  where
+    lower = ['a'..'z']
+    upper = ['A'..'Z']
+    nums = ['0'..'9']
+    misc = "._-"
