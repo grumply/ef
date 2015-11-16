@@ -25,9 +25,6 @@ Flag TRANSFORMERS_SAFE
 library
   exposed-modules:     Ef
                        Ef.Core
-                       Ef.IO.Dir
-                       Ef.IO.File
-                       Ef.IO.Path
                        Ef.Data.Promise
                        Ef.Data.Queue
                        Ef.Attr.Notate

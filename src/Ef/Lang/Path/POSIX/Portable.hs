@@ -22,119 +22,163 @@ import Data.Coerce
 {-
 NOTES:
 
-This is an attempt at an encoding of POSIX fully portable filenames.
-For Linux files, use Ef.Lang.Selector.Unix. This is likely NOT what
-you want to use on Linux, as this module enforces a file name limit
-of 14 and a limited file name character set, for example, to comply
-with the POSIX standard.
+Names got a little long, so I shortened PortablePOSIXPath to PPP
+
+This is an attempt at an encoding of POSIX fully portable filenames. For Linux
+files, use Ef.Lang.Selector.Unix. This is likely NOT what you want to use on
+Linux, as this module enforces a file name limit of 14 and a limited file name
+character set, for example, to comply with the POSIX standard.
+
+Invariants supported:
+
+Maximum segment length: 14
+Character set limitation: [a-zA-Z0-9.-_]
+File and Directories do not start with: '-'
+</> takes Rel or Abs on the left and only Rel on the right
 
 -}
 
+--------------------------------------------------------------------------------
+-- PPP Errors
 
-data InvalidPOSIXPath
-  = InvalidPOSIXExt
-  | InvalidPOSIXFile
-  | InvalidPOSIXDir
-  | InvalidPOSIXFileInFile
-  | InvalidPOSIXDirInFile
-  | InvalidPOSIXPathLength Int String
-  | InvalidPOSIXPathCharacter Char String
-  | InvalidPOSIXPortableFileNameCharacters String
-  | InvalidPOSIXPathRooting Rooting
-  | InvalidPOSIXPathVisibility Visibility
+-- | PPPErr represents any invalid construct in this module. A previous approach
+-- that split errors based on error type was scrapped because, while it was nice
+-- to have a range of exceptions, they were not recoverable in practice.
+data PPPErr
+  = PPPErr PPP String
   deriving Show
-instance Exception InvalidPOSIXPath
+instance Exception PPPErr
 
-newtype POSIXPortableFileName = PPFN String
-instance IsString POSIXPortableFileName where
-  fromString = ppfn_fromString
+data Validation = Ok | Err PPPErr
 
-ppfn_fromString :: String -> POSIXPortableFileName
-ppfn_fromString str = snd $ runIdentity $ delta (Object $ excepter *:* Empty) $ do
-  let xs = filter (not . (`elem` portablePOSIXFileNameCharset)) str
-  case xs of
-    [] -> return (PPFN str)
-    xs -> throw (InvalidPOSIXPortableFileNameCharacters xs)
+--------------------------------------------------------------------------------
+-- PPP Dir String
 
-unsafe_ppfn_fromString :: String -> POSIXPortableFileName
-unsafe_ppfn_fromString = PPFN
+newtype PPPDir = PPPDir String
 
-portablePOSIXFileNameCharset = lower ++ upper ++ nums ++ misc
+charsetPPPDir :: String
+charsetPPPDir = lower ++ upper ++ nums ++ misc
+  where
+    lower = ['a'..'z']
+    upper = ['A'..'Z']
+    nums  = ['0'..'9']
+    misc  = "._-"
+
+validatePPPDir :: PPP -> String -> Validation
+validatePPPDir ppp dir =
+  if length dir > 14
+  then Err (PPPErr ppp ("Directory name too long (max length 14): \n\tdir: " ++ dir))
+  else
+    case filter (not . (`elem` charsetPPPDir)) dir of
+      [] -> Ok
+      xs -> Err (PPPErr ppp ("Bad characters in directory name: \n\
+                             \\tfile: " ++ dir ++
+                             "\n\tbad chars: " ++ xs
+                            )
+                )
+
+--------------------------------------------------------------------------------
+-- PPP File String
+
+newtype PPPFile = PPPFile String
+
+charsetPPPFile :: String
+charsetPPPFile = lower ++ upper ++ nums ++ misc
   where
     lower = ['a'..'z']
     upper = ['A'..'Z']
     nums = ['0'..'9']
     misc = "._-"
 
-data Rooting = Absolute | Relative deriving Show
-data Visibility = Visible | Hidden deriving Show
+validatePPPFile :: PPP -> String -> String -> Validation
+validatePPPFile ppp file ext =
+  let l = length file + length ext
+  in if l > 13
+     then Err (PPPErr ppp ("Bad file.extension; too long. \
+                           \(max length, with '.', 14): \n\
+                           \\tfile: " ++ file ++ "." ++ ext
+                          )
+              )
+     else
+       case filter (not . (`elem` charsetPPPFile)) (file ++ ext) of
+         [] -> Ok
+         xs -> (PPPErr ppp ("Bad characters in file.extension: \n\
+                            \\tfile: " ++ file ++ "." ++ ext ++
+                            "\n\tbad chars: " ++ xs
+                           )
+               )
 
-newtype POSIXPath rt = POSIXPath (Rooting,Visibility,Pattern '[PortablePOSIXFileSelector] Identity ())
+--------------------------------------------------------------------------------
+-- PPP Implementation including DSL and higher-level functional API
 
-instance IsString (POSIXPath rt) where
-  fromString = pp_fromString
+data Rooting = Abs | Rel deriving Show
+data Visibility = Vis | Hid deriving Show
 
-pp_fromString :: String -> POSIXPath rt
-pp_fromString str = undefined
+newtype PPP rt = PPP (Rooting,Visibility,Pattern '[PPPSelector] Identity ())
 
-isAbs :: POSIXPath rt -> Bool
-isAbs (POSIXPath (Absolute,_,_)) = True
+instance IsString (PPP rt) where
+  fromString = ppp_fromString
+
+ppp_fromString :: String -> PPP rt
+ppp_fromString str = undefined
+
+isAbs :: PPP rt -> Bool
+isAbs (PPP (Abs,_,_)) = True
 isAbs _ = False
 
-isRel :: POSIXPath rt -> Bool
-isRel (POSIXPath (Relative,_,_)) = True
+isRel :: PPP rt -> Bool
+isRel (PPP (Rel,_,_)) = True
 isRel _ = False
 
-isHidden :: POSIXPath Absolute -> Bool
-isHidden (POSIXPath (_,Hidden,_)) = True
-isHidden _ = False
+isHid :: PPP Abs -> Bool
+isHid (PPP (_,Hid,_)) = True
+isHid _ = False
 
-isVisible :: POSIXPath Absolute -> Bool
-isVisible (POSIXPath (_,Visible,_)) = True
-isVisible _ = False
+isVis :: PPP Abs -> Bool
+isVis (PPP (_,Vis,_)) = True
+isVis _ = False
 
-isVisiblePathComponent :: POSIXPath rt -> Bool
-isVisiblePathComponent (POSIXPath (_,Visible,_)) = True
-isVisiblePathComponent _ = False
+isVisPPPComponent :: PPP rt -> Bool
+isVisPPPComponent (PPP (_,Vis,_)) = True
+isVisPPPComponent _ = False
 
-isHiddenPathComponent :: POSIXPath rt -> Bool
-isHiddenPathComponent (POSIXPath (_,Hidden,_)) = True
-isHiddenPathComponent _ = False
+isHidPPPComponent :: PPP rt -> Bool
+isHidPPPComponent (PPP (_,Hid,_)) = True
+isHidPPPComponent _ = False
 
-leastVisible :: Visibility -> Visibility -> Visibility
-leastVisible Hidden _ = Hidden
-leastVisible _ Hidden = Hidden
-leastVisible _ _ = Visible
+leastVis :: Visibility -> Visibility -> Visibility
+leastVis Hid _ = Hid
+leastVis _ Hid = Hid
+leastVis _ _ = Vis
 
-(</>) :: POSIXPath rt -> POSIXPath Relative -> POSIXPath rt
-(</>) (POSIXPath (rtng,visl,pthl)) (POSIXPath (_,visr,pthr)) = POSIXPath (rtng,leastVisible visl visr,pthl >> pthr)
+(</>) :: PPP rt -> PPP Rel -> PPP rt
+(</>) (PPP (rtng,visl,pthl)) (PPP (_,visr,pthr)) = PPP (rtng,leastVis visl visr,pthl >> pthr)
 
-makeAbsolute :: POSIXPath Absolute -> POSIXPath Relative -> POSIXPath Absolute
-makeAbsolute = (</>)
+makeAbs :: PPP Abs -> PPP Rel -> PPP Abs
+makeAbs = (</>)
 
-guaranteeAbsolute :: Is Excepting fs m
-                  => POSIXPath rt
-                  -> (Throws InvalidPOSIXPath => Pattern fs m (POSIXPath Absolute))
-guaranteeAbsolute pp@(POSIXPath (Absolute,_,_)) = return $ coerce pp
-guaranteeAbsolute _ = throwChecked (InvalidPOSIXPathRooting Relative)
+guaranteeAbs :: Is Excepting fs m
+                  => PPP rt
+                  -> (Throws PPPErr => Pattern fs m (PPP Abs))
+guaranteeAbs ppp@(PPP (Abs,_,_)) = return $ coerce ppp
+guaranteeAbs ppp = throwChecked
+  (PPPErr ppp "guranteeAbs: expected Absolute PPP, but got Relative PPP.")
 
-guaranteeRelative :: Is Excepting fs m
-                 => POSIXPath rt
-                 -> (Throws InvalidPOSIXPath => Pattern fs m (POSIXPath Relative))
-guaranteeRelative pp@(POSIXPath (Relative,_,_)) = return $ coerce pp
-guaranteeRelative _ = throwChecked (InvalidPOSIXPathRooting Absolute)
+guaranteeRel :: Is Excepting fs m
+                 => PPP rt
+                 -> (Throws PPPErr => Pattern fs m (PPP Rel))
+guaranteeRel ppp@(PPP (Rel,_,_)) = return $ coerce ppp
+guaranteeRel ppp = throwChecked
+  (PPPErr ppp "guaranteeRel: expected Relative PPP, but got Absolute PPP.")
 
-reify :: Lift IO m => POSIXPath Relative -> Pattern fs m (POSIXPath Absolute)
+reify :: (Lift IO m,Is Excepting fs m) => PPP Rel -> Pattern fs m (PPP Abs)
 reify pp = do
   cd <- io (getEnv "PWD")
-  let d = pp_fromString cd
-  return (makeAbsolute d pp)
+  let d = ppp_fromString cd
+  return (makeAbs d pp)
 
-toString :: POSIXPath rt -> String
-toString (POSIXPath (rtng,vis,pth)) = undefined
-
-type AbsolutePOSIXPath = POSIXPath Absolute
-type RelativePOSIXPath = POSIXPath Relative
+toString :: PPP rt -> String
+toString (PPP (rtng,vis,pth)) = undefined
 
 type DirName = String
 type FileName = String
@@ -149,7 +193,7 @@ data PortablePOSIXFileSelector k
 
 data POSIXSelectable k = POSIXSelectable k
 
-data RelativePOSIXSelector fs m = RelativePOSIXSelector
+data RelPOSIXSelector fs m = RelPOSIXSelector
   { up         :: Pattern fs m ()
   , current    :: Pattern fs m ()
   , dir        :: DirName -> Pattern fs m ()
@@ -157,35 +201,33 @@ data RelativePOSIXSelector fs m = RelativePOSIXSelector
   , file       :: FileName -> Extension -> Pattern fs m ()
   , hiddenFile :: FileName -> Extension -> Pattern fs m ()
   , ext        :: Extension -> Pattern fs m ()
-  , viewPath   :: Pattern fs m (POSIXPath 'Relative)
+  , viewPath   :: Pattern fs m (PPP Rel)
   }
 
-
-data Validation = Ok | Err InvalidPOSIXPath
 
 relative
   :: forall fs m a.
      (Monad m,Is PortablePOSIXFileSelector fs m,Is Excepting fs m)
-  => (RelativePOSIXSelector fs m -> Pattern fs m a)
-  -> (Throws InvalidPOSIXPath => Pattern fs m (a,RelativePOSIXPath))
-relative p0 = start (return ()) $ p0 RelativePOSIXSelector
+  => (RelPOSIXSelector fs m -> Pattern fs m a)
+  -> (Throws PPPErr => Pattern fs m (a,PPP Rel))
+relative p0 = start (return ()) $ p0 RelPOSIXSelector
     { up = self (Up ())
     , current = self (Current ())
-    , dir = \d -> self (Dir Visible d ())
-    , hiddenDir = \d -> self (Dir Hidden d ())
-    , file = \f e -> self (File Visible f e ())
-    , hiddenFile = \f e -> self (File Hidden f e ())
-    , ext = \e -> self (File Visible "" e ())
+    , dir = \d -> self (Dir Vis d ())
+    , hiddenDir = \d -> self (Dir Hid d ())
+    , file = \f e -> self (File Vis f e ())
+    , hiddenFile = \f e -> self (File Hid f e ())
+    , ext = \e -> self (File Vis "" e ())
     , viewPath = self View
     }
   where
     start :: Pattern '[PortablePOSIXFileSelector] Identity ()
           -> Pattern fs m a
-          -> (Throws InvalidPOSIXPath => Pattern fs m (a,RelativePOSIXPath))
+          -> (Throws PPPErr => Pattern fs m (a,PPP Rel))
     start acc = go
       where
         go :: Pattern fs m a
-           -> (Throws InvalidPOSIXPath => Pattern fs m (a,RelativePOSIXPath))
+           -> (Throws PPPErr => Pattern fs m (a,PPP Rel))
         go p =
           case p of
             Step sym bp ->
@@ -195,7 +237,7 @@ relative p0 = start (return ()) $ p0 RelativePOSIXSelector
                     Up k -> start (acc >> self (Up ())) (bp k)
                     Current k -> start (acc >> self (Current ())) (bp k)
                     File v f e k  ->
-                      case validPOSIXFile f e of
+                      case validPOSIXFile acc f e of
                         Ok -> infile (acc >> self (File v f e ())) (bp k)
                         Err e -> throwChecked e
                     Dir v d k ->
@@ -208,7 +250,7 @@ relative p0 = start (return ()) $ p0 RelativePOSIXSelector
             Pure r -> Pure (r,accToPOSIXPath acc)
     indir :: Pattern '[PortablePOSIXFileSelector] Identity ()
           -> Pattern fs m a
-          -> (Throws InvalidPOSIXPath => Pattern fs m (a,RelativePOSIXPath))
+          -> (Throws PPPErr => Pattern fs m (a,PPP Rel))
     indir = go
       where
         go acc p =
@@ -220,7 +262,7 @@ relative p0 = start (return ()) $ p0 RelativePOSIXSelector
                     Up k -> go (acc >> self (Up ())) (bp k)
                     Current k -> go (acc >> self (Current ())) (bp k)
                     File v f e k ->
-                      case validPOSIXFile f e of
+                      case validPOSIXFile acc f e of
                         Ok -> infile (acc >> self (File v f e ())) (bp k)
                         Err e -> throwChecked e
                     Dir v d k ->
@@ -233,7 +275,7 @@ relative p0 = start (return ()) $ p0 RelativePOSIXSelector
             Pure r -> Pure (r,accToPOSIXPath acc)
     infile :: Pattern '[PortablePOSIXFileSelector] Identity ()
            -> Pattern fs m a
-           -> (Throws InvalidPOSIXPath => Pattern fs m (a,RelativePOSIXPath))
+           -> (Throws PPPErr => Pattern fs m (a,PPP Rel))
     infile = go
       where
         go acc p =
@@ -242,8 +284,8 @@ relative p0 = start (return ()) $ p0 RelativePOSIXSelector
               case prj sym of
                 Just x ->
                   case x of
-                    File _ "" e k -> go (acc >> self (File Visible "" e ())) (bp k)
-                    File _ _ _ _ -> throwChecked InvalidPOSIXFileInFile
+                    File _ "" e k -> go (acc >> self (File Vis "" e ())) (bp k)
+                    File _ _ _ _ -> throwChecked (PPPErr (PPP ()))
                     View -> go acc (bp (accToPOSIXPath acc))
                     _ -> throw InvalidPOSIXDirInFile
                 Nothing -> Step sym (\b -> go acc (bp b))
@@ -254,15 +296,12 @@ relative p0 = start (return ()) $ p0 RelativePOSIXSelector
     validPOSIXFile acc f e = let l = length f + length e in
       if l > 14
       then Err (InvalidPOSIXPathLength l
-                  (toString accToPOSIXPath ++ "/" ++ f ++ "." ++ e)
+                  (toString (accToPOSIXPath acc) ++ "/" ++ f ++ "." ++ e)
                )
       else if not (all (`elem` portablePOSIXFileNameCharset) (f ++ e))
-           then Err (InvalidPOSIXPathCharacter
-                       (head (filter (not . (`elem` portablePOSIXFileNameCharset)) (f ++ e))
-                       (toString (accToPOSIXPath acc) ++ "/" + f ++ "." ++ e))
-                    )
+           then Err (PPPErr (acc >> self (File ))"")
            else case f of
-                  '-':_ -> Err (InvalidPOSIXPathCharacter
-                                  '-' (toString (accToPOSIXPath acc))
+                  '-':_ -> Err (InvalidPOSIXPortableFileNameStart
+                                  "-" (toString (accToPOSIXPath acc))
                                )
                   _ -> Ok
