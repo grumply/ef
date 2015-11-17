@@ -51,11 +51,6 @@ instance Exception PPPErr
 
 data Validation = Ok | Err PPPErr
 
---------------------------------------------------------------------------------
--- PPP Dir String
-
-newtype PPPDir = PPPDir String
-
 charsetPPPDir :: String
 charsetPPPDir = lower ++ upper ++ nums ++ misc
   where
@@ -77,11 +72,6 @@ validatePPPDir ppp dir =
                             )
                 )
 
---------------------------------------------------------------------------------
--- PPP File String
-
-newtype PPPFile = PPPFile String
-
 charsetPPPFile :: String
 charsetPPPFile = lower ++ upper ++ nums ++ misc
   where
@@ -89,6 +79,14 @@ charsetPPPFile = lower ++ upper ++ nums ++ misc
     upper = ['A'..'Z']
     nums = ['0'..'9']
     misc = "._-"
+
+charsetPPPExt :: String
+charsetPPPExt = lower ++ upper ++ nums ++ misc
+  where
+    lower = ['a'..'z']
+    upper = ['A'..'Z']
+    nums = ['0'..'9']
+    misc = "_-"
 
 validatePPPFile :: PPP -> String -> String -> Validation
 validatePPPFile ppp file ext =
@@ -180,9 +178,6 @@ reify pp = do
 toString :: PPP rt -> String
 toString (PPP (rtng,vis,pth)) = undefined
 
-type DirName = String
-type FileName = String
-type Extension = String
 
 data PortablePOSIXFileSelector k
   = Up k
@@ -193,7 +188,7 @@ data PortablePOSIXFileSelector k
 
 data POSIXSelectable k = POSIXSelectable k
 
-data RelPOSIXSelector fs m = RelPOSIXSelector
+data RelPPPSelector fs m = RelPPPSelector
   { up         :: Pattern fs m ()
   , current    :: Pattern fs m ()
   , dir        :: DirName -> Pattern fs m ()
@@ -287,7 +282,7 @@ relative p0 = start (return ()) $ p0 RelPOSIXSelector
                     File _ "" e k -> go (acc >> self (File Vis "" e ())) (bp k)
                     File _ _ _ _ -> throwChecked (PPPErr (PPP ()))
                     View -> go acc (bp (accToPOSIXPath acc))
-                    _ -> throw InvalidPOSIXDirInFile
+                    _ -> throw (PPPErr )
                 Nothing -> Step sym (\b -> go acc (bp b))
             M m -> M (fmap (go acc) m)
             Pure r -> Pure (r,accToPOSIXPath acc)
