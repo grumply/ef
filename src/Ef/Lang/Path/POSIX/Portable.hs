@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
@@ -6,6 +7,8 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RecordWildCards #-}
 module Ef.Lang.Path.POSIX.Portable where
 
 import Ef.Core
@@ -17,7 +20,9 @@ import Data.Functor.Identity
 import Data.String
 import System.Environment
 
+import Data.List
 import Data.Coerce
+import Unsafe.Coerce
 
 {-
 NOTES:
@@ -36,89 +41,118 @@ Character set limitation: [a-zA-Z0-9.-_]
 File and Directories do not start with: '-'
 </> takes Rel or Abs on the left and only Rel on the right
 
+Approach:
+
+x Embeddable so path generation can be interspersed with other DSL constructs
+Overloaded so paths can be created with a standard string implementation
+Quotable so paths can be created at compilation and statically guaranteed correct
+
 -}
 
---------------------------------------------------------------------------------
--- PPP Errors
-
--- | PPPErr represents any invalid construct in this module. A previous approach
--- that split errors based on error type was scrapped because, while it was nice
--- to have a range of exceptions, they were not recoverable in practice.
 data PPPErr
-  = PPPErr PPP String
-  deriving Show
+  = forall rt. PPPErr (Pattern '[PPPSelect] Identity ()) String
+  | PPPFromStringErr String
+instance Show PPPErr where
+  show (PPPErr p str) =
+    "PPPErr: " ++ str ++ "\n\tExceptional PPP:" ++ ppp_show p
+  show (PPPFromStringErr str) = "PPPErr in fromString: " ++ str
 instance Exception PPPErr
+
+ppp_show :: Pattern '[PPPSelect] Identity () -> String
+ppp_show = concat . intersperse "/" . reverse . start
+  where
+    start p =
+      case p of
+        Step sym bp ->
+          case prj sym of
+            ~(Just x) ->
+              case x of
+                Root k -> continue [""] (bp k)
+                Up k -> continue [".."] (bp k)
+                Current k -> start (bp k)
+                Dir v d k -> if v == Vis
+                             then continue [d] (bp k)
+                             else continue ['.':d] (bp k)
+                File v f "" k -> if v == Vis
+                                 then continue [f] (bp k)
+                                 else continue ['.':f] (bp k)
+                ~(File v f e k) -> if v == Vis
+                                   then continue [f ++ '.':e] (bp k)
+                                   else continue ['.':f ++ '.':e] (bp k)
+        M (Identity m) -> start m
+        Pure () -> [""]
+    continue acc p =
+      case p of
+        Step sym bp ->
+          case prj sym of
+            ~(Just x) ->
+              case x of
+                Up k -> continue ("..":acc) (bp k)
+                Current k -> continue (".":acc) (bp k)
+                Dir v d k -> if v == Vis
+                             then continue (d:acc) (bp k)
+                             else continue (('.':d):acc) (bp k)
+                File v f "" k -> if v == Vis
+                                 then continue (f:acc) (bp k)
+                                 else continue (('.':f):acc) (bp k)
+                ~(File v f e k) -> if v == Vis
+                                   then continue ((f ++ '.':e):acc) (bp k)
+                                   else continue (('.':f ++ '.':e):acc) (bp k)
+        M (Identity m) -> continue acc m
+        Pure _ -> acc
 
 data Validation = Ok | Err PPPErr
 
-charsetPPPDir :: String
-charsetPPPDir = lower ++ upper ++ nums ++ misc
+validatePPPDir :: Pattern '[PPPSelect] Identity () -> String -> Validation
+validatePPPDir ppp dir
+  | null dir        = Err (PPPErr ppp "Empty directory name.")
+  | length dir > 14 = Err (PPPErr ppp ("Directory" `tooLong` dir))
+  | otherwise       = let xs = filter (not . (`elem` charsetPPPDir)) dir
+                      in if null xs
+                         then Ok
+                         else Err (PPPErr ppp ("directory" `badChars` xs))
   where
-    lower = ['a'..'z']
-    upper = ['A'..'Z']
-    nums  = ['0'..'9']
-    misc  = "._-"
+    charsetPPPDir = lower ++ upper ++ nums ++ misc
+      where
+        lower = ['a'..'z']
+        upper = ['A'..'Z']
+        nums  = ['0'..'9']
+        misc  = "._-"
 
-validatePPPDir :: PPP -> String -> Validation
-validatePPPDir ppp dir =
-  if length dir > 14
-  then Err (PPPErr ppp ("Directory name too long (max length 14): \n\tdir: " ++ dir))
-  else
-    case filter (not . (`elem` charsetPPPDir)) dir of
-      [] -> Ok
-      xs -> Err (PPPErr ppp ("Bad characters in directory name: \n\
-                             \\tfile: " ++ dir ++
-                             "\n\tbad chars: " ++ xs
-                            )
-                )
+tooLong i fd = i ++ " name too long (max length 14; got length: " ++ show (length fd) ++ "): " ++ fd
 
-charsetPPPFile :: String
-charsetPPPFile = lower ++ upper ++ nums ++ misc
+badChars i xs = "Bad characters in " ++ i ++ ": " ++ xs
+
+validatePPPFile :: Pattern '[PPPSelect] Identity () -> String -> String -> Validation
+validatePPPFile ppp file ext
+  | null file = Err (PPPErr ppp "Empty file names not supported.")
+  | length (file ++ '.':ext) > 14 = Err (PPPErr ppp ("File and Extension" `tooLong` (file ++ '.':ext)))
+  | otherwise = let f_bad = filter (not . (`elem` charsetPPPFile)) file
+                    e_bad = filter (not . (`elem` charsetPPPExt)) ext
+                in if null f_bad
+                   then if null e_bad
+                        then Ok
+                        else Err (PPPErr ppp ("extension" `badChars` e_bad))
+                   else Err (PPPErr ppp ("file" `badChars` f_bad))
   where
+    charsetPPPFile = lower ++ upper ++ nums ++ misc_file
+    charsetPPPExt = lower ++ upper ++ nums ++ misc_ext
     lower = ['a'..'z']
     upper = ['A'..'Z']
     nums = ['0'..'9']
-    misc = "._-"
+    misc_file = "._-"
+    misc_ext = "_-"
 
-charsetPPPExt :: String
-charsetPPPExt = lower ++ upper ++ nums ++ misc
-  where
-    lower = ['a'..'z']
-    upper = ['A'..'Z']
-    nums = ['0'..'9']
-    misc = "_-"
+data Rooting = Abs | Rel deriving (Show,Eq)
+data Visibility = Vis | Hid deriving (Show,Eq)
 
-validatePPPFile :: PPP -> String -> String -> Validation
-validatePPPFile ppp file ext =
-  let l = length file + length ext
-  in if l > 13
-     then Err (PPPErr ppp ("Bad file.extension; too long. \
-                           \(max length, with '.', 14): \n\
-                           \\tfile: " ++ file ++ "." ++ ext
-                          )
-              )
-     else
-       case filter (not . (`elem` charsetPPPFile)) (file ++ ext) of
-         [] -> Ok
-         xs -> (PPPErr ppp ("Bad characters in file.extension: \n\
-                            \\tfile: " ++ file ++ "." ++ ext ++
-                            "\n\tbad chars: " ++ xs
-                           )
-               )
+newtype PPP rt = PPP (Rooting,Visibility,Pattern '[PPPSelect] Identity ())
 
---------------------------------------------------------------------------------
--- PPP Implementation including DSL and higher-level functional API
-
-data Rooting = Abs | Rel deriving Show
-data Visibility = Vis | Hid deriving Show
-
-newtype PPP rt = PPP (Rooting,Visibility,Pattern '[PPPSelector] Identity ())
+instance Show (PPP rt) where
+  show (PPP (_,_,ppp)) = ppp_show ppp
 
 instance IsString (PPP rt) where
   fromString = ppp_fromString
-
-ppp_fromString :: String -> PPP rt
-ppp_fromString str = undefined
 
 isAbs :: PPP rt -> Bool
 isAbs (PPP (Abs,_,_)) = True
@@ -159,36 +193,43 @@ guaranteeAbs :: Is Excepting fs m
                   => PPP rt
                   -> (Throws PPPErr => Pattern fs m (PPP Abs))
 guaranteeAbs ppp@(PPP (Abs,_,_)) = return $ coerce ppp
-guaranteeAbs ppp = throwChecked
-  (PPPErr ppp "guranteeAbs: expected Absolute PPP, but got Relative PPP.")
+guaranteeAbs (PPP (_,_,p)) = throwChecked
+  (PPPErr p "guranteeAbs: expected Absolute PPP, but got Relative PPP.")
 
 guaranteeRel :: Is Excepting fs m
                  => PPP rt
                  -> (Throws PPPErr => Pattern fs m (PPP Rel))
 guaranteeRel ppp@(PPP (Rel,_,_)) = return $ coerce ppp
-guaranteeRel ppp = throwChecked
-  (PPPErr ppp "guaranteeRel: expected Relative PPP, but got Absolute PPP.")
+guaranteeRel (PPP (_,_,p)) = throwChecked
+  (PPPErr p "guaranteeRel: expected Relative PPP, but got Absolute PPP.")
 
-reify :: (Lift IO m,Is Excepting fs m) => PPP Rel -> Pattern fs m (PPP Abs)
-reify pp = do
+reifyRel :: (Lift IO m,Is Excepting fs m) => PPP Rel -> Pattern fs m (PPP Abs)
+reifyRel pp = do
   cd <- io (getEnv "PWD")
   let d = ppp_fromString cd
   return (makeAbs d pp)
 
-toString :: PPP rt -> String
-toString (PPP (rtng,vis,pth)) = undefined
+type FileName = String
+type DirName = String
+type Extension = String
 
-
-data PortablePOSIXFileSelector k
-  = Up k
+data PPPSelect k
+  = Root k
+  | Up k
   | Current k
   | Dir Visibility DirName k
   | File Visibility FileName Extension k
   | View
 
+data PPPSelectable k = PPPSelectable k
+ppps :: Uses PPPSelectable fs m => Attribute PPPSelectable fs m
+ppps = PPPSelectable return
+
+instance Symmetry PPPSelectable PPPSelect
+
 data POSIXSelectable k = POSIXSelectable k
 
-data RelPPPSelector fs m = RelPPPSelector
+data PPPSelector fs m = PPPSelector
   { up         :: Pattern fs m ()
   , current    :: Pattern fs m ()
   , dir        :: DirName -> Pattern fs m ()
@@ -196,16 +237,28 @@ data RelPPPSelector fs m = RelPPPSelector
   , file       :: FileName -> Extension -> Pattern fs m ()
   , hiddenFile :: FileName -> Extension -> Pattern fs m ()
   , ext        :: Extension -> Pattern fs m ()
-  , viewPath   :: Pattern fs m (PPP Rel)
+  , viewPath   :: forall rt. Pattern fs m (PPP rt)
   }
 
+relative :: forall fs m a.
+            (Monad m,Is PPPSelect fs m,Is Excepting fs m)
+         => (PPPSelector fs m -> Pattern fs m a)
+         -> (Throws PPPErr => Pattern fs m (a,PPP Rel))
+relative = pppSelector False
 
-relative
-  :: forall fs m a.
-     (Monad m,Is PortablePOSIXFileSelector fs m,Is Excepting fs m)
-  => (RelPOSIXSelector fs m -> Pattern fs m a)
-  -> (Throws PPPErr => Pattern fs m (a,PPP Rel))
-relative p0 = start (return ()) $ p0 RelPOSIXSelector
+rooted :: forall fs m a.
+          (Monad m,Is PPPSelect fs m,Is Excepting fs m)
+       => (PPPSelector fs m -> Pattern fs m a)
+       -> (Throws PPPErr => Pattern fs m (a,PPP Abs))
+rooted = pppSelector True
+
+pppSelector
+  :: forall fs m a rt.
+     (Monad m,Is PPPSelect fs m,Is Excepting fs m)
+  => Bool
+  -> (PPPSelector fs m -> Pattern fs m a)
+  -> (Throws PPPErr => Pattern fs m (a,PPP rt))
+pppSelector b p0 = start True (if b then self (Root ()) else (return ())) $ p0 PPPSelector
     { up = self (Up ())
     , current = self (Current ())
     , dir = \d -> self (Dir Vis d ())
@@ -216,37 +269,30 @@ relative p0 = start (return ()) $ p0 RelPOSIXSelector
     , viewPath = self View
     }
   where
-    start :: Pattern '[PortablePOSIXFileSelector] Identity ()
-          -> Pattern fs m a
-          -> (Throws PPPErr => Pattern fs m (a,PPP Rel))
-    start acc = go
+    start abs acc = go
       where
-        go :: Pattern fs m a
-           -> (Throws PPPErr => Pattern fs m (a,PPP Rel))
         go p =
           case p of
             Step sym bp ->
               case prj sym of
                 Just x ->
                   case x of
-                    Up k -> start (acc >> self (Up ())) (bp k)
-                    Current k -> start (acc >> self (Current ())) (bp k)
+                    Up k -> start False (acc >> self (Up ())) (bp k)
+                    Current k -> start False (acc >> self (Current ())) (bp k)
                     File v f e k  ->
-                      case validPOSIXFile acc f e of
-                        Ok -> infile (acc >> self (File v f e ())) (bp k)
+                      case validatePPPFile acc f e of
+                        Ok -> infile False (v == Vis) (acc >> self (File v f e ())) (bp k)
                         Err e -> throwChecked e
                     Dir v d k ->
-                      case validPOSIXDir d of
-                        Ok -> indir (acc >> self (Dir v d ())) (bp k)
+                      case validatePPPDir acc d of
+                        Ok -> indir False (v == Vis) (acc >> self (Dir v d ())) (bp k)
                         Err e -> throwChecked e
-                    View -> go (bp (accToPOSIXPath acc))
+                    View -> go (bp (unsafeCoerce (PPP (if abs then Abs else Rel,Vis,acc))))
                 Nothing -> Step sym (\b -> go (bp b))
             M m -> M (fmap go m)
-            Pure r -> Pure (r,accToPOSIXPath acc)
-    indir :: Pattern '[PortablePOSIXFileSelector] Identity ()
-          -> Pattern fs m a
-          -> (Throws PPPErr => Pattern fs m (a,PPP Rel))
-    indir = go
+            Pure r -> Pure (r,PPP (if abs then Abs else Rel,Vis,acc))
+
+    indir abs vis = go
       where
         go acc p =
           case p of
@@ -257,21 +303,19 @@ relative p0 = start (return ()) $ p0 RelPOSIXSelector
                     Up k -> go (acc >> self (Up ())) (bp k)
                     Current k -> go (acc >> self (Current ())) (bp k)
                     File v f e k ->
-                      case validPOSIXFile acc f e of
-                        Ok -> infile (acc >> self (File v f e ())) (bp k)
+                      case validatePPPFile acc f e of
+                        Ok -> infile abs (v == Vis && vis) (acc >> self (File v f e ())) (bp k)
                         Err e -> throwChecked e
                     Dir v d k ->
-                      case validPOSIXDir d of
-                        Ok -> go (acc >> self (Dir v d ())) (bp k)
+                      case validatePPPDir acc d of
+                        Ok -> indir abs (v == Vis && vis) (acc >> self (Dir v d ())) (bp k)
                         Err e -> throwChecked e
-                    View -> go acc (bp (accToPOSIXPath acc))
+                    View -> go acc (bp (unsafeCoerce (PPP (if abs then Abs else Rel,if vis then Vis else Hid,acc))))
                 Nothing -> Step sym (\b -> go acc (bp b))
             M m -> M (fmap (go acc) m)
-            Pure r -> Pure (r,accToPOSIXPath acc)
-    infile :: Pattern '[PortablePOSIXFileSelector] Identity ()
-           -> Pattern fs m a
-           -> (Throws PPPErr => Pattern fs m (a,PPP Rel))
-    infile = go
+            Pure r -> Pure (r,PPP (if abs then Abs else Rel,if vis then Vis else Hid,acc))
+
+    infile abs vis = go
       where
         go acc p =
           case p of
@@ -280,23 +324,39 @@ relative p0 = start (return ()) $ p0 RelPOSIXSelector
                 Just x ->
                   case x of
                     File _ "" e k -> go (acc >> self (File Vis "" e ())) (bp k)
-                    File _ _ _ _ -> throwChecked (PPPErr (PPP ()))
-                    View -> go acc (bp (accToPOSIXPath acc))
-                    _ -> throw (PPPErr )
+                    File _ _ _ _ -> throwChecked (PPPErr acc "Tried to nest a file inside a file.")
+                    View -> go acc (bp (unsafeCoerce (PPP (if abs then Abs else Rel,if vis then Vis else Hid,acc))))
+                    _ -> throw (PPPErr acc "Tried to nest directory segment inside file.")
                 Nothing -> Step sym (\b -> go acc (bp b))
             M m -> M (fmap (go acc) m)
-            Pure r -> Pure (r,accToPOSIXPath acc)
-    accToPOSIXPath acc = undefined
-    validPOSIXDir d = undefined
-    validPOSIXFile acc f e = let l = length f + length e in
-      if l > 14
-      then Err (InvalidPOSIXPathLength l
-                  (toString (accToPOSIXPath acc) ++ "/" ++ f ++ "." ++ e)
-               )
-      else if not (all (`elem` portablePOSIXFileNameCharset) (f ++ e))
-           then Err (PPPErr (acc >> self (File ))"")
-           else case f of
-                  '-':_ -> Err (InvalidPOSIXPortableFileNameStart
-                                  "-" (toString (accToPOSIXPath acc))
-                               )
-                  _ -> Ok
+            Pure r -> Pure (r,PPP (if abs then Abs else Rel,if vis then Vis else Hid,acc))
+
+ppp_fromString :: String -> PPP rt
+ppp_fromString ('/':str) = snd $ runIdentity (ppp_fromString_ True str)
+ppp_fromString str = snd $ runIdentity (ppp_fromString_ False str)
+
+ppp_fromString_ b str = delta (Object $ ppps *:* excepter *:* Empty) $ do
+  mp <- tryChecked $ pppSelector b $ flip fromString_ str
+  case mp of
+    Left e@(PPPErr _ _) -> error (show e)
+    Right (_,p) -> return p
+  where
+    fromString_ PPPSelector{..} = go
+      where
+        go [] = return ()
+        go ('/':_) = dir "" -- results in a throwChecked
+        go ('.':'/':xs) = current >> go xs
+        go ('.':'.':'/':xs) = up >> go xs
+        go xs = do
+          let (dof,rest) = span (/= '/') xs
+          case rest of
+            ('/':xs) -> do
+              analyzeDir dof
+              go xs
+            _ -> analyzeFile dof
+          where
+            analyzeDir ('.':xs) = hiddenDir xs
+            analyzeDir xs = dir xs
+            analyzeFile ('.':xs) = do
+              let (fn,rest) = span (/= '.') xs
+              undefined

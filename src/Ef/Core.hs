@@ -186,6 +186,8 @@ data Pattern symbols m a
 
 class Functor m' => Lift m m' where
   lift :: m a -> m' a
+instance Functor m => Lift m m where
+  lift = id
 instance Functor m => Lift m (Pattern fs m) where
   lift = lift_
 instance Lift m m' => Lift m (Pattern fs m') where

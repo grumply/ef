@@ -4,7 +4,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Ef.Lang.Except.Checked
-  ( throwChecked, catchChecked, Throws
+  ( throwChecked, catchChecked, tryChecked, Throws
   , module Ef.Lang.Except
   ) where
 
@@ -13,6 +13,12 @@ import Ef.Lang.Except
 
 import Data.Coerce
 import Data.Proxy
+
+{-# INLINE tryChecked #-}
+tryChecked :: forall a b fs m . (Monad m, Is Excepting fs m,Exception a)
+           => (Throws a => Pattern fs m b)
+           -> Pattern fs m (Either a b)
+tryChecked a = catchChecked (a >>= \v -> return (Right v)) (\e -> return (Left e))
 
 -- | Symbol Construct
 
