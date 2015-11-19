@@ -4,36 +4,38 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Ef.Lang.Except.Checked
-  ( throwChecked, catchChecked, tryChecked, Throws
-  , module Ef.Lang.Except
+  ( throw, catch, try, Throws
+  , module Control.Exception
+  , Except.Excepting,Except.excepter
   ) where
 
 import Ef.Core
-import Ef.Lang.Except
+import qualified Ef.Lang.Except as Except
+import Control.Exception (Exception(..),SomeException(..))
 
 import Data.Coerce
 import Data.Proxy
 
-{-# INLINE tryChecked #-}
-tryChecked :: forall a b fs m . (Monad m, Is Excepting fs m,Exception a)
+{-# INLINE try #-}
+try :: forall a b fs m . (Monad m, Is Except.Excepting fs m,Except.Exception a)
            => (Throws a => Pattern fs m b)
            -> Pattern fs m (Either a b)
-tryChecked a = catchChecked (a >>= \v -> return (Right v)) (\e -> return (Left e))
+try a = Ef.Lang.Except.Checked.catch (a >>= \v -> return (Right v)) (\e -> return (Left e))
 
 -- | Symbol Construct
 
-{-# INLINE throwChecked #-}
-throwChecked :: (Exception e,Throws e,Is Excepting fs m) => e -> Pattern fs m a
-throwChecked = throw
+{-# INLINE throw #-}
+throw :: (Except.Exception e,Throws e,Is Except.Excepting fs m) => e -> Pattern fs m a
+throw = Except.throw
 
 -- | Global Scoping Construct
 
-{-# INLINE catchChecked #-}
-catchChecked :: forall e fs m a. (Exception e,Is Excepting fs m)
+{-# INLINE catch #-}
+catch :: forall e fs m a. (Except.Exception e,Is Except.Excepting fs m)
              => (Throws e => Pattern fs m a)
              -> (e -> Pattern fs m a)
              -> Pattern fs m a
-catchChecked act = catch (unthrow (Proxy :: Proxy e) (act :: Throws e => Pattern fs m a))
+catch act = Except.catch (unthrow (Proxy :: Proxy e) (act :: Throws e => Pattern fs m a))
   where
     unthrow :: forall proxy e a. proxy e -> (Throws e => a) -> a
     unthrow _ = unWrap . coerceWrap . Wrap
