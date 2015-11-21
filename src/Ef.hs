@@ -10,11 +10,10 @@ import Ef.Data.Promise          as Base
 import Ef.Lang.IO               as Base
 import Ef.Lang.Fork             as Base
 import Ef.Lang.Except           as Base
-import Ef.Lang.Except.Checked   as Base
 import Ef.Lang.Scoped.Diverge   as Base
 import Ef.Lang.Scoped.Exit      as Base
 import Ef.Lang.Contract         as Base
-import Ef.Lang.Scoped.Act       as Base
+--import Ef.Lang.Scoped.Act       as Base
 import Ef.Lang.Scoped.Alternate as Base
 import Ef.Lang.Scoped.Generate  as Base
 import Ef.Lang.Scoped.Guard     as Base
@@ -40,7 +39,7 @@ type Ef
      ,Variable
      ,Loggable
      ,Reactable
-     ,Actable
+--     ,Actable
      ,Divergable
      ]
 
@@ -57,7 +56,7 @@ type Main
      ,Varying
      ,Logging
      ,Reacting
-     ,Acting
+--     ,Acting
      ,Diverging
      ]
 
@@ -79,6 +78,6 @@ base = Object $ manager
             *:* varier
             *:* logger
             *:* reactor
-            *:* actor
+--            *:* actor
             *:* diverger
             *:* Empty

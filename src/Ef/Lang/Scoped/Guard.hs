@@ -28,7 +28,6 @@ data Guarding k
 data Guard a fs m = Guard
   { choose :: forall f. Foldable f => f a -> Pattern fs m a
   , cut :: forall b. Pattern fs m b
-  , yields :: a -> Pattern fs m ()
   }
 
 -- | Attribute
@@ -52,19 +51,17 @@ instance Symmetry Guardable Guarding where
 
 {-# INLINE guards #-}
 guards :: forall fs m a.
-         (Is Guarding fs m,Is Weaving fs m)
+         (Is Guarding fs m)
       => (   Guard a fs m
           -> Pattern fs m ()
          )
-      -> Producer a fs m ()
-guards l =
-  producer $ \yield -> do
-    scope <- self (FreshScope id)
-    go scope $ l Guard
-      { choose = \as -> self (Choose scope (toList as) id)
-      , cut = self (Cut scope)
-      , yields = yield
-      }
+      -> Pattern fs m ()
+guards l = do
+  scope <- self (FreshScope id)
+  go scope $ l Guard
+    { choose = \as -> self (Choose scope (toList as) id)
+    , cut = self (Cut scope)
+    }
   where
     go scope p0 = go' p0
       where
