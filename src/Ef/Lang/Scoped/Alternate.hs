@@ -3,8 +3,11 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 module Ef.Lang.Scoped.Alternate
-  ( Alternating, Alternate(..), alternates
-  , Alternatable, alternator
+  ( Alternating
+  , Alternate(..)
+  , alternates
+  , Alternatable
+  , alternator
   ) where
 
 import Ef.Core
@@ -15,111 +18,250 @@ import Unsafe.Coerce
 -- | Symbol
 
 data Alternating k
-  = forall fs m a. Fork Int (Pattern fs m a)
-  | forall fs m a. Atomically Int (Pattern fs m a)
-  | Stop Int
-  | FreshScope (Int -> k)
+    = forall fs m a. Fork Int (Pattern fs m a)
+
+    | forall fs m a. Atomically Int (Pattern fs m a)
+
+    | Stop Int
+
+    | FreshScope (Int -> k)
 
 -- | Symbol Module
 
-data Alternate fs m = Alternate
-  { alt :: Pattern fs m () -> Pattern fs m ()
-  , atomically :: forall b. Pattern fs m b -> Pattern fs m b
-  }
+data Alternate fs m =
+    Alternate
+        {
+          alt
+              :: Pattern fs m ()
+              -> Pattern fs m ()
+
+        , atomically
+              :: forall b.
+                 Pattern fs m b
+              -> Pattern fs m b
+        }
 
 -- | Attribute
 
-data Alternatable k = Alternatable Int k
+data Alternatable k =
+    Alternatable Int k
 
 -- | Attribute Construct
 
-{-# INLINE alternator #-}
-alternator :: Uses Alternatable gs m => Attribute Alternatable gs m
-alternator = Alternatable 0 $ \fs ->
-  let Alternatable i k = view fs
-      i' = succ i
-  in i' `seq` pure $ fs .= Alternatable i' k
+alternator
+    :: Uses Alternatable gs m
+    => Attribute Alternatable gs m
+alternator =
+    Alternatable 0 $ \fs ->
+
+        let
+          Alternatable scope k =
+              view fs
+
+          newScope =
+              succ scope
+
+        in
+          newScope `seq` return $ fs .=
+             Alternatable newScope k
 
 -- | Symbol/Attribute Symmetry
 
 instance Symmetry Alternatable Alternating where
-  symmetry use (Alternatable i k) (FreshScope ik) = use k (ik i)
+  symmetry use (Alternatable i k) (FreshScope ik) =
+      use k (ik i)
 
 -- | Local Scoping Construct + Substitution
 
-{-# INLINE alternates #-}
-alternates :: forall fs m a. Is Alternating fs m
-           => (    Alternate fs m
-                -> Pattern fs m a
-              ) -> Pattern fs m a
-alternates f = do
-  scope <- self (FreshScope id)
-  substitute scope $ f Alternate
-    { alt = \p -> self (Fork scope (p >> self (Stop scope)))
-    , atomically = \p -> self (Atomically scope p)
-    }
+alternates
+    :: forall fs m a. Is Alternating fs m
+    => (    Alternate fs m
+         -> Pattern fs m a
+       )
+    -> Pattern fs m a
+alternates f =
+  do
+    scope <- self (FreshScope id)
+
+    let
+      alternate =
+          Alternate
+              { alt =
+                    \p ->
+                        self $ Fork scope $
+                            do
+                              p
+                              self (Stop scope)
+              , atomically =
+                    \p ->
+                        self (Atomically scope p)
+              }
+
+    substitute scope (f alternate)
   where
+
     substitute scope = start
       where
+
         start p =
-          case p of
+            case p of
+
             Step sym bp ->
-              case prj sym of
-                Just x ->
-                  case x of
-                    Fork i child ->
-                      if i == scope
-                      then rooted (enqueue (unsafeCoerce child) emptyQueue) (bp (unsafeCoerce ()))
-                      else Step sym $ \b -> start (bp b)
-                    Atomically i atom ->
-                      if i == scope
-                      then start $ unsafeCoerce atom >>= \b -> start (bp (unsafeCoerce b))
-                      else Step sym $ \b -> start (bp b)
-                    Stop i ->
-                      if i == scope
-                      then Pure (unsafeCoerce ())
-                      else Step sym $ \b -> start (bp b)
-                    _ -> Step sym (\b -> start (bp b))
-                Nothing -> Step sym (\b -> start (bp b))
-            M m -> M (m >>= \p' -> return $ start p')
-            Pure r -> Pure r
+              let
+                ignore =
+                    Step sym (start . bp)
+
+                check i scoped =
+                    if i == scope then
+                        scoped
+                    else
+                        ignore
+              in
+                case prj sym of
+
+                  Just x ->
+                    case x of
+
+                      Fork i child ->
+                          let
+                            continue =
+                              bp (unsafeCoerce ())
+
+                            newRunQueue =
+                              enqueue (unsafeCoerce child) emptyQueue
+                          in
+                            check i $
+                                rooted newRunQueue continue
+
+                      Atomically i atom ->
+                        check i $
+                            do
+                              b <- start (unsafeCoerce atom)
+                              start (bp (unsafeCoerce b))
+
+                      Stop i ->
+                        check i $
+                            return (unsafeCoerce ())
+
+                      _ ->
+                          ignore
+
+                  Nothing ->
+                      ignore
+
+            M m ->
+                M (fmap start m)
+
+            Pure r ->
+                return r
 
         rooted rest p =
-          case p of
-            Step sym bp ->
-              case prj sym of
-                Just x ->
-                  case x of
-                    Fork i child ->
-                      if i == scope
-                      then rooted (enqueue (unsafeCoerce child) rest) (bp (unsafeCoerce ()))
-                      else Step sym $ \b -> rooted rest (bp b)
-                    Atomically i atom ->
-                      if i == scope
-                      then start (unsafeCoerce atom) >>= \b ->
-                             case dequeue rest of
-                               Nothing -> start (bp (unsafeCoerce b))
-                               Just (rest',nxt) -> rooted (enqueue (bp (unsafeCoerce b)) rest') nxt
-                      else Step sym $ \b -> rooted rest (bp b)
-                    Stop i ->
-                      if i == scope
-                      then case dequeue rest of
-                             Just (rest',nxt) -> rooted rest' nxt
-                             Nothing -> Pure (unsafeCoerce ())
-                      else Step sym $ \b -> rooted rest (bp b)
-                    _ -> Step sym (\b -> rooted rest (bp b))
-                Nothing -> Step sym $ \b ->
+            case p of
+
+                Step sym bp ->
+                    let
+                      ignore =
+                          Step sym (rooted rest . bp)
+
+                      check i scoped =
+                          if i == scope then
+                              scoped
+                          else
+                              ignore
+                    in
+                      case prj sym of
+
+                        Just x ->
+                          case x of
+
+                            Fork i child ->
+                                let
+                                  newRunQueue =
+                                      enqueue (unsafeCoerce child) rest
+
+                                  continue =
+                                      bp (unsafeCoerce ())
+                                in
+                                  check i $
+                                      rooted newRunQueue continue
+
+                            Atomically i atom ->
+                                let
+                                  newRunQueue rest' b =
+                                      enqueue (continue b) rest'
+
+                                  continue b =
+                                      bp (unsafeCoerce b)
+                                in
+                                  check i $
+                                    do
+                                      b <- start (unsafeCoerce atom)
+                                      case dequeue rest of
+
+                                          Nothing ->
+                                              start (continue b)
+
+                                          Just (rest',nxt) ->
+                                              rooted (newRunQueue rest' b) nxt
+
+                            Stop i ->
+                                check i $
+                                    case dequeue rest of
+
+                                        Nothing ->
+                                            Pure (unsafeCoerce ())
+
+                                        Just (rest',next) ->
+                                            rooted rest' next
+
+                            _ ->
+                                ignore
+
+                        Nothing ->
+
+                            Step sym $ \b ->
+                                case dequeue rest of
+
+                                  Nothing ->
+                                      start (bp b)
+
+                                  Just (rest',nxt) ->
+
+                                      Step sym $ \b' ->
+                                          let
+                                            newRunQueue =
+                                                enqueue (bp b') rest'
+                                          in
+                                            rooted newRunQueue nxt
+
+                M m ->
+                    M $ do
+                          p' <- m
+                          case dequeue rest of
+
+                              Nothing ->
+                                  return (start p')
+
+                              Just (rest',next) ->
+                                  let
+                                    newRunQueue =
+                                        enqueue (unsafeCoerce p') rest'
+                                  in
+                                    newRunQueue `seq` return $
+                                        rooted newRunQueue next
+
+                Pure r ->
                   case dequeue rest of
-                    Nothing -> start (bp b)
-                    Just (rest',nxt) -> Step sym $ \b' -> rooted (enqueue (bp b') rest') nxt
-            M m -> M (m >>= \p' ->
-                        case dequeue rest of
-                          Nothing -> return $ start p'
-                          Just (rest',nxt) ->
-                            let q = enqueue (unsafeCoerce p') rest'
-                            in q `seq` return $ rooted q nxt
-                     )
-            Pure r ->
-              case dequeue rest of
-                Nothing -> Pure r
-                Just (rest',nxt) -> rooted rest' nxt >> Pure r
+
+                    Nothing ->
+                        return r
+
+                    Just (rest',nxt) ->
+                        do
+                          rooted rest' nxt
+                          return r
+
+-- | Inlines
+
+{-# INLINE alternator #-}
+{-# INLINE alternates #-}
