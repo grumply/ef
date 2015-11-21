@@ -109,6 +109,15 @@ rewrite
     => Int
     -> Pattern fs m a
     -> Pattern fs m (Maybe a)
+rewrite _ (Pure result) =
+    return (Just result)
+
+rewrite scope (M m) =
+    let
+      continue = rewrite scope
+    in
+      M (fmap continue m)
+
 rewrite scope (Step sym bp) =
     let
       ignore =
@@ -139,15 +148,6 @@ rewrite scope (Step sym bp) =
           Nothing ->
               Step sym (rewrite scope . bp)
 
-rewrite scope (M m) =
-    let
-      continue = rewrite scope
-    in
-      M (fmap continue m)
-
-rewrite _ (Pure result) =
-    return (Just result)
-
 
 
 choosing
@@ -173,6 +173,15 @@ nestedChoices
     -> (a -> Pattern fs m r)
     -> Pattern fs m r
     -> Pattern fs m r
+nestedChoices _ _ _ _ (Pure result) =
+    return result
+
+nestedChoices scope as alt bp (M m) =
+    let
+      nextTry = nestedChoices scope as alt bp
+    in
+      M (fmap nextTry m)
+
 nestedChoices scope as alt bp (Step sym bp') =
     let
       ignore =
@@ -207,14 +216,7 @@ nestedChoices scope as alt bp (Step sym bp') =
           Nothing ->
               ignore
 
-nestedChoices scope as alt bp (M m) =
-    let
-      nextTry = nestedChoices scope as alt bp
-    in
-      M (fmap nextTry m)
 
-nestedChoices _ _ _ _ (Pure result) =
-    return result
 
 -- | Inlines
 
