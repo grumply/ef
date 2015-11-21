@@ -191,6 +191,17 @@ rooted
     -> Queue (Pattern fs m a)
     -> Pattern fs m a
     -> Pattern fs m a
+rooted scope rest (Pure r) =
+    case dequeue rest of
+
+      Nothing ->
+          return r
+
+      Just (rest',nxt) ->
+          do
+            _ <- rooted scope rest' nxt
+            return r
+
 rooted scope rest (M m) =
     M $ do
           p' <- m
@@ -213,18 +224,6 @@ rooted scope rest (M m) =
                 in
                   newRunQueue `seq` return $
                       rooted scope newRunQueue next
-
-rooted scope rest (Pure r) =
-    case dequeue rest of
-
-      Nothing ->
-          return r
-
-      Just (rest',nxt) ->
-          do
-            _ <- rooted scope rest' nxt
-            return r
-
 
 rooted scope rest (Step sym continue) =
     let
