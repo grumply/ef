@@ -11,7 +11,6 @@ module Ef.Lang.Scoped.Guard
     ) where
 
 import Ef.Core
-import Ef.Lang.Scoped.Weave
 
 import Data.Foldable
 import Unsafe.Coerce
