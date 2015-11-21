@@ -1,13 +1,12 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
 module Ef.Lang.Scoped.Alternate
   ( Alternating
-  , Alternate(..)
   , alternates
+  , Alternate(..)
+
   , Alternatable
   , alternator
   ) where
@@ -87,7 +86,7 @@ instance Symmetry Alternatable Alternating where
 -- | Local Scoping Construct + Substitution
 
 alternates
-    :: forall fs m a. Is Alternating fs m
+    :: Is Alternating fs m
     => (    Alternate fs m
          -> Pattern fs m a
        )
@@ -114,7 +113,7 @@ alternates f =
 
 
 start
-    :: (Is Alternating fs m)
+    :: Is Alternating fs m
     => Int
     -> Pattern fs m a
     -> Pattern fs m a
@@ -185,8 +184,7 @@ start scope (Step sym bp) =
 
 
 rooted
-    :: forall fs m a.
-       (Is Alternating fs m)
+    :: Is Alternating fs m
     => Int
     -> Queue (Pattern fs m a)
     -> Pattern fs m a
@@ -208,9 +206,6 @@ rooted scope rest (M m) =
           handleQueue p'
   where
 
-    handleQueue
-        :: Pattern fs m a
-        -> m (Pattern fs m a)
     handleQueue continue =
         case dequeue rest of
 

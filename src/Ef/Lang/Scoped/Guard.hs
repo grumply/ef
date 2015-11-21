@@ -82,7 +82,7 @@ instance Symmetry Guardable Guarding where
 
 guards
     :: forall fs m a.
-       (Is Guarding fs m)
+       Is Guarding fs m
     => (    Guard fs m
          -> Pattern fs m a
        )
@@ -105,7 +105,7 @@ guards l =
 
 
 rewrite
-    :: (Is Guarding fs m)
+    :: Is Guarding fs m
     => Int
     -> Pattern fs m a
     -> Pattern fs m (Maybe a)
@@ -151,7 +151,7 @@ rewrite scope (Step sym bp) =
 
 
 choosing
-    :: (Is Guarding fs m)
+    :: Is Guarding fs m
     => Int
     -> [a]
     -> (a -> Pattern fs m r)
@@ -166,7 +166,7 @@ choosing scope (a:as) bp alt =
 
 
 nestedChoices
-    :: (Is Guarding fs m)
+    :: Is Guarding fs m
     => Int
     -> [a]
     -> Pattern fs m r
