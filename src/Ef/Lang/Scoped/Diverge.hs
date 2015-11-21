@@ -1,11 +1,11 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ExistentialQuantification #-}
 module Ef.Lang.Scoped.Diverge
    ( Diverging
    , modself
@@ -13,7 +13,7 @@ module Ef.Lang.Scoped.Diverge
    , Divergable
    , diverger
 
-   , Introspect
+   , Introspect(..)
    , introspect
 
    , typeOfSelf
