@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -5,6 +6,7 @@
 module Ef.Lang.Scoped.Exit
     ( Exiting
     , exits
+    , Exit(..)
 
     , Exitable
     , exiter
@@ -18,17 +20,23 @@ import Unsafe.Coerce
 -- | Symbol
 
 data Exiting k
+  where
 
-    = FreshScope (Int -> k)
+    FreshScope
+        :: (Int -> k)
+        -> Exiting k
 
-    | forall a. Exit Int a
+    Done
+        :: Int
+        -> a
+        -> Exiting k
 
 
 
 -- | Attribute
 
-data Exitable k =
-    Exitable Int k
+data Exitable k where
+    Exitable :: Int -> k -> Exitable k
 
 
 
@@ -47,38 +55,84 @@ exiter =
           i' =
               succ i
 
-        in i' `seq` pure $ fs .=
-               Exitable i' k
+        in
+          i' `seq` pure $ fs .=
+              Exitable i' k
 
 
 
 -- | Symbol/Attribute Symmetry
 
-instance Witnessing Exitable Exiting where
-    witness use (Exitable i k) (FreshScope ik) = use k (ik i)
+instance Witnessing Exitable Exiting
+  where
+
+    witness use (Exitable i k) (FreshScope ik) =
+        use k (ik i)
+
+
+
+data Exit a fs m =
+    Exit
+        { exit
+              :: forall b.
+                 a
+              -> Pattern fs m b
+        }
 
 
 
 -- | Local Scoping Construct + Symbol Substitution
 
--- use: exits $ \exit -> do { .. ; }
-exits :: Is Exiting fs m => ((forall b. a -> Pattern fs m b) -> Pattern fs m a) -> Pattern fs m a
-exits f = do
-    scope <- self (FreshScope id)
-    transform scope $ f (\a -> self (Exit scope a))
+exits
+    :: Is Exiting fs m
+    => (    Exit a fs m
+         -> Pattern fs m a
+       )
+    -> Pattern fs m a
+exits f =
+    do
+      scope <- self (FreshScope id)
+      transform scope $ f
+          Exit
+              { exit =
+                    \a ->
+                        self (Done scope a)
+              }
   where
-    transform scope = go where
-        go p = case p of
-            Step sym bp -> case prj sym of
-                Just x -> case x of
-                    Exit i a ->
-                        if i == scope
-                        then return (unsafeCoerce a)
-                        else Step sym (\b -> go (bp b))
-                    _ -> Step sym (\b -> go (bp b))
-                _ -> Step sym (\b -> go (bp b))
-            M m -> M (fmap go m)
-            Pure r -> Pure r
+    transform scope =
+        go
+      where
+
+        go (Step sym bp) =
+            let
+              ignore =
+                  Step sym (go . bp)
+
+            in
+              case prj sym of
+                  Just x ->
+                      case x of
+
+                          Done i a
+                              | i == scope ->
+                                    return (unsafeCoerce a)
+
+                              | otherwise ->
+                                    ignore
+
+                          _ ->
+                              ignore
+
+                  _ ->
+                      ignore
+
+        go (M m) =
+            M (fmap go m)
+
+        go (Pure r) =
+            return r
+
+
 
 -- | Inlines
 

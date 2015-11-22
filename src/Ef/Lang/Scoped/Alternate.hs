@@ -21,9 +21,9 @@ import Unsafe.Coerce
 
 -- | Symbol
 
-data Alternating k
+data Alternating k =
 
-    = forall fs m a. Fork Int (Pattern fs m a)
+      forall fs m a. Fork Int (Pattern fs m a)
 
     | forall fs m a. Atomically Int (Pattern fs m a)
 

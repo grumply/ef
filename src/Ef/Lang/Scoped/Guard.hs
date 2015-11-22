@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -22,12 +23,21 @@ import Unsafe.Coerce
 -- | Symbol
 
 data Guarding k
+  where
 
-    = FreshScope (Int -> k)
+    FreshScope
+        :: (Int -> k)
+        -> Guarding k
 
-    | forall a. Choose Int [a] (a -> k)
+    Choose
+        :: Int
+        -> [a]
+        -> (a -> k)
+        -> Guarding k
 
-    | Cut Int
+    Cut
+        :: Int
+        -> Guarding k
 
 
 
@@ -73,7 +83,9 @@ guarder =
 
 -- | Symbol/Attribute pairing witness
 
-instance Witnessing Guardable Guarding where
+instance Witnessing Guardable Guarding
+  where
+
     witness use (Guardable i k) (FreshScope ik) =
         use k (ik i)
 
@@ -93,12 +105,13 @@ guards l =
     scope <- self (FreshScope id)
     rewrite scope $ l
         Guard
-            { choose = \foldable ->
-                  let
-                    list = toList foldable
+            { choose =
+                  \foldable ->
+                      let
+                        list = toList foldable
 
-                  in
-                    self (Choose scope list id)
+                      in
+                        self (Choose scope list id)
 
             , cut =
                   self (Cut scope)

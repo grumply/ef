@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -29,12 +30,22 @@ import Data.Typeable
 -- | Symbol
 
 data Diverging k
+  where
 
-  = Snapshot k
+    Snapshot
+        :: k
+        -> Diverging k
 
-  | forall gs m. Inject (Object gs m) k
+    Inject
+        :: Object gs m
+        -> k
+        -> Diverging k
 
-  | forall gs m. Project (Object gs m -> k)
+    Project
+        :: (    Object gs m
+             -> k
+           )
+        -> Diverging k
 
 
 
@@ -42,20 +53,20 @@ data Diverging k
 
 data Divergable k =
     forall gs m.
-        Divergable
-            { current
-                  :: Object gs m
+    Divergable
+        { current
+              :: Object gs m
 
-            , reification
-                  :: k
+        , reification
+              :: k
 
-            , setter
-                  :: Object gs m
-                  -> k
+        , setter
+              :: Object gs m
+              -> k
 
-            , getter
-                  :: k
-            }
+        , getter
+              :: k
+        }
 
 
 
@@ -63,6 +74,7 @@ data Introspect fs gs m =
     Introspect
         { project
               :: Pattern fs m (Object gs m)
+
         , inject
               :: Object gs m
               -> Pattern fs m ()
@@ -105,23 +117,27 @@ diverger =
 
 -- | Symbol/Attribute pairing witness
 
-instance Witnessing Divergable Diverging where
-  witness use (Divergable _ ss _ _) (Snapshot k) =
-      use ss k
+instance Witnessing Divergable Diverging
+  where
 
-  witness use (Divergable _ _ ok _) (Inject obj k') =
-      let
-        k =
-          ok (unsafeCoerce obj)
-      in
-        use k k'
+    witness use (Divergable _ ss _ _) (Snapshot k) =
+        use ss k
 
-  witness use (Divergable obj _ _ k) (Project ok) =
-      let
-        k' =
-          ok (unsafeCoerce obj)
-      in
-        use k k'
+    witness use (Divergable _ _ ok _) (Inject obj k') =
+        let
+          k =
+              ok (unsafeCoerce obj)
+
+        in
+          use k k'
+
+    witness use (Divergable obj _ _ k) (Project ok) =
+        let
+          k' =
+              ok (unsafeCoerce obj)
+
+        in
+          use k k'
 
 
 

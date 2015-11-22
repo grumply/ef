@@ -7,7 +7,7 @@ module Ef.Core
     , delta
     , deltaCast
     , deltaDebug
-    , run
+--    , run
     , (#)
     ) where
 
@@ -58,12 +58,12 @@ deltaCast o =
 
 
 
-run
-    :: Monad m
-    => Pattern '[] m a
-    -> m a
-run =
-    fmap snd . delta simple
+-- run
+--     :: Monad m
+--     => Pattern '[] m a
+--     -> m a
+-- run =
+--     fmap snd . delta simple
 
 
 
