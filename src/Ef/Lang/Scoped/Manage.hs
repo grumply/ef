@@ -63,9 +63,9 @@ manager = Manageable 0 return $ \fs ->
         i' = succ i
     in i' `seq` pure (fs .= Manageable i' non me)
 
-instance Symmetry Manageable Managing where
-    symmetry use (Manageable _ _ k) (Deallocate _ k') = use k k'
-    symmetry use (Manageable i k _) (FreshScope ik)   = use k (ik i)
+instance Witnessing Manageable Managing where
+    witness use (Manageable _ _ k) (Deallocate _ k') = use k k'
+    witness use (Manageable i k _) (FreshScope ik)   = use k (ik i)
 
 {-# INLINE freshScope #-}
 freshScope :: Is Managing fs m => Pattern fs m Int

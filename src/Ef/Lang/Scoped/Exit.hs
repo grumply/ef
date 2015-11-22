@@ -54,8 +54,8 @@ exiter =
 
 -- | Symbol/Attribute Symmetry
 
-instance Symmetry Exitable Exiting where
-    symmetry use (Exitable i k) (FreshScope ik) = use k (ik i)
+instance Witnessing Exitable Exiting where
+    witness use (Exitable i k) (FreshScope ik) = use k (ik i)
 
 
 

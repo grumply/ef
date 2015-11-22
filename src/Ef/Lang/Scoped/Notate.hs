@@ -47,8 +47,8 @@ notator = Notatable 0 $ \fs ->
 
 -- | Symbol/Attribute Symmetry
 
-instance Symmetry Notatable Notating where
-    symmetry use (Notatable i k) (FreshScope ik) = use k (ik i)
+instance Witnessing Notatable Notating where
+    witness use (Notatable i k) (FreshScope ik) = use k (ik i)
 
 {-# INLINE notates #-}
 notates :: forall fs m w r. (Is Notating fs m,Monoid w)

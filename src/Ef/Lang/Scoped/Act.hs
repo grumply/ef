@@ -19,5 +19,5 @@ data Actable k = Actable k
 actor :: Uses Actable gs m => Attribute Actable gs m
 actor = Actable return
 
-instance Symmetry Actable Acting where
-  symmetry use (Actable k) (Acting k') = use k k'
+instance Witnessing Actable Acting where
+  witness use (Actable k) (Acting k') = use k k'

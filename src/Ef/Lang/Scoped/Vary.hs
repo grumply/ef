@@ -47,8 +47,8 @@ varier = Variable 0 $ \fs ->
 
 -- | Attribute/Symbol Symmetry
 
-instance Symmetry Variable Varying where
-    symmetry use (Variable i k) (FreshScope ik) = use k (ik i)
+instance Witnessing Variable Varying where
+    witness use (Variable i k) (FreshScope ik) = use k (ik i)
 
 -- | Local Scoping Construct + Substitution
 

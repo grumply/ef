@@ -20,7 +20,7 @@ import Control.Monad
 type Ref gs m a = (ThreadId,Promise (Either SomeException (Object gs m,a)))
 
 forkWith :: forall fs fs' gs m m' a.
-        (Symmetry (Attrs gs) (Symbol fs)
+        (Witnessing (Attrs gs) (Symbol fs)
         ,Lift IO m'
         ,Is Excepting fs' m'
         ,Is Excepting fs m
@@ -44,7 +44,7 @@ forkWith comp plan lft = do
     return (tid,p)
 
 forkOSWith :: forall fs fs' gs m m' a.
-          (Symmetry (Attrs gs) (Symbol fs)
+          (Witnessing (Attrs gs) (Symbol fs)
           ,Lift IO m'
           ,Is Excepting fs' m'
           ,Is Excepting fs m
@@ -68,7 +68,7 @@ forkOSWith comp plan lft = do
     return (tid,p)
 
 forkOnWith :: forall fs fs' gs m m' a.
-          (Symmetry (Attrs gs) (Symbol fs)
+          (Witnessing (Attrs gs) (Symbol fs)
           ,Lift IO m'
           ,Is Excepting fs' m'
           ,Is Excepting fs m

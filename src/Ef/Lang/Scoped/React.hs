@@ -73,8 +73,8 @@ reactor = Reactable 0 nextS
 
 -- | Attribute/Symbol Symmetry
 
-instance Symmetry Reactable Reacting where
-  symmetry use (Reactable i k) (FreshScope ik) = use k (ik i)
+instance Witnessing Reactable Reacting where
+  witness use (Reactable i k) (FreshScope ik) = use k (ik i)
 
 -- | Local Scoping Construct + Substitution
 

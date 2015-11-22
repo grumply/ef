@@ -15,8 +15,8 @@ data Viewing r k = Viewing (r -> k)
 
 data Viewable r k = Viewable r k
 
-instance Symmetry (Viewable r) (Viewing r) where
-    symmetry use (Viewable r k) (Viewing rk) = symmetry use (r,k) rk
+instance Witnessing (Viewable r) (Viewing r) where
+    witness use (Viewable r k) (Viewing rk) = witness use (r,k) rk
 
 {-# INLINE ask #-}
 ask :: Is (Viewing r) fs m => Pattern fs m r

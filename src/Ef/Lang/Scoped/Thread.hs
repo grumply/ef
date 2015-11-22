@@ -43,8 +43,8 @@ threader = Threadable 0 $ \fs ->
 
 -- | Attribute/Symbol Symmetry
 
-instance Symmetry Threadable Threading where
-    symmetry use (Threadable i k) (FreshScope ik) = use k (ik i)
+instance Witnessing Threadable Threading where
+    witness use (Threadable i k) (FreshScope ik) = use k (ik i)
 
 -- | Local Scoping Construct + Substitution
 

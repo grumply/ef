@@ -14,10 +14,10 @@ data Varying st k = Modify (st -> st) (st -> k)
 
 data Variable st k = Variable st (st -> k)
 
-instance Symmetry (Variable st) (Varying st) where
-    symmetry use (Variable st k) (Modify stst stk) =
+instance Witnessing (Variable st) (Varying st) where
+    witness use (Variable st k) (Modify stst stk) =
         let st' = stst st
-        in symmetry use (st,k st') stk
+        in witness use (st,k st') stk
 
 {-# INLINE get #-}
 get :: Is (Varying st) fs m => Pattern fs m st

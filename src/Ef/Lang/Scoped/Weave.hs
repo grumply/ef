@@ -58,8 +58,8 @@ getScope p = case p of
     M m -> m >>= getScope
     _ -> error "getScope error"
 
-instance Symmetry Weavable Weaving where
-    symmetry p (Weavable i k) (FreshScope ik) = p k (ik i)
+instance Witnessing Weavable Weaving where
+    witness p (Weavable i k) (FreshScope ik) = p k (ik i)
 
 {-# INLINE weave #-}
 weave :: Is Weaving fs m => Effect fs m r -> Pattern fs m r

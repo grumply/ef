@@ -25,6 +25,14 @@ Flag TRANSFORMERS_SAFE
 library
   exposed-modules:     Ef
                        Ef.Core
+                       Ef.Core.Codensity
+                       Ef.Core.Object
+                       Ef.Core.Object.Attributes
+                       Ef.Core.Pattern
+                       Ef.Core.Pattern.Symbols
+                       Ef.Core.Type.Nat
+                       Ef.Core.Type.Set
+                       Ef.Core.Witness
                        Ef.Data.Promise
                        Ef.Data.Queue
                        Ef.Attr.Notate

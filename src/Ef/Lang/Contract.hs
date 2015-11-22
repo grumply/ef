@@ -28,7 +28,7 @@ instance Exception Contract
 --       precondition vars = _
 --       postcondition a = _
 -- @
-contract :: (Is Excepting fs m,Is Diverging fs m,Symmetry (Attrs gs) (Symbol fs),Typeable gs,Typeable m)
+contract :: (Is Excepting fs m,Is Diverging fs m,Witnessing (Attrs gs) (Symbol fs),Typeable gs,Typeable m)
          => (    String
             ,    vars
               -> Pattern fs m Bool
@@ -78,7 +78,7 @@ contract (pre,precondition) (post,postcondition) method vs =
 --       precondition vars obj = _
 --       postcondition a obj = _
 -- @
-analyze :: (Is Excepting fs m,Is Diverging fs m,Symmetry (Attrs gs) (Symbol fs),Typeable gs,Typeable m)
+analyze :: (Is Excepting fs m,Is Diverging fs m,Witnessing (Attrs gs) (Symbol fs),Typeable gs,Typeable m)
         => (    String
            ,    vars
              -> Object gs m

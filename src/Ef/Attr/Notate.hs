@@ -39,8 +39,8 @@ writer = notator mempty (<>)
 
 -- | Attribute/Symbol Symmetry
 
-instance Symmetry (Notatable r) (Noting r) where
-    symmetry use (Notatable _ rk) (Noting r k) = symmetry use rk (r,k)
+instance Witnessing (Notatable r) (Noting r) where
+    witness use (Notatable _ rk) (Noting r k) = witness use rk (r,k)
 
 -- | Extended API
 

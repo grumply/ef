@@ -36,8 +36,8 @@ excepter = Exceptable (\se -> error $ "Uncaught exception: " ++ show se)
 
 -- | Symbol/Attribute Symmetry
 
-instance Symmetry Exceptable Excepting where
-    symmetry p (Exceptable k) (Throw e k') = p (k e) k'
+instance Witnessing Exceptable Excepting where
+    witness use (Exceptable k) (Throw e k') = use (k e) k'
 
 -- | Symbol Substitution Scope
 

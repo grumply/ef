@@ -57,8 +57,8 @@ logger = Loggable 0 $ \fs ->
 
 -- | Symbol/Attribute Symmetry
 
-instance Symmetry Loggable Logging where
-    symmetry use (Loggable i k) (FreshScope ik) = use k (ik i)
+instance Witnessing Loggable Logging where
+    witness use (Loggable i k) (FreshScope ik) = use k (ik i)
 
 -- | Local Scoping Construct + Substitution
 
