@@ -40,7 +40,7 @@ All compilations and executions performed with:
     compiler: ghc-7.10.2
     flags: -O2
     processor: 3.4 GHz i7 from late 2012
-    memory: 1600 MHz DDR3
+    memory: 1600 MHz
 
 Results show
 
