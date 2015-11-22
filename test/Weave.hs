@@ -36,20 +36,21 @@ main =
 
 {-
 
-All compilations done with ghc 7.10.2 using -O2
-on a 3.4 GHz i7 from late 2012.
+All compilations and executions performed with:
+    compiler: ghc-7.10.2
+    flags: -O2
+    processor: 3.4 GHz i7 from late 2012
+    memory: 1600 MHz DDR3
 
 Results show
 
 that, for Int:
   main_weave    : 0.34
-
   main_standard : 0.006 (- NOINLINE)
   main_standard : 0.19  (+ NOINLINE)
 
 and, for Integer:
   main_weave    : 0.47
-
   main_standard : 0.14 (- NOINLINE)
   main_standard : 0.27 (+ NOINLINE)
 
