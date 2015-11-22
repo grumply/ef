@@ -150,29 +150,21 @@ rewrite scope (Step sym bp) =
                             result =
                                 unsafeCoerce ()
 
-                            continue =
-                                bp result
-
                             newRunQueue =
                               enqueue (unsafeCoerce child) emptyQueue
 
                           in
-                            rooted scope newRunQueue continue
+                            rooted scope newRunQueue (bp result)
 
                   Atomically i atom ->
                       check i $
-                          let
-                            contained =
-                                unsafeCoerce atom
-                          in
-                            do
-                              b <- rewrite scope contained
-                              let
-                                result =
-                                    unsafeCoerce b
-                                continue =
-                                    bp result
-                              rewrite scope continue
+                          do
+                            b <- rewrite scope (unsafeCoerce atom)
+                            let
+                              continue =
+                                  bp (unsafeCoerce b)
+
+                            rewrite scope continue
 
                   Stop i ->
                       check i $
@@ -242,28 +234,27 @@ rooted scope rest (Step sym continue) =
           case x of
 
             Fork i child ->
-                let
-                  newRunQueue =
-                      enqueue (unsafeCoerce child) rest
+               check i $
+                   let
+                     newRunQueue =
+                         enqueue (unsafeCoerce child) rest
 
-                  newContinue =
-                      continue (unsafeCoerce ())
+                     newContinue =
+                         continue (unsafeCoerce ())
 
-                in
-                  check i $
-                      rooted scope newRunQueue newContinue
+                   in
+                     rooted scope newRunQueue newContinue
 
             Atomically i atom ->
-              let
-                  newContinue value =
-                      continue (unsafeCoerce value)
-
-                  newRunQueue newRest value =
-                      enqueue (newContinue value) newRest
-
-                in
-                  check i $
+                check i $
                     do
+                      let
+                        newContinue value =
+                            continue (unsafeCoerce value)
+
+                        newRunQueue newRest value =
+                            enqueue (newContinue value) newRest
+
                       b <- rewrite scope (unsafeCoerce atom)
                       case dequeue rest of
 
@@ -287,22 +278,23 @@ rooted scope rest (Step sym continue) =
                 ignore
 
         Nothing ->
+            let
+              newContinue value =
+                  case dequeue rest of
 
-            Step sym $ \result ->
-                case dequeue rest of
+                      Nothing ->
+                          rewrite scope (continue value)
 
-                  Nothing ->
-                      rewrite scope (continue result)
-
-                  Just (newRest,nxt) ->
-
-                      Step sym $ \newResult ->
+                      Just (newRest,nxt) ->
                           let
                             newRunQueue =
-                                enqueue (continue newResult) newRest
+                                enqueue (continue value) newRest
 
                           in
                             rooted scope newRunQueue nxt
+
+            in
+              Step sym newContinue
 
 
 
