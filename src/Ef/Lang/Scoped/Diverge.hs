@@ -103,20 +103,20 @@ diverger =
 
 
 
--- | Symbol/Attribute Symmetry
+-- | Symbol/Attribute pairing witness
 
-instance Symmetry Divergable Diverging where
-  symmetry use (Divergable _ ss _ _) (Snapshot k) =
+instance Witnessing Divergable Diverging where
+  witness use (Divergable _ ss _ _) (Snapshot k) =
       use ss k
 
-  symmetry use (Divergable _ _ ok _) (Inject obj k') =
+  witness use (Divergable _ _ ok _) (Inject obj k') =
       let
         k =
           ok (unsafeCoerce obj)
       in
         use k k'
 
-  symmetry use (Divergable obj _ _ k) (Project ok) =
+  witness use (Divergable obj _ _ k) (Project ok) =
       let
         k' =
           ok (unsafeCoerce obj)
@@ -128,7 +128,7 @@ instance Symmetry Divergable Diverging where
 -- | Local Scoping Construct
 
 introspect
-    :: ( Symmetry (Attrs gs) (Symbol fs)
+    :: ( Witnessing (Attrs gs) (Symbol fs)
        , Is Diverging fs m
        )
     => (    Introspect fs gs m
@@ -154,7 +154,7 @@ introspect f =
 -- NotEq here is used to help prevent misuse. It catches the simplest case only:
 --   a ~ Object gs m; you can bypass it by returning ((),Object gs m)
 modself
-    :: ( Symmetry (Attrs gs) (Symbol fs)
+    :: ( Witnessing (Attrs gs) (Symbol fs)
        , Is Diverging fs m
        , (Object gs m /== a) ~ 'True
        )
@@ -173,7 +173,7 @@ modself f =
 
 
 typeOfSelf
-    :: ( Symmetry (Attrs gs) (Symbol fs)
+    :: ( Witnessing (Attrs gs) (Symbol fs)
        , Is Diverging fs m,Typeable gs
        , Typeable m
        )

@@ -1270,11 +1270,31 @@ is .= x =
 -- >>> import Effect.State
 -- >>> newtype St = St Int
 -- >>> :{
---  let inc (St n) = St (n + 1)
---  in do (o,_) <- delta (Object $ store (St 0) *:* Empty) $
---                   cutoffSteps 3 $ replicateM_ 5 (modify inc)
---        (_,St i) <- delta o get
---        print i
+--  do
+--    let
+--      inc (St n) =
+--          St (n + 1)
+--
+--      newStore =
+--          store (St 0)
+--
+--      obj =
+--          Object (newStore *:* Empty)
+--
+--      test =
+--          replicateM_ 5 (modify inc)
+--
+--    result0 <- delta obj (cutoffSteps 3 test)
+--    let
+--      (o,_) =
+--          result0
+--
+--    result1 <- delta o get
+--    let
+--      (_,St i) =
+--          result1
+--
+--    print i
 -- :}
 --3
 cutoffSteps

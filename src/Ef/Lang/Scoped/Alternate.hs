@@ -3,14 +3,14 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 module Ef.Lang.Scoped.Alternate
-  ( Alternating
-  , alternates
+    ( Alternating
+    , alternates
 
-  , Alternate(..)
+    , Alternate(..)
 
-  , Alternatable
-  , alternator
-  ) where
+    , Alternatable
+    , alternator
+    ) where
 
 import Ef.Core
 import Ef.Data.Queue
@@ -76,11 +76,11 @@ alternator =
 
 
 
--- | Symbol/Attribute Symmetry
+-- | Symbol/Attribute pairing witness
 
-instance Symmetry Alternatable Alternating where
-  symmetry use (Alternatable i k) (FreshScope ik) =
-      use k (ik i)
+instance Witnessing Alternatable Alternating where
+    witness use (Alternatable i k) (FreshScope ik) =
+        use k (ik i)
 
 
 
@@ -109,34 +109,35 @@ alternates f =
                         self (Atomically scope p)
               }
 
-    start scope (f alternate)
+    rewrite scope (f alternate)
 
 
 
-start
+rewrite
     :: Is Alternating fs m
     => Int
     -> Pattern fs m a
     -> Pattern fs m a
-start _ (Pure r) =
+rewrite _ (Pure r) =
     return r
 
-start scope (M m) =
+rewrite scope (M m) =
     let
-      continue = start scope
+      continue = rewrite scope
     in
       M (fmap continue m)
 
-start scope (Step sym bp) =
+rewrite scope (Step sym bp) =
     let
       ignore =
-          Step sym (start scope . bp)
+          Step sym (rewrite scope . bp)
 
       check i scoped =
           if i == scope then
               scoped
           else
               ignore
+
     in
       case prj sym of
 
@@ -154,6 +155,7 @@ start scope (Step sym bp) =
 
                             newRunQueue =
                               enqueue (unsafeCoerce child) emptyQueue
+
                           in
                             rooted scope newRunQueue continue
 
@@ -164,13 +166,13 @@ start scope (Step sym bp) =
                                 unsafeCoerce atom
                           in
                             do
-                              b <- start scope contained
+                              b <- rewrite scope contained
                               let
                                 result =
                                     unsafeCoerce b
                                 continue =
                                     bp result
-                              start scope continue
+                              rewrite scope continue
 
                   Stop i ->
                       check i $
@@ -211,12 +213,13 @@ rooted scope rest (M m) =
         case dequeue rest of
 
             Nothing ->
-                return (start scope continue)
+                return (rewrite scope continue)
 
             Just (newRest,next) ->
                 let
                   newRunQueue =
                       enqueue (unsafeCoerce continue) newRest
+
                 in
                   newRunQueue `seq` return $
                       rooted scope newRunQueue next
@@ -231,6 +234,7 @@ rooted scope rest (Step sym continue) =
               scoped
           else
               ignore
+
     in
       case prj sym of
 
@@ -244,6 +248,7 @@ rooted scope rest (Step sym continue) =
 
                   newContinue =
                       continue (unsafeCoerce ())
+
                 in
                   check i $
                       rooted scope newRunQueue newContinue
@@ -259,11 +264,11 @@ rooted scope rest (Step sym continue) =
                 in
                   check i $
                     do
-                      b <- start scope (unsafeCoerce atom)
+                      b <- rewrite scope (unsafeCoerce atom)
                       case dequeue rest of
 
                           Nothing ->
-                              start scope (continue b)
+                              rewrite scope (continue b)
 
                           Just (newRest,nxt) ->
                               rooted scope (newRunQueue newRest b) nxt
@@ -287,7 +292,7 @@ rooted scope rest (Step sym continue) =
                 case dequeue rest of
 
                   Nothing ->
-                      start scope (continue result)
+                      rewrite scope (continue result)
 
                   Just (newRest,nxt) ->
 
@@ -295,6 +300,7 @@ rooted scope rest (Step sym continue) =
                           let
                             newRunQueue =
                                 enqueue (continue newResult) newRest
+
                           in
                             rooted scope newRunQueue nxt
 

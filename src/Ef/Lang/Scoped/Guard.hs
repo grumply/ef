@@ -64,16 +64,17 @@ guarder =
         let
           Guardable i k =
               view fs
+
         in
           return $ fs .=
               Guardable (succ i) k
 
 
 
--- | Symbol/Attribute Symmetry
+-- | Symbol/Attribute pairing witness
 
-instance Symmetry Guardable Guarding where
-    symmetry use (Guardable i k) (FreshScope ik) =
+instance Witnessing Guardable Guarding where
+    witness use (Guardable i k) (FreshScope ik) =
         use k (ik i)
 
 
@@ -95,6 +96,7 @@ guards l =
             { choose = \foldable ->
                   let
                     list = toList foldable
+
                   in
                     self (Choose scope list id)
 
@@ -115,6 +117,7 @@ rewrite _ (Pure result) =
 rewrite scope (M m) =
     let
       continue = rewrite scope
+
     in
       M (fmap continue m)
 
@@ -161,11 +164,11 @@ choosing _ [] _ alt =
     alt
 
 choosing scope (a:as) bp alt =
-    nestedChoices scope as alt bp (bp a)
+    nestedChoosing scope as alt bp (bp a)
 
 
 
-nestedChoices
+nestedChoosing
     :: Is Guarding fs m
     => Int
     -> [a]
@@ -173,42 +176,49 @@ nestedChoices
     -> (a -> Pattern fs m r)
     -> Pattern fs m r
     -> Pattern fs m r
-nestedChoices _ _ _ _ (Pure result) =
+nestedChoosing _ _ _ _ (Pure result) =
     return result
 
-nestedChoices scope as alt bp (M m) =
+nestedChoosing scope choices alt parentContinue (M m) =
     let
-      nextTry = nestedChoices scope as alt bp
-    in
-      M (fmap nextTry m)
+      continue = nestedChoosing scope choices alt parentContinue
 
-nestedChoices scope as alt bp (Step sym bp') =
+    in
+      M (fmap continue m)
+
+nestedChoosing scope choices alt parentContinue (Step sym childContinue) =
     let
       ignore =
-          Step sym (nestedChoices scope as alt bp . bp')
+          let
+            continue =
+                nestedChoosing scope choices alt parentContinue . childContinue
+
+          in
+            Step sym continue
 
       check i scoped =
           if i == scope then
               scoped
           else
               ignore
+
     in
       case prj sym of
 
           Just x ->
               case x of
 
-                  Choose i as' _ ->
+                  Choose i nestedChoices _ ->
                       check i $
                           choosing
                               scope
-                              (unsafeCoerce as')
-                              (unsafeCoerce bp')
-                              (choosing scope as bp alt)
+                              (unsafeCoerce nestedChoices)
+                              (unsafeCoerce childContinue)
+                              (choosing scope choices parentContinue alt)
 
                   Cut i ->
                       check i $
-                          choosing scope as bp alt
+                          choosing scope choices parentContinue alt
 
                   _ ->
                       ignore
