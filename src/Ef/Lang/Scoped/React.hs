@@ -15,7 +15,6 @@ module Ef.Lang.Scoped.React
 
 import Ef.Core
 import Ef.Lang.IO
-import Ef.Lang.Scoped.Alternate
 
 import Data.IORef
 import System.IO.Unsafe
@@ -79,7 +78,7 @@ instance Witnessing Reactable Reacting where
 -- | Local Scoping Construct + Substitution
 
 {-# INLINE reacts #-}
-reacts :: forall fs m a. (Is Reacting fs m,Lift IO m,Is Alternating fs m)
+reacts :: forall fs m a. (Is Reacting fs m,Lift IO m)
       => (    React fs m
            -> Pattern fs m a
          ) -> Pattern fs m a

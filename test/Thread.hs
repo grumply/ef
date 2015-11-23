@@ -18,13 +18,13 @@ main =
 
     in
       do
-        a <- runTest
+        str <- runTest
+                   main_thread
 
-                 main_thread
+                   -- ten_e_5
+                   ten_e_6
 
-                 -- ten_e_5
-                 ten_e_6
-        print a
+        putStrLn str
 
 
 
@@ -47,26 +47,27 @@ Results show that:
   main_thread (10e6) > Time (s) :     Use :    Heap :      GC : Resident
   ----------------------------------------------------------------------
       yield          :     0.17 :    1 MB :  720 MB :    0 MB :     0 MB
-      fork           :     3.91 : 1349 MB : 3848 MB : 4320 MB :   560 MB
+      fork           :     3.91 : 1349 MB : 3840 MB : 4328 MB :   560 MB
       fork and yield :     0.91 :    1 MB : 5840 MB :    2 MB :     0 MB
 
-These results demonstrate linearity.
+These results demonstrate linearity in time and near-linearity in space.
 
 -}
 
 
 
-data Test n
+data Test input output
   where
 
     Test
-        :: (    n
-             -> IO Char
+        :: (    input
+             -> IO output
            )
-        -> Test n
+        -> Test input output
 
 
 
+runTest :: Test input output -> input -> IO output
 runTest (Test go) n =
     go n
 
@@ -76,7 +77,7 @@ main_thread
     :: ( Eq n
        , Num n
        )
-    => Test n
+    => Test n String
 
 main_thread =
     Test (main' . threads . test)
@@ -92,7 +93,7 @@ main_thread =
               return ()
 
         go 0 =
-            return 'a'
+            return "Success"
 
         go n =
             do

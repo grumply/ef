@@ -34,6 +34,7 @@ reader r = Viewable r pure
 local :: forall fs m r. Is (Viewing r) fs m => (r -> r) -> Pattern fs m r -> Pattern fs m r
 local f p0 = go p0 where
     go p = case p of
+        Fail e -> Fail e
         Step sym bp -> case prj sym of
             Just (Viewing (r :: r -> b)) -> Step (inj (Viewing (r . f)))
                                              (\b -> go (bp b))

@@ -13,8 +13,8 @@ import Ef.Lang.Except           as Base
 import Ef.Lang.Scoped.Diverge   as Base
 import Ef.Lang.Scoped.Exit      as Base
 import Ef.Lang.Contract         as Base
---import Ef.Lang.Scoped.Act       as Base
-import Ef.Lang.Scoped.Alternate as Base
+-- import Ef.Lang.Scoped.Act       as Base
+-- import Ef.Lang.Scoped.Task      as Base
 import Ef.Lang.Scoped.Generate  as Base
 import Ef.Lang.Scoped.Guard     as Base
 import Ef.Lang.Scoped.Try       as Base
@@ -30,7 +30,7 @@ import Ef.Lang.Scoped.Log       as Base
 type Ef
   = '[Manageable
      ,Exitable
-     ,Alternatable
+--     ,Taskable
      ,Threadable
      ,Weavable
      ,Exceptable
@@ -47,7 +47,7 @@ type Ef
 type Main
   = '[Managing
      ,Exiting
-     ,Alternating
+--     ,Tasking
      ,Threading
      ,Weaving
      ,Excepting
@@ -69,7 +69,7 @@ debug = fmap snd. deltaDebug base
 base :: Monad m => Object Ef m
 base = Object $ manager
             *:* exiter
-            *:* alternator
+--            *:* tasker
             *:* threader
             *:* weaver
             *:* excepter

@@ -153,6 +153,27 @@ rewrite scope =
         go
       where
 
+        go (Fail e) =
+            Fail e
+
+        go (M m) =
+            M (fmap go m)
+
+        go (Pure r) =
+            case dequeue queue of
+
+                Nothing ->
+                    return r
+
+                Just (rest,nxt) ->
+                    let
+                      newQ =
+                          enqueue (return r) rest
+
+                    in
+                      newQueue `seq`
+                          withQueue newQ (unsafeCoerce nxt)
+
         go (Step sym bp) =
             let
               check i scoped =
@@ -200,34 +221,16 @@ rewrite scope =
                             check i $
                                 case dequeue queue of
 
-                                     ~(Just view) ->
+                                     ~(Just q) ->
                                          let
                                            (rest,nxt) =
-                                               view
+                                               q
 
                                          in
                                            rewrite scope rest nxt
 
                 Nothing ->
                     ignore
-
-        go (M m) =
-            M (fmap go m)
-
-        go (Pure r) =
-            case dequeue queue of
-
-                Nothing ->
-                    return r
-
-                Just (rest,nxt) ->
-                    let
-                      newQ =
-                          enqueue (return r) rest
-
-                    in
-                      newQueue `seq`
-                          withQueue newQ (unsafeCoerce nxt)
 
 
 

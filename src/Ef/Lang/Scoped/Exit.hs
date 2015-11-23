@@ -103,6 +103,15 @@ exits f =
         go
       where
 
+        go (Fail e) =
+            Fail e
+
+        go (Pure r) =
+            return r
+
+        go (M m) =
+            M (fmap go m)
+
         go (Step sym bp) =
             let
               ignore =
@@ -125,12 +134,6 @@ exits f =
 
                   _ ->
                       ignore
-
-        go (M m) =
-            M (fmap go m)
-
-        go (Pure r) =
-            return r
 
 
 

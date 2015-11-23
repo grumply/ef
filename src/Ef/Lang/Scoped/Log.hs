@@ -141,8 +141,12 @@ logs c0 w0 f =
                         self (Reconfigure scope c')
               }
   where
+
+    rewrite _ _ _ (Fail e) =
+        Fail e
+
     rewrite _ _ w (Pure r) =
-        return (w,r)
+        Pure (w,r)
 
     rewrite scope c w (M m) =
         let

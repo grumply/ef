@@ -1,92 +1,291 @@
-{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
-module Ef.Lang.Scoped.Task where
+{-# LANGUAGE MultiParamTypeClasses #-}
+module Ef.Lang.Scoped.Task
+    ( Tasking
+    , alternates
+
+    , Task(..)
+
+    , Taskable
+    , alternator
+    ) where
+
+
 
 import Ef.Core
--- import Lang.Global.IO
--- import Lang.Global.Except
+import Ef.Data.Queue
 
-import Control.Concurrent.MVar
+import Data.IORef
+import Unsafe.Coerce
 
-data Promise a = Promise
-  { getPromiseId :: Int
-  , getPromise :: MVar a
-  }
 
--- Priority is the number of steps to perform before yielding automatically.
-newtype Priority = Priority Int
 
--- | Symbols
+-- | Symbol
+
+data Operation status result
+  where
+
+    Operation
+        :: Int
+        -> IORef (Either status result)
+        -> Operation status result
+
+
+
+data Await
+  where
+
+    Atomically
+        :: Await
+
+    Concurrently
+        :: Await
+
+
 
 data Tasking k
-  = forall fs m a. Fork Int (Pattern fs m a) (Promise a -> k)
-  | forall fs m a. Yield Int k
-  | forall fs m a. Demand Int (Promise a) (a -> k)
-  | FreshScope (Int -> k)
-  | FreshPromiseId (Int -> k)
+  where
+
+    FreshScope
+        :: (Int -> k)
+        -> Tasking k
+
+    Task
+        :: Int
+        -> Pattern fs m result
+        -> (Operation status result -> k)
+        -> Tasking k
+
+    Await
+        :: Int
+        -> Await
+        -> Operation status result
+        -> (result -> k)
+        -> Tasking k
+
+    Atomic
+        :: Int
+        -> Pattern fs m result
+        -> (result -> k)
+        -> Tasking k
+
+    Stop
+        :: Int
+        -> Operation status result
+        -> k
+        -> Tasking k
+
+    Done
+        :: Int
+        -> Operation status result
+        -> (result -> k)
+        -> Tasking k
+
+    Update
+        :: Int
+        -> Operation status result
+        -> status
+        -> k
+        -> Tasking k
+
+    Status
+        :: Int
+        -> Operation status result
+        -> (status -> k)
+        -> Altrnating k
+
+    Finished
+        :: Operation a
+        -> (Bool -> k)
+        -> Tasking k
+
+
 
 -- | Symbol Module
 
-data Task fs m = Task
-  { fork :: forall a. Pattern fs m a -> Pattern fs m (Promise a)
-  , yield :: Pattern fs m ()
-  , demand :: forall a. Promise a -> Pattern fs m a
-  }
+data Task fs m =
+    Task
+        { task
+              :: Pattern fs m a
+              -> Pattern fs m (Operation a)
+
+        ,
+
+        , atomically
+              :: forall b.
+                 Pattern fs m b
+              -> Pattern fs m b
+        }
+
+
 
 -- | Attribute
 
-data Taskable k = Taskable Int k Int k
+data Taskable k =
+    Taskable Int k
+
+
 
 -- | Attribute Construct
 
-tasker :: Uses Taskable fs m => Attribute Taskable fs m
-tasker = Taskable 0 nextScope 0 nextPromiseId
-  where
-    nextScope fs =
-      let Taskable s ns pid npid = view fs
-          s' = succ s
-      in s' `seq` pure (fs .= Taskable s' ns pid npid)
-    nextPromiseId fs =
-      let Taskable s ns pid npid = view fs
-          pid' = succ pid
-      in pid' `seq` pure (fs .= Taskable s ns pid' npid)
+alternator
+    :: Uses Taskable gs m
+    => Attribute Taskable gs m
+alternator =
+    Taskable 0 $ \fs ->
+        let
+          Taskable scope k =
+              view fs
 
--- | Symbol/Attribute Symmetry
+          newScope =
+              succ scope
 
-instance Symmetry Taskable Tasking where
-  symmetry use (Taskable _ _ pid npidk) (FreshPromiseId pidk) = use npidk (pidk pid)
-  symmetry use (Taskable s nsk _ _) (FreshScope sk) = use nsk (sk s)
+        in
+          newScope `seq` return $ fs .=
+             Taskable newScope k
+
+
+
+-- | Symbol/Attribute pairing witness
+
+instance Witnessing Taskable Tasking where
+    witness use (Taskable i k) (FreshScope ik) =
+        use k (ik i)
+
+
 
 -- | Local Scoping Construct + Substitution
 
-tasks :: forall fs m a. Is Tasking fs m
-      => (    Task fs m
-           -> Pattern fs m a
-         ) -> Pattern fs m a
-tasks f = do
-  scope <- self (FreshScope id)
-  substitute scope $ f Task
-    { fork = \p -> self (Fork scope p id)
-    , yield = self (Yield scope ())
-    , demand = \p -> self (Demand scope p id)
-    }
+alternates
+    :: Is Tasking fs m
+    => (    Task fs m
+         -> Pattern fs m a
+       )
+    -> Pattern fs m a
+alternates f =
+    do
+      scope <- self (FreshScope id)
+      rewrite scope emptyQueue $ f
+          Task
+                { alt =
+                      \p ->
+                          self $ Fork scope $
+                              do
+                                p
+                                self (Stop scope)
+                , atomically =
+                      \p ->
+                          self (Atomically scope p)
+                }
+
+
+
+
+rewrite
+    :: Is Tasking fs m
+    => Int
+    -> Queue (Pattern fs m a)
+    -> Pattern fs m a
+    -> Pattern fs m a
+rewrite scope =
+    withQueue
   where
-    substitute scope = go
+
+    withQueue queue =
+        go
       where
-        go p =
-          case p of
-            Step sym bp ->
-              let check i x = if i == scope then x else ignore
-                  ignore = Step sym (\b -> go (bp b))
-              in case prj sym of
-                   Just x ->
-                     case x of
-                       Fork i p k -> check i $ _
-                       Yield i k -> check i $ _
-                       Demand i p k -> check i $ _
-                       _ -> ignore
-                   _ -> ignore
-            M m -> M (fmap go m)
-            Pure r -> Pure r
+
+        -- Returned in root since alternates end in Stop.
+        go (Pure r) =
+            case dequeue queue of
+
+                -- All forks completed; return.
+                Nothing ->
+                    return r
+
+                -- Finish running forks and then return.
+                Just (newQueue,next) ->
+                    do
+                      _ <- withQueue newQueue next
+                      return r
+
+        -- Monadic actions are alternated the same as Steps.
+        go (M m) =
+            case dequeue queue of
+
+                Nothing ->
+                    M (fmap go m)
+
+                Just (newQueue,next) ->
+                    let
+
+                      newRunQueue continue =
+                          enqueue (unsafeCoerce continue) newQueue
+
+                    in
+                      do
+                        continue <- m
+                        withQueue (newRunQueue continue) next
+
+        go (Step sym bp) =
+            let
+              ignore =
+                  Step sym (go . bp)
+
+              check i scoped =
+                  if i == scope then
+                      scoped
+                  else
+                      ignore
+
+            in
+              case prj sym of
+
+                  Just x ->
+                      case x of
+
+                          Fork i child ->
+                              check i $
+                                  let
+                                    result =
+                                        unsafeCoerce ()
+
+                                    newQueue =
+                                        enqueue (unsafeCoerce child) queue
+
+                                    continue =
+                                        bp result
+
+                                  in
+                                    withQueue newQueue continue
+
+                          Atomically i atom ->
+                              check i $
+                                  do
+                                    b <- unsafeCoerce atom
+                                    let
+                                      continue b =
+                                          bp b
+
+                                    go continue
+
+                          Stop i ->
+                              check i $
+                                  case
+
+                          _ ->
+                              ignore
+
+                  Nothing ->
+                      ignore
+
+
+
+-- | Inlines
+
+{-# INLINE rooted #-}
+{-# INLINE rewrite #-}
+{-# INLINE alternator #-}
+{-# INLINE alternates #-}

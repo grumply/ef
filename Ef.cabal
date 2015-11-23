@@ -44,7 +44,6 @@ library
                        Ef.Lang.Fork
                        Ef.Lang.IO
                        Ef.Lang.Scoped.Act
-                       Ef.Lang.Scoped.Alternate
                        Ef.Lang.Scoped.Diverge
                        Ef.Lang.Scoped.Exit
                        Ef.Lang.Scoped.Generate
@@ -54,6 +53,7 @@ library
                        Ef.Lang.Scoped.Notate
                        Ef.Lang.Scoped.Or
                        Ef.Lang.Scoped.React
+--                       Ef.Lang.Scoped.Task
                        Ef.Lang.Scoped.Thread
                        Ef.Lang.Scoped.Try
                        Ef.Lang.Scoped.Vary

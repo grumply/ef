@@ -25,6 +25,7 @@ import Ef.Core.Pattern.Symbols as Core
 import Ef.Core.Witness as Core
 
 
+import qualified Control.Exception as Exception
 import Data.Typeable (Typeable,typeOf)
 import Debug.Trace
 import Unsafe.Coerce
@@ -74,15 +75,6 @@ deltaUpcast o =
 
 
 
--- run
---     :: Monad m
---     => Pattern '[] m a
---     -> m a
--- run =
---     fmap snd . delta simple
-
-
-
 delta
     :: forall symbols is m a.
        ( Witnessing (Attrs is) (Symbol symbols)
@@ -112,6 +104,9 @@ _delta =
       where
         go' p =
             case p of
+
+              Fail e ->
+                  Exception.throw e
 
               Step syms k ->
                   let
@@ -167,6 +162,9 @@ _deltaDebug =
       where
         go' p =
             case p of
+
+                Fail e ->
+                    Exception.throw e
 
                 Step syms k ->
                   let

@@ -17,8 +17,21 @@ import Ef.Core.Type.Set
 import Ef.Core.Pattern.Symbols
 
 import Control.Applicative
+import Control.Exception
 import Control.Monad
 import Unsafe.Coerce
+
+data MonadFailString
+  where
+
+    MonadFailString
+        :: String
+        -> MonadFailString
+  deriving Show
+
+
+
+instance Exception MonadFailString
 
 
 
@@ -40,6 +53,11 @@ data Pattern symbols m a
         :: a
         -> Pattern symbols m a
 
+    Fail
+        :: Exception e
+        => e
+        -> Pattern symbols m a
+
 
 
 rearrange
@@ -48,6 +66,9 @@ rearrange
        )
     => Pattern fs m a
     -> Pattern sf m a
+
+rearrange (Fail e) =
+    Fail e
 
 rearrange (Pure r) =
     Pure r
@@ -66,6 +87,9 @@ upcast
        )
     => Pattern small m a
     -> Pattern large m a
+
+upcast (Fail e) =
+    Fail e
 
 upcast (Pure r) =
     Pure r
@@ -211,14 +235,21 @@ instance Monad m
   where
 
 #ifdef TRANSFORMERS_SAFE
-    return = M . return . Pure
+    return =
+        M . return . Pure
 #else
-    return = Pure
+    return =
+        Pure
 #endif
 
 
 
     (>>=) = _bind
+
+
+
+    fail =
+        Fail . MonadFailString
 
 
 
@@ -232,6 +263,9 @@ _fmap
 _fmap f =
     go
   where
+
+    go (Fail e) =
+        Fail e
 
     go (Pure a) =
         Pure (f a)
@@ -283,6 +317,9 @@ _bind
 p0 `_bind` f =
     go p0
   where
+
+    go (Fail e) =
+        Fail e
 
     go (Step syms k) =
         Step syms (go . k)
@@ -360,14 +397,14 @@ _mplus p0 p1 =
     go p0
   where
 
+    go (M m) =
+        M (fmap go m `mplus` return p1)
+
     go (Step sym bp) =
         Step sym (go . bp)
 
-    go (Pure r) =
-        Pure r
-
-    go (M m) =
-        M (fmap go m `mplus` return p1)
+    go x =
+        x
 
 
 
@@ -398,14 +435,19 @@ _mappend
 _mappend p0 p1 =
     go p0
   where
-    go (Step sym bp) =
-        Step sym (go . bp)
+
+    go (Fail e) =
+        Fail e
+
+    go (Pure r) =
+        fmap (mappend r) p1
 
     go (M m) =
         M (fmap go m)
 
-    go (Pure r) =
-        fmap (mappend r) p1
+    go (Step sym bp) =
+        Step sym (go . bp)
+
 
 
 
@@ -452,6 +494,9 @@ cutoffSteps
     -> Pattern fs m a
     -> Pattern fs m (Maybe a)
 
+cutoffSteps _ (Fail e) =
+    Fail e
+
 cutoffSteps ((<= 0) -> True) _ =
     return Nothing
 
@@ -481,6 +526,9 @@ cutoff
     => Integer
     -> Pattern fs m a
     -> Pattern fs m (Maybe a)
+
+cutoff _ (Fail e) =
+    Fail e
 
 cutoff ((<= 0) -> True) _ =
     return Nothing

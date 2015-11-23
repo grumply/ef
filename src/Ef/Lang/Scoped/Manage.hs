@@ -19,6 +19,7 @@ module Ef.Lang.Scoped.Manage
 
 import Ef.Core
 
+import Control.Arrow
 import Data.Either
 
 import Unsafe.Coerce
@@ -165,6 +166,33 @@ manages f = do
         withStore store = go
           where
 
+            go (Fail e) =
+                Fail e
+
+            go (M m) =
+                M (fmap go m)
+
+            go (Pure r) =
+                case store of
+
+                    [] ->
+                        Pure r
+
+                    xs ->
+                        let
+                          newStore =
+                            tail xs
+
+                          cleanup =
+                            snd (head xs)
+
+                          continue =
+                              do
+                                () <- cleanup
+                                return r
+                        in
+                          withStore newStore continue
+
             go (Step sym bp) =
                 let
                   check i scoped =
@@ -207,8 +235,27 @@ manages f = do
 
                               Deallocate (Token t) _ ->
                                   let
+                                    extract =
+                                        compose . partitionEithers . map match
+
+                                    compose =
+                                        let
+                                          amass =
+                                              foldr (>>) (return ())
+
+                                        in
+                                          second amass
+
+                                    match (storedToken,cleanupAction)
+
+                                        | t == storedToken =
+                                              Right cleanupAction
+
+                                        | otherwise =
+                                              Left (storedToken,cleanupAction)
+
                                     (newStore,cleanup) =
-                                        extract t store
+                                        extract store
 
                                     continue b =
                                         do
@@ -260,47 +307,6 @@ manages f = do
                       Nothing ->
                           ignore
 
-            go (M m) =
-                M (fmap go m)
-
-            go (Pure r) =
-                case store of
-
-                    [] ->
-                        Pure r
-
-                    xs ->
-                        let
-                          newStore =
-                            tail xs
-
-                          cleanup =
-                            snd (head xs)
-
-                          continue =
-                              do
-                                () <- cleanup
-                                return r
-                        in
-                          withStore newStore continue
-
-    extract n =
-        finish . partitionEithers . map go
-      where
-
-        finish (xs,rs) =
-            let
-              amass =
-                  foldr (>>) (return ()) rs
-
-            in
-              (xs,amass)
-
-        go (t,x)
-
-            | t == n = Right x
-
-            | otherwise = Left (t,x)
 
 
 

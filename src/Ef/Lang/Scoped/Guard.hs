@@ -124,8 +124,12 @@ rewrite
     => Int
     -> Pattern fs m a
     -> Pattern fs m (Maybe a)
+
+rewrite _ (Fail e) =
+    Fail e
+
 rewrite _ (Pure result) =
-    return (Just result)
+    Pure (Just result)
 
 rewrite scope (M m) =
     let
