@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -9,16 +10,21 @@ module Ef.Core.Type.Nat where
 
 
 data Nat
+  where
 
-    = Z
+    Z
+        :: Nat
 
-    | S Nat
+    S
+        :: Nat -> Nat
 
 
 
 data Index (n :: Nat)
+  where
 
-    = Index
+    Index
+        :: Index n
 
 
 

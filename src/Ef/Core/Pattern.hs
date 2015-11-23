@@ -1,6 +1,8 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -22,13 +24,24 @@ import Unsafe.Coerce
 
 
 
+
 data Pattern symbols m a
+  where
 
-  = forall b. Step (Symbol symbols b) (b -> Pattern symbols m a)
+    Step
+        :: Symbol symbols b
+        -> (    b
+             -> Pattern symbols m a
+           )
+        -> Pattern symbols m a
 
-  | M (m (Pattern symbols m a))
+    M
+        :: m (Pattern symbols m a)
+        -> Pattern symbols m a
 
-  | Pure a
+    Pure
+        :: a
+        -> Pattern symbols m a
 
 
 
@@ -39,6 +52,7 @@ cast
        )
     => Pattern fs m a
     -> Pattern gs m a
+
 cast (Pure r) =
     Pure r
 
@@ -57,6 +71,7 @@ rearrange
        )
     => Pattern s m a
     -> Pattern ss m a
+
 rearrange (Pure r) =
     Pure r
 
@@ -145,6 +160,7 @@ lift_
     :: Functor m
     => m a
     -> Pattern symbols m a
+
 lift_ m =
     M (fmap Pure m)
 
@@ -154,6 +170,7 @@ super
     :: Functor m
     => Pattern fs m a
     -> Pattern gs (Pattern fs m) a
+
 super =
     lift
 
@@ -163,6 +180,7 @@ self
     :: Is x symbols m
     => x a
     -> Pattern symbols m a
+
 self xa =
     Step (inj xa) return
 
@@ -171,6 +189,7 @@ self xa =
 instance Functor m
     => Functor (Pattern symbols m)
   where
+
     fmap f p0 =
         _fmap f p0
 
@@ -214,6 +233,7 @@ _fmap
     => (a -> b)
     -> Pattern symbols m a
     -> Pattern symbols m b
+
 _fmap f =
     go
   where
@@ -264,20 +284,19 @@ _bind
     => Pattern symbols m a
     -> (a -> Pattern symbols m a')
     -> Pattern symbols m a'
+
 p0 `_bind` f =
     go p0
   where
-    go p =
-        case p of
 
-            Step syms k ->
-                Step syms (go . k)
+    go (Step syms k) =
+        Step syms (go . k)
 
-            Pure res ->
-                f res
+    go (Pure res) =
+        f res
 
-            M m ->
-                M (fmap go m)
+    go (M m) =
+        M (fmap go m)
 
 
 
@@ -341,20 +360,19 @@ _mplus
     => Pattern fs m a
     -> Pattern fs m a
     -> Pattern fs m a
+
 _mplus p0 p1 =
     go p0
   where
-    go p =
-        case p of
 
-            Step sym bp ->
-                Step sym (go . bp)
+    go (Step sym bp) =
+        Step sym (go . bp)
 
-            Pure r ->
-                Pure r
+    go (Pure r) =
+        Pure r
 
-            M m ->
-                M (fmap go m `mplus` return p1)
+    go (M m) =
+        M (fmap go m `mplus` return p1)
 
 
 
@@ -372,6 +390,8 @@ instance ( Monad m
     mappend =
         _mappend
 
+
+
 _mappend
     :: ( Monad m
        , Monoid r
@@ -379,46 +399,18 @@ _mappend
     => Pattern fs m r
     -> Pattern fs m r
     -> Pattern fs m r
+
 _mappend p0 p1 =
     go p0
   where
-    go p =
-        case p of
+    go (Step sym bp) =
+        Step sym (go . bp)
 
-            Step sym bp ->
-                Step sym (go . bp)
+    go (M m) =
+        M (fmap go m)
 
-            M m ->
-                M (fmap go m)
-
-            Pure r ->
-                fmap (mappend r) p1
-
-
-
-observe
-    :: forall fs m a.
-       Monad m
-    => Pattern fs m a
-    -> Pattern fs m a
-observe = M . go
-  where
-    go p =
-        case p of
-
-          Step sym bp ->
-              let
-                continue =
-                    observe . bp
-
-              in
-                return (Step sym continue)
-
-          M m ->
-              m >>= go
-
-          Pure r ->
-              return (Pure r)
+    go (Pure r) =
+        fmap (mappend r) p1
 
 
 
@@ -456,31 +448,34 @@ observe = M . go
 --    print i
 -- :}
 --3
+
 cutoffSteps
     :: Monad m
     => Integer
     -> Pattern fs m a
     -> Pattern fs m (Maybe a)
-cutoffSteps n p
-    | n <= 0 =
-        return Nothing
 
-    | otherwise =
-          let
-            newCutoff =
-                cutoff (n - 1)
+cutoffSteps ((<= 0) -> True) _ =
+    return Nothing
 
-          in
-            case p of
+cutoffSteps n (Pure a) =
+    Pure (Just a)
 
-                Pure a ->
-                    Pure (Just a)
+cutoffSteps n (M m) =
+    let
+      newCutoff =
+          cutoff (n - 1)
 
-                M m ->
-                    M (fmap newCutoff m)
+    in
+      M (fmap newCutoff m)
 
-                Step sym k ->
-                    Step sym (newCutoff . k)
+cutoffSteps n (Step sym k) =
+    let
+      newCutoff =
+          cutoff (n - 1)
+
+    in
+      Step sym (newCutoff . k)
 
 
 
@@ -489,23 +484,25 @@ cutoff
     => Integer
     -> Pattern fs m a
     -> Pattern fs m (Maybe a)
-cutoff n p
-    | n <= 0 =
-        return Nothing
 
-    | otherwise =
-        let
-          newCutoff =
-              cutoff (n - 1)
+cutoff ((<= 0) -> True) _ =
+    return Nothing
 
-        in
-          case p of
+cutoff n (Pure a) =
+    Pure (Just a)
 
-              Pure a ->
-                  Pure (Just a)
+cutoff n (M m) =
+    let
+      newCutoff =
+          cutoff (n - 1)
 
-              M m ->
-                  M (fmap newCutoff m)
+    in
+      M (fmap newCutoff m)
 
-              Step sym k ->
-                  Step sym (newCutoff . k)
+cutoff n (Step sym k) =
+    let
+      newCutoff =
+          cutoff (n - 1)
+
+    in
+      Step sym (newCutoff . k)

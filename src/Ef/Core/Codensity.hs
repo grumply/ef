@@ -56,6 +56,7 @@ import Control.Monad
 --True
 
 newtype Codensity fs m a =
+
     Codensity
         { runCodensity
               :: forall b.
@@ -123,6 +124,8 @@ instance MonadPlus v
     mzero =
         Codensity (const mzero)
 
+
+
     Codensity m `mplus` Codensity n =
         Codensity $ \k ->
             m k `mplus` n k
@@ -133,12 +136,16 @@ toCodensity
     :: Monad m
     => Pattern fs m a
     -> Codensity fs m a
+
 toCodensity f =
     Codensity (f >>=)
+
+
 
 fromCodensity
     :: Monad m
     => Codensity fs m a
     -> Pattern fs m a
+
 fromCodensity a =
     runCodensity a return

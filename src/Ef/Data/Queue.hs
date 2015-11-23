@@ -1,23 +1,78 @@
+{-# LANGUAGE GADTs #-}
 module Ef.Data.Queue where
 
-data Queue a = Queue [a] [a]
+data Queue a
+  where
 
-{-# INLINE emptyQueue #-}
-emptyQueue :: Queue a
-emptyQueue = Queue [] []
+    Queue
+        :: [a]
+        -> [a]
+        -> Queue a
+
+
+
+emptyQueue
+    :: Queue a
+
+emptyQueue =
+    Queue [] []
+
+
+
+newQueue
+    :: [a]
+    -> Queue a
+
+newQueue stack =
+    Queue stack []
+
+
+
+enqueue
+    :: a
+    -> Queue a
+    -> Queue a
+
+enqueue a (Queue l r) =
+    Queue l (a:r)
+
+
+
+dequeue
+    :: Queue a
+    -> Maybe (Queue a,a)
+
+dequeue (Queue [] []) =
+    Nothing
+
+dequeue (Queue [] xs) =
+    let
+      stack =
+          reverse xs
+
+      rest =
+          tail stack
+
+      frst =
+          head stack
+
+    in
+      Just (Queue rest [],frst)
+
+dequeue (Queue xs ys) =
+    let
+      rest =
+          tail xs
+
+      frst =
+          head xs
+
+    in
+      Just (Queue rest ys,frst)
+
+-- | Inlines
 
 {-# INLINE newQueue #-}
-newQueue :: [a] -> Queue a
-newQueue stack = Queue stack []
-
+{-# INLINE emptyQueue #-}
 {-# INLINE enqueue #-}
-enqueue :: a -> Queue a -> Queue a
-enqueue a (Queue l r) = Queue l (a:r)
-
 {-# INLINE dequeue #-}
-dequeue :: Queue a -> Maybe (Queue a,a)
-dequeue (Queue [] []) = Nothing
-dequeue (Queue [] xs) =
-    let stack = reverse xs
-    in Just (Queue (tail stack) [],head stack)
-dequeue (Queue xs ys) = Just (Queue (tail xs) ys,head xs)
