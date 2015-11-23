@@ -2,10 +2,12 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 module Ef.Core
     ( module Core
     , delta
-    , deltaCast
+    , delta'
+    , deltaUpcast
     , deltaDebug
 --    , run
     , (#)
@@ -44,17 +46,31 @@ import Unsafe.Coerce
 
 
 
-deltaCast
-    :: forall fs gs is m a.
-       ( Witnessing (Attrs is) (Symbol gs)
-       , As (Symbol fs) (Symbol gs)
+delta'
+    :: forall fs sf is m a.
+       ( Witnessing (Attrs is) (Symbol sf)
+       , As (Symbol fs) (Symbol sf)
        , Monad m
        )
     => Object is m
     -> Pattern fs m a
     -> m (Object is m,a)
-deltaCast o =
-    _delta o . cast
+delta' o =
+    _delta o . rearrange
+
+
+
+deltaUpcast
+    :: forall small large is m a.
+       ( Witnessing (Attrs is) (Symbol large)
+       , Cast small large
+       , Monad m
+       )
+    => Object is m
+    -> Pattern small m a
+    -> m (Object is m,a)
+deltaUpcast o =
+    _delta o . upcast
 
 
 

@@ -14,14 +14,11 @@ module Ef.Core.Pattern where
 
 
 import Ef.Core.Type.Set
-import Ef.Core.Type.Nat
 import Ef.Core.Pattern.Symbols
-
 
 import Control.Applicative
 import Control.Monad
 import Unsafe.Coerce
-
 
 
 
@@ -45,32 +42,12 @@ data Pattern symbols m a
 
 
 
-cast
-    :: forall fs gs m a.
-       ( Functor m
-       , As (Symbol fs) (Symbol gs)
-       )
-    => Pattern fs m a
-    -> Pattern gs m a
-
-cast (Pure r) =
-    Pure r
-
-cast (M m) =
-    M (fmap cast m)
-
-cast (Step sym bp) =
-    Step (conv sym) (unsafeCoerce bp)
-
-
-
 rearrange
     :: ( Functor m
-       , i ~ IndexOf (Symbol s) ss
-       , Allows' (Symbol s) ss i
+       , As (Symbol fs) (Symbol sf)
        )
-    => Pattern s m a
-    -> Pattern ss m a
+    => Pattern fs m a
+    -> Pattern sf m a
 
 rearrange (Pure r) =
     Pure r
@@ -79,7 +56,25 @@ rearrange (M m) =
     M (fmap rearrange m)
 
 rearrange (Step sym bp) =
-    Step (inj sym) (unsafeCoerce bp)
+    Step (conv sym) (rearrange . bp)
+
+
+
+upcast
+    :: ( Functor m
+       , Cast small large
+       )
+    => Pattern small m a
+    -> Pattern large m a
+
+upcast (Pure r) =
+    Pure r
+
+upcast (M m) =
+    M (fmap upcast m)
+
+upcast (Step sym bp) =
+    Step (cast sym) (upcast . bp)
 
 
 
@@ -448,6 +443,8 @@ _mappend p0 p1 =
 --    print i
 -- :}
 --3
+
+
 
 cutoffSteps
     :: Monad m

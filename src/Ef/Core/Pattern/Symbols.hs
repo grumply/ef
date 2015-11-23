@@ -33,6 +33,35 @@ data Symbol symbols a
 
 
 
+class Cast small large
+  where
+
+    cast
+        :: Symbol small a
+        -> Symbol large a
+
+
+
+instance Cast '[] '[]
+
+
+
+instance ( Subset small large
+         , small ~ (s ': ss)
+         , Allows s large
+         , Cast ss large
+         )
+    => Cast small large
+  where
+
+    cast (Further more) =
+        cast more
+
+    cast (Symbol sa) =
+        inj sa
+
+
+
 instance Functor (Symbol '[])
 
 

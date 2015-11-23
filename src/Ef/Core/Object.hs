@@ -31,7 +31,8 @@ type Attribute f fs m =
 
 newtype Object fs m =
     Object
-        { deconstruct
+        {
+          deconstruct
               :: Attrs fs (Method fs m)
         }
 
@@ -56,10 +57,10 @@ type (extended :=> orig) m =
 
 
 
-
 simple
     :: Monad m
     => Object '[] m
+
 simple =
     Object Empty
 
@@ -70,6 +71,7 @@ class UnsafeBuild fs
 
     unsafeBuild
         :: Attrs fs a
+
 
 
 instance UnsafeBuild '[]
@@ -86,6 +88,7 @@ instance ( Typeable f
          )
     => UnsafeBuild (f ': fs)
   where
+
     unsafeBuild =
         let
           attr =
@@ -105,17 +108,20 @@ build
          -> Attrs attrs (Method attrs m)
        )
     -> Object attrs m
+
 build =
     Object . ($ unsafeBuild)
 
 
 
 infixr 6 *:*
+
 (*:*)
     :: Denies f fs
     => f a
     -> Attrs fs a
     -> Attrs (f ': fs) a
+
 (*:*) fa Empty =
     Attr fa Empty
 
@@ -128,17 +134,20 @@ view
     :: Admits f fs
     => Object fs m
     -> Attribute f fs m
+
 view =
     pull . deconstruct
 
 
 
 infixl 5 .=
+
 (.=)
     :: Uses f fs m
     => Object fs m
     -> Attribute f fs m
     -> Object fs m
+
 is .= x =
     let
         deconstructed =
