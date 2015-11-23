@@ -24,13 +24,13 @@ import Unsafe.Coerce
 
 -- | Symbol
 
-data Operation a
+data Operation status result
   where
 
     Operation
         :: Int
-        -> IORef a
-        -> Operation a
+        -> IORef (Either status result)
+        -> Operation status result
 
 
 
@@ -54,27 +54,39 @@ data Alternating k
 
     Fork
         :: Int
-        -> Pattern fs m a
-        -> (Operation a -> k)
+        -> Pattern fs m result
+        -> (Operation status result -> k)
         -> Alternating k
 
     Await
         :: Int
         -> Await
-        -> Operation a
-        -> (a -> k)
+        -> Operation status result
+        -> (result -> k)
         -> Alternating k
 
     Atomic
         :: Int
-        -> Pattern fs m a
+        -> Pattern fs m result
         -> Alternating k
 
     Stop
         :: Int
-        -> Operation a
-        -> (a -> k)
+        -> Operation status result
+        -> (result -> k)
         -> Alternating k
+
+    Update
+        :: Int
+        -> Operation status result
+        -> status
+        -> Alternating k
+
+    Status
+        :: Int
+        -> Operation status result
+        -> (status -> k)
+        -> Altrnating k
 
     Finished
         :: Operation a
