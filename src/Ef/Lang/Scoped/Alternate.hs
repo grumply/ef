@@ -68,9 +68,16 @@ data Alternating k
     Atomic
         :: Int
         -> Pattern fs m result
+        -> (result -> k)
         -> Alternating k
 
     Stop
+        :: Int
+        -> Operation status result
+        -> k
+        -> Alternating k
+
+    Done
         :: Int
         -> Operation status result
         -> (result -> k)
@@ -80,6 +87,7 @@ data Alternating k
         :: Int
         -> Operation status result
         -> status
+        -> k
         -> Alternating k
 
     Status
