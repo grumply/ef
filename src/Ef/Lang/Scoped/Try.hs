@@ -1,8 +1,8 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE RecordWildCards #-}
 module Ef.Lang.Scoped.Try
     ( Try(..)
     , tries
@@ -18,7 +18,8 @@ import Ef.Lang.Scoped.Exit
 
 data Try a fs m =
     Try
-        { success
+        {
+          success
               :: forall b.
                  a
               -> Pattern fs m b
@@ -35,12 +36,15 @@ tries
          -> Pattern fs m (Maybe a)
        )
     -> Pattern fs m (Maybe a)
+
 tries f =
     exits $ \Exit{..} -> f
         Try
-            { success =
+            {
+              success =
                   \a ->
                       exit (Just a)
+
             , failure =
                   exit Nothing
             }
