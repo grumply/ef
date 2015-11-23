@@ -146,10 +146,10 @@ varies startState varying =
           Vary
               {
                 modify =
-                    \f ->
+                    \alter ->
                         let
                           setter =
-                              f
+                              alter
 
                           viewer =
                               const ()
@@ -158,10 +158,10 @@ varies startState varying =
                           self (Modify scope Lazy setter viewer)
 
               , modify' =
-                    \f ->
+                    \alter ->
                         let
                           setter =
-                              f
+                              alter
 
                           viewer =
                               const ()
@@ -180,21 +180,19 @@ varies startState varying =
                       self (Modify scope Lazy setter viewer)
 
               , gets =
-                    \f ->
+                    \viewer ->
                         let
                           setter =
                               id
 
-                          viewer =
-                              f
                         in
                           self (Modify scope Lazy setter viewer)
 
               , put =
-                    \st ->
+                    \newState ->
                         let
                           setter =
-                              const st
+                              const newState
 
                           viewer =
                               const ()
@@ -203,10 +201,10 @@ varies startState varying =
                           self (Modify scope Lazy setter viewer)
 
               , puts =
-                    \f a ->
+                    \extractor hasState ->
                         let
                           setter =
-                              const (f a)
+                              const (extractor hasState)
 
                           viewer =
                               const ()
@@ -215,10 +213,10 @@ varies startState varying =
                           self (Modify scope Lazy setter viewer)
 
               , swap =
-                    \a ->
+                    \newState ->
                         let
                           setter =
-                              const a
+                              const newState
 
                           viewer =
                               id
