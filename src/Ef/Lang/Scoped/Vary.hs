@@ -104,6 +104,7 @@ data Variable k
 varier
     :: Uses Variable fs m
     => Attribute Variable fs m
+
 varier =
     Variable 0 $ \fs ->
         let
@@ -139,6 +140,7 @@ varies
          -> Pattern fs m r
        )
     -> Pattern fs m (st,r)
+
 varies startState varying =
     do
       scope <- self (FreshScope id)
@@ -146,25 +148,19 @@ varies startState varying =
           Vary
               {
                 modify =
-                    \alter ->
+                    \setter ->
                         let
-                          setter =
-                              alter
-
-                          viewer =
-                              const ()
+                          viewer _ =
+                              ()
 
                         in
                           self (Modify scope Lazy setter viewer)
 
               , modify' =
-                    \alter ->
+                    \setter ->
                         let
-                          setter =
-                              alter
-
-                          viewer =
-                              const ()
+                          viewer _ =
+                              ()
 
                         in
                           self (Modify scope Strict setter viewer)
@@ -176,14 +172,18 @@ varies startState varying =
 
                       viewer =
                           id
+
                     in
                       self (Modify scope Lazy setter viewer)
 
               , gets =
-                    \viewer ->
+                    \extractor ->
                         let
                           setter =
                               id
+
+                          viewer =
+                              extractor
 
                         in
                           self (Modify scope Lazy setter viewer)
@@ -191,11 +191,11 @@ varies startState varying =
               , put =
                     \newState ->
                         let
-                          setter =
-                              const newState
+                          setter _ =
+                              newState
 
-                          viewer =
-                              const ()
+                          viewer _ =
+                              ()
 
                         in
                           self (Modify scope Lazy setter viewer)
@@ -203,11 +203,14 @@ varies startState varying =
               , puts =
                     \extractor hasState ->
                         let
-                          setter =
-                              const (extractor hasState)
+                          newState =
+                              extractor hasState
 
-                          viewer =
-                              const ()
+                          setter _ =
+                              newState
+
+                          viewer _ =
+                              ()
 
                         in
                           self (Modify scope Lazy setter viewer)
@@ -215,8 +218,8 @@ varies startState varying =
               , swap =
                     \newState ->
                         let
-                          setter =
-                              const newState
+                          setter _ =
+                              newState
 
                           viewer =
                               id
@@ -226,7 +229,7 @@ varies startState varying =
               }
   where
 
-    rewrite scope =
+    rewrite rewriteScope =
         withState
       where
 
@@ -245,8 +248,8 @@ varies startState varying =
 
             go (Step sym bp) =
                 let
-                  check i scoped =
-                      if i == scope then
+                  check currentScope scoped =
+                      if currentScope == rewriteScope then
                           scoped
                       else
                           ignore
@@ -260,7 +263,7 @@ varies startState varying =
                       Just x ->
                           case x of
 
-                              Modify i strictness setter viewer ->
+                              Modify currentScope strictness setter viewer ->
                                   let
                                     newSt =
                                         unsafeCoerce setter st
@@ -269,10 +272,11 @@ varies startState varying =
                                         bp (unsafeCoerce viewer st)
 
                                   in
-                                    check i $
+                                    check currentScope $
                                         if strictness == Strict then
                                             newSt `seq`
                                                 withState newSt continue
+
                                         else
                                             withState newSt continue
 

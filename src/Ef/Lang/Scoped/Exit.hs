@@ -35,8 +35,13 @@ data Exiting k
 
 -- | Attribute
 
-data Exitable k where
-    Exitable :: Int -> k -> Exitable k
+data Exitable k
+  where
+
+    Exitable
+        :: Int
+        -> k
+        -> Exitable k
 
 
 
@@ -46,6 +51,7 @@ data Exitable k where
 exiter
     :: Uses Exitable gs m
     => Attribute Exitable gs m
+
 exiter =
     Exitable 0 $ \fs ->
         let
@@ -71,9 +77,12 @@ instance Witnessing Exitable Exiting
 
 
 
+-- | Symbol Module
+
 data Exit a fs m =
     Exit
-        { exit
+        {
+          exit
               :: forall b.
                  a
               -> Pattern fs m b
@@ -89,17 +98,19 @@ exits
          -> Pattern fs m a
        )
     -> Pattern fs m a
+
 exits f =
     do
       scope <- self (FreshScope id)
-      transform scope $ f
+      rewrite scope $ f
           Exit
               { exit =
                     \a ->
                         self (Done scope a)
               }
   where
-    transform scope =
+
+    rewrite rewriteScope =
         go
       where
 
@@ -107,7 +118,7 @@ exits f =
             Fail e
 
         go (Pure r) =
-            return r
+            Pure r
 
         go (M m) =
             M (fmap go m)
@@ -119,12 +130,14 @@ exits f =
 
             in
               case prj sym of
+
                   Just x ->
                       case x of
 
-                          Done i a
-                              | i == scope ->
-                                    return (unsafeCoerce a)
+                          Done currentScope a
+
+                              | currentScope == rewriteScope ->
+                                    Pure (unsafeCoerce a)
 
                               | otherwise ->
                                     ignore

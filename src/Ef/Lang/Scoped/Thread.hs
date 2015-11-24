@@ -1,11 +1,11 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ExistentialQuantification #-}
 module Ef.Lang.Scoped.Thread
     ( Threading
     , threads
@@ -14,6 +14,8 @@ module Ef.Lang.Scoped.Thread
     , Thread(..)
     , rewrite
     ) where
+
+
 
 import Ef.Core
 import Ef.Data.Queue
@@ -136,7 +138,7 @@ threads f =
 
 
 
--- This type signature decreases performance! WTF
+-- This type signature decreases performance! Why? Look at core.
 -- rewrite
 --     :: forall (t :: [* -> *]) (m :: * -> *) a.
 --        (Monad m, Allows' Threading t (IndexOf Threading t))

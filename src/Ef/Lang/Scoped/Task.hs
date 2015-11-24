@@ -133,6 +133,7 @@ data Taskable k =
 alternator
     :: Uses Taskable gs m
     => Attribute Taskable gs m
+
 alternator =
     Taskable 0 $ \fs ->
         let
@@ -164,6 +165,7 @@ alternates
          -> Pattern fs m a
        )
     -> Pattern fs m a
+
 alternates f =
     do
       scope <- self (FreshScope id)
@@ -182,13 +184,6 @@ alternates f =
 
 
 
-
-rewrite
-    :: Is Tasking fs m
-    => Int
-    -> Queue (Pattern fs m a)
-    -> Pattern fs m a
-    -> Pattern fs m a
 rewrite scope =
     withQueue
   where
