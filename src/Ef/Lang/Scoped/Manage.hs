@@ -157,160 +157,162 @@ manages f = do
                   \token ->
                       self (Unregister scope token ())
             }
+
+
+
+rewrite rewriteScope =
+    withStore
   where
 
-    rewrite scope =
-        withStore
+    withStore store = go
       where
 
-        withStore store = go
-          where
+        go (Fail e) =
+            Fail e
 
-            go (Fail e) =
-                Fail e
+        go (M m) =
+            M (fmap go m)
 
-            go (M m) =
-                M (fmap go m)
+        go (Pure r) =
+            case store of
 
-            go (Pure r) =
-                case store of
+                [] ->
+                    Pure r
 
-                    [] ->
-                        Pure r
+                xs ->
+                    let
+                      newStore =
+                          tail xs
 
-                    xs ->
-                        let
-                          newStore =
-                            tail xs
+                      cleanup =
+                          snd (head xs)
 
-                          cleanup =
-                            snd (head xs)
+                      continue =
+                          do
+                            () <- cleanup
+                            return r
 
-                          continue =
-                              do
-                                () <- cleanup
-                                return r
-                        in
-                          withStore newStore continue
+                    in
+                      withStore newStore continue
 
-            go (Step sym bp) =
-                let
-                  check i scoped =
-                      if i == scope then
-                          scoped
-                      else
-                          ignore
+        go (Step sym bp) =
+            let
+              check currentScope scoped =
+                  if currentScope == rewriteScope then
+                      scoped
+                  else
+                      ignore
 
-                  ignore =
-                      Step sym (go . bp)
+              ignore =
+                  Step sym (go . bp)
 
-                in
-                  case prj sym of
+            in
+              case prj sym of
 
-                      Just x ->
-                          case x of
+                  Just x ->
+                      case x of
 
-                              Allocate i create oE _ ->
-                                  check i $
-                                      do
-                                        n <- self (FreshScope id)
-                                        a <- unsafeCoerce create
-                                        let
-                                          t =
-                                              Token n
+                          Allocate currentScope create finalize _ ->
+                              check currentScope $
+                                  do
+                                    n <- self (FreshScope id)
+                                    a <- unsafeCoerce create
+                                    let
+                                      t =
+                                          Token n
 
-                                          result =
-                                              unsafeCoerce (a,t)
+                                      result =
+                                          unsafeCoerce (a,t)
 
-                                          cleanup =
-                                              unsafeCoerce (oE a)
+                                      cleanup =
+                                          unsafeCoerce (finalize a)
 
-                                          newStore =
-                                              (n,cleanup):store
+                                      newStore =
+                                          (n,cleanup):store
 
-                                          continue =
-                                              bp result
+                                      continue =
+                                          bp result
 
-                                        withStore newStore continue
+                                    withStore newStore continue
 
-                              Deallocate (Token t) _ ->
+                          Deallocate (Token t) _ ->
+                              let
+                                extract =
+                                    compose . partitionEithers . map match
+
+                                compose =
+                                    let
+                                      amass =
+                                          foldr (>>) (return ())
+
+                                    in
+                                      second amass
+
+                                match (storedToken,cleanupAction)
+
+                                    | t == storedToken =
+                                          Right cleanupAction
+
+                                    | otherwise =
+                                          Left (storedToken,cleanupAction)
+
+                                (newStore,cleanup) =
+                                    extract store
+
+                                continue b =
+                                    do
+                                      cleanup
+                                      bp b
+
+                              in
+                                Step sym (withStore newStore . continue)
+
+                          Register currentScope (Token t) finalize _ ->
+                              check currentScope $
                                   let
-                                    extract =
-                                        compose . partitionEithers . map match
-
-                                    compose =
-                                        let
-                                          amass =
-                                              foldr (>>) (return ())
-
-                                        in
-                                          second amass
-
-                                    match (storedToken,cleanupAction)
-
-                                        | t == storedToken =
-                                              Right cleanupAction
-
-                                        | otherwise =
-                                              Left (storedToken,cleanupAction)
-
-                                    (newStore,cleanup) =
-                                        extract store
-
-                                    continue b =
-                                        do
-                                          cleanup
-                                          bp b
-
-                                  in
-                                    Step sym (withStore newStore . continue)
-
-                              Register i (Token t) p' _ ->
-                                  check i $
-                                      let
-                                        result =
-                                            unsafeCoerce ()
-
-                                        cleanup =
-                                            unsafeCoerce (t,p')
-
-                                        newStore =
-                                            cleanup:store
-
-                                        continue =
-                                            bp result
-
-                                      in
-                                        withStore newStore continue
-
-                              Unregister i (Token t) _ ->
-                                  let
-                                    mismatch =
-                                        (/= t) . fst
-
-                                    newStore =
-                                        filter mismatch store
-
                                     result =
                                         unsafeCoerce ()
+
+                                    cleanup =
+                                        unsafeCoerce (t,finalize)
+
+                                    newStore =
+                                        cleanup:store
 
                                     continue =
                                         bp result
 
                                   in
-                                    check i $
-                                      withStore newStore continue
+                                    withStore newStore continue
 
-                              _ ->
-                                  ignore
+                          Unregister currentScope (Token t) _ ->
+                              let
+                                mismatch =
+                                    (/= t) . fst
 
-                      Nothing ->
-                          ignore
+                                newStore =
+                                    filter mismatch store
 
+                                result =
+                                    unsafeCoerce ()
+
+                                continue =
+                                    bp result
+
+                              in
+                                check currentScope $
+                                    withStore newStore continue
+
+                          _ ->
+                              ignore
+
+                  _ ->
+                      ignore
 
 
 
 -- | Inlines
 
+{-# INLINE rewrite #-}
 {-# INLINE manager #-}
 {-# INLINE manages #-}

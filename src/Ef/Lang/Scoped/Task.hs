@@ -24,12 +24,122 @@ import Unsafe.Coerce
 
 -- | Symbol
 
+data TVar a
+  where
+
+    TVar
+        :: MVar a
+        -> Subsystem
+        -> TVar a
+
+
+
+data Subsystem
+  where
+
+    Subsystem
+        :: IORef [(Tier,IORef [Task])]
+        -> IORef [Task]
+        -> Subsystem
+
+
+
+data Priority
+  where
+
+    Highest
+        :: Priority
+
+    High
+        :: Priority
+
+    Standard
+        :: Priority
+
+    Low
+        :: Priority
+
+    Lowest
+        :: Priority
+
+
+
+data Chunking
+  where
+
+    NonChunked
+        :: Chunking
+
+    Chunked
+        :: Int
+        -> Chunking
+
+
+
+data Tier
+  where
+
+    Tier
+        :: Int
+        -> Tier
+
+
+
+data Task
+  where
+
+    Task
+        :: Subsystem
+        -> Priority
+        -> Chunking
+        -> Tier
+        -> Operation status result
+        -> Pattern fs m result
+        -> Task
+
+
+
+data Status
+  where
+
+    Blocked
+        :: TransactionalStatus
+
+    Queued
+        :: Tier
+        -> TransactionalStatus
+
+    Running
+        :: Tier
+        -> Priority
+        -> Chunking
+        -> TransactionalStatus
+
+
+
+data Status status result
+  where
+
+    Transacting
+        :: Status
+        -> status
+        -> Status status result
+
+    Running
+        :: status
+        -> Status status result
+
+    Done
+        :: result
+        -> Status status result
+
+
+
 data Operation status result
   where
 
     Operation
-        :: Int
-        -> IORef (Either status result)
+        :: IORef (Status status result)
         -> Operation status result
 
 
@@ -77,7 +187,12 @@ data Tasking k
         -> k
         -> Tasking k
 
-    Done
+    Yield
+        :: Int
+        -> k
+        -> Tasking k
+
+    End
         :: Int
         -> Operation status result
         -> (result -> k)
@@ -107,11 +222,10 @@ data Tasking k
 
 data Task fs m =
     Task
-        { task
+        {
+          task
               :: Pattern fs m a
               -> Pattern fs m (Operation a)
-
-        ,
 
         , atomically
               :: forall b.
@@ -151,7 +265,9 @@ alternator =
 
 -- | Symbol/Attribute pairing witness
 
-instance Witnessing Taskable Tasking where
+instance Witnessing Taskable Tasking
+  where
+
     witness use (Taskable i k) (FreshScope ik) =
         use k (ik i)
 
@@ -191,6 +307,9 @@ rewrite scope =
     withQueue queue =
         go
       where
+
+        go (Fail e) =
+            Fail e
 
         -- Returned in root since alternates end in Stop.
         go (Pure r) =
