@@ -24,13 +24,55 @@ import Unsafe.Coerce
 
 -- | Symbol
 
+
+
+data Level
+  where
+
+    Level
+        :: Int
+        -> Level
+
+
+
+data Tier
+  where
+
+    Tier
+        :: (Level,IORef (Queue Task))
+        -> Tier
+
+
+data Finalizers
+  where
+
+    Finalizers
+        :: IORef [IO ()]
+        -> Finalizers
+
+
+
 data TVar a
   where
 
     TVar
         :: MVar a
-        -> Subsystem
+        -> Finalizers
         -> TVar a
+
+
+
+data Table
+  where
+
+    -- A table is a list of Tiers + an oustanding Tier
+    -- to represent blocked computations. The outstanding
+    -- tier prevents a subsystem from stopping when all
+    -- Tiers in the [Tier] are empty.
+    Table
+        :: [Tier]
+        -> Tier
+        -> Table
 
 
 
@@ -50,13 +92,19 @@ data Priority
     Highest
         :: Priority
 
+    Higher
+        :: Priority
+
     High
         :: Priority
 
-    Standard
+    Normal
         :: Priority
 
     Low
+        :: Priority
+
+    Lower
         :: Priority
 
     Lowest
@@ -73,15 +121,6 @@ data Chunking
     Chunked
         :: Int
         -> Chunking
-
-
-
-data Tier
-  where
-
-    Tier
-        :: Int
-        -> Tier
 
 
 
@@ -216,6 +255,10 @@ data Tasking k
         -> (Bool -> k)
         -> Tasking k
 
+    OrElse
+        :: Pattern fs m a
+        -> Pattern fs m a
+
 
 
 -- | Symbol Module
@@ -223,14 +266,37 @@ data Tasking k
 data Task fs m =
     Task
         {
-          task
-              :: Pattern fs m a
+          fork
+              :: forall a.
+                 Pattern fs m a
               -> Pattern fs m (Operation a)
 
         , atomically
-              :: forall b.
-                 Pattern fs m b
-              -> Pattern fs m b
+              :: forall a.
+                 Pattern fs m a
+              -> Pattern fs m a
+
+        , orElse
+              :: forall a.
+                 Pattern fs m a
+              -> Pattern fs m a
+              -> Pattern fs m a
+
+        , yield
+              :: Pattern fs m ()
+
+        , readTVar
+              :: forall a.
+                 TVar a
+              -> Pattern fs m a
+
+        , writeTVar
+              :: forall a.
+                 TVar a
+              -> a
+              -> Pattern fs m ()
+
+
         }
 
 
