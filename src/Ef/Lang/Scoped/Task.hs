@@ -43,6 +43,7 @@ data Tier
         -> Tier
 
 
+
 data Finalizers
   where
 
@@ -80,8 +81,7 @@ data Subsystem
   where
 
     Subsystem
-        :: IORef [(Tier,IORef [Task])]
-        -> IORef [Task]
+        :: Table
         -> Subsystem
 
 

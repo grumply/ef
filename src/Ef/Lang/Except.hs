@@ -13,6 +13,44 @@ module Ef.Lang.Except
 
 import Ef.Core
 import Control.Exception (SomeException(..),Exception(..),assert)
+import Data.Coerce
+import Data.Proxy
+
+
+{-# INLINE try #-}
+try :: forall a b fs m . (Monad m, Is Except.Excepting fs m,Except.Exception a)
+           => (Throws a => Pattern fs m b)
+           -> Pattern fs m (Either a b)
+try a = Ef.Lang.Except.Checked.catch (a >>= \v -> return (Right v)) (\e -> return (Left e))
+
+-- | Symbol Construct
+
+{-# INLINE throw #-}
+throw :: (Except.Exception e,Throws e,Is Except.Excepting fs m) => e -> Pattern fs m a
+throw = Except.throw
+
+-- | Global Scoping Construct
+
+{-# INLINE catch #-}
+catch :: forall e fs m a. (Except.Exception e,Is Except.Excepting fs m)
+             => (Throws e => Pattern fs m a)
+             -> (e -> Pattern fs m a)
+             -> Pattern fs m a
+catch act = Except.catch (unthrow (Proxy :: Proxy e) (act :: Throws e => Pattern fs m a))
+  where
+    unthrow :: forall proxy e a. proxy e -> (Throws e => a) -> a
+    unthrow _ = unWrap . coerceWrap . Wrap
+    coerceWrap :: forall e a. Wrap e a -> Wrap (Catch e) a
+    coerceWrap = coerce
+
+class Throws e
+type role Throws representational
+
+newtype Catch e = Catch e
+instance Throws (Catch e)
+
+newtype Wrap e a = Wrap { unWrap :: Throws e => a }
+
 
 -- | Symbol
 
@@ -20,9 +58,9 @@ data Excepting k = Throw SomeException k
 
 -- | Global Symbol Construct
 
-{-# INLINE throw #-}
-throw :: (Is Excepting fs m, Exception e) => e -> Pattern fs m a
-throw e = self (Throw (toException e) undefined)
+{-# INLINE throw' #-}
+throw' :: (Is Excepting fs m, Exception e) => e -> Pattern fs m a
+throw' e = self (Throw (toException e) undefined)
 
 -- | Attribute
 
@@ -41,10 +79,10 @@ instance Witnessing Exceptable Excepting where
 
 -- | Symbol Substitution Scope
 
-{-# INLINE catch #-}
-catch :: (Is Excepting fs m, Exception e)
+{-# INLINE catch' #-}
+catch' :: (Is Excepting fs m, Exception e)
       => Pattern fs m a -> (e -> Pattern fs m a) -> Pattern fs m a
-catch plan handler = go plan
+catch' plan handler = go plan
   where
     go p = case p of
         Step sym bp -> case prj sym of

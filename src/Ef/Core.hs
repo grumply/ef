@@ -21,9 +21,9 @@ import Ef.Core.Object.Attributes as Core
 
 import Ef.Core.Pattern as Core
 import Ef.Core.Pattern.Symbols as Core
+import Ef.Core.Pattern.Exception as Core
 
 import Ef.Core.Witness as Core
-
 
 import qualified Control.Exception as Exception
 import Data.Typeable (Typeable,typeOf)

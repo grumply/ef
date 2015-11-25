@@ -17,9 +17,10 @@ import Ef.Core.Type.Set
 import Ef.Core.Pattern.Symbols
 
 import Control.Applicative
-import Control.Exception
+import Control.Exception (Exception(..),SomeException)
 import Control.Monad
-import Unsafe.Coerce
+
+
 
 data MonadFailString
   where
@@ -54,8 +55,7 @@ data Pattern symbols m a
         -> Pattern symbols m a
 
     Fail
-        :: Exception e
-        => e
+        :: SomeException
         -> Pattern symbols m a
 
 
@@ -249,7 +249,7 @@ instance Monad m
 
 
     fail =
-        Fail . MonadFailString
+        Fail . toException . MonadFailString
 
 
 
