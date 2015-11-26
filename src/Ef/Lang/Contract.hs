@@ -152,27 +152,33 @@ contract (Contract considerations method) =
             splitConsiderations considerations
 
       preFailures <- consider preconditions
-      if null preFailures then
-          do
-            result <- try (runWithInvariants invariants method)
-            case result of
+      case preFailures of
 
-                Left failure ->
-                    throw (failure :: Breaches)
+          [] ->
+              do
+                result <- try (runWithInvariants invariants method)
+                case result of
 
-                Right value ->
-                    do
-                      let
-                        postconditions =
-                            map ($ value) postconditionals
+                    Left failure ->
+                        throw (failure :: Breaches)
 
-                      postFailures <- consider postconditions
-                      if null postFailures then
-                          return value
-                      else
-                          throw (Breaches After postFailures)
-      else
-          throw (Breaches Before preFailures)
+                    Right value ->
+                        do
+                          let
+                            postconditions =
+                                map ($ value) postconditionals
+
+                          postFailures <- consider postconditions
+                          case postFailures of
+
+                              [] ->
+                                  return value
+
+                              _ ->
+                                  throw (Breaches After postFailures)
+
+          _ ->
+              throw (Breaches Before preFailures)
 #else
     method
 #endif

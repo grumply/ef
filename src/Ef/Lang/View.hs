@@ -4,7 +4,7 @@
 {-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Ef.Attr.View
+module Ef.Lang.View
     ( Viewing, ask, asks, local
     , Viewable, reader
     ) where

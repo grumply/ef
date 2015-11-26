@@ -35,9 +35,9 @@ library
                        Ef.Core.Witness
                        Ef.Data.Promise
                        Ef.Data.Queue
-                       Ef.Attr.Notate
-                       Ef.Attr.Vary
-                       Ef.Attr.View
+                       Ef.Lang.Notate
+                       Ef.Lang.Vary
+                       Ef.Lang.View
                        Ef.Lang.Contract
                        Ef.Lang.Checked
                        Ef.Lang.Fork

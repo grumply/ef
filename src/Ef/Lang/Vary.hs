@@ -3,7 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
-module Ef.Attr.Vary
+module Ef.Lang.Vary
     ( Varying, get, gets, put, puts, swap, modify, modify'
     , Variable, storeAttr, storeObj
     ) where

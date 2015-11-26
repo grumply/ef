@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
-module Ef.Attr.Notate
+module Ef.Lang.Notate
     ( Noting, note
     , Notatable, notator, writer, noted
     ) where
