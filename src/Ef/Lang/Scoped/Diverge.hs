@@ -8,15 +8,8 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
 module Ef.Lang.Scoped.Diverge
-   ( Diverging
-   , modself
-
-   , Divergable
-   , diverger
-
-   , Introspect(..)
+   ( Introspect(..)
    , introspect
-
    , typeOfSelf
    )
    where

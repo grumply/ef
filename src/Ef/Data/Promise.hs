@@ -15,7 +15,6 @@ module Ef.Data.Promise
 
 import Ef.Core
 import Ef.Lang.IO
-import Ef.Lang.Except
 
 import Control.Concurrent
 
@@ -38,8 +37,8 @@ newPromiseIO =
 
 
 newPromise
-    :: ( Lift IO m
-       , Is Excepting fs m
+    :: ( Monad m
+       , Lift IO m
        )
     => Pattern fs m (Promise a)
 
@@ -49,8 +48,8 @@ newPromise =
 
 
 demand
-    :: ( Lift IO m
-       , Is Excepting fs m
+    :: ( Monad m
+       , Lift IO m
        )
     => Promise a
     -> Pattern fs m a
@@ -70,8 +69,8 @@ demandIO =
 
 
 fulfill
-    :: ( Lift IO m
-       , Is Excepting fs m
+    :: ( Monad m
+       , Lift IO m
        )
     => Promise a
     -> a

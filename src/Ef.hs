@@ -9,7 +9,7 @@ import Ef.Core                  as Base
 import Ef.Data.Promise          as Base
 import Ef.Lang.IO               as Base
 import Ef.Lang.Fork             as Base
-import Ef.Lang.Except           as Base
+-- import Ef.Lang.Except           as Base
 import Ef.Lang.Scoped.Diverge   as Base
 import Ef.Lang.Scoped.Exit      as Base
 import Ef.Lang.Contract         as Base
@@ -33,7 +33,7 @@ type Ef
 --     ,Taskable
      ,Threadable
      ,Weavable
-     ,Exceptable
+--     ,Exceptable
      ,Guardable
      ,Notatable
      ,Variable
@@ -50,7 +50,7 @@ type Main
 --     ,Tasking
      ,Threading
      ,Weaving
-     ,Excepting
+--     ,Excepting
      ,Guarding
      ,Notating
      ,Varying
@@ -72,7 +72,7 @@ base = Object $ manager
 --            *:* tasker
             *:* threader
             *:* weaver
-            *:* excepter
+--            *:* excepter
             *:* guarder
             *:* notator
             *:* varier

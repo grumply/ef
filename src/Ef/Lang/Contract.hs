@@ -1,122 +1,165 @@
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 module Ef.Lang.Contract
-   ( contract
-   , analyze
-   ) where
--- Note: does not export Contract; thus only catchable by catching SomeException
+    ( contract
+    ) where
+
+
 
 import Ef.Core
-import Ef.Lang.Except
+
 import Ef.Lang.Scoped.Diverge
 
-import Control.Monad (unless)
+import Control.Exception
+    ( Exception(..)
+    , SomeException
+    )
+
+import Control.Monad
+    ( unless
+    )
+
+import Data.Either
+
 import Data.Typeable
 
-data Contract = Contract String deriving Show
-instance Exception Contract
 
-{-# INLINE contract #-}
--- | instrument a contract that guarantees pre- and post- conditions
---   of a given method. Failure of a condition causes an asynchronous
---   exception to be thrown.
--- @
---   contract (preFailInfo,precondition)
---            (postFailInfo,postcondition) $ \vars -> do
---       someMethod/Messages
---     where
---       precondition vars = _
---       postcondition a = _
--- @
-contract :: (Is Excepting fs m,Is Diverging fs m,Witnessing (Attrs gs) (Symbol fs),Typeable gs,Typeable m)
-         => (    String
-            ,    vars
-              -> Pattern fs m Bool
-            )           -- ^ precondition
-         -> (    String
-            ,    a
-              -> Pattern fs m Bool
-            )           -- ^ postcondition
-         -> (    vars
-              -> Pattern fs m a
-            )           -- ^ method
-         -> vars
-         -> Pattern fs m a
-contract (pre,precondition) (post,postcondition) method vs =
-#ifndef NO_CONTRACTS
-  flip catch c $ do
-    preconditionResult <- precondition vs
-    unless preconditionResult $ do
-      ty <- typeOfSelf
-      throw (Contract ("contract: pre-condition failed: " ++ pre ++ "\n\tin: " ++ show ty))
-#else
-  do
-#endif
-    a <- method vs
-#ifndef NO_CONTRACTS
-    postconditionResult <- postcondition a
-    unless postconditionResult $ do
-      ty <- typeOfSelf
-      throw (Contract ("contract: post-condition failed: " ++ post ++ "\n\tin: " ++ show ty))
-#endif
-    return a
-#ifndef NO_CONTRACTS
+{-
+One problem with this approach is the ability of conditional analyses
+to modify the object pre- and post- execution via Diverging.
+It is the responsibility of the contract designer to avoid this.
+-}
+
+
+data Breaches
   where
-    c (Contract str) = error str
-#endif
+
+    Breaches
+        :: [SomeException]
+        -> Breaches
+
+  deriving Show
+instance Exception Breaches
 
 
-{-# INLINE analyze #-}
--- | analyze permits slightly stronger analyses than 'contract' by including
---   object introspection. Failure of a condition causes an asynchronous
---   exception to be thrown.
--- @
---   analyze (preFailInfo,precondition)
---           (postFailInfo,postcondition) $ \vars -> do
---       someMethod/Messages
---     where
---       precondition vars obj = _
---       postcondition a obj = _
--- @
-analyze :: (Is Excepting fs m,Is Diverging fs m,Witnessing (Attrs gs) (Symbol fs),Typeable gs,Typeable m)
-        => (    String
-           ,    vars
-             -> Object gs m
-             -> Pattern fs m Bool
-           )
-        -> (    String
-           ,    a
-             -> Object gs m
-             -> Pattern fs m Bool
-           )
-        -> (    vars
-             -> Pattern fs m a
-           )
-        -> vars
-        -> Pattern fs m a
-analyze (pre,precondition) (post,postcondition) method vs =
-#ifndef NO_CONTRACTS
-  flip catch c $ do
-    preconditionResult <- modself $ \slf -> do
-      pr <- precondition vs slf
-      return (slf,pr)
-    unless preconditionResult $ do
-      ty <- typeOfSelf
-      throw (Contract ("analyze: pre-condition failed: " ++ pre ++ "\n\tin: " ++ show ty))
-#else
-  do
-#endif
-    a <- method vs
-#ifndef NO_CONTRACTS
-    postconditionResult <- modself $ \slf -> do
-      pr <- postcondition a slf
-      return (slf,pr)
-    unless postconditionResult $ do
-      ty <- typeOfSelf
-      throw (Contract ("contract: post-condition failed: " ++ post ++ "\n\tin: " ++ show ty))
-#endif
-    return a
-#ifndef NO_CONTRACTS
+
+data Consideration variables result fs m
   where
-    c (Contract str) = error str
+
+    -- Preconditions represent analyses pre-execution.
+    Precondition
+        :: (    variables
+             -> Pattern fs m ()
+           )
+        -> Consideration variables result fs m
+
+    -- Postconditions represent analyses post-execution.
+    Postcondition
+        :: (    result
+             -> Pattern fs m ()
+           )
+        -> Consideration variables result fs m
+
+    -- Invariants represent analyses during execution.
+    Invariant
+        :: Pattern fs m ()
+        -> Consideration variables result fs m
+
+    -- Consideration represents analyses after execution
+    -- that include the variables.
+    Consideration
+        :: (    variables
+             -> result
+             -> Pattern fs m ()
+           )
+        -> Consideration variables result fs m
+
+
+
+data Contract variables result fs m
+  where
+
+    Contract
+        :: [Consideration variables result fs m]
+        -> (    variables
+             -> Pattern fs m result
+           )
+        -> Contract variables result fs m
+
+
+
+runPreconditions
+    :: Monad m
+    => Contract variables result fs m
+    -> variables
+    -> Pattern fs m ()
+
+runPreconditions (Contract conditionals _) variables =
+    do
+      let
+        isPrecondition (Precondition _) =
+            True
+
+        isPrecondition _ =
+            False
+
+        preconditions =
+            filter isPrecondition conditionals
+
+        applyTest (Precondition test) =
+            test variables
+
+        tryPreconditionals =
+            map (try . applyTest) preconditions
+
+      results <- sequence tryPreconditionals
+      let
+        accumulate (Left err) rest =
+            err:rest
+
+        accumulate _ rest =
+            rest
+
+        failures =
+            foldr accumulate [] results
+
+      case failures of
+
+          [] ->
+              return ()
+
+          xs ->
+              throw (Breaches xs)
+
+
+contract
+    :: forall variables result fs m.
+       Contract variables result fs m
+    -> variables
+    -> Pattern fs m result
+
+contract contract variables =
+#ifndef NO_CONTRACTS
+    do
+      _ <- runPreconditions contract variables
+      return _
+
+
+#else
+--  do
 #endif
+--     a <- method vs
+-- #ifndef NO_CONTRACTS
+--     postconditionResult <- postcondition a
+--     unless postconditionResult $ do
+--       ty <- typeOfSelf
+--       throw (Contract ("contract: post-condition failed: " ++ post ++ "\n\tin: " ++ show ty))
+-- #endif
+--     return a
+-- #ifndef NO_CONTRACTS
+--   where
+--     c (Contract str) = error str
+-- #endif

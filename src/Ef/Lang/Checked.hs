@@ -17,11 +17,35 @@ import Data.Coerce
 import Data.Proxy
 
 
-{-# INLINE try #-}
-try :: forall a b fs m . (Monad m, Is Except.Excepting fs m,Except.Exception a)
-           => (Throws a => Pattern fs m b)
-           -> Pattern fs m (Either a b)
-try a = Ef.Lang.Except.Checked.catch (a >>= \v -> return (Right v)) (\e -> return (Left e))
+-- | Symbol
+
+
+
+data Excepting k
+  where
+
+    Throw
+        :: SomeException
+        -> k
+        -> Excepting k
+
+
+
+class Throws e
+
+
+
+type role Throws representational
+
+newtype Catch e = Catch e
+instance Throws (Catch e)
+
+newtype Wrap e a = Wrap { unWrap :: Throws e => a }
+
+data Exceptable k = Exceptable (SomeException -> k)
+
+instance Witnessing Exceptable Excepting where
+    witness use (Exceptable k) (Throw e k') = use (k e) k'
 
 -- | Symbol Construct
 
@@ -43,18 +67,16 @@ catch act = Except.catch (unthrow (Proxy :: Proxy e) (act :: Throws e => Pattern
     coerceWrap :: forall e a. Wrap e a -> Wrap (Catch e) a
     coerceWrap = coerce
 
-class Throws e
-type role Throws representational
-
-newtype Catch e = Catch e
-instance Throws (Catch e)
-
-newtype Wrap e a = Wrap { unWrap :: Throws e => a }
 
 
--- | Symbol
 
-data Excepting k = Throw SomeException k
+{-# INLINE try #-}
+try :: forall a b fs m . (Monad m, Is Except.Excepting fs m,Except.Exception a)
+           => (Throws a => Pattern fs m b)
+           -> Pattern fs m (Either a b)
+try a = Ef.Lang.Except.Checked.catch (a >>= \v -> return (Right v)) (\e -> return (Left e))
+
+
 
 -- | Global Symbol Construct
 
@@ -64,8 +86,6 @@ throw' e = self (Throw (toException e) undefined)
 
 -- | Attribute
 
-data Exceptable k = Exceptable (SomeException -> k)
-
 -- | Attribute Construct
 
 {-# INLINE excepter #-}
@@ -73,9 +93,6 @@ excepter :: Attribute Exceptable gs k
 excepter = Exceptable (\se -> error $ "Uncaught exception: " ++ show se)
 
 -- | Symbol/Attribute Symmetry
-
-instance Witnessing Exceptable Excepting where
-    witness use (Exceptable k) (Throw e k') = use (k e) k'
 
 -- | Symbol Substitution Scope
 
@@ -196,8 +213,7 @@ bracketOnError before after thing = do
 
 data Handler fs m a = forall e. Exception e => Handler (e -> Pattern fs m a)
 
-instance Functor m => Functor (Handler fs m) where
-    fmap f (Handler h) = Handler (fmap f . h)
+
 
 {-# INLINE catches #-}
 catches :: Is Excepting fs m => Pattern fs m a -> [Handler fs m a] -> Pattern fs m a

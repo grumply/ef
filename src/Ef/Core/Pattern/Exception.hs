@@ -7,7 +7,10 @@ module Ef.Core.Pattern.Exception where
 
 import Ef.Core.Pattern
 
-import Control.Exception (Exception(..),SomeException)
+import Control.Exception
+    ( Exception(..)
+    , SomeException
+    )
 
 
 
@@ -177,7 +180,7 @@ onException p sequel =
              throw (e :: SomeException)
 
     in
-      handle onFailure p
+      p `catch` onFailure
 
 
 
@@ -213,7 +216,10 @@ bracket acquire cleanup p =
         after =
             cleanup resource
 
-      result <- computation `onException` after
+        handled =
+            computation `onException` after
+
+      result <- handled
       _ <- after
       return result
 
@@ -227,7 +233,10 @@ bracket_
     -> Pattern fs m c
 
 bracket_ acquire after computation =
-  bracket acquire (const after) (const computation)
+    bracket
+        acquire
+        (const after)
+        (const computation)
 
 
 
@@ -261,6 +270,15 @@ data Handler fs m a
              -> Pattern fs m a
            )
         -> Handler fs m a
+
+
+
+instance Functor m
+    => Functor (Handler fs m)
+  where
+
+    fmap f (Handler h) =
+        Handler (fmap f . h)
 
 
 
