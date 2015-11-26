@@ -8,8 +8,8 @@ module Ef.Lang.Scoped.Reflect where
 
 import Ef.Core
 
-import Ef.Lang.Scoped.Get
-import Ef.Lang.Scoped.Set
+import Ef.Lang.Get
+import Ef.Lang.Set
 
 
 

@@ -42,18 +42,17 @@ library
                        Ef.Lang.Checked
                        Ef.Lang.Fork
                        Ef.Lang.IO
+                       Ef.Lang.Get
+                       Ef.Lang.Set                       
                        Ef.Lang.Scoped.Act
                        Ef.Lang.Scoped.Exit
                        Ef.Lang.Scoped.Generate
-                       Ef.Lang.Scoped.Get
                        Ef.Lang.Scoped.Guard
                        Ef.Lang.Scoped.Log
                        Ef.Lang.Scoped.Manage
                        Ef.Lang.Scoped.Notate
                        Ef.Lang.Scoped.Or
                        Ef.Lang.Scoped.React
-                       Ef.Lang.Scoped.Set
---                       Ef.Lang.Scoped.Task
                        Ef.Lang.Scoped.Thread
                        Ef.Lang.Scoped.Try
                        Ef.Lang.Scoped.Vary

@@ -1,21 +1,29 @@
-{-# LANGUAGE FlexibleInstances, IncoherentInstances #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleInstances #-}
+-- {-# LANGUAGE IncoherentInstances #-}
 module Ef
-  ( main', base, debug, Ef, Main
+  ( main'
+  , base
+  , debug
+  , Ef
+  , Main
   , module Base
   ) where
 
+
+
 import Ef.Core                  as Base
+
 import Ef.Data.Promise          as Base
+
 import Ef.Lang.IO               as Base
 import Ef.Lang.Fork             as Base
 import Ef.Lang.Checked          as Base
-import Ef.Lang.Scoped.Exit      as Base
 import Ef.Lang.Contract         as Base
--- import Ef.Lang.Scoped.Act       as Base
--- import Ef.Lang.Scoped.Task      as Base
-import Ef.Lang.Scoped.Get       as Base
-import Ef.Lang.Scoped.Set       as Base
+import Ef.Lang.Get              as Base
+import Ef.Lang.Set              as Base
+
+import Ef.Lang.Scoped.Exit      as Base
 import Ef.Lang.Scoped.Reflect   as Base
 import Ef.Lang.Scoped.Generate  as Base
 import Ef.Lang.Scoped.Guard     as Base
@@ -28,61 +36,74 @@ import Ef.Lang.Scoped.Vary      as Base
 import Ef.Lang.Scoped.Notate    as Base
 import Ef.Lang.Scoped.Log       as Base
 
--- Ef language attributes
+
+
 type Ef
-  = '[Manageable
-     ,Exitable
-     ,Gettable
-     ,Settable
---     ,Taskable
-     ,Threadable
-     ,Weavable
-     ,Exceptable
-     ,Guardable
-     ,Notatable
-     ,Variable
-     ,Loggable
-     ,Reactable
---     ,Actable
-     ]
+    = '[ Manageable
+       , Exitable
+       , Gettable
+       , Settable
+       , Threadable
+       , Weavable
+       , Exceptable
+       , Guardable
+       , Notatable
+       , Variable
+       , Loggable
+       , Reactable
+       ]
 
--- Ef language symbols
+
+
 type Main
-  = '[Managing
-     ,Exiting
-     ,Getting
-     ,Setting
---     ,Tasking
-     ,Threading
-     ,Weaving
-     ,Excepting
-     ,Guarding
-     ,Notating
-     ,Varying
-     ,Logging
-     ,Reacting
---     ,Acting
-     ]
+    = '[ Managing
+       , Exiting
+       , Getting
+       , Setting
+       , Threading
+       , Weaving
+       , Excepting
+       , Guarding
+       , Notating
+       , Varying
+       , Logging
+       , Reacting
+       ]
 
-main' :: Pattern Main IO b -> IO b
-main' = fmap snd . delta base
+main'
+    :: Pattern Main IO b
+    -> IO b
 
-debug :: Pattern Main IO b -> IO (Int,b)
-debug = fmap snd. deltaDebug base
+main' =
+    fmap snd . delta base
 
-base :: Monad m => Object Ef m
-base = Object $ manager
-            *:* exiter
-            *:* getter
-            *:* setter
---            *:* tasker
-            *:* threader
-            *:* weaver
-            *:* excepter
-            *:* guarder
-            *:* notator
-            *:* varier
-            *:* logger
-            *:* reactor
---            *:* actor
-            *:* Empty
+
+
+debug
+    :: Pattern Main IO b
+    -> IO (Int,b)
+
+debug =
+    fmap snd. deltaDebug base
+
+
+
+base
+    :: Monad m
+    => Object Ef m
+
+base =
+  Object $
+      manager
+      *:* exiter
+      *:* getter
+      *:* setter
+      *:* threader
+      *:* weaver
+      *:* excepter
+      *:* guarder
+      *:* notator
+      *:* varier
+      *:* logger
+      *:* reactor
+      *:* Empty
