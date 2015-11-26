@@ -43,8 +43,7 @@ library
                        Ef.Lang.Fork
                        Ef.Lang.IO
                        Ef.Lang.Get
-                       Ef.Lang.Set                       
-                       Ef.Lang.Scoped.Act
+                       Ef.Lang.Set
                        Ef.Lang.Scoped.Exit
                        Ef.Lang.Scoped.Generate
                        Ef.Lang.Scoped.Guard
