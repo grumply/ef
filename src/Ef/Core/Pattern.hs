@@ -123,18 +123,17 @@ instance As (Symbol '[]) (Symbol '[])
 
 
 
-instance ( As x y
+instance ( Allows x ys
          , As (Symbol xs) (Symbol ys)
-         , Denies y ys
          )
-    => As (Symbol (x ': xs)) (Symbol (y ': ys))
+    => As (Symbol (x ': xs)) (Symbol ys)
   where
 
     conv (Symbol sa) =
-        Symbol (conv sa)
+        inj sa
 
     conv (Further ss) =
-        Further (conv ss)
+        conv ss
 
 
 
