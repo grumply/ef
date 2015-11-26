@@ -2,11 +2,14 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE AutoDeriveTypeable #-}
 module Ef.Lang.Get where
 
 
 
 import Ef.Core
+
+import Data.Binary
 import Unsafe.Coerce
 
 

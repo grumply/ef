@@ -1,8 +1,10 @@
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ExistentialQuantification #-}
 module Ef.Lang.Scoped.Exit
     ( Exiting
     , exits
@@ -12,12 +14,14 @@ module Ef.Lang.Scoped.Exit
     , exiter
     ) where
 
+
+
 import Ef.Core
+
+import Data.Binary
 import Unsafe.Coerce
 
 
-
--- | Symbol
 
 data Exiting k
   where
@@ -33,8 +37,6 @@ data Exiting k
 
 
 
--- | Attribute
-
 data Exitable k
   where
 
@@ -45,7 +47,21 @@ data Exitable k
 
 
 
--- | Attribute Construct
+instance Uses Exitable gs m
+    => Binary (Attribute Exitable gs m)
+  where
+
+    get =
+        do
+          scope <- get
+          let
+            Exitable _ k = exiter
+
+          return (Exitable scope k)
+
+    put (Exitable scope _) =
+        put scope
+
 
 
 exiter
@@ -67,8 +83,6 @@ exiter =
 
 
 
--- | Symbol/Attribute Symmetry
-
 instance Witnessing Exitable Exiting
   where
 
@@ -76,8 +90,6 @@ instance Witnessing Exitable Exiting
         use k (ik i)
 
 
-
--- | Symbol Module
 
 data Exit a fs m =
     Exit
@@ -89,8 +101,6 @@ data Exit a fs m =
         }
 
 
-
--- | Local Scoping Construct + Symbol Substitution
 
 exits
     :: Is Exiting fs m
@@ -149,8 +159,6 @@ exits f =
                       ignore
 
 
-
--- | Inlines
 
 {-# INLINE exiter #-}
 {-# INLINE exits #-}

@@ -6,6 +6,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE UndecidableInstances #-}
 module Ef.Core.Object where
 
 
@@ -14,7 +15,7 @@ import Ef.Core.Type.Set
 import Ef.Core.Type.Nat
 import Ef.Core.Object.Attributes
 
-
+import Data.Binary
 import Data.Typeable
 
 
@@ -36,6 +37,18 @@ newtype Object fs m =
           deconstruct
               :: Attrs fs (Method fs m)
         }
+
+
+
+instance Binary (Attrs fs (Method fs m))
+    => Binary (Object fs m)
+  where
+
+    get =
+        Object <$> get
+
+    put (Object as) =
+        put as
 
 
 

@@ -16,6 +16,7 @@ import Ef.Core.Type.Nat
 
 
 import Unsafe.Coerce
+import Data.Binary
 
 
 
@@ -30,6 +31,32 @@ data Attrs (as :: [* -> *]) a
         => f a
         -> Attrs fs a
         -> Attrs (f ': fs) a
+
+
+
+instance Binary (Attrs '[] x)
+  where
+
+    get =
+       pure Empty
+
+    put _ =
+       pure ()
+
+
+
+instance ( Binary (Attrs as x)
+         , Denies a as
+         , Binary (a x)
+         )
+    => Binary (Attrs (a ': as) x)
+  where
+
+    get =
+        Attr <$> get <*> get
+
+    put (Attr x as) =
+        put x >> put as
 
 
 

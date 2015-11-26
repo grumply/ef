@@ -1,4 +1,6 @@
+{- | A wrapper around MVar in a promise-y style. -}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE AutoDeriveTypeable #-}
 module Ef.Data.Promise
     ( Promise
     , newPromiseIO
@@ -17,14 +19,18 @@ import Ef.Core
 import Ef.Lang.IO
 
 import Control.Concurrent
+import GHC.Generics
 
 
 
 newtype Promise a =
+
     Promise
         { getPromise
               :: MVar a
         }
+
+  deriving Eq
 
 
 

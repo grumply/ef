@@ -2,6 +2,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
 module Ef.Lang.Scoped.Log
@@ -17,9 +18,9 @@ module Ef.Lang.Scoped.Log
 
 import Ef.Core
 
+import Data.Binary
 import Data.Monoid
 import Prelude hiding (log)
-
 import Unsafe.Coerce
 
 
@@ -75,8 +76,30 @@ data Log fs m a w =
 
 -- | Attribute
 
-data Loggable k where
-    Loggable :: Int -> k -> Loggable k
+data Loggable k
+  where
+
+    Loggable
+        :: Int
+        -> k
+        -> Loggable k
+
+
+
+instance Uses Loggable gs m
+    => Binary (Attribute Loggable gs m)
+  where
+
+    get =
+        do
+          scope <- get
+          let
+            Loggable _ k = logger
+
+          return (Loggable scope k)
+
+    put (Loggable scope _) =
+        put scope
 
 
 

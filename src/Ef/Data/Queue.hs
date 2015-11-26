@@ -1,5 +1,13 @@
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE AutoDeriveTypeable #-}
 module Ef.Data.Queue where
+
+
+
+import Data.Binary
+
+
 
 data Queue a
   where
@@ -8,6 +16,20 @@ data Queue a
         :: [a]
         -> [a]
         -> Queue a
+
+  deriving (Functor,Eq,Ord)
+
+
+
+instance Binary a
+    => Binary (Queue a)
+  where
+
+    get =
+        Queue <$> get <*> get
+
+    put (Queue l r) =
+        put l >> put r
 
 
 

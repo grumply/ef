@@ -16,10 +16,10 @@ import Ef.Lang.Set
 data Reflection fs gs m =
     Reflection
         {
-          inspect
+          project
               :: Pattern fs m (Object gs m)
 
-        , infect
+        , inject
               :: Object gs m
               -> Pattern fs m ()
         }
@@ -39,9 +39,9 @@ withReflection
 withReflection f =
     f Reflection
           {
-            inspect =
+            project =
                 introspect
 
-          , infect =
+          , inject =
                 become
           }

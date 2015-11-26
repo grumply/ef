@@ -13,7 +13,6 @@ module Ef.Core.Pattern where
 
 
 
-import Ef.Core.Type.Set
 import Ef.Core.Pattern.Symbols
 
 import Control.Applicative

@@ -1,9 +1,10 @@
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ExistentialQuantification #-}
 module Ef.Lang.Scoped.Manage
     ( Managing
     , Manageable
@@ -20,8 +21,8 @@ module Ef.Lang.Scoped.Manage
 import Ef.Core
 
 import Control.Arrow
+import Data.Binary
 import Data.Either
-
 import Unsafe.Coerce
 
 
@@ -69,7 +70,27 @@ data Manageable k
   where
 
     Manageable
-        :: Int -> k -> k -> Manageable k
+        :: Int
+        -> k
+        -> k
+        -> Manageable k
+
+
+
+instance Uses Manageable gs m
+    => Binary (Attribute Manageable gs m)
+  where
+
+    get =
+        do
+          scope <- get
+          let
+            Manageable _ k k' = manager
+
+          return (Manageable scope k k')
+
+    put (Manageable scope _ _) =
+        put scope
 
 
 
