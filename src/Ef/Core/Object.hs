@@ -47,6 +47,8 @@ instance Binary (Attrs fs (Method fs m))
     get =
         Object <$> get
 
+
+
     put (Object as) =
         put as
 

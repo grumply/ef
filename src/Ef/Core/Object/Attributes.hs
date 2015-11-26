@@ -40,6 +40,8 @@ instance Binary (Attrs '[] x)
     get =
        pure Empty
 
+
+
     put _ =
        pure ()
 
@@ -54,6 +56,8 @@ instance ( Binary (Attrs as x)
 
     get =
         Attr <$> get <*> get
+
+
 
     put (Attr x as) =
         put x >> put as
