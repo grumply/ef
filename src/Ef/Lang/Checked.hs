@@ -1,23 +1,30 @@
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE IncoherentInstances #-}
+{-# LANGUAGE RoleAnnotations #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ExistentialQuantification #-}
-module Ef.Lang.Except
+module Ef.Lang.Checked
   ( Excepting
-         , throw,  catch, handle, catchJust, handleJust, try, tryJust
-         , catches, Handler(..)
-         , onException, finally, bracket, bracket_, bracketOnError, mapException
+  , throwChecked
+  , catchChecked
+  , tryChecked
+  , mapChecked
   , excepter, Exceptable
   , Exception(..),SomeException(..),assert
   ) where
 
+
+
 import Ef.Core
+import qualified Ef.Core.Pattern.Exception as Except
+
 import Control.Exception (SomeException(..),Exception(..),assert)
 import Data.Coerce
 import Data.Proxy
-
-
--- | Symbol
 
 
 
@@ -37,191 +44,131 @@ class Throws e
 
 type role Throws representational
 
+
+
 newtype Catch e = Catch e
+
+
+
 instance Throws (Catch e)
 
-newtype Wrap e a = Wrap { unWrap :: Throws e => a }
 
-data Exceptable k = Exceptable (SomeException -> k)
 
-instance Witnessing Exceptable Excepting where
-    witness use (Exceptable k) (Throw e k') = use (k e) k'
+newtype Wrap e a =
+    Wrap
+        {
+          unWrap
+              :: Throws e => a
+        }
 
--- | Symbol Construct
 
-{-# INLINE throw #-}
-throw :: (Except.Exception e,Throws e,Is Except.Excepting fs m) => e -> Pattern fs m a
-throw = Except.throw
 
--- | Global Scoping Construct
-
-{-# INLINE catch #-}
-catch :: forall e fs m a. (Except.Exception e,Is Except.Excepting fs m)
-             => (Throws e => Pattern fs m a)
-             -> (e -> Pattern fs m a)
-             -> Pattern fs m a
-catch act = Except.catch (unthrow (Proxy :: Proxy e) (act :: Throws e => Pattern fs m a))
+data Exceptable k
   where
-    unthrow :: forall proxy e a. proxy e -> (Throws e => a) -> a
+
+    Exceptable
+        :: (    SomeException
+             -> k
+           )
+        -> Exceptable k
+
+
+
+instance Exceptable `Witnessing` Excepting
+  where
+
+    witness use (Exceptable k) (Throw e k') =
+        use (k e) k'
+
+
+
+throwChecked
+    :: ( Exception e
+       , Is Excepting fs m
+       ) => e -> (Throws e => Pattern fs m a)
+
+throwChecked =
+    Except.throw
+
+
+
+catchChecked
+    :: forall e fs m a.
+       ( Exception e
+       , Is Excepting fs m
+       )
+    => (Throws e => Pattern fs m a)
+    -> (e -> Pattern fs m a)
+    -> Pattern fs m a
+
+catchChecked act =
+    let
+      proxy =
+          Proxy :: Proxy e
+
+    in
+      Except.catch (unthrow proxy act)
+  where
+    unthrow
+        :: forall proxy e a.
+           proxy e
+        -> (Throws e => a) -> a
+
     unthrow _ = unWrap . coerceWrap . Wrap
-    coerceWrap :: forall e a. Wrap e a -> Wrap (Catch e) a
+
+
+
+    coerceWrap
+        :: forall e a.
+           Wrap e a
+        -> Wrap (Catch e) a
+
     coerceWrap = coerce
 
 
 
+tryChecked
+    :: forall a b fs m .
+       ( Is Excepting fs m
+       , Exception a
+       )
+    => (Throws a => Pattern fs m b)
+    -> Pattern fs m (Either a b)
 
-{-# INLINE try #-}
-try :: forall a b fs m . (Monad m, Is Except.Excepting fs m,Except.Exception a)
-           => (Throws a => Pattern fs m b)
-           -> Pattern fs m (Either a b)
-try a = Ef.Lang.Except.Checked.catch (a >>= \v -> return (Right v)) (\e -> return (Left e))
+tryChecked a =
+    catchChecked (Right <$> a) (return . Left)
 
 
 
--- | Global Symbol Construct
+excepter
+    :: Attribute Exceptable gs k
 
-{-# INLINE throw' #-}
-throw' :: (Is Excepting fs m, Exception e) => e -> Pattern fs m a
-throw' e = self (Throw (toException e) undefined)
+excepter =
+    let
+      uncaught err =
+          "Uncaught exception: " ++ (show err)
 
--- | Attribute
+    in
+      Exceptable (error . uncaught)
 
--- | Attribute Construct
+
+
+mapChecked
+    :: ( Is Excepting fs m
+       , Exception e
+       , Exception e'
+       )
+    => (e -> e')
+    -> (Throws e => Pattern fs m a)
+    -> (Throws e' => Pattern fs m a)
+
+mapChecked f p =
+    catchChecked p (throwChecked . f)
+
+-- | Inlines
 
 {-# INLINE excepter #-}
-excepter :: Attribute Exceptable gs k
-excepter = Exceptable (\se -> error $ "Uncaught exception: " ++ show se)
-
--- | Symbol/Attribute Symmetry
-
--- | Symbol Substitution Scope
-
-{-# INLINE catch' #-}
-catch' :: (Is Excepting fs m, Exception e)
-      => Pattern fs m a -> (e -> Pattern fs m a) -> Pattern fs m a
-catch' plan handler = go plan
-  where
-    go p = case p of
-        Step sym bp -> case prj sym of
-            Just (Throw se _) -> case fromException se of
-                Just e -> handler e
-                Nothing -> Step sym (\b -> go (bp b))
-            _ -> Step sym (\b -> go (bp b))
-        M m -> M (fmap go m)
-        Pure r -> Pure r
-
--- | Extended API
-
-{-# INLINE handle #-}
-handle :: (Is Excepting fs m,Exception e)
-       => (e -> Pattern fs m a)
-       -> Pattern fs m a
-       -> Pattern fs m a
-handle = flip catch
-
-{-# INLINE catchJust #-}
-catchJust :: (Exception e,Is Excepting fs m)
-          => (e -> Maybe b)
-          -> Pattern fs m a
-          -> (b -> Pattern fs m a)
-          -> Pattern fs m a
-catchJust p a handler = catch a handler'
-  where
-    handler' e = case p e of
-        Nothing -> throw e
-        Just b -> handler b
-
-{-# INLINE handleJust #-}
-handleJust :: (Is Excepting fs m,Exception e)
-           => (e -> Maybe b)
-           -> (b -> Pattern fs m a)
-           -> Pattern fs m a
-           -> Pattern fs m a
-handleJust p = flip (catchJust p)
-
-{-# INLINE mapException #-}
-mapException :: (Exception e, Exception e', Is Excepting fs m)
-             => (e -> e') -> Pattern fs m a -> Pattern fs m a
-mapException f p = catch p (\e -> throw (f e))
-
-{-# INLINE try #-}
-try :: (Exception e,Is Excepting fs m) => Pattern fs m a -> Pattern fs m (Either e a)
-try a = catch (a >>= \v -> return (Right v)) (\e -> return (Left e))
-
-{-# INLINE tryJust #-}
-tryJust :: (Exception e,Is Excepting fs m)
-        => (e -> Maybe b)
-        -> Pattern fs m a
-        -> Pattern fs m (Either b a)
-tryJust p a = do
-    r <- try a
-    case r of
-        Right v -> return (Right v)
-        Left e ->
-            case p e of
-                Nothing -> throw e
-                Just b -> return (Left b)
-
-{-# INLINE onException #-}
-onException :: Is Excepting fs m
-            => Pattern fs m a
-            -> Pattern fs m b
-            -> Pattern fs m a
-onException p what = p `catch` \e -> do
-    _ <- what
-    throw (e :: SomeException)
-
-{-# INLINE finally #-}
-finally :: Is Excepting fs m
-        => Pattern fs m a
-        -> Pattern fs m b
-        -> Pattern fs m a
-finally a sequel = do
-    r <- a `onException` sequel
-    _ <- sequel
-    return r
-
-{-# INLINE bracket #-}
-bracket :: Is Excepting fs m
-        => Pattern fs m a
-        -> (a -> Pattern fs m b)
-        -> (a -> Pattern fs m c)
-        -> Pattern fs m c
-bracket before after thing = do
-    a <- before
-    r <- (thing a) `onException` after a
-    _ <- after a
-    return r
-
-{-# INLINE bracket_ #-}
-bracket_ :: Is Excepting fs m
-         => Pattern fs m a
-         -> Pattern fs m b
-         -> Pattern fs m c
-         -> Pattern fs m c
-bracket_ before after thing = bracket before (const after) (const thing)
-
-{-# INLINE bracketOnError #-}
-bracketOnError :: Is Excepting fs m
-               => Pattern fs m a
-               -> (a -> Pattern fs m b)
-               -> (a -> Pattern fs m c)
-               -> Pattern fs m c
-bracketOnError before after thing = do
-    a <- before
-    (thing a) `onException` (after a)
-
-data Handler fs m a = forall e. Exception e => Handler (e -> Pattern fs m a)
-
-
-
-{-# INLINE catches #-}
-catches :: Is Excepting fs m => Pattern fs m a -> [Handler fs m a] -> Pattern fs m a
-catches p handlers = p `catch` catchesHandler handlers
-
-catchesHandler :: Is Excepting fs m => [Handler fs m a] -> SomeException -> Pattern fs m a
-catchesHandler handlers e = foldr tryHandler (throw e) handlers
-  where
-    tryHandler (Handler handler) res = case fromException e of
-       Just e' -> handler e'
-       Nothing -> res
+{-# INLINE throwChecked #-}
+{-# INLINE catchChecked #-}
+{-# INLINE tryChecked #-}
+{-# INLINE mapChecked #-}

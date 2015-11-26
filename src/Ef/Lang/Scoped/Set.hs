@@ -1,10 +1,15 @@
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 module Ef.Lang.Scoped.Set where
 
+
+
 import Ef.Core
 import Unsafe.Coerce
+
+
 
 data Setting k
   where
@@ -13,6 +18,19 @@ data Setting k
         :: Object gs m
         -> k
         -> Setting k
+
+
+
+become
+    :: ( (Attrs gs) `Witnessing` (Symbol fs)
+       , Is Setting fs m
+       )
+    => Object gs m
+    -> Pattern fs m ()
+
+become newSelf =
+    self (Set newSelf ())
+
 
 
 data Settable k
@@ -24,6 +42,8 @@ data Settable k
            )
         -> Settable k
 
+
+
 instance Witnessing Settable Setting
   where
 
@@ -34,6 +54,8 @@ instance Witnessing Settable Setting
 
         in
           use (ok obj) k
+
+
 
 setter
     :: Uses Settable gs m

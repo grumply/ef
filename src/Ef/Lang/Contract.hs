@@ -1,44 +1,49 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
 module Ef.Lang.Contract
     ( contract
+    , Consideration(..)
+    , Breaches(..)
+    , Contract(..)
+    , Phase(..)
     ) where
 
 
 
 import Ef.Core
 
-import Ef.Lang.Scoped.Diverge
-
 import Control.Exception
     ( Exception(..)
     , SomeException
     )
 
-import Control.Monad
-    ( unless
-    )
-
 import Data.Either
 
-import Data.Typeable
 
 
-{-
-One problem with this approach is the ability of conditional analyses
-to modify the object pre- and post- execution via Diverging.
-It is the responsibility of the contract designer to avoid this.
--}
+data Phase
+  where
+
+    Before
+        :: Phase
+
+    During
+        :: Phase
+
+    After
+        :: Phase
+
+  deriving Show
+
 
 
 data Breaches
   where
 
     Breaches
-        :: [SomeException]
+        :: Phase
+        -> [SomeException]
         -> Breaches
 
   deriving Show
@@ -49,33 +54,20 @@ instance Exception Breaches
 data Consideration variables result fs m
   where
 
-    -- Preconditions represent analyses pre-execution.
     Precondition
-        :: (    variables
-             -> Pattern fs m ()
-           )
+        :: Pattern fs m ()
         -> Consideration variables result fs m
 
-    -- Postconditions represent analyses post-execution.
     Postcondition
         :: (    result
              -> Pattern fs m ()
            )
         -> Consideration variables result fs m
 
-    -- Invariants represent analyses during execution.
     Invariant
         :: Pattern fs m ()
         -> Consideration variables result fs m
 
-    -- Consideration represents analyses after execution
-    -- that include the variables.
-    Consideration
-        :: (    variables
-             -> result
-             -> Pattern fs m ()
-           )
-        -> Consideration variables result fs m
 
 
 
@@ -84,82 +76,132 @@ data Contract variables result fs m
 
     Contract
         :: [Consideration variables result fs m]
-        -> (    variables
-             -> Pattern fs m result
-           )
+        -> Pattern fs m result
         -> Contract variables result fs m
 
 
 
-runPreconditions
+consider
     :: Monad m
-    => Contract variables result fs m
-    -> variables
-    -> Pattern fs m ()
+    => [Pattern fs m ()]
+    -> Pattern fs m [SomeException]
 
-runPreconditions (Contract conditionals _) variables =
+consider considerations =
     do
+      results <- sequence (map try considerations)
       let
-        isPrecondition (Precondition _) =
-            True
-
-        isPrecondition _ =
-            False
-
-        preconditions =
-            filter isPrecondition conditionals
-
-        applyTest (Precondition test) =
-            test variables
-
-        tryPreconditionals =
-            map (try . applyTest) preconditions
-
-      results <- sequence tryPreconditionals
-      let
-        accumulate (Left err) rest =
-            err:rest
-
-        accumulate _ rest =
-            rest
-
         failures =
-            foldr accumulate [] results
+            fst (partitionEithers results)
 
-      case failures of
+      return failures
 
-          [] ->
-              return ()
 
-          xs ->
-              throw (Breaches xs)
+
+runWithInvariants
+    :: Monad m
+    => [Pattern fs m ()]
+    -> Pattern fs m result
+    -> Pattern fs m result
+
+runWithInvariants invariants method =
+    let
+      invariant =
+          sequence (map try invariants)
+
+      test (Pure r) =
+          Pure r
+
+      test (Fail e) =
+          Fail e
+
+      test (M m) =
+          M (fmap test m)
+
+      test (Step sym bp) =
+          Step sym $ \value ->
+              do
+                results <- invariant
+                let
+                  failures =
+                      fst (partitionEithers results)
+
+                case failures of
+
+                    [] ->
+                        test (bp value)
+
+                    xs ->
+                        throw (Breaches During xs)
+
+    in
+      test method
+
 
 
 contract
     :: forall variables result fs m.
-       Contract variables result fs m
-    -> variables
+       Monad m
+    => Contract variables result fs m
     -> Pattern fs m result
 
-contract contract variables =
+contract (Contract considerations method) =
 #ifndef NO_CONTRACTS
     do
-      _ <- runPreconditions contract variables
-      return _
+      let
+        (preconditions,invariants,postconditionals) =
+            splitConsiderations considerations
 
+      preFailures <- consider preconditions
+      if null preFailures then
+          do
+            result <- try (runWithInvariants invariants method)
+            case result of
 
+                Left failure ->
+                    throw (failure :: Breaches)
+
+                Right value ->
+                    do
+                      let
+                        postconditions =
+                            map ($ value) postconditionals
+
+                      postFailures <- consider postconditions
+                      if null postFailures then
+                          return value
+                      else
+                          throw (Breaches After postFailures)
+      else
+          throw (Breaches Before preFailures)
 #else
---  do
+    method
 #endif
---     a <- method vs
--- #ifndef NO_CONTRACTS
---     postconditionResult <- postcondition a
---     unless postconditionResult $ do
---       ty <- typeOfSelf
---       throw (Contract ("contract: post-condition failed: " ++ post ++ "\n\tin: " ++ show ty))
--- #endif
---     return a
--- #ifndef NO_CONTRACTS
---   where
---     c (Contract str) = error str
--- #endif
+
+
+
+splitConsiderations considerations =
+    let
+      splitter =
+          consider precondition invariant postcondition
+
+    in
+      foldr splitter ([],[],[]) considerations
+  where
+
+    consider pre _ _ (Precondition consideration) =
+        pre consideration
+
+    consider _ inv _ (Invariant consideration) =
+        inv consideration
+
+    consider _ _ post (Postcondition consideration) =
+        post consideration
+
+    precondition pre ~(pres,invs,posts) =
+        (pre:pres,invs,posts)
+
+    invariant inv ~(pres,invs,posts) =
+        (pres,inv:invs,posts)
+
+    postcondition post ~(pres,invs,posts) =
+        (pres,invs,post:posts)

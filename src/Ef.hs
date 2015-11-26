@@ -9,12 +9,14 @@ import Ef.Core                  as Base
 import Ef.Data.Promise          as Base
 import Ef.Lang.IO               as Base
 import Ef.Lang.Fork             as Base
--- import Ef.Lang.Except           as Base
-import Ef.Lang.Scoped.Diverge   as Base
+import Ef.Lang.Checked          as Base
 import Ef.Lang.Scoped.Exit      as Base
 import Ef.Lang.Contract         as Base
 -- import Ef.Lang.Scoped.Act       as Base
 -- import Ef.Lang.Scoped.Task      as Base
+import Ef.Lang.Scoped.Get       as Base
+import Ef.Lang.Scoped.Set       as Base
+import Ef.Lang.Scoped.Reflect   as Base
 import Ef.Lang.Scoped.Generate  as Base
 import Ef.Lang.Scoped.Guard     as Base
 import Ef.Lang.Scoped.Try       as Base
@@ -30,34 +32,36 @@ import Ef.Lang.Scoped.Log       as Base
 type Ef
   = '[Manageable
      ,Exitable
+     ,Gettable
+     ,Settable
 --     ,Taskable
      ,Threadable
      ,Weavable
---     ,Exceptable
+     ,Exceptable
      ,Guardable
      ,Notatable
      ,Variable
      ,Loggable
      ,Reactable
 --     ,Actable
-     ,Divergable
      ]
 
 -- Ef language symbols
 type Main
   = '[Managing
      ,Exiting
+     ,Getting
+     ,Setting
 --     ,Tasking
      ,Threading
      ,Weaving
---     ,Excepting
+     ,Excepting
      ,Guarding
      ,Notating
      ,Varying
      ,Logging
      ,Reacting
 --     ,Acting
-     ,Diverging
      ]
 
 main' :: Pattern Main IO b -> IO b
@@ -69,15 +73,16 @@ debug = fmap snd. deltaDebug base
 base :: Monad m => Object Ef m
 base = Object $ manager
             *:* exiter
+            *:* getter
+            *:* setter
 --            *:* tasker
             *:* threader
             *:* weaver
---            *:* excepter
+            *:* excepter
             *:* guarder
             *:* notator
             *:* varier
             *:* logger
             *:* reactor
 --            *:* actor
-            *:* diverger
             *:* Empty

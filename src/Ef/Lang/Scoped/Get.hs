@@ -1,15 +1,15 @@
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 module Ef.Lang.Scoped.Get where
 
+
+
 import Ef.Core
 import Unsafe.Coerce
-import Data.Typeable
 
 
-
--- | Symbol
 
 data Getting k
   where
@@ -26,7 +26,17 @@ data Getting k
 
 
 
--- | Symbol Modules
+introspect
+    :: ( (Attrs gs) `Witnessing` (Symbol fs)
+       , Is Getting fs m
+       )
+    => Pattern fs m (Object gs m)
+introspect =
+    do
+      self (Reify ())
+      self (Get id)
+
+
 
 data Gettable k
   where
@@ -37,6 +47,7 @@ data Gettable k
         -> Gettable k
 
 
+
 instance Witnessing Gettable Getting
   where
 
@@ -45,6 +56,8 @@ instance Witnessing Gettable Getting
 
     witness use (Getter (o,k) _) (Get ok) =
         use k (ok (unsafeCoerce o))
+
+
 
 getter
     :: Uses Gettable gs m

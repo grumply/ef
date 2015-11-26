@@ -5,6 +5,7 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ExistentialQuantification #-}
 module Ef.Core.Object where
 
 
@@ -35,6 +36,15 @@ newtype Object fs m =
           deconstruct
               :: Attrs fs (Method fs m)
         }
+
+
+
+data Purpose =
+    forall fs m.
+       ( Typeable fs
+       , Typeable m
+       )
+    => Purpose (Object fs m)
 
 
 

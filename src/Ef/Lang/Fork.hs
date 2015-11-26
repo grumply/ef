@@ -9,12 +9,12 @@ module Ef.Lang.Fork (forkWith,forkOSWith,forkOnWith) where
 
 import Ef.Core
 import Ef.Lang.IO
-import Ef.Lang.Except
 import Ef.Data.Promise
 
 import qualified Control.Concurrent
 import Control.Concurrent (ThreadId)
 import Control.Concurrent.MVar
+import Control.Exception (SomeException(..))
 import Control.Monad
 
 type Ref gs m a = (ThreadId,Promise (Either SomeException (Object gs m,a)))
@@ -22,8 +22,8 @@ type Ref gs m a = (ThreadId,Promise (Either SomeException (Object gs m,a)))
 forkWith :: forall fs fs' gs m m' a.
         (Witnessing (Attrs gs) (Symbol fs)
         ,Lift IO m'
-        ,Is Excepting fs' m'
-        ,Is Excepting fs m
+        ,Monad m'
+        ,Monad m
         ) => Object gs m
           -> Pattern fs m a
           -> (forall x. m x -> IO x)
@@ -46,8 +46,8 @@ forkWith comp plan lft = do
 forkOSWith :: forall fs fs' gs m m' a.
           (Witnessing (Attrs gs) (Symbol fs)
           ,Lift IO m'
-          ,Is Excepting fs' m'
-          ,Is Excepting fs m
+          ,Monad m'
+          ,Monad m
           ) => Object gs m
             -> Pattern fs m a
             -> (forall x. m x -> IO x)
@@ -70,8 +70,8 @@ forkOSWith comp plan lft = do
 forkOnWith :: forall fs fs' gs m m' a.
           (Witnessing (Attrs gs) (Symbol fs)
           ,Lift IO m'
-          ,Is Excepting fs' m'
-          ,Is Excepting fs m
+          ,Monad m'
+          ,Monad m
           ) => Int
             -> Object gs m
             -> Pattern fs m a
