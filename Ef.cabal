@@ -44,6 +44,7 @@ library
                        Ef.Lang.IO
                        Ef.Lang.Get
                        Ef.Lang.Set
+                       Ef.Lang.IfThenElse
                        Ef.Lang.Scoped.Exit
                        Ef.Lang.Scoped.Generate
                        Ef.Lang.Scoped.Guard
