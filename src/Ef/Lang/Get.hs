@@ -60,16 +60,11 @@ instance ( Uses Gettable gs m
   where
 
     get =
-        do
-          o :: Object gs m <- get
-          case getter :: Attribute Gettable gs m of
-
-              Getter (_,k) k' ->
-                  return (Getter (o,k) k')
+        return (getter :: Attribute Gettable gs m)
 
 
-    put (Getter (o,_) _) =
-        put (unsafeCoerce o :: Object gs m)
+    put _ =
+        pure ()
 
 
 
