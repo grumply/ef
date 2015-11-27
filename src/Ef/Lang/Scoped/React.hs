@@ -1,81 +1,175 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ExistentialQuantification #-}
 module Ef.Lang.Scoped.React
-  ( Behavior, Culture
-  , Reacting, reacts
-  , Reactable, reactor
+  ( Behavior
+  , Culture
+  , Reacting
+  , reacts
+  , Reactable
+  , reactor
   , React(..)
   ) where
+
+
 
 import Ef.Core
 import Ef.Lang.IO
 
+import Data.Binary
 import Data.IORef
 import System.IO.Unsafe
 import Unsafe.Coerce
 
--- | Symbol
 
-data Behavior a fs m = Behavior
-  { cultured :: Int
-  , behavior :: IORef (a -> Pattern fs m ())
-  }
 
-data Culture a fs m = Culture
-  { cultureId :: Int
-  , culture :: IORef (a -> Pattern fs m ())
-  , behaviors :: IORef [Behavior a fs m]
-  }
+data Behavior a fs m =
+    Behavior
+        {
+          cultured
+              :: Int
+
+        , behavior
+              :: IORef (a -> Pattern fs m ())
+        }
+
+
+
+data Culture a fs m =
+    Culture
+        {
+          cultureId
+              :: Int
+
+        , culture
+              :: IORef (a -> Pattern fs m ())
+
+        , behaviors
+              :: IORef [Behavior a fs m]
+        }
+
+
 
 data Reacting k
-  = FreshScope (Int -> k)
-  | forall a fs m. NewCulture Int (Culture a fs m -> k)
-  | forall a fs m. NewBehavior Int (Culture a fs m) (a -> Pattern fs m ()) (Behavior a fs m -> k)
-  | forall a fs m. ModifyBehavior Int (Behavior a fs m) (a -> Pattern fs m ()) k
-  | forall a fs m. TriggerBehavior Int (Behavior a fs m) a k
-  | forall a fs m. TriggerCulture Int (Culture a fs m) a k
-  | forall a fs m. DestroyBehavior Int (Behavior a fs m) k
-  | forall a fs m. DestroyCulture Int (Culture a fs m) k
+    = FreshScope (Int -> k)
+    | forall a fs m. NewCulture Int (Culture a fs m -> k)
+    | forall a fs m. NewBehavior Int (Culture a fs m) (a -> Pattern fs m ()) (Behavior a fs m -> k)
+    | forall a fs m. ModifyBehavior Int (Behavior a fs m) (a -> Pattern fs m ()) k
+    | forall a fs m. TriggerBehavior Int (Behavior a fs m) a k
+    | forall a fs m. TriggerCulture Int (Culture a fs m) a k
+    | forall a fs m. DestroyBehavior Int (Behavior a fs m) k
+    | forall a fs m. DestroyCulture Int (Culture a fs m) k
 
--- | Symbol Module
 
-data React fs m = React
-  { newC :: forall a. Pattern fs m (Culture a fs m)
-  , newB :: forall a. Culture a fs m -> (a -> Pattern fs m ()) -> Pattern fs m (Behavior a fs m)
-  , modB :: forall a. Behavior a fs m -> (a -> Pattern fs m ()) -> Pattern fs m ()
-  , triggerB :: forall a. Behavior a fs m -> a -> Pattern fs m ()
-  , triggerC :: forall a. Culture a fs m -> a -> Pattern fs m ()
-  , destroyB :: forall a. Behavior a fs m -> Pattern fs m ()
-  , destroyC :: forall a. Culture a fs m -> Pattern fs m ()
-  }
 
--- | Attribute
+data React fs m =
+    React
+        {
+          newC
+              :: forall a.
+                 Pattern fs m (Culture a fs m)
 
-data Reactable k = Reactable Int k
+        , newB
+              :: forall a.
+                 Culture a fs m
+              -> (    a
+                   -> Pattern fs m ()
+                 )
+              -> Pattern fs m (Behavior a fs m)
 
--- | Attribute Construct
+        , modB
+              :: forall a.
+                 Behavior a fs m
+              -> (    a
+                   -> Pattern fs m ()
+                 )
+              -> Pattern fs m ()
+
+        , triggerB
+              :: forall a.
+                 Behavior a fs m
+              -> a
+              -> Pattern fs m ()
+
+        , triggerC
+              :: forall a.
+                 Culture a fs m
+              -> a
+              -> Pattern fs m ()
+
+        , destroyB
+              :: forall a.
+                 Behavior a fs m
+              -> Pattern fs m ()
+
+        , destroyC
+              :: forall a.
+                 Culture a fs m
+              -> Pattern fs m ()
+        }
+
+
+
+data Reactable k =
+    Reactable Int k
+
+
+
+instance Uses Reactable gs m
+    => Binary (Attribute Reactable gs m)
+  where
+
+    get =
+        do
+          scope <- get
+          let
+            Reactable _ k =
+                reactor
+
+          return (Reactable scope k)
+
+
+
+    put (Reactable scope _) =
+        put scope
+
+
 
 {-# INLINE reactor #-}
-reactor :: Uses Reactable fs m => Attribute Reactable fs m
-reactor = Reactable 0 nextS
+reactor
+    :: Uses Reactable fs m
+    => Attribute Reactable fs m
+
+reactor =
+    Reactable 0 nextS
   where
     nextS fs =
-      let Reactable s ns = view fs
-          s' = succ s
-      in s' `seq` pure (fs .= Reactable s' ns)
+        let
+          Reactable s ns =
+              view fs
 
--- | Attribute/Symbol Symmetry
+          s' =
+              succ s
 
-instance Witnessing Reactable Reacting where
-  witness use (Reactable i k) (FreshScope ik) = use k (ik i)
+        in
+          s' `seq` pure $ fs .=
+              Reactable s' ns
 
--- | Local Scoping Construct + Substitution
+
+
+instance Reactable `Witnessing` Reacting
+  where
+
+    witness use (Reactable i k) (FreshScope ik) =
+        use k (ik i)
+
+
 
 {-# INLINE reacts #-}
 reacts :: forall fs m a. (Is Reacting fs m,Lift IO m)
@@ -83,65 +177,165 @@ reacts :: forall fs m a. (Is Reacting fs m,Lift IO m)
            -> Pattern fs m a
          ) -> Pattern fs m a
 reacts r = do
-  scope <- self (FreshScope id)
-  sys <- unsafe $ newIORef []
-  transform sys scope 0 $ r React
-      { newC = self (NewCulture scope id)
-      , newB = \c f -> self (NewBehavior scope c f id)
-      , modB = \b f -> self (ModifyBehavior scope b f ())
-      , triggerB = \b a -> self (TriggerBehavior scope b a ())
-      , triggerC = \c a -> self (TriggerCulture scope c a ())
-      , destroyB = \b -> self (DestroyBehavior scope b ())
-      , destroyC = \c -> self (DestroyCulture scope c ())
-      }
+    scope <- self (FreshScope id)
+    sys <- unsafe $ newIORef []
+    rewrite sys scope 0 $ r
+        React
+            {
+              newC =
+                  self (NewCulture scope id)
+
+            , newB =
+                  \c f ->
+                      self (NewBehavior scope c f id)
+
+            , modB =
+                  \b f ->
+                      self (ModifyBehavior scope b f ())
+
+            , triggerB =
+                  \b a ->
+                      self (TriggerBehavior scope b a ())
+
+            , triggerC =
+                  \c a ->
+                      self (TriggerCulture scope c a ())
+
+            , destroyB =
+                  \b ->
+                      self (DestroyBehavior scope b ())
+
+            , destroyC =
+                  \c ->
+                      self (DestroyCulture scope c ())
+            }
   where
-    transform sys scope = go
+
+    rewrite sys rewriteScope = go
       where
+
         go :: forall b. Int -> Pattern fs m b -> Pattern fs m b
         go c = go'
           where
-            go' :: forall c. Pattern fs m c -> Pattern fs m c
-            go' p =
-              case p of
-                Step sym bp ->
-                  let check i x = if i == scope then x else ignore
-                      ignore = Step sym (\b -> go' (bp b))
-                  in case prj sym of
-                       Just x ->
-                         case x of
-                           NewCulture i _ -> check i $ do
-                             cu <- newCulture c
-                             let c' = c + 1
-                             c' `seq` go c' (bp (unsafeCoerce cu))
-                           NewBehavior i cu f _ -> check i $ do
-                             b <- newBehavior (unsafeCoerce cu) f
-                             go' (bp (unsafeCoerce b))
-                           ModifyBehavior i b f _ -> check i $ do
-                             modifyBehavior b f
-                             go' (bp (unsafeCoerce ()))
-                           TriggerBehavior i b a _ -> check i $ do
-                             triggerBehavior b a
-                             go' (bp (unsafeCoerce ()))
-                           TriggerCulture i cu a _ -> check i $ do
-                             triggerCulture cu a
-                             go' (bp (unsafeCoerce ()))
-                           DestroyBehavior i b _ -> check i $ do
-                             unsafe $ destroyBehavior (unsafeCoerce b)
-                             go' (bp (unsafeCoerce ()))
-                           DestroyCulture i cu _ -> check i $ do
-                             unsafe $ destroyCulture (unsafeCoerce cu)
-                             go' (bp (unsafeCoerce ()))
-                           _ -> ignore
-                       _ -> ignore
-                M m -> M (fmap go' m)
-                Pure res -> Pure res
 
-            newCulture cultureId = unsafe $ do
-              culture <- newIORef (const (return ()) :: forall d. d -> Pattern fs m ())
-              behaviors <- newIORef []
-              let cu = Culture{..}
-              modifyIORef sys (cu:)
-              return cu
+            go' :: forall c. Pattern fs m c -> Pattern fs m c
+            go' (Fail err) =
+                Fail err
+
+            go' (Pure res) =
+                Pure res
+
+            go' (M m) =
+                M (fmap go' m)
+
+            go' (Step sym bp) =
+                let
+                  check currentScope scoped =
+                      if currentScope == rewriteScope then
+                          scoped
+                      else
+                          ignore
+
+                  ignore =
+                      Step sym (go' . bp)
+
+                in
+                  case prj sym of
+
+                      Just x ->
+                          case x of
+
+                              NewCulture currentScope _ ->
+                                  check currentScope $
+                                      do
+                                        cu <- newCulture c
+                                        let
+                                          c' =
+                                              c + 1
+
+                                          continue =
+                                              bp (unsafeCoerce cu)
+
+                                        c' `seq` go c' continue
+
+                              NewBehavior currentScope cu f _ ->
+                                  check currentScope $
+                                      do
+                                        b <- newBehavior (unsafeCoerce cu) f
+                                        let
+                                          continue =
+                                              bp (unsafeCoerce b)
+
+                                        go' continue
+
+                              ModifyBehavior currentScope b f _ ->
+                                  check currentScope $
+                                      do
+                                        modifyBehavior b f
+                                        let
+                                          continue =
+                                              bp (unsafeCoerce ())
+
+                                        go' continue
+
+                              TriggerBehavior i b a _ ->
+                                  check i $
+                                      do
+                                        _ <- triggerBehavior b a
+                                        let
+                                          continue =
+                                              bp (unsafeCoerce ())
+
+                                        go' continue
+
+                              TriggerCulture i cu a _ ->
+                                  check i $
+                                      do
+                                        _ <- triggerCulture cu a
+                                        let
+                                          continue =
+                                              bp (unsafeCoerce ())
+
+                                        go' continue
+
+                              DestroyBehavior i b _ ->
+                                  check i $
+                                      do
+                                        unsafe $ destroyBehavior (unsafeCoerce b)
+                                        let
+                                          continue =
+                                              bp (unsafeCoerce ())
+
+                                        go' continue
+
+                              DestroyCulture i cu _ -> check i $ do
+                                unsafe $ destroyCulture (unsafeCoerce cu)
+                                let
+                                  continue =
+                                      bp (unsafeCoerce ())
+
+                                go' continue
+
+                              _ ->
+                                  ignore
+                      _ ->
+                          ignore
+
+            newCulture cultureId =
+                unsafe $
+                    do
+                      let
+                        seed =
+                          const (Pure ())
+
+                      culture <- newIORef seed
+                      behaviors <- newIORef []
+                      let
+                        cu =
+                            Culture{..}
+
+                      modifyIORef sys (cu:)
+                      return cu
 
             newBehavior cu f = unsafe $ do
               let cultured = cultureId cu

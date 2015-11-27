@@ -2,6 +2,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
@@ -13,8 +14,11 @@ module Ef.Lang.Scoped.Guard
     , Guard(..)
     ) where
 
+
+
 import Ef.Core
 
+import Data.Binary
 import Data.Foldable
 import Unsafe.Coerce
 
@@ -59,8 +63,29 @@ data Guard fs m =
 
 -- | Attribute
 
-data Guardable k =
-    Guardable Int k
+data Guardable k
+  where
+
+    Guardable
+        :: Int
+        -> k
+        -> Guardable k
+
+
+instance Uses Guardable gs m
+    => Binary (Attribute Guardable gs m)
+  where
+
+    get =
+        do
+          scope <- get
+          let
+            Guardable _ k = guarder
+
+          return (Guardable scope k)
+
+    put (Guardable scope _) =
+        put scope
 
 
 
