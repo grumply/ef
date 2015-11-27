@@ -1,7 +1,25 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Ef.Core.Pattern.Exception where
+module Ef.Core.Pattern.Exception
+    ( throw
+    , catch
+    , handle
+    , catchJust
+    , handleJust
+    , mapException
+    , try
+    , tryJust
+    , onException
+    , finally
+    , bracket
+    , bracket_
+    , bracketOnError
+
+    , Handler(..)
+    , catches
+    , handles
+    ) where
 
 
 

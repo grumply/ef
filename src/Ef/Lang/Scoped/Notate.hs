@@ -228,7 +228,7 @@ listens Notes{..} f m =
       return (f w,a)
 
 
-
+{-# INLINE rewrite #-}
 {-# INLINE notates #-}
 {-# INLINE listens #-}
 {-# INLINE notator #-}

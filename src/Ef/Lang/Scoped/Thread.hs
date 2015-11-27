@@ -4,6 +4,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
 module Ef.Lang.Scoped.Thread
@@ -20,11 +21,10 @@ module Ef.Lang.Scoped.Thread
 import Ef.Core
 import Ef.Data.Queue
 
+import Data.Binary
 import Unsafe.Coerce
 
 
-
--- | Symbols
 
 data Threading k
   where
@@ -50,8 +50,6 @@ data Threading k
 
 
 
--- | Symbol Module
-
 data Thread fs m =
     Thread
         {
@@ -65,8 +63,6 @@ data Thread fs m =
 
 
 
--- | Attribute
-
 data Threadable k
   where
 
@@ -77,7 +73,23 @@ data Threadable k
 
 
 
--- | Attribute Construct
+instance Uses Threadable gs m
+    => Binary (Attribute Threadable gs m)
+  where
+
+    get =
+        do
+          scope <- get
+          let
+            Threadable _ k = threader
+
+          return (Threadable scope k)
+
+
+
+    put (Threadable scope _) =
+        put scope
+
 
 
 threader

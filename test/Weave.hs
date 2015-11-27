@@ -24,8 +24,8 @@ main =
     in
       runTest
 
-        -- main_weave
-        main_standard
+        main_weave
+        -- main_standard
 
         -- int
         integer

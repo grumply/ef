@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
 module Ef.Lang.Scoped.Vary
@@ -14,11 +15,10 @@ module Ef.Lang.Scoped.Vary
 
 import Ef.Core
 
+import qualified Data.Binary as B
 import Unsafe.Coerce
 
 
-
--- | Symbols
 
 data Eagerness
   where
@@ -48,8 +48,6 @@ data Varying k
         -> Varying k
 
 
-
--- | Symbol Module
 
 data Vary fs m st =
     Vary
@@ -87,8 +85,6 @@ data Vary fs m st =
 
 
 
--- | Attribute
-
 data Variable k
   where
 
@@ -99,7 +95,24 @@ data Variable k
 
 
 
--- | Attribute Construct
+instance Uses Variable gs m
+    => B.Binary (Attribute Variable gs m)
+  where
+
+    get =
+        do
+          scope <- B.get
+          let
+            Variable _ k = varier
+
+          return (Variable scope k)
+
+
+
+    put (Variable scope _) =
+        B.put scope
+
+
 
 varier
     :: Uses Variable fs m
@@ -120,8 +133,6 @@ varier =
 
 
 
--- | Attribute/Symbol Symmetry
-
 instance Witnessing Variable Varying
   where
 
@@ -129,8 +140,6 @@ instance Witnessing Variable Varying
         use k (ik i)
 
 
-
--- | Local Scoping Construct + Substitution
 
 varies
     :: forall fs m st r.
@@ -227,68 +236,70 @@ varies startState varying =
                         in
                           self (Modify scope Lazy setter viewer)
               }
+
+
+
+rewrite rewriteScope =
+    withState
   where
 
-    rewrite rewriteScope =
-        withState
+    withState st =
+        go
       where
 
-        withState st =
-            go
-          where
+        go (Fail e) =
+            Fail e
 
-            go (Fail e) =
-                Fail e
+        go (Pure r) =
+           Pure (st,r)
 
-            go (Pure r) =
-               Pure (st,r)
+        go (M m) =
+            M (fmap go m)
 
-            go (M m) =
-                M (fmap go m)
+        go (Step sym bp) =
+            let
+              check currentScope scoped =
+                  if currentScope == rewriteScope then
+                      scoped
+                  else
+                      ignore
 
-            go (Step sym bp) =
-                let
-                  check currentScope scoped =
-                      if currentScope == rewriteScope then
-                          scoped
-                      else
-                          ignore
+              ignore =
+                  Step sym (go . bp)
 
-                  ignore =
-                      Step sym (go . bp)
+            in
+              case prj sym of
 
-                in
-                  case prj sym of
+                  Just x ->
+                      case x of
 
-                      Just x ->
-                          case x of
+                          Modify currentScope strictness setter viewer ->
+                              let
+                                newSt =
+                                    unsafeCoerce setter st
 
-                              Modify currentScope strictness setter viewer ->
-                                  let
-                                    newSt =
-                                        unsafeCoerce setter st
+                                continue =
+                                    bp (unsafeCoerce viewer st)
 
-                                    continue =
-                                        bp (unsafeCoerce viewer st)
-
-                                  in
-                                    check currentScope $
-                                        if strictness == Strict then
-                                            newSt `seq`
-                                                withState newSt continue
-
-                                        else
+                              in
+                                check currentScope $
+                                    if strictness == Strict then
+                                        newSt `seq`
                                             withState newSt continue
 
-                              _ ->
-                                  ignore
+                                    else
+                                        withState newSt continue
 
-                      _ ->
-                          ignore
+                          _ ->
+                              ignore
+
+                  _ ->
+                      ignore
 
 
 
 -- | Inlines
 
+{-# INLINE rewrite #-}
 {-# INLINE varier #-}
 {-# INLINE varies #-}

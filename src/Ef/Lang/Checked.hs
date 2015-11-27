@@ -87,8 +87,8 @@ throwChecked
        , Is Excepting fs m
        ) => e -> (Throws e => Pattern fs m a)
 
-throwChecked =
-    Except.throw
+throwChecked e =
+    self (Throw (toException e) undefined)
 
 
 

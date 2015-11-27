@@ -1,8 +1,10 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE AutoDeriveTypeable #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 module Ef.Lang.Get where
 
 
@@ -51,6 +53,26 @@ data Gettable k
 
 
 
+instance ( Uses Gettable gs m
+         , Binary (Object gs m)
+         )
+    => Binary (Attribute Gettable gs m)
+  where
+
+    get =
+        do
+          o :: Object gs m <- get
+          case getter :: Attribute Gettable gs m of
+
+              Getter (_,k) k' ->
+                  return (Getter (o,k) k')
+
+
+    put (Getter (o,_) _) =
+        put (unsafeCoerce o :: Object gs m)
+
+
+
 instance Witnessing Gettable Getting
   where
 
@@ -76,3 +98,7 @@ getter =
             Getter (_,reifies) gets ->
                 pure $ fs .=
                      Getter (fs,reifies) gets
+
+
+{-# INLINE getter #-}
+{-# INLINE introspect #-}

@@ -14,8 +14,10 @@ module Ef.Lang.Scoped.Or
 
 
 import Ef.Core
-
 import Ef.Lang.Scoped.Exit
+
+import Data.Bifunctor
+import Data.Binary
 
 
 
@@ -29,6 +31,86 @@ data a `Or` b
     That
         :: b
         -> a `Or` b
+
+  deriving (Eq,Ord,Show,Read)
+
+
+instance Functor (Or a)
+   where
+
+     fmap f (That b) =
+         That (f b)
+
+     fmap _ (This a) =
+         This a
+
+
+
+instance Bifunctor Or
+  where
+
+    bimap frst _ (This a) =
+        This (frst a)
+
+    bimap _ scnd (That b) =
+        That (scnd b)
+
+
+
+instance Applicative (Or a)
+  where
+
+    pure =
+        That
+
+
+
+    (That ab) <*> o =
+        fmap ab o
+
+    (This a) <*> _ =
+        This a
+
+
+
+instance Monad (Or a)
+  where
+
+    return =
+        pure
+
+
+
+    (This a) >>= _ =
+        This a
+
+    (That b) >>= f =
+        f b
+
+
+
+instance ( Binary a
+         , Binary b
+         )
+    => Binary (a `Or` b)
+  where
+
+    get =
+        do
+          i <- getWord8
+          case i of
+
+              0 ->
+                  This <$> get
+
+              1 ->
+                  That <$> get
+
+    put (This a) =
+        putWord8 0 >> put a
+
+    put (That b) =
+        putWord8 1 >> put b
 
 
 

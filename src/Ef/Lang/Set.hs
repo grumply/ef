@@ -1,12 +1,15 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 module Ef.Lang.Set where
 
 
 
 import Ef.Core
+
+import Data.Binary
 import Unsafe.Coerce
 
 
@@ -41,6 +44,20 @@ data Settable k
             -> k
            )
         -> Settable k
+
+
+
+instance Uses Settable gs m
+    => Binary (Attribute Settable gs m)
+  where
+
+    get =
+        pure setter
+
+
+
+    put _ =
+        pure ()
 
 
 
