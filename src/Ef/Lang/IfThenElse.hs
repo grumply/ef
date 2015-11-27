@@ -62,20 +62,25 @@ ifThenElse
 ifThenElse i t e =
     let
       t' =
-          unsafePerformIO $ newIORef t
+          unsafePerformIO (newIORef t)
 
       e' =
-          unsafePerformIO $ newIORef e
+          unsafePerformIO (newIORef e)
 
-    in
-      join $ self $ ITE t' e' $
+      continue =
           case i of
 
               True ->
-                  unsafePerformIO $ readIORef t'
+                  unsafePerformIO (readIORef t')
 
               False ->
-                  unsafePerformIO $ readIORef e'
+                  unsafePerformIO (readIORef e')
+
+      conditional =
+          self (ITE t' e' continue)
+
+    in
+      join conditional
 
 
 
