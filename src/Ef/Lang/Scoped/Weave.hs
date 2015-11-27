@@ -116,15 +116,12 @@ instance Uses Weavable gs m
   where
 
     get =
-        do
-          scope <- get
-          let
-            Weavable _ k = weaver
+        return weaver
 
-          return (Weavable scope k)
 
-    put (Weavable scope _) =
-        put scope
+
+    put _ =
+        pure ()
 
 
 

@@ -61,8 +61,6 @@ data Guard fs m =
 
 
 
--- | Attribute
-
 data Guardable k
   where
 
@@ -72,20 +70,18 @@ data Guardable k
         -> Guardable k
 
 
+
 instance Uses Guardable gs m
     => Binary (Attribute Guardable gs m)
   where
 
     get =
-        do
-          scope <- get
-          let
-            Guardable _ k = guarder
+        return guarder
 
-          return (Guardable scope k)
 
-    put (Guardable scope _) =
-        put scope
+
+    put _ =
+        pure ()
 
 
 

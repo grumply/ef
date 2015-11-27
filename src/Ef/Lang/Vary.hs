@@ -1,7 +1,10 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
 module Ef.Lang.Vary
@@ -23,6 +26,8 @@ module Ef.Lang.Vary
 
 import Ef.Core
 
+import qualified Data.Binary as Binary
+
 
 
 data Varying st k
@@ -41,6 +46,21 @@ data Variable st k
         :: st
         -> (st -> k)
         -> Variable st k
+
+
+instance ( Uses (Variable st) gs m
+         , Binary.Binary st
+         )
+    => Binary.Binary (Attribute (Variable st) gs m)
+  where
+
+    get =
+        do
+          st <- Binary.get
+          return (storeAttr st)
+
+    put (Variable st _) =
+        Binary.put st
 
 
 

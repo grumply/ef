@@ -52,17 +52,12 @@ instance Uses Exitable gs m
   where
 
     get =
-        do
-          scope <- get
-          let
-            Exitable _ k = exiter
-
-          return (Exitable scope k)
+        return exiter
 
 
 
-    put (Exitable scope _) =
-        put scope
+    put _ =
+        pure ()
 
 
 

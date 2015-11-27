@@ -3,18 +3,21 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE IncoherentInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
 module Ef.Lang.Checked
   ( Excepting
+  , excepter
+  , Exceptable
   , throwChecked
   , catchChecked
   , tryChecked
   , mapChecked
-  , excepter, Exceptable
-  , Exception(..),SomeException(..),assert
+  , Exception(..)
+  , SomeException(..)
   ) where
 
 
@@ -23,6 +26,7 @@ import Ef.Core
 import qualified Ef.Core.Pattern.Exception as Except
 
 import Control.Exception (SomeException(..),Exception(..),assert)
+import Data.Binary
 import Data.Coerce
 import Data.Proxy
 
@@ -71,6 +75,20 @@ data Exceptable k
              -> k
            )
         -> Exceptable k
+
+
+
+instance Uses Exceptable gs m
+    => Binary (Attribute Exceptable gs m)
+  where
+
+    get =
+        pure excepter
+
+
+
+    put _ =
+        pure ()
 
 
 

@@ -82,15 +82,12 @@ instance Uses Manageable gs m
   where
 
     get =
-        do
-          scope <- get
-          let
-            Manageable _ k k' = manager
+        return manager
 
-          return (Manageable scope k k')
 
-    put (Manageable scope _ _) =
-        put scope
+
+    put _ =
+        pure ()
 
 
 

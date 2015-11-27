@@ -77,15 +77,12 @@ instance Uses Notatable gs m
   where
 
     get =
-        do
-          scope <- get
-          let
-            Notatable _ k = notator
+        return notator
 
-          return (Notatable scope k)
 
-    put (Notatable scope _) =
-        put scope
+
+    put _ =
+        pure ()
 
 
 

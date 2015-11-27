@@ -100,17 +100,12 @@ instance Uses Variable gs m
   where
 
     get =
-        do
-          scope <- B.get
-          let
-            Variable _ k = varier
-
-          return (Variable scope k)
+        return varier
 
 
 
-    put (Variable scope _) =
-        B.put scope
+    put _ =
+        pure ()
 
 
 

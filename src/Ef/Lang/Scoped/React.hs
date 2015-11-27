@@ -126,22 +126,16 @@ instance Uses Reactable gs m
   where
 
     get =
-        do
-          scope <- get
-          let
-            Reactable _ k =
-                reactor
-
-          return (Reactable scope k)
+        return reactor
 
 
 
-    put (Reactable scope _) =
-        put scope
+    put _ =
+        pure ()
 
 
 
-{-# INLINE reactor #-}
+
 reactor
     :: Uses Reactable fs m
     => Attribute Reactable fs m
@@ -171,7 +165,6 @@ instance Reactable `Witnessing` Reacting
 
 
 
-{-# INLINE reacts #-}
 reacts :: forall fs m a. (Is Reacting fs m,Lift IO m)
       => (    React fs m
            -> Pattern fs m a
@@ -391,3 +384,7 @@ reacts r = do
               writeIORef (culture cu) (const (return ()) :: forall d. d -> Pattern fs m ())
               bs <- readIORef (behaviors cu)
               mapM_ destroyBehavior bs
+
+
+{-# INLINE reactor #-}
+{-# INLINE reacts #-}

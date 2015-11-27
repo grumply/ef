@@ -78,17 +78,12 @@ instance Uses Threadable gs m
   where
 
     get =
-        do
-          scope <- get
-          let
-            Threadable _ k = threader
-
-          return (Threadable scope k)
+        return threader
 
 
 
-    put (Threadable scope _) =
-        put scope
+    put _ =
+        pure ()
 
 
 

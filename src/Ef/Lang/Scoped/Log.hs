@@ -25,8 +25,6 @@ import Unsafe.Coerce
 
 
 
--- | Symbol
-
 data Logging k
   where
 
@@ -52,9 +50,6 @@ data Logging k
 
 
 
-
--- | Symbol Module
-
 data Log fs m a w =
     Log
         { log
@@ -74,8 +69,6 @@ data Log fs m a w =
 
 
 
--- | Attribute
-
 data Loggable k
   where
 
@@ -91,19 +84,14 @@ instance Uses Loggable gs m
   where
 
     get =
-        do
-          scope <- get
-          let
-            Loggable _ k = logger
-
-          return (Loggable scope k)
-
-    put (Loggable scope _) =
-        put scope
+        return logger
 
 
 
--- | Attribute Construct
+    put _ =
+        pure ()
+
+
 
 logger
     :: Uses Loggable fs m
@@ -123,8 +111,6 @@ logger =
 
 
 
--- | Symbol/Attribute Symmetry
-
 instance Witnessing Loggable Logging
   where
 
@@ -132,8 +118,6 @@ instance Witnessing Loggable Logging
         use k (ik i)
 
 
-
--- | Local Scoping Construct + Substitution
 
 logs
     :: forall fs m a w r.
