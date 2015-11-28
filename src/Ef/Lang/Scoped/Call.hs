@@ -1,3 +1,5 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeOperators #-}
@@ -5,7 +7,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-module Ef.Lang.Call where
+module Ef.Lang.Scoped.Call where
 
 
 
@@ -54,7 +56,7 @@ instance Binary (Calling k)
 
 
 
-data Channel fs m
+data Channel (fs :: [* -> *]) (m :: * -> *) 
   where
 
     Channel
@@ -63,20 +65,21 @@ data Channel fs m
 
 
 
-dispatch
-    :: Channel fs m
-    -> StaticPtr (Pattern fs m ())
-    -> Pattern gs m' ()
+-- dispatch
+--     :: ( Monad m'
+--        , Typeable fs) Channel fs m
+--     -> StaticPtr (Pattern fs m ())
+--     -> Pattern gs m' ()
 
-dispatch (Channel sock) sp =
-    do
-      io $
-          do
-            let
-              key =
-                  staticKey sp
+-- dispatch (Channel sock) sp =
+--     do
+--       io $
+--           do
+--             let
+--               key =
+--                   staticKey sp
 
-            undefined
+--             undefined
 
 
 
@@ -286,10 +289,10 @@ awaitOn sockAddr =
                     return sender
       let
         expectedScope =
-            TypeOfScope $ typeOf (undefined :: gs)
+            TypeOfScope $ (typeOf :: Proxy gs -> TypeRep) (undefined :: Proxy gs)
 
         expectedParent =
-            TypeOfParent $ typeOf (undefined :: m')
+            TypeOfParent $ (typeOf :: Proxy m' -> TypeRep) (undefined :: Proxy m')
 
       Handshake wantedScope wantedParent <- receive_ sock
       let
@@ -353,10 +356,10 @@ connectTo sockAddr =
     do
       let
         wantedScope =
-            TypeOfScope $ typeOf (undefined :: gs)
+            TypeOfScope $ (typeOf :: Proxy gs -> TypeRep) (undefined :: Proxy gs)
 
         wantedParent =
-            TypeOfParent $ typeOf (undefined :: m')
+            TypeOfParent $ (typeOf :: Proxy m' -> TypeRep) (undefined :: Proxy m')
 
         handshake =
             Handshake wantedScope wantedParent
