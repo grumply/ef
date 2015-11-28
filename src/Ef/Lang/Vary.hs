@@ -18,8 +18,7 @@ module Ef.Lang.Vary
     , modify'
 
     , Variable
-    , storeAttr
-    , storeObj
+    , store
     ) where
 
 
@@ -57,7 +56,7 @@ instance ( Uses (Variable st) gs m
     get =
         do
           st <- Binary.get
-          return (storeAttr st)
+          return (store st)
 
     put (Variable st _) =
         Binary.put st
@@ -149,24 +148,14 @@ modify' f =
 
 
 
-storeAttr
+store
     :: Uses (Variable st) fs m
     => st
     -> Attribute (Variable st) fs m
 
-storeAttr st0 =
-    Variable st0 $ \a fs -> pure $ fs .=
-        storeAttr a
-
-
-
-storeObj
-    :: Monad m
-    => st
-    -> Object '[Variable st] m
-
-storeObj st =
-    Object (storeAttr st *:* Empty)
+store startSt =
+    Variable startSt $ \newSt fs -> pure $ fs .=
+        store newSt
 
 
 
@@ -177,5 +166,4 @@ storeObj st =
 {-# INLINE swap #-}
 {-# INLINE modify #-}
 {-# INLINE modify' #-}
-{-# INLINE storeAttr #-}
-{-# INLINE storeObj #-}
+{-# INLINE store #-}

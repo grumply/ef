@@ -11,6 +11,8 @@ module Ef.Core
     , deltaDebug
 --    , run
     , (#)
+    , Exception.Exception(..)
+    , Exception.SomeException
     ) where
 
 import Ef.Core.Type.Set as Core

@@ -1,8 +1,10 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -15,8 +17,30 @@ import Ef.Core.Type.Set
 import Ef.Core.Type.Nat
 
 
-import Unsafe.Coerce
 import Data.Binary
+import Unsafe.Coerce
+
+
+
+-- Wanting:
+--    IsList instance for Attrs (not currently possible as far as I see)
+--    Sorted list for Attrs
+--
+-- Once we have these, it will be possible to implement a much simpler smart
+-- constructor for objects that guarantees ordering in a form like:
+--
+--   let
+--     obj def =
+--         new [manager,exiter,getter,setter,store def]
+--
+-- And the sorted list for Attrs would guarantee that there is a single
+-- constructed form for the objects. Much easier to guarantee Pattern-Object
+-- compatability then since Patterns implement rearrange.
+--
+-- I attempted to lift Fingerprints to the type level, but failed. I feel
+-- a type Nat representation of a Fingerprint is an important extension of
+-- the typeable interface. I assume Fingerprints are hash-based and could
+-- thus be witnessed by Template Haskell; this is a possible approach.
 
 
 

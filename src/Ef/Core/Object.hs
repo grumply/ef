@@ -1,12 +1,14 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ExistentialQuantification #-}
 module Ef.Core.Object where
 
 
@@ -15,8 +17,14 @@ import Ef.Core.Type.Set
 import Ef.Core.Type.Nat
 import Ef.Core.Object.Attributes
 
+import Control.Monad
 import Data.Binary
 import Data.Typeable
+import Data.Typeable.Internal
+import GHC.Generics
+
+import qualified Data.ByteString.Lazy as BSL
+import Codec.Compression.Zlib.Raw hiding (Method)
 
 
 
@@ -40,26 +48,68 @@ newtype Object fs m =
 
 
 
-instance Binary (Attrs fs (Method fs m))
+instance Binary TyCon
+
+
+
+instance Binary TypeRep
+
+
+
+deriving instance Generic TyCon
+
+
+
+deriving instance Generic TypeRep
+
+
+
+instance ( Typeable (Object fs m)
+         , Binary (Attrs fs (Method fs m))
+         )
     => Binary (Object fs m)
   where
 
     get =
-        Object <$> get
+        do
+          tr <- get
+          if tr == typeOf (undefined :: Object fs m) then
+              Object <$> get
+          else
+              mzero
 
 
 
-    put (Object as) =
-        put as
+    put o@(Object as) =
+        do
+          put (typeOf o)
+          put as
+
+
+
+serialize
+    :: Binary (Object fs m)
+    => Object fs m
+    -> BSL.ByteString
+
+serialize =
+    compress . encode
+
+
+
+deserialize
+    :: Binary (Object fs m)
+    => BSL.ByteString
+    -> Object fs m
+
+deserialize =
+    decode . decompress
 
 
 
 data Purpose =
     forall fs m.
-       ( Typeable fs
-       , Typeable m
-       )
-    => Purpose (Object fs m)
+    Purpose (Object fs m)
 
 
 
