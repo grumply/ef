@@ -108,8 +108,7 @@ data Channel (fs :: [* -> *]) (m :: * -> *)
         -> Channel fs m
 
 
--- Need a better encoding here; 
--- Remote doesn't guarantee fs+m+a.
+
 send
     :: ( Monad m'
        , Typeable fs
