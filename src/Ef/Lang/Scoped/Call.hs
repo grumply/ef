@@ -1,14 +1,25 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StaticPointers #-}
+{-# LANGUAGE TypeOperators #-}
 module Ef.Lang.Scoped.Call where
-
+{- This module makes no guarantees of security only
+   an attempt at safety via typed channels. Exceptions
+   are not propagated across channels; uncaught exceptions
+   will propagate up the remote object's scope hierarchy.
+   I could embed try inside remoteable, but what would be
+   the implications? Does it make sense to recover from
+   arbitrary errors and send them back across a channel
+   as a String?
+-}
 
 
 import Ef.Core
@@ -17,6 +28,7 @@ import Ef.Lang.IO
 import Control.Monad
 import Data.Binary
 import Data.Char
+import Data.Functor.Identity
 import Data.Maybe
 import Data.Typeable
 import Data.Int
@@ -28,7 +40,7 @@ import System.IO
 import System.IO.Unsafe
 import qualified Data.ByteString.Lazy as BSL
 import Codec.Compression.Zlib.Raw
-
+import Unsafe.Coerce
 
 
 data Calling k
@@ -41,7 +53,7 @@ data Calling k
 
 
 
-instance Binary (Calling k)
+instance Binary (Calling Result)
   where
 
     get =
@@ -56,6 +68,39 @@ instance Binary (Calling k)
 
 
 
+data Result =
+    forall a.
+       Binary a
+    => Result a
+
+
+
+data Remoteable =
+    forall fs m.
+       ( Typeable fs 
+       , Typeable m
+       )
+    => Remoteable (Pattern fs m Result) 
+
+
+
+remoteable
+    :: ( Typeable fs 
+       , Typeable m
+       , Functor m
+       , Binary a
+       )
+    => Pattern fs m a -> Remoteable
+
+remoteable method = 
+    Remoteable (fmap Result method)
+
+
+
+type Remote = StaticPtr Remoteable
+
+
+
 data Channel (fs :: [* -> *]) (m :: * -> *) 
   where
 
@@ -65,22 +110,50 @@ data Channel (fs :: [* -> *]) (m :: * -> *)
 
 
 
--- dispatch
---     :: ( Monad m'
---        , Typeable fs) Channel fs m
---     -> StaticPtr (Pattern fs m ())
---     -> Pattern gs m' ()
+send
+    :: ( Monad m'
+       , Typeable fs
+       , Lift IO m'
+       , Binary a
+       )
+    => Channel fs m
+    -> Remote
+    -> Pattern gs m' a
 
--- dispatch (Channel sock) sp =
---     do
---       io $
---           do
---             let
---               key =
---                   staticKey sp
+send (Channel sock) sp =
+    let
+      key =
+          staticKey sp
 
---             undefined
+    in
+      do 
+        io $ NSBL.send sock (encode key)  
+        receive_ sock
 
+
+receive
+    :: forall fs m.
+       ( Is Calling fs m
+       , Lift IO m 
+       , Typeable fs
+       , Typeable m
+       )
+    => Channel fs m
+    -> Pattern fs m ()
+
+receive chan@(Channel sock) =
+    do
+      msg <- io $ NSBL.recv sock 16
+      case decodeOrFail msg of
+          
+          Left _ -> 
+              throw BadMessage 
+
+          Right (_,_,key) ->
+              do
+                Result result <- call chan key
+                _ <- send_ Compressed sock result
+                return ()
 
 
 
@@ -275,7 +348,8 @@ awaitOn
        , Monad m
        , Lift IO m
        )
-    => NS.SockAddr -> Pattern fs m (Channel gs m')
+    => NS.SockAddr 
+    -> Pattern fs m (Channel gs m')
 
 awaitOn sockAddr =
     do
@@ -350,7 +424,8 @@ connectTo
        , Lift IO m
        , Monad m
        )
-    => NS.SockAddr -> Pattern fs m (Channel gs m')
+    => NS.SockAddr 
+    -> Pattern fs m (Channel gs m')
 
 connectTo sockAddr =
     do
@@ -382,17 +457,23 @@ connectTo sockAddr =
 
 
 
+call
+    :: ( Is Calling fs m
+       , Typeable fs
+       , Typeable m
+       ) 
+    => Channel fs m
+    -> StaticKey
+    -> Pattern fs m Result
 
+call (Channel sock) key =
+    let
+      message =
+          Call key id
 
+    in
+      join (self message)
 
-
-call_
-    :: Is Calling fs m
-    => StaticKey
-    -> Pattern fs m a
-
-call_ sk =
-    join $ self (Call sk id)
 
 
 class Remotable a
@@ -402,21 +483,6 @@ class Remotable a
         :: Handle
         -> StaticPtr a
         -> Pattern fs m ()
-
-
--- remote
---     :: Handle
---     -> StaticPtr (Pattern fs m a)
---     -> Pattern gs m' ()
-
--- remote h sp =
---     let
---       encoded =
---           encode (staticKey sp)
-
---     in
---       do
---         BSL.hPut h encoded
 
 
 
@@ -460,8 +526,9 @@ instance Callable `Witnessing` Calling
           sp =
               unsafePerformIO (unsafeLookupStaticPtr sk)
 
-          a =
-              deRefStaticPtr (fromJust sp)
-
         in
-          sp `seq` use k (ak a)
+          sp `seq`
+              case deRefStaticPtr (fromJust sp) of
+
+                  Remoteable a -> 
+                      use k (ak (unsafeCoerce a))
