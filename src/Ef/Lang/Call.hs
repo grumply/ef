@@ -10,7 +10,22 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StaticPointers #-}
 {-# LANGUAGE TypeOperators #-}
-module Ef.Lang.Call where
+module Ef.Lang.Call 
+    ( Remote
+    , Remoteable
+    , remoteable
+    
+    , Channel
+    , connectTo
+    , awaitOn
+    , send
+    , receive
+    
+    , TypeOfScope(..)
+    , TypeOfParent(..)
+    , CommunicationFailure(..)
+    , HandshakeFailure(..)
+    ) where
 {- This module makes no guarantees of security only
    an attempt at safety via typed channels. Exceptions
    are not propagated across channels; uncaught exceptions
@@ -20,6 +35,7 @@ module Ef.Lang.Call where
    arbitrary errors and send them back across a channel
    as a String?
 -}
+
 
 
 import Ef.Core
@@ -36,6 +52,7 @@ import GHC.Generics
 import GHC.StaticPtr
 import qualified Network.Socket as NS
 import qualified Network.Socket.ByteString.Lazy as NSBL
+import qualified Control.Exception as Exc
 import System.IO
 import System.IO.Unsafe
 import qualified Data.ByteString.Lazy as BSL
@@ -72,7 +89,8 @@ remoteable method =
 
 
 
-type Remote fs m a = StaticPtr (Remoteable fs m a)
+type Remote fs m a = 
+    StaticPtr (Remoteable fs m a)
 
 
 
@@ -84,7 +102,10 @@ data Channel (fs :: [* -> *]) (m :: * -> *)
         -> Channel fs m
 
 
-
+-- | send can throw:
+--       CouldNotSend
+--       BadMessageLength
+--       BadMessage 
 send
     :: ( Monad m'
        , Typeable fs
@@ -96,16 +117,29 @@ send
     -> Pattern gs m' a
 
 send (Channel sock) sp =
-    let
-      key =
-          staticKey sp
+    do
+      let
+        key =
+            encode (staticKey sp)
 
-    in
-      do 
-        io $ NSBL.send sock (encode key)  
-        receive_ sock
+      sendResult <- try $ io (NSBL.send sock key)
+      case sendResult of
 
+          Left (_ :: SomeException) ->
+              throw CouldNotSend
 
+          Right sentBytes ->
+              if sentBytes < 16 then 
+                  throw CouldNotSend
+              else
+                  receive_ sock
+
+-- | receive can throw: 
+--       BadMessage
+--       BadMethod 
+--       CouldNotReceive
+--       CouldNotSend
+--   as well as any exceptions the method itself might throw.
 receive
     :: forall fs m.
        ( Lift IO m
@@ -118,17 +152,29 @@ receive
 
 receive chan@(Channel sock) =
     do
-      msg <- io (NSBL.recv sock 16)
-      case decodeOrFail msg of
+      msg <- try $ io (NSBL.recv sock 16)
+      case msg of
           
-          Left _ -> 
-              throw BadMessage 
+          Left (_ :: SomeException) -> 
+              throw CouldNotReceive
 
-          Right (_,_,key) ->
-              do
-                Result result <- call chan key
-                _ <- send_ Compressed sock result
-                return ()
+          Right result ->
+              case decodeOrFail result of
+
+                  Left _ -> 
+                      throw BadMessage 
+
+                  Right (_,_,key) ->
+                      do
+                        Result result <- call chan key
+                        mayHaveSent <- try (send_ Compressed sock result)
+                        case mayHaveSent of
+                           
+                           Left (_ :: SomeException) -> 
+                               throw CouldNotSend
+
+                           Right _ ->
+                               return ()
 
 
 
@@ -148,7 +194,6 @@ instance Binary TypeOfParent
 
 
 
-
 data MessageLength
   where
 
@@ -165,7 +210,6 @@ instance Binary MessageLength
 
 
 
-
 data CommunicationFailure
   where
 
@@ -177,6 +221,15 @@ data CommunicationFailure
         :: CommunicationFailure
 
     BadMessage
+        :: CommunicationFailure
+
+    BadMethod
+        :: CommunicationFailure
+        
+    CouldNotReceive
+        :: CommunicationFailure
+
+    CouldNotSend
         :: CommunicationFailure
 
   deriving Show
@@ -227,7 +280,7 @@ data Handshake
 instance Binary Handshake
 
 
-
+ 
 receive_
     :: ( Binary a
        , Lift IO m
@@ -284,35 +337,63 @@ send_
     => Compression
     -> NS.Socket
     -> a
-    -> Pattern fs m Int64
+    -> Pattern fs m ()
 
 send_ Compressed sock a =
     let
       content =
           compress (encode a)
-
+          
       contentLength =
-          CompressedMessageLength (BSL.length content)
+          BSL.length content
+
+      encodedLength =
+          CompressedMessageLength contentLength
 
       message =
-          BSL.append (encode contentLength) content
+          BSL.append (encode encodedLength) content
 
     in
-      io (NSBL.send sock message)
+      do
+        sendResult <- try $ io (NSBL.send sock message)
+        case sendResult of
+          
+            Left (_ :: SomeException) ->
+                throw CouldNotSend
+                
+            Right bytesSent ->
+                if bytesSent < contentLength + 9 then 
+                    throw CouldNotSend
+                else 
+                    return ()
 
 send_ _ sock a =
     let
       content =
           encode a
-
+          
       contentLength =
-          UncompressedMessageLength (BSL.length content)
+          BSL.length content
+
+      encodedLength =
+          UncompressedMessageLength contentLength
 
       message =
-          BSL.append (encode contentLength) content
+          BSL.append (encode encodedLength) content
 
     in
-      io (NSBL.send sock message)
+      do
+        sendResult <- try $ io (NSBL.send sock message)
+        case sendResult of
+            
+            Left (_ :: SomeException) -> 
+                throw CouldNotSend
+                
+            Right bytesSent ->
+                if bytesSent < contentLength + 9 then
+                    throw CouldNotSend
+                else 
+                    return ()
 
 
 
@@ -444,5 +525,11 @@ call
 
 call (Channel sock) key =
     do
-      staticPtr <- io $ unsafeLookupStaticPtr key
-      deRefStaticPtr (fromJust staticPtr)
+      possibleMethod <- io $ unsafeLookupStaticPtr key
+      case possibleMethod of
+          
+          Nothing ->
+              throw BadMethod
+
+          Just method ->
+              deRefStaticPtr method
