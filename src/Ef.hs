@@ -21,8 +21,8 @@ import Ef.Lang.Checked          as Base
 import Ef.Lang.Contract         as Base
 import Ef.Lang.Get              as Base
 import Ef.Lang.Set              as Base
+import Ef.Lang.Call             as Base
 
-import Ef.Lang.Scoped.Call      as Base
 import Ef.Lang.Scoped.Exit      as Base
 import Ef.Lang.Scoped.Reflect   as Base
 import Ef.Lang.Scoped.Generate  as Base
@@ -40,7 +40,6 @@ import Ef.Lang.Scoped.Log       as Base
 
 type Ef
     = '[ Manageable
-       , Callable
        , Exitable
        , Gettable
        , Settable
@@ -58,7 +57,6 @@ type Ef
 
 type Main
     = '[ Managing
-       , Calling
        , Exiting
        , Getting
        , Setting
@@ -97,7 +95,6 @@ base
 base =
   Object $
       manager
-      *:* caller
       *:* exiter
       *:* getter
       *:* setter

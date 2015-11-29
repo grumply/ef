@@ -10,7 +10,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StaticPointers #-}
 {-# LANGUAGE TypeOperators #-}
-module Ef.Lang.Scoped.Call where
+module Ef.Lang.Call where
 {- This module makes no guarantees of security only
    an attempt at safety via typed channels. Exceptions
    are not propagated across channels; uncaught exceptions
@@ -41,30 +41,6 @@ import System.IO.Unsafe
 import qualified Data.ByteString.Lazy as BSL
 import Codec.Compression.Zlib.Raw
 import Unsafe.Coerce
-
-
-data Calling k
-  where
-
-    Call
-        :: StaticKey
-        -> (a -> k)
-        -> Calling k
-
-
-
-instance Binary (Calling Result)
-  where
-
-    get =
-        do
-          sk <- get
-          return (Call sk id)
-
-
-
-    put (Call sk _) =
-        put sk
 
 
 
@@ -132,8 +108,8 @@ send (Channel sock) sp =
 
 receive
     :: forall fs m.
-       ( Is Calling fs m
-       , Lift IO m 
+       ( Lift IO m
+       , Monad m 
        , Typeable fs
        , Typeable m
        )
@@ -457,7 +433,8 @@ connectTo sockAddr =
 
 
 call
-    :: ( Is Calling fs m
+    :: ( Lift IO m
+       , Monad m
        , Typeable fs
        , Typeable m
        ) 
@@ -466,68 +443,6 @@ call
     -> Pattern fs m Result
 
 call (Channel sock) key =
-    let
-      message =
-          Call key id
-
-    in
-      join (self message)
-
-
-
-class Remotable a
-  where
-
-    remote
-        :: Handle
-        -> StaticPtr a
-        -> Pattern fs m ()
-
-
-
-data Callable k
-  where
-
-    Callable
-        :: k
-        -> Callable k
-
-
-
-instance Uses Callable gs m
-    => Binary (Attribute Callable gs m)
-  where
-
-    get =
-        return caller
-
-
-
-    put _ =
-        pure ()
-
-
-
-caller
-    :: Uses Callable gs m
-    => Attribute Callable gs m
-
-caller =
-    Callable pure
-
-
-
-instance Callable `Witnessing` Calling
-  where
-
-    witness use (Callable k) (Call sk ak) =
-        let
-          sp =
-              unsafePerformIO (unsafeLookupStaticPtr sk)
-
-        in
-          sp `seq`
-              case deRefStaticPtr (fromJust sp) of
-
-                  Remoteable a -> 
-                      use k (ak (unsafeCoerce a))
+    do
+      staticPtr <- io $ unsafeLookupStaticPtr key
+      deRefStaticPtr (fromJust staticPtr)
