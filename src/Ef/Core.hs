@@ -11,8 +11,8 @@ module Ef.Core
     , deltaDebug
 --    , run
     , (#)
-    , Exception.Exception(..)
-    , Exception.SomeException
+    , Exception(..)
+    , SomeException
     ) where
 
 import Ef.Core.Type.Set as Core
@@ -27,6 +27,7 @@ import Ef.Core.Pattern.Exception as Core
 
 import Ef.Core.Witness as Core
 
+import Control.Exception (Exception(..),SomeException)
 import qualified Control.Exception as Exception
 import Data.Typeable (Typeable,typeOf)
 import Debug.Trace

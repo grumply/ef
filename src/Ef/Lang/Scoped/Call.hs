@@ -75,8 +75,7 @@ data Result =
 
 
 
-data Remoteable =
-    forall fs m.
+data Remoteable fs m a =
        ( Typeable fs 
        , Typeable m
        )
@@ -90,14 +89,14 @@ remoteable
        , Functor m
        , Binary a
        )
-    => Pattern fs m a -> Remoteable
+    => Pattern fs m a -> Remoteable fs m a
 
 remoteable method = 
     Remoteable (fmap Result method)
 
 
 
-type Remote = StaticPtr Remoteable
+type Remote fs m a = StaticPtr (Remoteable fs m a)
 
 
 
@@ -109,7 +108,8 @@ data Channel (fs :: [* -> *]) (m :: * -> *)
         -> Channel fs m
 
 
-
+-- Need a better encoding here; 
+-- Remote doesn't guarantee fs+m+a.
 send
     :: ( Monad m'
        , Typeable fs
@@ -117,7 +117,7 @@ send
        , Binary a
        )
     => Channel fs m
-    -> Remote
+    -> Remote fs m a
     -> Pattern gs m' a
 
 send (Channel sock) sp =
@@ -143,7 +143,7 @@ receive
 
 receive chan@(Channel sock) =
     do
-      msg <- io $ NSBL.recv sock 16
+      msg <- io (NSBL.recv sock 16)
       case decodeOrFail msg of
           
           Left _ -> 
