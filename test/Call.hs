@@ -34,7 +34,7 @@ localhost =
     "127.0.0.1"
 
 
-
+{-# INLINE server #-}
 server
     :: PortNumber
     -> IO ()
@@ -52,7 +52,7 @@ server portNum =
             forever $ receive chan
 
 
-
+{-# INLINE client #-}
 client
     :: PortNumber
     -> Int
@@ -68,6 +68,7 @@ client portNum testSize =
       main' $
           do
             chan <- connectTo sockAddr
+            io (print "Chan created.")
             go chan testSize
 
   where
@@ -80,16 +81,20 @@ client portNum testSize =
 
         loop n =
             do
-              Ef.send chan Main.simple
+              Ef.send chan Ignored Main.simple
               loop (n - 1)
 
 
+{-# INLINE simple #-}
 simple
     :: Remote Ef IO ()
 
 simple =
     static method
 
+
+
+{-# INLINE method #-}
 method
     :: Remoteable Ef IO ()
 

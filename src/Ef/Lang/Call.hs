@@ -18,6 +18,8 @@ module Ef.Lang.Call
     , Channel
     , connectTo
     , awaitOn
+    , RequestType(..)
+    , Compression(..)
     , send
     , receive
     
@@ -113,26 +115,36 @@ send
        , Binary a
        )
     => Channel fs m
+    -> RequestType
     -> Remote fs m a
     -> Pattern gs m' a
 
-send (Channel sock) sp =
+send (Channel sock) requestType sp =
     do
       let
         key =
-            encode (staticKey sp)
+            staticKey sp
+            
+        request =
+            encode (Request requestType key)
 
-      sendResult <- try $ io (NSBL.send sock key)
+      sendResult <- try $ io (NSBL.send sock request)
       case sendResult of
 
           Left (_ :: SomeException) ->
               throw CouldNotSend
 
           Right sentBytes ->
-              if sentBytes < 16 then 
+              if sentBytes < 18 then 
                   throw CouldNotSend
               else
-                  receive_ sock
+                  case requestType of
+                  
+                      Ignored -> 
+                          return (unsafeCoerce ()) 
+
+                      Awaiting compression ->
+                          receive_ sock compression
 
 -- | receive can throw: 
 --       BadMessage
@@ -153,7 +165,7 @@ receive
 
 receive chan@(Channel sock) =
     do
-      msg <- try $ io (NSBL.recv sock 16)
+      msg <- try $ io (NSBL.recv sock 18)
       case msg of
           
           Left (_ :: SomeException) -> 
@@ -165,17 +177,16 @@ receive chan@(Channel sock) =
                   Left _ -> 
                       throw BadMessage 
 
-                  Right (_,_,key) ->
+                  Right (_,_,Request requestType key) ->
                       do
                         Result res <- call chan key
-                        mayHaveSent <- try (send_ Compressed sock result)
-                        case mayHaveSent of
-                           
-                           Left (_ :: SomeException) -> 
-                               throw CouldNotSend
+                        case requestType of
 
-                           Right _ ->
-                               return ()
+                            Awaiting compression -> 
+                                send_ compression sock result
+
+                            Ignored ->
+                                return ()
 
 
 
@@ -198,13 +209,10 @@ instance Binary TypeOfParent
 data MessageLength
   where
 
-    CompressedMessageLength
+    MessageLength
         :: Int64
         -> MessageLength
 
-    UncompressedMessageLength
-        :: Int64
-        -> MessageLength
   deriving Generic
 
 instance Binary MessageLength
@@ -281,19 +289,86 @@ data Handshake
 instance Binary Handshake
 
 
+
+data Compression
+  where
+  
+    Compressed
+        :: Compression
+        
+    Uncompressed
+        :: Compression
+
+    
+
+data RequestType
+  where
+  
+    Awaiting
+        :: Compression
+        -> RequestType
+
+    Ignored
+        :: RequestType
+
+instance Binary RequestType
+  where
+  
+    get =
+        do
+          requestType <- getWord8
+          compression <- getWord8
+          case (requestType,compression) of
+          
+              (0,0) ->
+                  return (Awaiting Compressed)
+                  
+              (0,_) ->
+                  return (Awaiting Uncompressed)
+                  
+              (1,_) ->
+                  return Ignored
+                  
+    
+
+    put (Awaiting Compressed) =
+        putWord8 0 >> putWord8 0
+        
+    put (Awaiting _) =
+        putWord8 0 >> putWord8 1
+
+    put Ignored =
+        putWord8 1 >> putWord8 0
+
+
+    
+data Request
+  where
+  
+    Request
+        :: RequestType
+        -> StaticKey
+        -> Request
+    
+  deriving Generic
  
+instance Binary Request
+
+
+
 receive_
     :: ( Binary a
        , Lift IO m
        , Monad m
        )
     => NS.Socket
+    -> Compression
     -> Pattern fs m a
 
-receive_ sock =
+receive_ sock compression =
     do
-      lngth <- io (NSBL.recv sock 9)
-      messageLength <-
+      lngth <- io (NSBL.recv sock 8)
+      MessageLength n <-
           case decodeOrFail lngth of
 
               Left _ ->
@@ -302,33 +377,28 @@ receive_ sock =
               Right (_,_,a) ->
                   return a
 
-      case messageLength of
+      msg <- io (NSBL.recv sock n)
+      case compression of
 
-          CompressedMessageLength n ->
-              do
-                msg <- io (NSBL.recv sock n)
-                case decodeOrFail (decompress msg) of
+          Compressed -> 
+              case decodeOrFail (decompress msg) of
 
-                    Left _ ->
-                        throw BadMessage
+                  Left _ ->
+                      throw BadMessage
 
-                    Right (_,_,a) ->
-                        return a
+                  Right (_,_,a) ->
+                      return a 
 
-          UncompressedMessageLength n ->
-              do
-                msg <- io (NSBL.recv sock n)
-                case decodeOrFail msg of
+          Uncompressed ->
+              case decodeOrFail msg of
 
-                    Left _ ->
-                        throw BadMessage
+                  Left _ -> 
+                      throw BadMessage
 
-                    Right (_,_,a) ->
-                        return a
+                  Right (_,_,a) ->
+                      return a
 
 
-
-data Compression = Compressed | Uncompressed
 
 send_
     :: ( Binary a
@@ -349,7 +419,7 @@ send_ Compressed sock a =
           BSL.length content
 
       encodedLength =
-          CompressedMessageLength contentLength
+          MessageLength contentLength
 
       message =
           BSL.append (encode encodedLength) content
@@ -363,7 +433,7 @@ send_ Compressed sock a =
                 throw CouldNotSend
                 
             Right bytesSent ->
-                if bytesSent < contentLength + 9 then 
+                if bytesSent < contentLength + 8 then 
                     throw CouldNotSend
                 else 
                     return ()
@@ -377,7 +447,7 @@ send_ _ sock a =
           BSL.length content
 
       encodedLength =
-          UncompressedMessageLength contentLength
+          MessageLength contentLength
 
       message =
           BSL.append (encode encodedLength) content
@@ -391,7 +461,7 @@ send_ _ sock a =
                 throw CouldNotSend
                 
             Right bytesSent ->
-                if bytesSent < contentLength + 9 then
+                if bytesSent < contentLength + 8 then
                     throw CouldNotSend
                 else 
                     return ()
@@ -426,7 +496,7 @@ awaitOn sockAddr =
         expectedParent =
             TypeOfParent $ (typeOf :: Proxy m -> TypeRep) (undefined :: Proxy m)
 
-      Handshake wantedScope wantedParent <- receive_ sock
+      Handshake wantedScope wantedParent <- receive_ sock Uncompressed
       let
         compareScope =
             expectedScope == wantedScope
@@ -503,8 +573,8 @@ connectTo sockAddr =
                     NS.connect sock sockAddr
                     return sock
 
-      send_ Compressed sock handshake
-      handshakeResult <- receive_ sock
+      send_ Uncompressed sock handshake
+      handshakeResult <- receive_ sock Uncompressed
       case handshakeResult of
 
           Denied reason ->
@@ -542,3 +612,10 @@ call (Channel sock) key =
                       
                 method
 
+{-# INLINE receive_ #-}
+{-# INLINE receive #-}
+{-# INLINE send_ #-}
+{-# INLINE send #-}
+{-# INLINE awaitOn #-}
+{-# INLINE remoteable #-}
+{-# INLINE call #-}
