@@ -16,6 +16,7 @@ module Ef.Lang.Call
     , remoteable
     
     , Channel
+    , Remoteness(..)
     , connectTo
     , awaitOn
     , RequestType(..)
@@ -356,6 +357,18 @@ instance Binary Request
 
 
 
+data Remoteness
+  where
+  
+    Local
+        :: Remoteness
+        
+    Remote
+        :: Remoteness
+        
+  deriving Eq
+
+
 receive_
     :: ( Binary a
        , Lift IO m
@@ -476,14 +489,22 @@ awaitOn
        , Monad m
        , Lift IO m
        )
-    => NS.SockAddr 
+    => Remoteness
+    -> NS.SockAddr 
     -> Pattern fs m (Channel gs m)
 
-awaitOn sockAddr =
+awaitOn remoteness sockAddr =
     do
+      let 
+        socketFamily =
+            if remoteness == Remote then 
+                NS.AF_INET
+            else 
+                NS.AF_UNIX
+                
       sock <- io $
                   do
-                    sock <- NS.socket NS.AF_INET NS.Stream NS.defaultProtocol
+                    sock <- NS.socket socketFamily NS.Stream NS.defaultProtocol
                     NS.bind sock sockAddr
                     NS.listen sock 1
                     (sender,_) <- NS.accept sock
@@ -552,12 +573,19 @@ connectTo
        , Lift IO m
        , Monad m
        )
-    => NS.SockAddr 
+    => Remoteness
+    -> NS.SockAddr 
     -> Pattern fs m (Channel gs m')
 
-connectTo sockAddr =
+connectTo remoteness sockAddr =
     do
       let
+        socketFamily =
+            if remoteness == Remote then 
+                NS.AF_INET
+            else 
+                NS.AF_UNIX
+      
         wantedScope =
             TypeOfScope $ (typeOf :: Proxy gs -> TypeRep) (undefined :: Proxy gs)
 
@@ -569,7 +597,7 @@ connectTo sockAddr =
 
       sock <- io $
                   do
-                    sock <- NS.socket NS.AF_INET NS.Stream NS.defaultProtocol
+                    sock <- NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol
                     NS.connect sock sockAddr
                     return sock
 

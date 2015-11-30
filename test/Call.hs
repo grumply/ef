@@ -44,11 +44,11 @@ server portNum =
       hostAddress <- inet_addr localhost
       let
         sockAddr = 
-            SockAddrInet portNum hostAddress
+            SockAddrUnix "test'"
 
       main' $
           do
-            chan <- awaitOn sockAddr
+            chan <- awaitOn Local sockAddr
             forever $ receive chan
 
 
@@ -63,11 +63,11 @@ client portNum testSize =
       hostAddress <- inet_addr localhost
       let
         sockAddr =
-            SockAddrInet portNum hostAddress
+            SockAddrUnix "test'"
 
       main' $
           do
-            chan <- connectTo sockAddr
+            chan <- connectTo Local sockAddr
             io (print "Chan created.")
             go chan testSize
 
