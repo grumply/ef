@@ -141,13 +141,14 @@ send (Channel sock) sp =
 --       CouldNotSend
 --   as well as any exceptions the method itself might throw.
 receive
-    :: forall fs m.
+    :: forall fs gs m.
        ( Lift IO m
+       , (Attrs gs) `Witnessing` (Symbol fs)
        , Monad m 
        , Typeable fs
        , Typeable m
        )
-    => Channel fs m
+    => Channel gs m
     -> Pattern fs m ()
 
 receive chan@(Channel sock) =
@@ -166,7 +167,7 @@ receive chan@(Channel sock) =
 
                   Right (_,_,key) ->
                       do
-                        Result result <- call chan key
+                        Result res <- call chan key
                         mayHaveSent <- try (send_ Compressed sock result)
                         case mayHaveSent of
                            
@@ -398,14 +399,15 @@ send_ _ sock a =
 
 
 awaitOn
-    :: forall fs gs m m'.
+    :: forall fs gs m.
        ( Typeable gs
-       , Typeable m'
+       , (Attrs gs) `Witnessing` (Symbol fs)
+       , Typeable m
        , Monad m
        , Lift IO m
        )
     => NS.SockAddr 
-    -> Pattern fs m (Channel gs m')
+    -> Pattern fs m (Channel gs m)
 
 awaitOn sockAddr =
     do
@@ -422,7 +424,7 @@ awaitOn sockAddr =
             TypeOfScope $ (typeOf :: Proxy gs -> TypeRep) (undefined :: Proxy gs)
 
         expectedParent =
-            TypeOfParent $ (typeOf :: Proxy m' -> TypeRep) (undefined :: Proxy m')
+            TypeOfParent $ (typeOf :: Proxy m -> TypeRep) (undefined :: Proxy m)
 
       Handshake wantedScope wantedParent <- receive_ sock
       let
@@ -515,11 +517,12 @@ connectTo sockAddr =
 
 call
     :: ( Lift IO m
+       , (Attrs gs) `Witnessing` (Symbol fs)
        , Monad m
        , Typeable fs
        , Typeable m
        ) 
-    => Channel fs m
+    => Channel gs m
     -> StaticKey
     -> Pattern fs m Result
 
@@ -531,5 +534,11 @@ call (Channel sock) key =
           Nothing ->
               throw BadMethod
 
-          Just method ->
-              deRefStaticPtr method
+          Just staticRemoteable ->
+              do
+                let
+                  Remoteable method
+                      = deRefStaticPtr staticRemoteable
+                      
+                method
+

@@ -29,6 +29,7 @@ library
                        Ef.Core.Object
                        Ef.Core.Object.Attributes
                        Ef.Core.Pattern
+                       Ef.Core.Pattern.Exception
                        Ef.Core.Pattern.Symbols
                        Ef.Core.Type.Nat
                        Ef.Core.Type.Set
