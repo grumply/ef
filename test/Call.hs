@@ -7,7 +7,7 @@ module Main where
 import Ef
 
 import Control.Monad
-import Network.Socket
+import Network.Socket (SockAddr(..),PortNumber(..),inet_addr)
 import System.Environment
 
 
@@ -37,20 +37,34 @@ localhost =
 {-# INLINE server #-}
 server
     :: PortNumber
-    -> IO ()
+    -> IO () 
 
 server portNum =
     do
       hostAddress <- inet_addr localhost
       let
         sockAddr = 
-            SockAddrUnix "test'"
+            SockAddrUnix "test0"
 
       main' $
           do
             chan <- awaitOn Local sockAddr
-            forever $ receive chan
+            go chan
+  where
+  
+    go chan = 
+        loop
+      where
+        loop =
+            do
+              result <- receive chan
+              case result of
 
+                  ReceivedClose -> 
+                      return ()
+
+                  Invoked _ ->
+                      loop
 
 {-# INLINE client #-}
 client
@@ -63,7 +77,7 @@ client portNum testSize =
       hostAddress <- inet_addr localhost
       let
         sockAddr =
-            SockAddrUnix "test'"
+            SockAddrUnix "test0"
 
       main' $
           do
@@ -77,11 +91,11 @@ client portNum testSize =
       where
 
         loop 0 =
-            return ()
+            close chan
 
         loop n =
             do
-              Ef.send chan Ignored Main.simple
+              Ef.send chan Ignore Main.simple
               loop (n - 1)
 
 

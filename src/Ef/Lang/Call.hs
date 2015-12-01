@@ -10,20 +10,22 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StaticPointers #-}
 {-# LANGUAGE TypeOperators #-}
-module Ef.Lang.Call 
+module Ef.Lang.Call
     ( Remote
     , Remoteable
     , remoteable
-    
+
     , Channel
     , Remoteness(..)
     , connectTo
     , awaitOn
-    , RequestType(..)
+    , RequestType(Ignore,Awaiting)
     , Compression(..)
     , send
     , receive
-    
+    , close
+    , ReceiveResult(..)
+
     , TypeOfScope(..)
     , TypeOfParent(..)
     , CommunicationFailure(..)
@@ -46,6 +48,7 @@ import Ef.Lang.IO
 
 import Control.Monad
 import Data.Binary
+import Data.Binary.Get
 import Data.Char
 import Data.Functor.Identity
 import Data.Maybe
@@ -64,51 +67,71 @@ import Unsafe.Coerce
 
 
 
-data Result =
+data ReceiveResult
+  where
+
+    ReceivedClose
+        :: ReceiveResult
+
+    Invoked
+        :: RequestType
+        -> ReceiveResult
+
+
+
+data BinaryResult =
     forall a.
        Binary a
-    => Result a
+    => BinaryResult a
 
 
 
 data Remoteable fs m a =
-       ( Typeable fs 
+       ( Typeable fs
        , Typeable m
        )
-    => Remoteable (Pattern fs m Result) 
+    => Remoteable (Pattern fs m BinaryResult)
 
 
 
 remoteable
-    :: ( Typeable fs 
+    :: ( Typeable fs
        , Typeable m
        , Functor m
        , Binary a
        )
     => Pattern fs m a -> Remoteable fs m a
 
-remoteable method = 
-    Remoteable (fmap Result method)
+remoteable method =
+    Remoteable (fmap BinaryResult method)
 
 
 
-type Remote fs m a = 
+type Remote fs m a =
     StaticPtr (Remoteable fs m a)
 
 
 
-data Channel (fs :: [* -> *]) (m :: * -> *) 
+data Channel (fs :: [* -> *]) (m :: * -> *)
   where
 
     Channel
         :: NS.Socket
         -> Channel fs m
 
+undefined_sp =
+    static (0 :: Int)
+
+
+
+close chan =
+    send chan Close undefined
+
 
 -- | send can throw:
 --       CouldNotSend
 --       BadMessageLength
---       BadMessage 
+--       BadMessage
 send
     :: ( Monad m'
        , Typeable fs
@@ -120,12 +143,33 @@ send
     -> Remote fs m a
     -> Pattern gs m' a
 
+send (Channel sock) Close _ =
+    do
+      let
+        key =
+            staticKey undefined_sp
+
+        request =
+            encode (Request Close key)
+
+      sendResult <- try $ io (NSBL.send sock request)
+      case sendResult of
+
+          Left (_ :: SomeException) ->
+              throw CouldNotSend
+
+          Right sentBytes ->
+              if sentBytes < 17 then
+                  throw CouldNotSend
+              else
+                  return (unsafeCoerce ())
+
 send (Channel sock) requestType sp =
     do
       let
         key =
             staticKey sp
-            
+
         request =
             encode (Request requestType key)
 
@@ -136,20 +180,20 @@ send (Channel sock) requestType sp =
               throw CouldNotSend
 
           Right sentBytes ->
-              if sentBytes < 18 then 
+              if sentBytes < 17 then
                   throw CouldNotSend
               else
                   case requestType of
-                  
-                      Ignored -> 
-                          return (unsafeCoerce ()) 
+
+                      Ignore ->
+                          return (unsafeCoerce ())
 
                       Awaiting compression ->
                           receive_ sock compression
 
--- | receive can throw: 
+-- | receive can throw:
 --       BadMessage
---       BadMethod 
+--       BadMethod
 --       CouldNotReceive
 --       CouldNotSend
 --   as well as any exceptions the method itself might throw.
@@ -157,37 +201,50 @@ receive
     :: forall fs gs m.
        ( Lift IO m
        , (Attrs gs) `Witnessing` (Symbol fs)
-       , Monad m 
+       , Monad m
        , Typeable fs
        , Typeable m
        )
     => Channel gs m
-    -> Pattern fs m ()
+    -> Pattern fs m ReceiveResult
 
 receive chan@(Channel sock) =
     do
-      msg <- try $ io (NSBL.recv sock 18)
+      msg <- try $ io (NSBL.recv sock 17)
       case msg of
-          
-          Left (_ :: SomeException) -> 
+
+          Left (_ :: SomeException) ->
               throw CouldNotReceive
 
           Right result ->
               case decodeOrFail result of
 
-                  Left _ -> 
-                      throw BadMessage 
+                  Left _ ->
+                      throw BadMessage
 
                   Right (_,_,Request requestType key) ->
-                      do
-                        Result res <- call chan key
+                      let
+                        execute =
+                            call chan key
+
+                      in
                         case requestType of
 
-                            Awaiting compression -> 
-                                send_ compression sock result
+                            Close ->
+                                do
+                                  io (NS.close sock)
+                                  return ReceivedClose
 
-                            Ignored ->
-                                return ()
+                            Awaiting compression ->
+                                do
+                                  BinaryResult res <- execute
+                                  send_ compression sock result
+                                  return (Invoked requestType)
+
+                            Ignore ->
+                                do
+                                  _ <- execute
+                                  return (Invoked requestType)
 
 
 
@@ -235,7 +292,7 @@ data CommunicationFailure
 
     BadMethod
         :: CommunicationFailure
-        
+
     CouldNotReceive
         :: CommunicationFailure
 
@@ -293,79 +350,88 @@ instance Binary Handshake
 
 data Compression
   where
-  
+
     Compressed
         :: Compression
-        
+
     Uncompressed
         :: Compression
 
-    
+
 
 data RequestType
   where
-  
+
     Awaiting
         :: Compression
         -> RequestType
 
-    Ignored
+    Ignore
+        :: RequestType
+
+    Close
         :: RequestType
 
 instance Binary RequestType
   where
-  
+
     get =
         do
           requestType <- getWord8
-          compression <- getWord8
-          case (requestType,compression) of
-          
-              (0,0) ->
-                  return (Awaiting Compressed)
-                  
-              (0,_) ->
-                  return (Awaiting Uncompressed)
-                  
-              (1,_) ->
-                  return Ignored
-                  
-    
+          pure $
+              case requestType of
+
+                  0 ->
+                      Awaiting Compressed
+
+                  1 ->
+                      Awaiting Uncompressed
+
+                  2 ->
+                      Ignore
+
+                  3 ->
+                      Close
+
+
 
     put (Awaiting Compressed) =
-        putWord8 0 >> putWord8 0
-        
+        putWord8 0
+
     put (Awaiting _) =
-        putWord8 0 >> putWord8 1
+        putWord8 1
 
-    put Ignored =
-        putWord8 1 >> putWord8 0
+    put Ignore =
+        putWord8 2
+
+    put Close =
+        putWord8 3
 
 
-    
+
 data Request
   where
-  
+
     Request
         :: RequestType
         -> StaticKey
         -> Request
-    
+
   deriving Generic
- 
+
 instance Binary Request
 
 
 
 data Remoteness
   where
-  
+
     Local
         :: Remoteness
-        
+
     Remote
         :: Remoteness
-        
+
   deriving Eq
 
 
@@ -393,19 +459,19 @@ receive_ sock compression =
       msg <- io (NSBL.recv sock n)
       case compression of
 
-          Compressed -> 
+          Compressed ->
               case decodeOrFail (decompress msg) of
 
                   Left _ ->
                       throw BadMessage
 
                   Right (_,_,a) ->
-                      return a 
+                      return a
 
           Uncompressed ->
               case decodeOrFail msg of
 
-                  Left _ -> 
+                  Left _ ->
                       throw BadMessage
 
                   Right (_,_,a) ->
@@ -427,7 +493,7 @@ send_ Compressed sock a =
     let
       content =
           compress (encode a)
-          
+
       contentLength =
           BSL.length content
 
@@ -441,21 +507,21 @@ send_ Compressed sock a =
       do
         sendResult <- try $ io (NSBL.send sock message)
         case sendResult of
-          
+
             Left (_ :: SomeException) ->
                 throw CouldNotSend
-                
+
             Right bytesSent ->
-                if bytesSent < contentLength + 8 then 
+                if bytesSent < contentLength + 8 then
                     throw CouldNotSend
-                else 
+                else
                     return ()
 
 send_ _ sock a =
     let
       content =
           encode a
-          
+
       contentLength =
           BSL.length content
 
@@ -469,14 +535,14 @@ send_ _ sock a =
       do
         sendResult <- try $ io (NSBL.send sock message)
         case sendResult of
-            
-            Left (_ :: SomeException) -> 
+
+            Left (_ :: SomeException) ->
                 throw CouldNotSend
-                
+
             Right bytesSent ->
                 if bytesSent < contentLength + 8 then
                     throw CouldNotSend
-                else 
+                else
                     return ()
 
 
@@ -490,18 +556,18 @@ awaitOn
        , Lift IO m
        )
     => Remoteness
-    -> NS.SockAddr 
+    -> NS.SockAddr
     -> Pattern fs m (Channel gs m)
 
 awaitOn remoteness sockAddr =
     do
-      let 
+      let
         socketFamily =
-            if remoteness == Remote then 
+            if remoteness == Remote then
                 NS.AF_INET
-            else 
+            else
                 NS.AF_UNIX
-                
+
       sock <- io $
                   do
                     sock <- NS.socket socketFamily NS.Stream NS.defaultProtocol
@@ -574,18 +640,18 @@ connectTo
        , Monad m
        )
     => Remoteness
-    -> NS.SockAddr 
+    -> NS.SockAddr
     -> Pattern fs m (Channel gs m')
 
 connectTo remoteness sockAddr =
     do
       let
         socketFamily =
-            if remoteness == Remote then 
+            if remoteness == Remote then
                 NS.AF_INET
-            else 
+            else
                 NS.AF_UNIX
-      
+
         wantedScope =
             TypeOfScope $ (typeOf :: Proxy gs -> TypeRep) (undefined :: Proxy gs)
 
@@ -619,16 +685,16 @@ call
        , Monad m
        , Typeable fs
        , Typeable m
-       ) 
+       )
     => Channel gs m
     -> StaticKey
-    -> Pattern fs m Result
+    -> Pattern fs m BinaryResult
 
 call (Channel sock) key =
     do
       possibleMethod <- io $ unsafeLookupStaticPtr key
       case possibleMethod of
-          
+
           Nothing ->
               throw BadMethod
 
@@ -637,7 +703,7 @@ call (Channel sock) key =
                 let
                   Remoteable method
                       = deRefStaticPtr staticRemoteable
-                      
+
                 method
 
 {-# INLINE receive_ #-}
