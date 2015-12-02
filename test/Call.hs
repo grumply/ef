@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE StaticPointers #-}
 module Main where
@@ -7,78 +9,73 @@ module Main where
 import Ef
 
 import Control.Monad
-import Network.Socket (SockAddr(..),PortNumber(..),inet_addr)
+import Network.Socket
 import System.Environment
 
+import qualified Data.ByteString.Lazy as BSL
+import Ef.Lang.Scoped.Weave
+import Data.Binary
+import Data.Binary.Get
+import Data.Typeable
 
 
-main = 
+
+main =
     do
       [mode,size] <- getArgs
+      sockAddr <- unixSocketAddress
+      -- sockAddr <- inetSocketAddress
       case mode of
 
          "server" ->
-             Main.server port
+             Main.server sockAddr
 
          "client" ->
-             Main.client port (10 ^ read size)
+             Main.client sockAddr (10 ^ read size)
 
 
 
-port =
-    1028
+inetSocketAddress
+    :: IO SockAddr
+
+inetSocketAddress =
+    do
+      hostAddress <- inet_addr "127.0.0.1"
+      return $ SockAddrInet 1028 hostAddress
 
 
 
-localhost =
-    "127.0.0.1"
+unixSocketAddress
+    :: IO SockAddr
+
+unixSocketAddress =
+    return $ SockAddrUnix "test1"
+
 
 
 {-# INLINE server #-}
 server
-    :: PortNumber
-    -> IO () 
+    :: SockAddr
+    -> IO ()
 
-server portNum =
+server sockAddr =
     do
-      hostAddress <- inet_addr localhost
-      let
-        sockAddr = 
-            SockAddrUnix "test0"
-
       main' $
-          do
-            chan <- awaitOn Local sockAddr
-            go chan
-  where
-  
-    go chan = 
-        loop
-      where
-        loop =
-            do
-              result <- receive chan
-              case result of
+           do
+             chan <- awaitOn Local sockAddr
+             runChannel chan
+      return ()
 
-                  ReceivedClose -> 
-                      return ()
 
-                  Invoked _ ->
-                      loop
 
 {-# INLINE client #-}
 client
-    :: PortNumber
+    :: SockAddr
     -> Int
     -> IO ()
 
-client portNum testSize =
+client sockAddr testSize =
     do
-      hostAddress <- inet_addr localhost
-      let
-        sockAddr =
-            SockAddrUnix "test0"
-
       main' $
           do
             chan <- connectTo Local sockAddr
@@ -91,17 +88,18 @@ client portNum testSize =
       where
 
         loop 0 =
-            close chan
+            return ()
 
         loop n =
             do
-              Ef.send chan Ignore Main.simple
+              Ef.sendRPC chan Ignore () Main.simple
               loop (n - 1)
+
 
 
 {-# INLINE simple #-}
 simple
-    :: Remote Ef IO ()
+    :: Remote () Ef IO ()
 
 simple =
     static method
@@ -110,9 +108,9 @@ simple =
 
 {-# INLINE method #-}
 method
-    :: Remoteable Ef IO ()
+    :: Remoteable () Ef IO ()
 
 method =
     remoteable $
-        do
-          return ()
+        \() ->
+            return ()

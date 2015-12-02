@@ -21,10 +21,11 @@ module Ef.Lang.Call
     , awaitOn
     , RequestType(Ignore,Awaiting)
     , Compression(..)
-    , send
-    , receive
+    , sendRPC
+    , receiveRPC
     , close
     , ReceiveResult(..)
+    , runChannel
 
     , TypeOfScope(..)
     , TypeOfParent(..)
@@ -67,6 +68,32 @@ import Unsafe.Coerce
 
 
 
+runChannel
+    :: ( (Attrs gs) `Witnessing` (Symbol fs)
+       , Monad m
+       , Lift IO m
+       , Typeable fs
+       , Typeable m
+       )
+    => Channel gs m
+    -> Pattern fs m (Either CommunicationFailure ReceiveResult)
+
+runChannel chan = try loop
+  where
+
+    loop =
+        do
+          receiveResult <- receiveRPC chan
+          case receiveResult of
+
+              ReceivedClose ->
+                  return ReceivedClose
+
+              Invoked _ ->
+                  loop
+
+
+
 data ReceiveResult
   where
 
@@ -76,7 +103,7 @@ data ReceiveResult
     Invoked
         :: RequestType
         -> ReceiveResult
-
+        
 
 
 data BinaryResult =
@@ -86,11 +113,12 @@ data BinaryResult =
 
 
 
-data Remoteable fs m a =
+data Remoteable variables fs m a =
        ( Typeable fs
        , Typeable m
+       , Binary variables
        )
-    => Remoteable (Pattern fs m BinaryResult)
+    => Remoteable (BSL.ByteString -> Pattern fs m BinaryResult)
 
 
 
@@ -98,17 +126,27 @@ remoteable
     :: ( Typeable fs
        , Typeable m
        , Functor m
-       , Binary a
+       , Binary result
+       , Binary variables
        )
-    => Pattern fs m a -> Remoteable fs m a
+    => (    variables
+         -> Pattern fs m result  
+       )
+    -> Remoteable variables fs m result
 
 remoteable method =
-    Remoteable (fmap BinaryResult method)
+    Remoteable $ 
+        \bsl ->
+            let
+              variables =
+                  decode bsl 
+            in
+              fmap BinaryResult (method variables)
 
 
 
-type Remote fs m a =
-    StaticPtr (Remoteable fs m a)
+type Remote variables fs m a =
+    StaticPtr (Remoteable variables fs m a)
 
 
 
@@ -125,32 +163,37 @@ undefined_sp =
 
 
 close chan =
-    send chan Close undefined
+    sendRPC chan Close undefined
 
 
--- | send can throw:
+-- | sendRPC can throw:
 --       CouldNotSend
 --       BadMessageLength
 --       BadMessage
-send
+sendRPC
     :: ( Monad m'
        , Typeable fs
        , Lift IO m'
        , Binary a
+       , Binary variables
        )
     => Channel fs m
     -> RequestType
-    -> Remote fs m a
+    -> variables
+    -> Remote variables fs m a
     -> Pattern gs m' a
 
-send (Channel sock) Close _ =
+sendRPC (Channel sock) Close _ _ =
     do
       let
         key =
             staticKey undefined_sp
 
         request =
-            encode (Request Close key)
+            encode (Request Close key BSL.empty)
+      
+        messageLength =
+            BSL.length request
 
       sendResult <- try $ io (NSBL.send sock request)
       case sendResult of
@@ -159,19 +202,25 @@ send (Channel sock) Close _ =
               throw CouldNotSend
 
           Right sentBytes ->
-              if sentBytes < 17 then
+              if sentBytes < messageLength then
                   throw CouldNotSend
               else
                   return (unsafeCoerce ())
 
-send (Channel sock) requestType sp =
+sendRPC (Channel sock) requestType variables sp =
     do
       let
+        encodedVariables =
+            encode variables
+            
         key =
             staticKey sp
 
         request =
-            encode (Request requestType key)
+            encode (Request requestType key encodedVariables)
+      
+        messageLength =
+            BSL.length request
 
       sendResult <- try $ io (NSBL.send sock request)
       case sendResult of
@@ -180,7 +229,7 @@ send (Channel sock) requestType sp =
               throw CouldNotSend
 
           Right sentBytes ->
-              if sentBytes < 17 then
+              if sentBytes < messageLength then
                   throw CouldNotSend
               else
                   case requestType of
@@ -191,13 +240,13 @@ send (Channel sock) requestType sp =
                       Awaiting compression ->
                           receive_ sock compression
 
--- | receive can throw:
+-- | receiveRPC can throw:
 --       BadMessage
 --       BadMethod
 --       CouldNotReceive
 --       CouldNotSend
 --   as well as any exceptions the method itself might throw.
-receive
+receiveRPC
     :: forall fs gs m.
        ( Lift IO m
        , (Attrs gs) `Witnessing` (Symbol fs)
@@ -208,7 +257,7 @@ receive
     => Channel gs m
     -> Pattern fs m ReceiveResult
 
-receive chan@(Channel sock) =
+receiveRPC chan@(Channel sock) =
     do
       msg <- try $ io (NSBL.recv sock 17)
       case msg of
@@ -222,10 +271,13 @@ receive chan@(Channel sock) =
                   Left _ ->
                       throw BadMessage
 
-                  Right (_,_,Request requestType key) ->
+                  Right (_,_,Request requestType key encodedVariables) ->
                       let
+                        variables =
+                            decode encodedVariables
+
                         execute =
-                            call chan key
+                            call chan variables key
 
                       in
                         case requestType of
@@ -415,6 +467,7 @@ data Request
     Request
         :: RequestType
         -> StaticKey
+        -> BSL.ByteString
         -> Request
 
   deriving Generic
@@ -687,10 +740,11 @@ call
        , Typeable m
        )
     => Channel gs m
+    -> BSL.ByteString
     -> StaticKey
     -> Pattern fs m BinaryResult
 
-call (Channel sock) key =
+call (Channel sock) encodedVariables key =
     do
       possibleMethod <- io $ unsafeLookupStaticPtr key
       case possibleMethod of
@@ -704,12 +758,15 @@ call (Channel sock) key =
                   Remoteable method
                       = deRefStaticPtr staticRemoteable
 
-                method
+                method encodedVariables
+
+
 
 {-# INLINE receive_ #-}
-{-# INLINE receive #-}
+{-# INLINE receiveRPC #-}
 {-# INLINE send_ #-}
-{-# INLINE send #-}
+{-# INLINE sendRPC #-}
 {-# INLINE awaitOn #-}
 {-# INLINE remoteable #-}
 {-# INLINE call #-}
+{-# INLINE close #-}
