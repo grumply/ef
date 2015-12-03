@@ -19,6 +19,7 @@ module Ef.Lang.Call
     , Remoteness(..)
     , connectTo
     , awaitOn
+
     , RequestType(Ignore,Awaiting)
     , Compression(..)
     , sendRPC
@@ -104,6 +105,7 @@ data ReceiveResult
         :: RequestType
         -> ReceiveResult
         
+  deriving Show
 
 
 data BinaryResult =
@@ -189,13 +191,25 @@ sendRPC (Channel sock) Close _ _ =
         key =
             staticKey undefined_sp
 
-        request =
+        encodedRequest =
             encode (Request Close key BSL.empty)
       
         messageLength =
-            BSL.length request
+            BSL.length encodedRequest
 
-      sendResult <- try $ io (NSBL.send sock request)
+        encodedMessageLength =
+            encode (MessageLength messageLength)
+
+      messageLengthSendResult <- try $ io (NSBL.send sock encodedMessageLength)
+      case messageLengthSendResult of
+        
+          Left (_ :: SomeException) -> 
+              throw CouldNotSend
+              
+          Right sentBytes ->
+              when (sentBytes < 8) (throw CouldNotSend)
+
+      sendResult <- try $ io (NSBL.send sock encodedRequest)
       case sendResult of
 
           Left (_ :: SomeException) ->
@@ -216,13 +230,25 @@ sendRPC (Channel sock) requestType variables sp =
         key =
             staticKey sp
 
-        request =
+        encodedRequest =
             encode (Request requestType key encodedVariables)
       
         messageLength =
-            BSL.length request
+            BSL.length encodedRequest
 
-      sendResult <- try $ io (NSBL.send sock request)
+        encodedMessageLength =
+            encode (MessageLength messageLength)
+
+      messageLengthSendResult <- try $ io (NSBL.send sock encodedMessageLength)
+      case messageLengthSendResult of
+        
+          Left (_ :: SomeException) -> 
+              throw CouldNotSend
+              
+          Right bytesSent ->
+              when (bytesSent < 8) (throw CouldNotSend)
+
+      sendResult <- try $ io (NSBL.send sock encodedRequest)
       case sendResult of
 
           Left (_ :: SomeException) ->
@@ -259,7 +285,23 @@ receiveRPC
 
 receiveRPC chan@(Channel sock) =
     do
-      msg <- try $ io (NSBL.recv sock 17)
+      lengthMsg <- try $ io (NSBL.recv sock 8)
+      msgLength <- 
+          case lengthMsg of
+
+              Left (_ :: SomeException) -> 
+                  throw CouldNotReceive
+
+              Right mlength ->
+                  case decodeOrFail mlength of
+
+                      Left _ -> 
+                          throw BadMessageLength
+
+                      Right (_,_,MessageLength lngth) ->
+                          return lngth
+
+      msg <- try $ io (NSBL.recv sock msgLength)
       case msg of
 
           Left (_ :: SomeException) ->
@@ -409,6 +451,7 @@ data Compression
     Uncompressed
         :: Compression
 
+  deriving Show
 
 
 data RequestType
@@ -423,6 +466,8 @@ data RequestType
 
     Close
         :: RequestType
+  
+  deriving Show
 
 instance Binary RequestType
   where
@@ -500,16 +545,16 @@ receive_
 receive_ sock compression =
     do
       lngth <- io (NSBL.recv sock 8)
-      MessageLength n <-
+      messageLength <-
           case decodeOrFail lngth of
 
               Left _ ->
                   throw BadMessageLength
 
-              Right (_,_,a) ->
-                  return a
+              Right (_,_,MessageLength lngth) ->
+                  return lngth
 
-      msg <- io (NSBL.recv sock n)
+      msg <- io (NSBL.recv sock messageLength)
       case compression of
 
           Compressed ->

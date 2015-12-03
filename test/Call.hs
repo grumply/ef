@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -49,7 +50,7 @@ unixSocketAddress
     :: IO SockAddr
 
 unixSocketAddress =
-    return $ SockAddrUnix "test2"
+    return $ SockAddrUnix "test4"
 
 
 
@@ -63,7 +64,16 @@ server sockAddr =
       main' $
            do
              chan <- awaitOn Local sockAddr
-             runChannel chan
+             result <- try $ runChannel chan
+             io $  
+                 case result of
+
+                     Left (e :: SomeException) -> 
+                         print $ e
+
+                     Right r ->
+                         print $ r
+
       return ()
 
 
