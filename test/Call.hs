@@ -49,7 +49,7 @@ unixSocketAddress
     :: IO SockAddr
 
 unixSocketAddress =
-    return $ SockAddrUnix "test1"
+    return $ SockAddrUnix "test2"
 
 
 
