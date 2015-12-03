@@ -43,7 +43,9 @@ throw e =
 
 
 catch
-    :: Exception e
+    :: ( Functor m
+       , Exception e
+       )
     => Pattern fs m a
     -> (e -> Pattern fs m a)
     -> Pattern fs m a
@@ -51,6 +53,15 @@ catch
 catch plan handler =
     rewrite plan
   where
+    rewrite (Pure r) =
+        Pure r
+
+    rewrite (M m) =
+        M (fmap rewrite m)
+
+    rewrite (Step sym bp) =
+        Step sym (rewrite . bp)
+
 
     rewrite (Fail se) =
         case fromException se of
@@ -61,13 +72,12 @@ catch plan handler =
             Nothing ->
                 Fail se
 
-    rewrite x =
-        x
-
 
 
 handle
-    :: Exception e
+    :: ( Functor m
+       , Exception e
+       )
     => (e -> Pattern fs m a)
     -> Pattern fs m a
     -> Pattern fs m a
@@ -77,7 +87,9 @@ handle = flip catch
 
 
 catchJust
-    :: Exception e
+    :: ( Functor m
+       , Exception e
+       )
     => (e -> Maybe b)
     -> Pattern fs m a
     -> (b -> Pattern fs m a)
@@ -98,7 +110,9 @@ catchJust p a handler =
 
 
 handleJust
-    :: Exception e
+    :: ( Functor m
+       , Exception e
+       )
     => (e -> Maybe b)
     -> (b -> Pattern fs m a)
     -> Pattern fs m a
@@ -110,7 +124,8 @@ handleJust p =
 
 
 mapException
-    :: ( Exception e
+    :: ( Functor m
+       , Exception e
        , Exception e'
        )
     => (e -> e')
@@ -301,7 +316,8 @@ instance Functor m
 
 
 catches
-    :: Pattern fs m a
+    :: Functor m
+    => Pattern fs m a
     -> [Handler fs m a]
     -> Pattern fs m a
 
@@ -310,7 +326,8 @@ catches p handlers =
 
 
 handles
-    :: [Handler fs m a]
+    :: Functor m
+    => [Handler fs m a]
     -> Pattern fs m a
     -> Pattern fs m a
 handles =
