@@ -1,20 +1,23 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 module Ef.Lang.Scoped.Task
     ( Tasking
-    , alternates
-
     , Task(..)
-
+    , tasker
     , Taskable
-    , alternator
+    , inform
+    , query
+    , isFinished
+    , tasks
     ) where
 
 
 
 import Ef.Core
+import Ef.Lang.IO
 import Ef.Data.Queue
 
 import Data.IORef
@@ -22,58 +25,28 @@ import Unsafe.Coerce
 
 
 
--- | Symbol
+{-
 
+Semantics:
 
+atomically evaluates a pattern without yielding in the
+current subsystem.
 
-data Level
-  where
+await blocks a thread awaiting the result of another thread.
 
-    Level
-        :: Int
-        -> Level
+yield allows a thread to transition away from evaluation to
+allow other threads to evaluate.
 
+fork takes a priority and a chunking level and queues the
+child in the given tier.
 
+threads are placed in a tier corresponding to the quanta
+consumed through chunking and atomic blocks.
 
-data Tier
-  where
+priorities allow a thread to consume more evaluation quanta
+than their queue tier would normally allow.
 
-    Tier
-        :: (Level,IORef (Queue Task))
-        -> Tier
-
-
-
-data Finalizers
-  where
-
-    Finalizers
-        :: IORef [IO ()]
-        -> Finalizers
-
-
-
-data TVar a
-  where
-
-    TVar
-        :: MVar a
-        -> Finalizers
-        -> TVar a
-
-
-
-data Table
-  where
-
-    -- A table is a list of Tiers + an oustanding Tier
-    -- to represent blocked computations. The outstanding
-    -- tier prevents a subsystem from stopping when all
-    -- Tiers in the [Tier] are empty.
-    Table
-        :: [Tier]
-        -> Tier
-        -> Table
+-}
 
 
 
@@ -81,8 +54,20 @@ data Subsystem
   where
 
     Subsystem
-        :: Table
+        :: [(Int,Queue TaskInfo)]
         -> Subsystem
+
+
+
+data TaskInfo
+  where
+
+    TaskInfo
+        :: Priority
+        -> Chunking
+        -> Operation status result
+        -> Pattern scope parent result
+        -> TaskInfo
 
 
 
@@ -124,48 +109,15 @@ data Chunking
 
 
 
-data Task
-  where
-
-    Task
-        :: Subsystem
-        -> Priority
-        -> Chunking
-        -> Tier
-        -> Operation status result
-        -> Pattern fs m result
-        -> Task
-
-
-
-data Status
-  where
-
-    Blocked
-        :: TransactionalStatus
-
-    Queued
-        :: Tier
-        -> TransactionalStatus
-
-    Running
-        :: Tier
-        -> Priority
-        -> Chunking
-        -> TransactionalStatus
-
-
-
 data Status status result
   where
 
-    Transacting
-        :: Status
-        -> status
-        -> Status status result
-
     Running
-        :: status
+        :: Maybe status
+        -> Status status result
+        
+    Failed
+        :: SomeException
         -> Status status result
 
     Done
@@ -183,17 +135,6 @@ data Operation status result
 
 
 
-data AwaitStyle
-  where
-
-    Atomically
-        :: AwaitStyle
-
-    Concurrently
-        :: AwaitStyle
-
-
-
 data Tasking k
   where
 
@@ -201,29 +142,29 @@ data Tasking k
         :: (Int -> k)
         -> Tasking k
 
-    Task
+    Fork
         :: Int
+        -> Priority
+        -> Chunking
+        -> Operation status result
         -> Pattern fs m result
         -> (Operation status result -> k)
         -> Tasking k
 
-    Await
+    Atomically
         :: Int
-        -> AwaitStyle
-        -> Operation status result
+        -> Pattern fs m result
         -> (result -> k)
         -> Tasking k
 
-    Atomic
+    Await
         :: Int
-        -> Pattern fs m result
+        -> Operation status result
         -> (result -> k)
         -> Tasking k
 
     Stop
         :: Int
-        -> Operation status result
-        -> k
         -> Tasking k
 
     Yield
@@ -231,90 +172,102 @@ data Tasking k
         -> k
         -> Tasking k
 
-    End
-        :: Int
-        -> Operation status result
-        -> (result -> k)
-        -> Tasking k
 
-    Update
-        :: Int
-        -> Operation status result
-        -> status
-        -> k
-        -> Tasking k
 
-    Status
-        :: Int
-        -> Operation status result
-        -> (status -> k)
-        -> Altrnating k
+inform
+    :: ( Lift IO parent
+       , Monad parent
+       )
+    => Operation status result
+    -> status
+    -> Pattern scope parent ()
 
-    Finished
-        :: Operation a
-        -> (Bool -> k)
-        -> Tasking k
+inform (Operation statusRef) newStatus =
+    do
+      let
+        modify status =
+            case status of
 
-    OrElse
-        :: Pattern fs m a
-        -> Pattern fs m a
+                Running _ ->
+                    Running (Just newStatus)
+
+                Done result ->
+                    Done result
+
+      io $ modifyIORef statusRef modify
 
 
 
--- | Symbol Module
+query
+    :: ( Lift IO parent
+       , Monad parent
+       )
+    => Operation status result
+    -> Pattern scope parent (Status status result)
 
-data Task fs m =
+query (Operation statusRef) =
+    io (readIORef statusRef)
+
+
+
+isFinished
+    :: ( Lift IO parent
+       , Monad parent
+       )
+    => Operation status result
+    -> Pattern scope parent Bool
+
+isFinished (Operation statusRef) =
+    do
+      status <- io (readIORef statusRef)
+      return $
+          case status of
+
+              Running _ ->
+                  False
+
+              Done _ ->
+                  True
+
+
+
+data Task scope parent =
     Task
         {
           fork
-              :: forall a.
-                 Pattern fs m a
-              -> Pattern fs m (Operation a)
+              :: forall status result.
+                 Priority
+              -> Chunking
+              -> Pattern scope parent result
+              -> Pattern scope parent (Operation status result)
 
-        , atomically
-              :: forall a.
-                 Pattern fs m a
-              -> Pattern fs m a
-
-        , orElse
-              :: forall a.
-                 Pattern fs m a
-              -> Pattern fs m a
-              -> Pattern fs m a
+        , atomic
+              :: forall result.
+                 Pattern scope parent result
+              -> Pattern scope parent result
 
         , yield
-              :: Pattern fs m ()
+              :: Pattern scope parent ()
 
-        , readTVar
-              :: forall a.
-                 TVar a
-              -> Pattern fs m a
-
-        , writeTVar
-              :: forall a.
-                 TVar a
-              -> a
-              -> Pattern fs m ()
-
+        , await
+              :: forall status result.
+                 Operation status result
+              -> Pattern scope parent result
 
         }
 
 
-
--- | Attribute
 
 data Taskable k =
     Taskable Int k
 
 
 
--- | Attribute Construct
+tasker
+    :: Uses Taskable attrs parent
+    => Attribute Taskable attrs parent
 
-alternator
-    :: Uses Taskable gs m
-    => Attribute Taskable gs m
-
-alternator =
+tasker =
     Taskable 0 $ \fs ->
         let
           Taskable scope k =
@@ -329,8 +282,6 @@ alternator =
 
 
 
--- | Symbol/Attribute pairing witness
-
 instance Witnessing Taskable Tasking
   where
 
@@ -339,133 +290,147 @@ instance Witnessing Taskable Tasking
 
 
 
--- | Local Scoping Construct + Substitution
-
-alternates
-    :: Is Tasking fs m
-    => (    Task fs m
-         -> Pattern fs m a
+tasks
+    :: ( Is Tasking scope parent
+       , Lift IO parent
        )
-    -> Pattern fs m a
+    => (    Task scope parent
+         -> Pattern scope parent result
+       )
+    -> Pattern scope parent result
 
-alternates f =
+tasks f =
     do
       scope <- self (FreshScope id)
-      rewrite scope emptyQueue $ f
+      rewrite scope $ f
           Task
-                { alt =
-                      \p ->
-                          self $ Fork scope $
-                              do
-                                p
-                                self (Stop scope)
-                , atomically =
-                      \p ->
-                          self (Atomically scope p)
+                { 
+                  fork =
+                      \priority chunking child ->
+                          do
+                            let
+                              wrappedChild (Operation op) =
+                                  do
+                                    result <- child
+                                    io $ writeIORef op (Done result)
+                                    self (Stop scope)
+
+                            operation <- io $ newIORef (Running Nothing)
+                            let
+                              thread =
+                                  wrappedChild $ unsafeCoerce operation
+
+                            self (Fork scope priority chunking operation thread id)
+
+                , yield =
+                      self (Yield scope ())
+
+                , await =
+                      \operation ->
+                          self (Await scope operation id)
+                
                 }
 
 
 
-rewrite scope =
-    withQueue
+rewrite rewriteScope =
+    start
   where
 
-    withQueue queue =
-        go
+    start (Fail e) =
+        Fail e
+
+    start (Super m) =
+        Super (fmap start m)
+
+    start (Pure result) =
+        Pure result
+
+    start (Send symbol k) =
+        let
+          check currentScope continue =
+              if currentScope == rewriteScope then 
+                  continue
+              else 
+                  ignore
+                  
+          ignore =
+              Send symbol (start . k)
+              
+        in
+          case prj symbol of
+
+              Just x ->
+                  case x of
+
+                      Fork currentScope priority chunking operation child k ->
+                          check currentScope $
+                              do
+                                rootOperation <- io $ newIORef (Running Nothing)
+                                let
+                                  rootTask =
+                                      TaskInfo
+                                          Highest
+                                          NonChunked
+                                          rootOperation
+                                          (k operation)
+
+                                  childTask =
+                                      TaskInfo priority chunking operation child
+
+                                  queue =
+                                      newQueue [rootTask,childTask]
+
+                                withSubsystem rootOperation [(1,queue)]
+
+                      Await currentScope operation k ->
+                          check currentScope $
+                              undefined
+
+                      Yield currentScope k ->
+                          check currentScope $
+                              undefined
+
+                      Stop currentScope ->
+                          check currentScope $
+                              undefined
+
+                      _ ->
+                          ignore
+
+              _ ->
+                  ignore
+
+
+
+    withSubsystem root =
+        go (1 :: Int) []
       where
+      
+        go _ [] [] =
+            do
+              status <- query root
+              case status of
+                  -- Don't case on Running: it should be impossible
 
-        go (Fail e) =
-            Fail e
+                  Failed e -> 
+                      throw e
 
-        -- Returned in root since alternates end in Stop.
-        go (Pure r) =
-            case dequeue queue of
-
-                -- All forks completed; return.
-                Nothing ->
-                    return r
-
-                -- Finish running forks and then return.
-                Just (newQueue,next) ->
-                    do
-                      _ <- withQueue newQueue next
-                      return r
-
-        -- Monadic actions are alternated the same as Steps.
-        go (M m) =
-            case dequeue queue of
-
-                Nothing ->
-                    M (fmap go m)
-
-                Just (newQueue,next) ->
-                    let
-
-                      newRunQueue continue =
-                          enqueue (unsafeCoerce continue) newQueue
-
-                    in
-                      do
-                        continue <- m
-                        withQueue (newRunQueue continue) next
-
-        go (Step sym bp) =
-            let
-              ignore =
-                  Step sym (go . bp)
-
-              check i scoped =
-                  if i == scope then
-                      scoped
-                  else
-                      ignore
-
-            in
-              case prj sym of
-
-                  Just x ->
-                      case x of
-
-                          Fork i child ->
-                              check i $
-                                  let
-                                    result =
-                                        unsafeCoerce ()
-
-                                    newQueue =
-                                        enqueue (unsafeCoerce child) queue
-
-                                    continue =
-                                        bp result
-
-                                  in
-                                    withQueue newQueue continue
-
-                          Atomically i atom ->
-                              check i $
-                                  do
-                                    b <- unsafeCoerce atom
-                                    let
-                                      continue b =
-                                          bp b
-
-                                    go continue
-
-                          Stop i ->
-                              check i $
-                                  case
-
-                          _ ->
-                              ignore
-
-                  Nothing ->
-                      ignore
-
+                  Done result ->
+                      return result
+                      
+        go tier ran [] =
+            go 1 [] (reverse ran)
+            
+        go tier ran subsystem =
+            
 
 
 -- | Inlines
 
-{-# INLINE rooted #-}
+{-# INLINE isFinished #-}
+{-# INLINE query #-}
+{-# INLINE inform #-}
+{-# INLINE tasks #-}
 {-# INLINE rewrite #-}
-{-# INLINE alternator #-}
-{-# INLINE alternates #-}
+{-# INLINE tasker #-}
