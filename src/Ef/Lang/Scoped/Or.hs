@@ -35,6 +35,7 @@ data a `Or` b
   deriving (Eq,Ord,Show,Read)
 
 
+
 instance Functor (Or a)
    where
 
@@ -106,6 +107,8 @@ instance ( Binary a
               1 ->
                   That <$> get
 
+
+
     put (This a) =
         putWord8 0 >> put a
 
@@ -114,7 +117,12 @@ instance ( Binary a
 
 
 
-over :: (a -> c) -> (b -> c) -> a `Or` b -> c
+over
+    :: (a -> c)
+    -> (b -> c)
+    -> a `Or` b
+    -> c
+
 over f _ (This a) =
     f a
 
@@ -126,6 +134,7 @@ over _ g (That b) =
 isThis
     :: a `Or` b
     -> Bool
+
 isThis =
     over (const True) (const False)
 
@@ -134,35 +143,41 @@ isThis =
 isThat
     :: a `Or` b
     -> Bool
+
 isThat =
     over (const False) (const True)
 
 
 
-data EitherOr a b fs m =
+data EitherOr a b scope parent =
     EitherOr
-        { this
+        {
+          this
               :: a
-              -> Pattern fs m (a `Or` b)
+              -> Pattern scope parent (a `Or` b)
+
         , that
               :: b
-              -> Pattern fs m (a `Or` b)
+              -> Pattern scope parent (a `Or` b)
         }
 
 
 
 eitherOr
-    :: Is Exiting fs m
-    => (    EitherOr a b fs m
-         -> Pattern fs m (a `Or` b)
+    :: Is Exiting scope parent
+    => (    EitherOr a b scope parent
+         -> Pattern scope parent (a `Or` b)
        )
-    -> Pattern fs m (a `Or` b)
+    -> Pattern scope parent (a `Or` b)
+
 eitherOr f =
   exits $ \Exit{..} -> f
       EitherOr
-          { this =
+          {
+            this =
                 \a ->
                     exit (This a)
+
           , that =
                 \b ->
                     exit (That b)

@@ -28,22 +28,22 @@ import Codec.Compression.Zlib.Raw hiding (Method)
 
 
 
-type Method fs m =
-       Object fs m
-    -> m (Object fs m)
+type Method attrs parent =
+       Object attrs parent
+    -> parent (Object attrs parent)
 
 
 
-type Attribute f fs m =
-    f (Method fs m)
+type Attribute attr attrs parent =
+    attr (Method attrs parent)
 
 
 
-newtype Object fs m =
+newtype Object attrs parent =
     Object
         {
           deconstruct
-              :: Attrs fs (Method fs m)
+              :: Attrs attrs (Method attrs parent)
         }
 
 
@@ -64,16 +64,16 @@ deriving instance Generic TypeRep
 
 
 
-instance ( Typeable (Object fs m)
-         , Binary (Attrs fs (Method fs m))
+instance ( Typeable (Object attrs parent)
+         , Binary (Attrs attrs (Method attrs parent))
          )
-    => Binary (Object fs m)
+    => Binary (Object attrs parent)
   where
 
     get =
         do
-          tr <- get
-          if tr == typeOf (undefined :: Object fs m) then
+          typeRep <- get
+          if typeRep == typeOf (undefined :: Object attrs parent) then
               Object <$> get
           else
               mzero
@@ -88,8 +88,8 @@ instance ( Typeable (Object fs m)
 
 
 serialize
-    :: Binary (Object fs m)
-    => Object fs m
+    :: Binary (Object attrs parent)
+    => Object attrs parent
     -> BSL.ByteString
 
 serialize =
@@ -98,9 +98,9 @@ serialize =
 
 
 deserialize
-    :: Binary (Object fs m)
+    :: Binary (Object attrs parent)
     => BSL.ByteString
-    -> Object fs m
+    -> Object attrs parent
 
 deserialize =
     decode . decompress
@@ -108,44 +108,39 @@ deserialize =
 
 
 data Purpose =
-    forall fs m.
-    Purpose (Object fs m)
+    forall attrs parent.
+    Purpose (Object attrs parent)
 
 
 
-type Uses f fs m =
-    ( Monad m
-    , Admits' f fs (IndexOf f fs)
+type Uses attr attrs parent =
+    ( Monad parent
+    , Admits' attr attrs (IndexOf attr attrs)
     )
 
 
 
-type Extends extended orig m =
-    ( Monad m
+type Extends extended orig parent =
+    ( Monad parent
     , AdmitsSubset orig extended
     )
 
 
 
-type (extended :=> orig) m =
-    Extends extended orig m
-
-
-
 simple
-    :: Monad m
-    => Object '[] m
+    :: Monad parent
+    => Object '[] parent
 
 simple =
     Object Empty
 
 
 
-class UnsafeBuild fs
+class UnsafeBuild attrs
   where
 
     unsafeBuild
-        :: Attrs fs a
+        :: Attrs attrs a
 
 
 
@@ -157,17 +152,17 @@ instance UnsafeBuild '[]
 
 
 
-instance ( Typeable f
-         , Denies f fs
-         , UnsafeBuild fs
+instance ( Typeable attr
+         , Denies attr attrs
+         , UnsafeBuild attrs
          )
-    => UnsafeBuild (f ': fs)
+    => UnsafeBuild (attr ': attrs)
   where
 
     unsafeBuild =
         let
           attr =
-              show (typeOf1 (undefined :: forall a. f a))
+              show (typeOf1 (undefined :: forall a. attr a))
 
           msg =
               "Attribute (" ++ attr ++ ") uninitialized."
@@ -179,10 +174,10 @@ instance ( Typeable f
 
 build
     :: UnsafeBuild attrs
-    => (    Attrs attrs (Method attrs m)
-         -> Attrs attrs (Method attrs m)
+    => (    Attrs attrs (Method attrs parent)
+         -> Attrs attrs (Method attrs parent)
        )
-    -> Object attrs m
+    -> Object attrs parent
 
 build =
     Object . ($ unsafeBuild)
@@ -192,23 +187,23 @@ build =
 infixr 6 *:*
 
 (*:*)
-    :: Denies f fs
-    => f a
-    -> Attrs fs a
-    -> Attrs (f ': fs) a
+    :: Denies attr attrs
+    => attr a
+    -> Attrs attrs a
+    -> Attrs (attr ': attrs) a
 
-(*:*) fa Empty =
-    Attr fa Empty
+(*:*) attr Empty =
+    Attr attr Empty
 
-(*:*) fa i =
-    Attr fa i
+(*:*) attr attrs =
+    Attr attr attrs
 
 
 
 view
-    :: Admits f fs
-    => Object fs m
-    -> Attribute f fs m
+    :: Admits attr attrs
+    => Object attrs parent
+    -> Attribute attr attrs parent
 
 view =
     pull . deconstruct
@@ -218,10 +213,10 @@ view =
 infixl 5 .=
 
 (.=)
-    :: Uses f fs m
-    => Object fs m
-    -> Attribute f fs m
-    -> Object fs m
+    :: Uses attr attrs parent
+    => Object attrs parent
+    -> Attribute attr attrs parent
+    -> Object attrs parent
 
 is .= x =
     let

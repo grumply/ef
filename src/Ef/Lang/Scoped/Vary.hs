@@ -49,38 +49,38 @@ data Varying k
 
 
 
-data Vary fs m st =
+data Vary scope parent st =
     Vary
         {
           modify
               :: (st -> st)
-              -> Pattern fs m ()
+              -> Pattern scope parent ()
 
         , modify'
               :: (st -> st)
-              -> Pattern fs m ()
+              -> Pattern scope parent ()
 
         , get
-              :: Pattern fs m st
+              :: Pattern scope parent st
 
         , gets
               :: forall a.
                  (st -> a)
-              -> Pattern fs m a
+              -> Pattern scope parent a
 
         , put
               :: st
-              -> Pattern fs m ()
+              -> Pattern scope parent ()
 
         , puts
               :: forall a.
                  (a -> st)
               -> a
-              -> Pattern fs m ()
+              -> Pattern scope parent ()
 
         , swap
               :: st
-              -> Pattern fs m st
+              -> Pattern scope parent st
         }
 
 
@@ -95,8 +95,8 @@ data Variable k
 
 
 
-instance Uses Variable gs m
-    => B.Binary (Attribute Variable gs m)
+instance Uses Variable attrs parent
+    => B.Binary (Attribute Variable attrs parent)
   where
 
     get =
@@ -110,8 +110,8 @@ instance Uses Variable gs m
 
 
 varier
-    :: Uses Variable fs m
-    => Attribute Variable fs m
+    :: Uses Variable attrs parent
+    => Attribute Variable attrs parent
 
 varier =
     Variable 0 $ \fs ->
@@ -137,13 +137,13 @@ instance Witnessing Variable Varying
 
 
 varies
-    :: forall fs m st r.
-       Is Varying fs m
+    :: forall scope parent st result.
+       Is Varying scope parent
     => st
-    -> (    Vary fs m st
-         -> Pattern fs m r
+    -> (    Vary scope parent st
+         -> Pattern scope parent result
        )
-    -> Pattern fs m (st,r)
+    -> Pattern scope parent (st,result)
 
 varies startState varying =
     do
@@ -248,10 +248,10 @@ rewrite rewriteScope =
         go (Pure r) =
            Pure (st,r)
 
-        go (M m) =
-            M (fmap go m)
+        go (Super m) =
+            Super (fmap go m)
 
-        go (Step sym bp) =
+        go (Send sym bp) =
             let
               check currentScope scoped =
                   if currentScope == rewriteScope then
@@ -260,7 +260,7 @@ rewrite rewriteScope =
                       ignore
 
               ignore =
-                  Step sym (go . bp)
+                  Send sym (go . bp)
 
             in
               case prj sym of

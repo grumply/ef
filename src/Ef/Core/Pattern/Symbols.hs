@@ -22,14 +22,14 @@ data Symbol symbols a
   where
 
     Symbol
-        :: Denies s ss
-        => s a
-        -> Symbol (s ': ss) a
+        :: Denies symbol ss
+        => symbol a
+        -> Symbol (symbol ': ss) a
 
     Further
-        :: Denies s ss
+        :: Denies symbol ss
         => Symbol ss a
-        -> Symbol (s ': ss) a
+        -> Symbol (symbol ': ss) a
 
 
 
@@ -47,9 +47,9 @@ instance Cast '[] '[]
 
 
 instance ( Subset small large
-         , small ~ (s ': ss)
-         , Allows s large
-         , Cast ss large
+         , small ~ (symbol ': symbols)
+         , Allows symbol large
+         , Cast symbols large
          )
     => Cast small large
   where
@@ -66,113 +66,112 @@ instance Functor (Symbol '[])
 
 
 
-instance ( Functor s
-         , tail ~ Symbol ss
-         , Functor tail
-         , syms ~ (s ': ss)
+instance ( Functor symbol
+         , Functor (Symbol symbols)
+         , syms ~ (symbol ': symbols)
          )
     => Functor (Symbol syms)
   where
 
-    fmap f (Symbol sb) =
-        Symbol (fmap f sb)
+    fmap f (Symbol symbol) =
+        Symbol (fmap f symbol)
 
-    fmap f (Further ss) =
-        Further (fmap f ss)
+    fmap f (Further symbols) =
+        Further (fmap f symbols)
 
 
 
-class Allows x xs
+class Allows symbol symbols
   where
 
     inj
-        :: x a
-        -> Symbol xs a
+        :: symbol a
+        -> Symbol symbols a
 
 
 
     prj
-        :: Symbol xs a
-        -> Maybe (x a)
+        :: Symbol symbols a
+        -> Maybe (symbol a)
 
 
 
-instance ( i ~ IndexOf x xs
-         , Allows' x xs i
+instance ( index ~ IndexOf symbol symbols
+         , Allows' symbol symbols index
          )
-    => Allows x xs
+    => Allows symbol symbols
   where
 
-    inj xa =
+    inj symbol =
         let
-          i =
-              Index :: Index (IndexOf x xs)
+          index =
+              Index :: Index (IndexOf symbol symbols)
 
         in
-          inj' i xa
+          inj' index symbol
 
 
 
-    prj xs =
+    prj symbols =
         let
-          i =
-              Index :: Index (IndexOf x xs)
+          index =
+              Index :: Index (IndexOf symbol symbols)
 
         in
-          prj' i xs
+          prj' index symbols
 
 
 
-class Allows' x xs (n :: Nat)
+class Allows' symbol symbols (n :: Nat)
   where
 
     inj'
         :: Index n
-        -> x a
-        -> Symbol xs a
+        -> symbol a
+        -> Symbol symbols a
 
     prj'
         :: Index n
-        -> Symbol xs a
-        -> Maybe (x a)
+        -> Symbol symbols a
+        -> Maybe (symbol a)
 
 
 
-instance ( Denies x' xs'
-         , xs ~ (x' ': xs')
-         , i ~ IndexOf x xs'
-         , Allows' x xs' i
+instance ( Denies symbol' symbols'
+         , symbols ~ (symbol' ': symbols')
+         , index ~ IndexOf symbol symbols'
+         , Allows' symbol symbols' index
          )
-    => Allows' x xs ('S n)
+    => Allows' symbol symbols ('S n)
   where
 
-    inj' _ xa =
+    inj' _ symbol =
         let
-          i =
-              Index :: Index (IndexOf x xs')
+          index =
+              Index :: Index (IndexOf symbol symbols')
 
         in
-          Further (inj' i xa)
+          Further (inj' index symbol)
 
 
 
-    prj' _ (Further ss) =
+    prj' _ (Further symbols) =
         let
-          i =
-              Index :: Index (IndexOf x xs')
+          index =
+              Index :: Index (IndexOf symbol symbols')
 
         in
-          prj' i ss
+          prj' index symbols
 
     prj' _ _ =
         Nothing
 
 
 
-instance ( Denies x xs'
-         , xs ~ (x ': xs')
+instance ( Denies symbol symbols'
+         , symbols ~ (symbol ': symbols')
          )
-    => Allows' x xs 'Z
+    => Allows' symbol symbols 'Z
   where
 
     inj' _ =
@@ -180,43 +179,43 @@ instance ( Denies x xs'
 
 
 
-    prj' _ (Symbol sa) =
-        Just sa
+    prj' _ (Symbol symbol) =
+        Just symbol
 
     prj' _ (Further _) =
         Nothing
 
 
 
-type Is f fs m =
-    ( Monad m
-    , Allows' f fs (IndexOf f fs)
+type Is symbol symbols parent =
+    ( Monad parent
+    , Allows' symbol symbols (IndexOf symbol symbols)
     )
 
 
 
-type (f :< fs) m =
-    Is f fs m
+type (symbol :< symbols) parent =
+    Is symbol symbols parent
 
 
 
-type Invokes fs' fs m =
-    ( Monad m
-    , AllowsSubset fs' fs
+type Invokes symbols' symbols parent =
+    ( Monad parent
+    , AllowsSubset symbols' symbols
     )
 
 
 
-class AllowsSubset (fs' :: [* -> *]) (fs :: [* -> *])
+class AllowsSubset (symbols' :: [* -> *]) (symbols :: [* -> *])
 
 
 
-instance AllowsSubset '[] fs
+instance AllowsSubset '[] symbols
 
 
 
-instance ( i ~ IndexOf f fs
-         , Allows' f fs i
-         , AllowsSubset fs' fs
+instance ( index ~ IndexOf symbol symbols
+         , Allows' symbol symbols index
+         , AllowsSubset symbols' symbols
          )
-  => AllowsSubset (f ': fs') fs
+  => AllowsSubset (symbol ': symbols') symbols

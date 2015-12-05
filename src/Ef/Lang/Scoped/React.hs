@@ -29,89 +29,89 @@ import Unsafe.Coerce
 
 
 
-data Behavior a fs m =
+data Behavior a scope parent =
     Behavior
         {
           cultured
               :: Int
 
         , behavior
-              :: IORef (a -> Pattern fs m ())
+              :: IORef (a -> Pattern scope parent ())
         }
 
 
 
-data Culture a fs m =
+data Culture a scope parent =
     Culture
         {
           cultureId
               :: Int
 
         , culture
-              :: IORef (a -> Pattern fs m ())
+              :: IORef (a -> Pattern scope parent ())
 
         , behaviors
-              :: IORef [Behavior a fs m]
+              :: IORef [Behavior a scope parent]
         }
 
 
 
 data Reacting k
     = FreshScope (Int -> k)
-    | forall a fs m. NewCulture Int (Culture a fs m -> k)
-    | forall a fs m. NewBehavior Int (Culture a fs m) (a -> Pattern fs m ()) (Behavior a fs m -> k)
-    | forall a fs m. ModifyBehavior Int (Behavior a fs m) (a -> Pattern fs m ()) k
-    | forall a fs m. TriggerBehavior Int (Behavior a fs m) a k
-    | forall a fs m. TriggerCulture Int (Culture a fs m) a k
-    | forall a fs m. DestroyBehavior Int (Behavior a fs m) k
-    | forall a fs m. DestroyCulture Int (Culture a fs m) k
+    | forall a scope parent. NewCulture      Int (Culture a scope parent -> k)
+    | forall a scope parent. NewBehavior     Int (Culture a scope parent) (a -> Pattern scope parent ()) (Behavior a scope parent -> k)
+    | forall a scope parent. ModifyBehavior  Int (Behavior a scope parent) (a -> Pattern scope parent ()) k
+    | forall a scope parent. TriggerBehavior Int (Behavior a scope parent) a k
+    | forall a scope parent. TriggerCulture  Int (Culture a scope parent) a k
+    | forall a scope parent. DestroyBehavior Int (Behavior a scope parent) k
+    | forall a scope parent. DestroyCulture  Int (Culture a scope parent) k
 
 
 
-data React fs m =
+data React scope parent =
     React
         {
           newC
               :: forall a.
-                 Pattern fs m (Culture a fs m)
+                 Pattern scope parent (Culture a scope parent)
 
         , newB
               :: forall a.
-                 Culture a fs m
+                 Culture a scope parent
               -> (    a
-                   -> Pattern fs m ()
+                   -> Pattern scope parent ()
                  )
-              -> Pattern fs m (Behavior a fs m)
+              -> Pattern scope parent (Behavior a scope parent)
 
         , modB
               :: forall a.
-                 Behavior a fs m
+                 Behavior a scope parent
               -> (    a
-                   -> Pattern fs m ()
+                   -> Pattern scope parent ()
                  )
-              -> Pattern fs m ()
+              -> Pattern scope parent ()
 
         , triggerB
               :: forall a.
-                 Behavior a fs m
+                 Behavior a scope parent
               -> a
-              -> Pattern fs m ()
+              -> Pattern scope parent ()
 
         , triggerC
               :: forall a.
-                 Culture a fs m
+                 Culture a scope parent
               -> a
-              -> Pattern fs m ()
+              -> Pattern scope parent ()
 
         , destroyB
               :: forall a.
-                 Behavior a fs m
-              -> Pattern fs m ()
+                 Behavior a scope parent
+              -> Pattern scope parent ()
 
         , destroyC
               :: forall a.
-                 Culture a fs m
-              -> Pattern fs m ()
+                 Culture a scope parent
+              -> Pattern scope parent ()
         }
 
 
@@ -121,8 +121,8 @@ data Reactable k =
 
 
 
-instance Uses Reactable gs m
-    => Binary (Attribute Reactable gs m)
+instance Uses Reactable attrs parent
+    => Binary (Attribute Reactable attrs parent)
   where
 
     get =
@@ -137,8 +137,8 @@ instance Uses Reactable gs m
 
 
 reactor
-    :: Uses Reactable fs m
-    => Attribute Reactable fs m
+    :: Uses Reactable attrs parent
+    => Attribute Reactable attrs parent
 
 reactor =
     Reactable 0 nextS
@@ -165,10 +165,15 @@ instance Reactable `Witnessing` Reacting
 
 
 
-reacts :: forall fs m a. (Is Reacting fs m,Lift IO m)
-      => (    React fs m
-           -> Pattern fs m a
-         ) -> Pattern fs m a
+reacts
+    :: forall scope parent result.
+       ( Is Reacting scope parent
+       , Lift IO parent
+       )
+    => (    React scope parent
+         -> Pattern scope parent result
+       ) -> Pattern scope parent result
+
 reacts r = do
     scope <- self (FreshScope id)
     sys <- unsafe $ newIORef []
@@ -207,21 +212,21 @@ reacts r = do
     rewrite sys rewriteScope = go
       where
 
-        go :: forall b. Int -> Pattern fs m b -> Pattern fs m b
+        go :: forall b. Int -> Pattern scope parent b -> Pattern scope parent b
         go c = go'
           where
 
-            go' :: forall c. Pattern fs m c -> Pattern fs m c
+            go' :: forall c. Pattern scope parent c -> Pattern scope parent c
             go' (Fail err) =
                 Fail err
 
             go' (Pure res) =
                 Pure res
 
-            go' (M m) =
-                M (fmap go' m)
+            go' (Super m) =
+                Super (fmap go' m)
 
-            go' (Step sym bp) =
+            go' (Send sym bp) =
                 let
                   check currentScope scoped =
                       if currentScope == rewriteScope then
@@ -230,7 +235,7 @@ reacts r = do
                           ignore
 
                   ignore =
-                      Step sym (go' . bp)
+                      Send sym (go' . bp)
 
                 in
                   case prj sym of
@@ -343,7 +348,7 @@ reacts r = do
               where
                 compile a = compile'
                   where
-                    compile' [] = return () :: Pattern fs m ()
+                    compile' [] = return () :: Pattern scope parent ()
                     compile' (b:bs) = do
                       b a
                       compile' bs
@@ -365,7 +370,7 @@ reacts r = do
                   where
                     compile a = compile'
                       where
-                        compile' [] = return () :: Pattern fs m ()
+                        compile' [] = return () :: Pattern scope parent ()
                         compile' (bh:bhs) = do
                           bh a
                           compile' bhs
@@ -379,9 +384,9 @@ reacts r = do
               cul `seq` go' (unsafeCoerce cul a)
 
             destroyBehavior b = do
-              writeIORef (behavior b) (const (return ()) :: forall d. d -> Pattern fs m ())
+              writeIORef (behavior b) (const (return ()) :: forall d. d -> Pattern scope parent ())
             destroyCulture cu = do
-              writeIORef (culture cu) (const (return ()) :: forall d. d -> Pattern fs m ())
+              writeIORef (culture cu) (const (return ()) :: forall d. d -> Pattern scope parent ())
               bs <- readIORef (behaviors cu)
               mapM_ destroyBehavior bs
 

@@ -50,14 +50,14 @@ instance Witnessing (Attrs '[]) (Symbol '[])
 
 
 
-instance ( Witnessing i s
-         , Witnessing (Attrs is) (Symbol ss)
+instance ( Witnessing attr symbol
+         , Witnessing (Attrs attrs) (Symbol symbols)
          )
-    => Witnessing (Attrs (i ': is)) (Symbol (s ': ss))
+    => Witnessing (Attrs (attr ': attrs)) (Symbol (symbol ': symbols))
   where
 
-    witness use (Attr ia _) (Symbol  sa) =
-        witness use ia sa
+    witness use (Attr attr _) (Symbol symbol) =
+        witness use attr symbol
 
-    witness use (Attr _ is) (Further ss) =
-        witness use is ss
+    witness use (Attr _ attrs) (Further symbols) =
+        witness use attrs symbols

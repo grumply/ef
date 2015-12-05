@@ -22,22 +22,22 @@ import Control.Monad
 
 
 
-newtype ThreadRef gs m a =
-    ThreadRef (ThreadId,Promise (Object gs m,Either SomeException a))
+newtype ThreadRef attrs parent result =
+    ThreadRef (ThreadId,Promise (Object attrs parent,Either SomeException result))
 
 
 
 forkWith
-    :: forall fs fs' gs m m' a.
-       ( (Attrs gs) `Witnessing` (Symbol fs)
-       , Lift IO m'
-       , Monad m'
-       , Monad m
+    :: forall scope scope' attrs parent parent' result.
+       ( (Attrs attrs) `Witnessing` (Symbol scope)
+       , Lift IO parent'
+       , Monad parent'
+       , Monad parent
        )
-    => Object gs m
-    -> Pattern fs m a
-    -> (forall x. m x -> IO x)
-    -> Pattern fs' m' (ThreadRef gs m a)
+    => Object attrs parent
+    -> Pattern scope parent result
+    -> (forall x. parent x -> IO x)
+    -> Pattern scope' parent' (ThreadRef attrs parent result)
 
 forkWith comp plan embedInIO =
     do
@@ -56,16 +56,16 @@ forkWith comp plan embedInIO =
 
 
 forkOSWith
-    :: forall fs fs' gs m m' a.
-       ( Witnessing (Attrs gs) (Symbol fs)
-       , Lift IO m'
-       , Monad m'
-       , Monad m
+    :: forall scope scope' attrs parent parent' result.
+       ( (Attrs attrs) `Witnessing` (Symbol scope)
+       , Lift IO parent'
+       , Monad parent'
+       , Monad parent
        )
-    => Object gs m
-    -> Pattern fs m a
-    -> (forall x. m x -> IO x)
-    -> Pattern fs' m' (ThreadRef gs m a)
+    => Object attrs parent
+    -> Pattern scope parent result
+    -> (forall x. parent x -> IO x)
+    -> Pattern scope' parent' (ThreadRef attrs parent result)
 
 forkOSWith comp plan embedInIO =
     do
@@ -84,17 +84,17 @@ forkOSWith comp plan embedInIO =
 
 
 forkOnWith
-    :: forall fs fs' gs m m' a.
-       ( (Attrs gs) `Witnessing` (Symbol fs)
-       , Lift IO m'
-       , Monad m'
-       , Monad m
+    :: forall scope scope' attrs parent parent' result.
+       ( (Attrs attrs) `Witnessing` (Symbol scope)
+       , Lift IO parent'
+       , Monad parent'
+       , Monad parent
        )
     => Int
-    -> Object gs m
-    -> Pattern fs m a
-    -> (forall x. m x -> IO x)
-    -> Pattern fs' m' (ThreadRef gs m a)
+    -> Object attrs parent
+    -> Pattern scope parent result
+    -> (forall x. parent x -> IO x)
+    -> Pattern scope' parent' (ThreadRef attrs parent result)
 
 forkOnWith n comp plan embedInIO =
     do

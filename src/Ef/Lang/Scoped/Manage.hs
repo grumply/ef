@@ -41,15 +41,15 @@ data Managing k
     -- this looks like something out of 'Notions of Computation as Monoids'
     Allocate
         :: Int
-        -> Pattern fs m a
-        -> (a -> Pattern fs m ())
+        -> Pattern scope parent a
+        -> (a -> Pattern scope parent ())
         -> ((a,Token a) -> k)
         -> Managing k
 
     Register
         :: Int
         -> Token a
-        -> Pattern fs m ()
+        -> Pattern scope parent ()
         -> k
         -> Managing k
 
@@ -77,8 +77,8 @@ data Manageable k
 
 
 
-instance Uses Manageable gs m
-    => Binary (Attribute Manageable gs m)
+instance Uses Manageable attrs parent
+    => Binary (Attribute Manageable attrs parent)
   where
 
     get =
@@ -91,7 +91,10 @@ instance Uses Manageable gs m
 
 
 
-manager :: Uses Manageable fs m => Attribute Manageable fs m
+manager
+    :: Uses Manageable attrs parent
+    => Attribute Manageable attrs parent
+
 manager =
     Manageable 0 return $ \fs ->
         let
@@ -118,41 +121,41 @@ instance Witnessing Manageable Managing
 
 
 
-data Manage fs m =
+data Manage scope parent =
     Manage
         {
           allocate
-              :: forall a.
-                 Pattern fs m a
-              -> (a -> Pattern fs m ())
-              -> Pattern fs m (a,Token a)
+              :: forall resource.
+                 Pattern scope parent resource
+              -> (resource -> Pattern scope parent ())
+              -> Pattern scope parent (resource,Token resource)
 
         , deallocate
-              :: forall a.
-                 Token a
-              -> Pattern fs m ()
+              :: forall resource.
+                 Token resource
+              -> Pattern scope parent ()
 
         , register
-              :: forall a.
-                 Token a
-              -> Pattern fs m ()
-              -> Pattern fs m ()
+              :: forall resource.
+                 Token resource
+              -> Pattern scope parent ()
+              -> Pattern scope parent ()
 
         , unregister
-              :: forall a.
-                 Token a
-              -> Pattern fs m ()
+              :: forall resource.
+                 Token resource
+              -> Pattern scope parent ()
         }
 
 
 
 manages
-    :: forall fs m r.
-       Is Managing fs m
-    => (    Manage fs m
-         -> Pattern fs m r
+    :: forall scope parent result.
+       Is Managing scope parent
+    => (    Manage scope parent
+         -> Pattern scope parent result
        )
-    -> Pattern fs m r
+    -> Pattern scope parent result
 
 manages f = do
     scope <- self (FreshScope id)
@@ -188,8 +191,8 @@ rewrite rewriteScope =
         go (Fail e) =
             Fail e
 
-        go (M m) =
-            M (fmap go m)
+        go (Super m) =
+            Super (fmap go m)
 
         go (Pure r) =
             case store of
@@ -213,7 +216,7 @@ rewrite rewriteScope =
                     in
                       withStore newStore continue
 
-        go (Step sym bp) =
+        go (Send sym bp) =
             let
               check currentScope scoped =
                   if currentScope == rewriteScope then
@@ -222,7 +225,7 @@ rewrite rewriteScope =
                       ignore
 
               ignore =
-                  Step sym (go . bp)
+                  Send sym (go . bp)
 
             in
               case prj sym of
@@ -283,7 +286,7 @@ rewrite rewriteScope =
                                       bp b
 
                               in
-                                Step sym (withStore newStore . continue)
+                                Send sym (withStore newStore . continue)
 
                           Register currentScope (Token t) finalize _ ->
                               check currentScope $

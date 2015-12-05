@@ -47,8 +47,8 @@ data Exitable k
 
 
 
-instance Uses Exitable gs m
-    => Binary (Attribute Exitable gs m)
+instance Uses Exitable attrs parent
+    => Binary (Attribute Exitable attrs parent)
   where
 
     get =
@@ -62,8 +62,8 @@ instance Uses Exitable gs m
 
 
 exiter
-    :: Uses Exitable gs m
-    => Attribute Exitable gs m
+    :: Uses Exitable attrs parent
+    => Attribute Exitable attrs parent
 
 exiter =
     Exitable 0 $ \fs ->
@@ -88,23 +88,23 @@ instance Witnessing Exitable Exiting
 
 
 
-data Exit a fs m =
+data Exit result scope parent =
     Exit
         {
           exit
               :: forall b.
-                 a
-              -> Pattern fs m b
+                 result
+              -> Pattern scope parent b
         }
 
 
 
 exits
-    :: Is Exiting fs m
-    => (    Exit a fs m
-         -> Pattern fs m a
+    :: Is Exiting scope parent
+    => (    Exit result scope parent
+         -> Pattern scope parent result
        )
-    -> Pattern fs m a
+    -> Pattern scope parent result
 
 exits f =
     do
@@ -127,13 +127,13 @@ exits f =
         go (Pure r) =
             Pure r
 
-        go (M m) =
-            M (fmap go m)
+        go (Super m) =
+            Super (fmap go m)
 
-        go (Step sym bp) =
+        go (Send sym bp) =
             let
               ignore =
-                  Step sym (go . bp)
+                  Send sym (go . bp)
 
             in
               case prj sym of

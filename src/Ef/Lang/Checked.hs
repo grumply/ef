@@ -78,8 +78,8 @@ data Exceptable k
 
 
 
-instance Uses Exceptable gs m
-    => Binary (Attribute Exceptable gs m)
+instance Uses Exceptable attrs parent
+    => Binary (Attribute Exceptable attrs parent)
   where
 
     get =
@@ -102,8 +102,8 @@ instance Exceptable `Witnessing` Excepting
 
 throwChecked
     :: ( Exception e
-       , Is Excepting fs m
-       ) => e -> (Throws e => Pattern fs m a)
+       , Is Excepting scope parent
+       ) => e -> (Throws e => Pattern scope parent a)
 
 throwChecked e =
     self (Throw (toException e) undefined)
@@ -111,13 +111,13 @@ throwChecked e =
 
 
 catchChecked
-    :: forall e fs m a.
+    :: forall e scope parent result.
        ( Exception e
-       , Is Excepting fs m
+       , Is Excepting scope parent
        )
-    => (Throws e => Pattern fs m a)
-    -> (e -> Pattern fs m a)
-    -> Pattern fs m a
+    => (Throws e => Pattern scope parent result)
+    -> (e -> Pattern scope parent result)
+    -> Pattern scope parent result
 
 catchChecked act =
     let
@@ -128,30 +128,30 @@ catchChecked act =
       Except.catch (unthrow proxy act)
   where
     unthrow
-        :: forall proxy e a.
+        :: forall proxy e x.
            proxy e
-        -> (Throws e => a) -> a
+        -> (Throws e => x) -> x
 
     unthrow _ = unWrap . coerceWrap . Wrap
 
 
 
     coerceWrap
-        :: forall e a.
-           Wrap e a
-        -> Wrap (Catch e) a
+        :: forall e x.
+           Wrap e x
+        -> Wrap (Catch e) x
 
     coerceWrap = coerce
 
 
 
 tryChecked
-    :: forall a b fs m .
-       ( Is Excepting fs m
-       , Exception a
+    :: forall e scope parent result.
+       ( Is Excepting scope parent
+       , Exception e
        )
-    => (Throws a => Pattern fs m b)
-    -> Pattern fs m (Either a b)
+    => (Throws e => Pattern scope parent result)
+    -> Pattern scope parent (Either e result)
 
 tryChecked a =
     catchChecked (Right <$> a) (return . Left)
@@ -159,7 +159,7 @@ tryChecked a =
 
 
 excepter
-    :: Attribute Exceptable gs k
+    :: Attribute Exceptable attrs x
 
 excepter =
     let
@@ -172,13 +172,13 @@ excepter =
 
 
 mapChecked
-    :: ( Is Excepting fs m
+    :: ( Is Excepting scope parent
        , Exception e
        , Exception e'
        )
     => (e -> e')
-    -> (Throws e => Pattern fs m a)
-    -> (Throws e' => Pattern fs m a)
+    -> (Throws e => Pattern scope parent a)
+    -> (Throws e' => Pattern scope parent a)
 
 mapChecked f p =
     catchChecked p (throwChecked . f)

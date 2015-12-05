@@ -43,22 +43,22 @@ data Notating k
 
     Listen
         :: Int
-        -> Pattern fs m a
+        -> Pattern scope parent a
         -> Notating k
 
 
 
-data Notes w fs m =
+data Notes notes scope parent =
     Notes
         {
           tell
-              :: w
-              -> Pattern fs m ()
+              :: notes
+              -> Pattern scope parent ()
 
         , listen
-              :: forall a.
-                 Pattern fs m a
-              -> Pattern fs m (w,a)
+              :: forall result.
+                 Pattern scope parent result
+              -> Pattern scope parent (notes,result)
         }
 
 
@@ -72,8 +72,9 @@ data Notatable k
         -> Notatable k
 
 
-instance Uses Notatable gs m
-    => Binary (Attribute Notatable gs m)
+
+instance Uses Notatable attrs parent
+    => Binary (Attribute Notatable attrs parent)
   where
 
     get =
@@ -87,8 +88,8 @@ instance Uses Notatable gs m
 
 
 notator
-    :: Uses Notatable fs m
-    => Attribute Notatable fs m
+    :: Uses Notatable attrs parent
+    => Attribute Notatable attrs parent
 
 notator =
     Notatable 0 $ \fs ->
@@ -114,14 +115,14 @@ instance Notatable `Witnessing` Notating
 
 
 notates
-    :: forall fs m w r.
-       ( Is Notating fs m
-       , Monoid w
+    :: forall scope parent notes result.
+       ( Is Notating scope parent
+       , Monoid notes
        )
-    => (    Notes w fs m
-         -> Pattern fs m r
+    => (    Notes notes scope parent
+         -> Pattern scope parent result
        )
-    -> Pattern fs m (w,r)
+    -> Pattern scope parent (notes,result)
 
 notates f =
     do
@@ -154,10 +155,10 @@ rewrite rewriteScope =
         go (Pure result) =
             Pure (notations,result)
 
-        go (M m) =
-            M (fmap go m)
+        go (Super m) =
+            Super (fmap go m)
 
-        go (Step sym bp) =
+        go (Send sym bp) =
             let
               check currentScope scoped =
                   if currentScope == rewriteScope then
@@ -166,7 +167,7 @@ rewrite rewriteScope =
                       ignore
 
               ignore =
-                  Step sym (go . bp)
+                  Send sym (go . bp)
 
             in
               case prj sym of
@@ -213,11 +214,11 @@ rewrite rewriteScope =
 
 
 listens
-    :: Monad m
-    => Notes w fs m
-    -> (w -> b)
-    -> Pattern fs m a
-    -> Pattern fs m (b,a)
+    :: Monad parent
+    => Notes notes scope parent
+    -> (notes -> b)
+    -> Pattern scope parent result
+    -> Pattern scope parent (b,result)
 
 listens Notes{..} f m =
     do

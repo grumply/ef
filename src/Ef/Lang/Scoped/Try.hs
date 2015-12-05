@@ -16,26 +16,26 @@ import Ef.Lang.Scoped.Exit
 
 
 
-data Try a fs m =
+data Try a scope parent =
     Try
         {
           success
               :: forall b.
                  a
-              -> Pattern fs m b
+              -> Pattern scope parent b
         , failure
               :: forall b.
-                 Pattern fs m b
+                 Pattern scope parent b
         }
 
 
 
 tries
-    :: Is Exiting fs m
-    => (    Try a fs m
-         -> Pattern fs m (Maybe a)
+    :: Is Exiting scope parent
+    => (    Try result scope parent
+         -> Pattern scope parent (Maybe result)
        )
-    -> Pattern fs m (Maybe a)
+    -> Pattern scope parent (Maybe result)
 
 tries f =
     exits $ \Exit{..} -> f

@@ -3,7 +3,6 @@
 module Ef
   ( main'
   , base
-  , debug
   , Ef
   , Main
   , module Base
@@ -79,18 +78,9 @@ main' =
 
 
 
-debug
-    :: Pattern Main IO b
-    -> IO (Int,b)
-
-debug =
-    fmap snd. deltaDebug base
-
-
-
 base
-    :: Monad m
-    => Object Ef m
+    :: Monad parent
+    => Object Ef parent
 
 base =
   Object $

@@ -9,8 +9,6 @@ module Ef.Core
     , delta
     , delta'
     , deltaUpcast
-    , deltaDebug
---    , run
     , (#)
     , Exception(..)
     , SomeException
@@ -37,12 +35,12 @@ import Unsafe.Coerce
 
 
 (#)
-    :: ( Witnessing (Attrs is) (Symbol symbols)
-       , Monad m
+    :: ( Witnessing (Attrs attrs) (Symbol scope)
+       , Monad parent
        )
-    => m (Object is m)
-    -> Pattern symbols m a
-    -> m (Object is m)
+    => parent (Object attrs parent)
+    -> Pattern scope parent result
+    -> parent (Object attrs parent)
 (#) mobj p =
     do
       obj <- mobj
@@ -52,41 +50,38 @@ import Unsafe.Coerce
 
 
 delta'
-    :: forall fs sf is m a.
-       ( Witnessing (Attrs is) (Symbol sf)
-       , As (Symbol fs) (Symbol sf)
-       , Monad m
+    :: ( Witnessing (Attrs attrs) (Symbol scope')
+       , As (Symbol scope) (Symbol scope')
+       , Monad parent
        )
-    => Object is m
-    -> Pattern fs m a
-    -> m (Object is m,a)
+    => Object attrs parent
+    -> Pattern scope parent result
+    -> parent (Object attrs parent,result)
 delta' o =
     _delta o . rearrange
 
 
 
 deltaUpcast
-    :: forall small large is m a.
-       ( Witnessing (Attrs is) (Symbol large)
+    :: ( Witnessing (Attrs attrs) (Symbol large)
        , Cast small large
-       , Monad m
+       , Monad parent
        )
-    => Object is m
-    -> Pattern small m a
-    -> m (Object is m,a)
+    => Object attrs parent
+    -> Pattern small parent result
+    -> parent (Object attrs parent,result)
 deltaUpcast o =
     _delta o . upcast
 
 
 
 delta
-    :: forall symbols is m a.
-       ( Witnessing (Attrs is) (Symbol symbols)
-       , Monad m
+    :: ( Witnessing (Attrs attrs) (Symbol scope)
+       , Monad parent
        )
-    => Object is m
-    -> Pattern symbols m a
-    -> m (Object is m,a)
+    => Object attrs parent
+    -> Pattern scope parent result
+    -> parent (Object attrs parent,result)
 delta =
     _delta
 
@@ -94,109 +89,32 @@ delta =
 
 {-# NOINLINE _delta #-}
 _delta
-    :: forall is symbols m a.
-       ( Witnessing (Attrs is) (Symbol symbols)
-       , Monad m
+    :: ( Witnessing (Attrs attrs) (Symbol scope)
+       , Monad parent
        )
-    => Object is m
-    -> Pattern symbols m a
-    -> m (Object is m,a)
+    => Object attrs parent
+    -> Pattern scope parent result
+    -> parent (Object attrs parent,result)
 _delta =
     go
   where
-    go is = go'
+    go object = go'
       where
-        go' p =
-            case p of
+        go' (Fail e) =
+            Exception.throw e
 
-              Fail e ->
-                  Exception.throw e
+        go' (Super m) =
+            m >>= go'
 
-              Step syms k ->
-                  let
-                    ~(trans,b) =
-                        witness (,) (deconstruct is) syms
-                  in
-                    do
-                      is' <- trans is
-                      go is' (k b)
+        go' (Pure result) =
+            pure (object,result)
 
-              M mp ->
-                  mp >>= go'
+        go' (Send symbol k) =
+            let
+              (method,b) =
+                  witness (,) (deconstruct object) symbol
 
-              Pure res ->
-                  pure (is,res)
-
-
-
-deltaDebug
-    :: forall is symbols m a.
-       ( Witnessing (Attrs is) (Symbol symbols)
-       , Typeable symbols
-       , Typeable is
-       , Monad m
-       )
-    => Object is m
-    -> Pattern symbols m a
-    -> m ( Object is m
-         , (Int,a)
-         )
-deltaDebug =
-    _deltaDebug
-
-
-
-{-# NOINLINE _deltaDebug #-}
-_deltaDebug
-    :: forall is symbols m a.
-       ( Witnessing (Attrs is) (Symbol symbols)
-       , Typeable symbols
-       , Typeable is
-       , Monad m
-       )
-    => Object is m
-    -> Pattern symbols m a
-    -> m ( Object is m
-         , (Int,a)
-         )
-_deltaDebug =
-    go 0
-  where
-    go n is = go'
-      where
-        go' p =
-            case p of
-
-                Fail e ->
-                    Exception.throw e
-
-                Step syms k ->
-                  let
-                    ~(trans,b) =
-                        witness (,) (deconstruct is) syms
-
-                  in
-                    do
-                      is' <- trans is
-                      let
-                        n' =
-                            n + 1
-
-                        unitalSymbols =
-                            unsafeCoerce syms :: Symbol symbols ()
-
-                        ty =
-                            typeOf unitalSymbols
-
-                      trace (show ty) $ n' `seq` go n' is' (k b)
-
-                M m ->
-                    m >>= go'
-
-                Pure r ->
-                    let
-                      result =
-                          (n,r)
-
-                    in
-                      pure (is,result)
+            in
+              do
+                object' <- method object
+                go object' (k b)

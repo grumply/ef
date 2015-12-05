@@ -55,18 +55,18 @@ import Control.Monad
 -- :}
 --True
 
-newtype Codensity fs m a =
+newtype Codensity scope parent result =
 
     Codensity
         { runCodensity
               :: forall b.
-                 (a -> Pattern fs m b)
-              -> Pattern fs m b
+                 (result -> Pattern scope parent b)
+              -> Pattern scope parent b
         }
 
 
 
-instance Functor (Codensity fs k)
+instance Functor (Codensity scope parent)
   where
 
     fmap f (Codensity m) =
@@ -74,18 +74,20 @@ instance Functor (Codensity fs k)
 
 
 
-instance Applicative (Codensity fs f)
+instance Applicative (Codensity scope parent)
   where
 
-    pure x = Codensity ($ x)
+    pure x =
+        Codensity ($ x)
 
 
 
-    (<*>) = ap
+    (<*>) =
+        ap
 
 
 
-instance Monad (Codensity fs f)
+instance Monad (Codensity scope parent)
   where
 
     return x =
@@ -101,13 +103,14 @@ instance Monad (Codensity fs f)
 
 
 
-instance ( Alternative v
-         , MonadPlus v
+instance ( Alternative parent
+         , MonadPlus parent
          )
-    => Alternative (Codensity fs v)
+    => Alternative (Codensity scope parent)
   where
 
-    empty = Codensity (\_ -> empty)
+    empty =
+        Codensity (\_ -> empty)
 
 
 
@@ -117,8 +120,8 @@ instance ( Alternative v
 
 
 
-instance MonadPlus v
-    => MonadPlus (Codensity fs v)
+instance MonadPlus parent
+    => MonadPlus (Codensity scope parent)
   where
 
     mzero =
@@ -133,9 +136,9 @@ instance MonadPlus v
 
 
 toCodensity
-    :: Monad m
-    => Pattern fs m a
-    -> Codensity fs m a
+    :: Monad parent
+    => Pattern scope parent result
+    -> Codensity scope parent result
 
 toCodensity f =
     Codensity (f >>=)
@@ -143,9 +146,9 @@ toCodensity f =
 
 
 fromCodensity
-    :: Monad m
-    => Codensity fs m a
-    -> Pattern fs m a
+    :: Monad parent
+    => Codensity scope parent result
+    -> Pattern scope parent result
 
 fromCodensity a =
     runCodensity a return

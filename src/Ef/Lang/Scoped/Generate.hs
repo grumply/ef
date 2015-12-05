@@ -25,16 +25,16 @@ import Unsafe.Coerce
 
 
 
-newtype Generator fs m a =
+newtype Generator scope parent a =
     Select
         { enumerate
-              :: Is Weaving fs m
-              => Producer a fs m ()
+              :: Is Weaving scope parent
+              => Producer a scope parent ()
         }
 
 
 
-instance Functor (Generator fs m)
+instance Functor (Generator scope parent)
   where
 
     fmap f (Select p) =
@@ -47,7 +47,7 @@ instance Functor (Generator fs m)
 
 
 
-instance Applicative (Generator fs m)
+instance Applicative (Generator scope parent)
   where
 
     pure a = Select (producer ($ a))
@@ -72,7 +72,7 @@ instance Applicative (Generator fs m)
 
 
 
-instance Monad (Generator fs m)
+instance Monad (Generator scope parent)
   where
 
     return a =
@@ -95,7 +95,7 @@ instance Monad (Generator fs m)
 
 
 
-instance Alternative (Generator fs m)
+instance Alternative (Generator scope parent)
   where
 
     empty =
@@ -119,7 +119,7 @@ instance Alternative (Generator fs m)
 
 
 
-instance MonadPlus (Generator fs m)
+instance MonadPlus (Generator scope parent)
   where
 
     mzero =
@@ -132,7 +132,7 @@ instance MonadPlus (Generator fs m)
 
 
 
-instance Monoid (Generator fs m a)
+instance Monoid (Generator scope parent a)
   where
 
     mempty =
@@ -146,9 +146,9 @@ instance Monoid (Generator fs m a)
 
 
 generate
-    :: Is Weaving fs m
-    => Generator fs m a
-    -> Pattern fs m ()
+    :: Is Weaving scope parent
+    => Generator scope parent a
+    -> Pattern scope parent ()
 generate l =
     let
       complete =
@@ -162,11 +162,11 @@ generate l =
 
 
 each
-    :: ( Is Weaving fs m
+    :: ( Is Weaving scope parent
        , F.Foldable f
        )
     => f a
-    -> Producer' a fs m ()
+    -> Producer' a scope parent ()
 each xs =
     let
       def =
@@ -181,9 +181,9 @@ each xs =
 
 
 discard
-    :: Monad m
+    :: Monad parent
     => t
-    -> Woven fs a' a b' b m ()
+    -> Woven scope a' a b' b parent ()
 discard _ =
     let
       ignore _ _ =
@@ -195,9 +195,9 @@ discard _ =
 
 
 every
-    :: Is Weaving fs m
-    => Generator fs m a
-    -> Producer' a fs m ()
+    :: Is Weaving scope parent
+    => Generator scope parent a
+    -> Producer' a scope parent ()
 every it =
     discard >\\ enumerate it
 

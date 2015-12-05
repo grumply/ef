@@ -28,11 +28,11 @@ data Index (n :: Nat)
 
 
 
-type family IndexOf (f :: k) (fs :: [k]) :: Nat
+type family IndexOf (x :: k) (xs :: [k]) :: Nat
   where
 
-    IndexOf f (f ': fs) =
+    IndexOf x (x ': xs) =
         'Z
 
-    IndexOf f (any ': fs) =
-        'S (IndexOf f fs)
+    IndexOf x (any ': xs) =
+        'S (IndexOf x xs)

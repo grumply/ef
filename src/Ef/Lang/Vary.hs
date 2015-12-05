@@ -47,10 +47,10 @@ data Variable st k
         -> Variable st k
 
 
-instance ( Uses (Variable st) gs m
+instance ( Uses (Variable st) attrs parent
          , Binary.Binary st
          )
-    => Binary.Binary (Attribute (Variable st) gs m)
+    => Binary.Binary (Attribute (Variable st) attrs parent)
   where
 
     get =
@@ -78,17 +78,18 @@ instance (Variable st) `Witnessing` (Varying st)
 
 
 get
-    :: Is (Varying st) fs m
-    => Pattern fs m st
+    :: Is (Varying st) scope parent
+    => Pattern scope parent st
+
 get =
     self (Modify id id)
 
 
 
 gets
-    :: Is (Varying st) fs m
-    => (st -> a)
-    -> Pattern fs m a
+    :: Is (Varying st) scope parent
+    => (st -> result)
+    -> Pattern scope parent result
 
 gets f =
     self (Modify id f)
@@ -96,9 +97,9 @@ gets f =
 
 
 put
-    :: Is (Varying st) fs m
+    :: Is (Varying st) scope parent
     => st
-    -> Pattern fs m ()
+    -> Pattern scope parent ()
 
 put st =
     self (Modify (const st) (const ()))
@@ -106,10 +107,10 @@ put st =
 
 
 puts
-    :: Is (Varying st) fs m
+    :: Is (Varying st) scope parent
     => (a -> st)
     -> a
-    -> Pattern fs m ()
+    -> Pattern scope parent ()
 
 puts f a =
     self (Modify (const (f a)) (const ()))
@@ -117,9 +118,9 @@ puts f a =
 
 
 swap
-    :: Is (Varying st) fs m
+    :: Is (Varying st) scope parent
     => st
-    -> Pattern fs m st
+    -> Pattern scope parent st
 
 swap st =
     self (Modify (const st) id)
@@ -127,9 +128,9 @@ swap st =
 
 
 modify
-    :: Is (Varying st) fs m
+    :: Is (Varying st) scope parent
     => (st -> st)
-    -> Pattern fs m ()
+    -> Pattern scope parent ()
 
 modify f =
     self (Modify f (const ()))
@@ -137,9 +138,9 @@ modify f =
 
 
 modify'
-    :: Is (Varying st) fs m
+    :: Is (Varying st) scope parent
     => (st -> st)
-    -> Pattern fs m ()
+    -> Pattern scope parent ()
 
 modify' f =
     do
@@ -149,9 +150,9 @@ modify' f =
 
 
 store
-    :: Uses (Variable st) fs m
+    :: Uses (Variable st) scope parent
     => st
-    -> Attribute (Variable st) fs m
+    -> Attribute (Variable st) scope parent
 
 store startSt =
     Variable startSt $ \newSt fs -> pure $ fs .=

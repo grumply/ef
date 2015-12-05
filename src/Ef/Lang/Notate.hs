@@ -33,9 +33,9 @@ data Noting r k
 
 
 note
-    :: Is (Noting w) fs m
+    :: Is (Noting w) scope parent
     => w
-    -> Pattern fs m ()
+    -> Pattern scope parent ()
 
 note w =
     self (Noting w ())
@@ -54,9 +54,9 @@ data Notatable r k
 
 instance ( Binary r
          , Monoid r
-         , Uses (Notatable r) gs m
+         , Uses (Notatable r) attrs parent
          )
-    => Binary (Attribute (Notatable r) gs m)
+    => Binary (Attribute (Notatable r) attrs parent)
   where
 
     get =
@@ -73,10 +73,10 @@ instance ( Binary r
 
 
 notator
-    :: Uses (Notatable w) fs m
+    :: Uses (Notatable w) attrs parent
     => w
     -> (w -> w -> w)
-    -> Attribute (Notatable w) fs m
+    -> Attribute (Notatable w) attrs parent
 
 notator w0 f =
     Notatable w0 $ \w' fs ->
@@ -91,9 +91,9 @@ notator w0 f =
 
 writer
     :: ( Monoid w
-       , Uses (Notatable w) fs m
+       , Uses (Notatable w) attrs parent
        )
-    => Attribute (Notatable w) fs m
+    => Attribute (Notatable w) attrs parent
 
 writer =
     notator mempty (<>)
@@ -109,8 +109,8 @@ instance Witnessing (Notatable r) (Noting r)
 
 
 noted
-    :: Uses (Notatable w) fs m
-    => Object fs m -> w
+    :: Uses (Notatable w) attrs parent
+    => Object attrs parent -> w
 
 noted fs =
     let

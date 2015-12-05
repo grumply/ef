@@ -183,14 +183,14 @@ data Operation status result
 
 
 
-data Await
+data AwaitStyle
   where
 
     Atomically
-        :: Await
+        :: AwaitStyle
 
     Concurrently
-        :: Await
+        :: AwaitStyle
 
 
 
@@ -209,7 +209,7 @@ data Tasking k
 
     Await
         :: Int
-        -> Await
+        -> AwaitStyle
         -> Operation status result
         -> (result -> k)
         -> Tasking k

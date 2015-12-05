@@ -47,16 +47,16 @@ data Guarding k
 
 -- | Symbol Module
 
-data Guard fs m =
+data Guard scope parent =
     Guard
         { choose
               :: forall f a.
                  Foldable f
-              => f a -> Pattern fs m a
+              => f a -> Pattern scope parent a
 
         , cut
               :: forall b.
-                 Pattern fs m b
+                 Pattern scope parent b
         }
 
 
@@ -71,8 +71,8 @@ data Guardable k
 
 
 
-instance Uses Guardable gs m
-    => Binary (Attribute Guardable gs m)
+instance Uses Guardable attrs parent
+    => Binary (Attribute Guardable attrs parent)
   where
 
     get =
@@ -88,8 +88,9 @@ instance Uses Guardable gs m
 -- | Attribute Construct
 
 guarder
-    :: Uses Guardable fs m
-    => Attribute Guardable fs m
+    :: Uses Guardable attrs parent
+    => Attribute Guardable attrs parent
+
 guarder =
     Guardable 0 $ \fs ->
         let
@@ -115,12 +116,13 @@ instance Witnessing Guardable Guarding
 -- | Local Scoping Construct
 
 guards
-    :: forall fs m a.
-       Is Guarding fs m
-    => (    Guard fs m
-         -> Pattern fs m a
+    :: forall scope parent result.
+       Is Guarding scope parent
+    => (    Guard scope parent
+         -> Pattern scope parent result
        )
-    -> Pattern fs m (Maybe a)
+    -> Pattern scope parent (Maybe result)
+
 guards l =
   do
     scope <- self (FreshScope id)
@@ -141,10 +143,10 @@ guards l =
 
 
 rewrite
-    :: Is Guarding fs m
+    :: Is Guarding scope parent
     => Int
-    -> Pattern fs m a
-    -> Pattern fs m (Maybe a)
+    -> Pattern scope parent result
+    -> Pattern scope parent (Maybe result)
 
 rewrite _ (Fail e) =
     Fail e
@@ -152,17 +154,17 @@ rewrite _ (Fail e) =
 rewrite _ (Pure result) =
     Pure (Just result)
 
-rewrite scope (M m) =
+rewrite scope (Super m) =
     let
       continue = rewrite scope
 
     in
-      M (fmap continue m)
+      Super (fmap continue m)
 
-rewrite scope (Step sym bp) =
+rewrite scope (Send sym bp) =
     let
       ignore =
-          Step sym (rewrite scope . bp)
+          Send sym (rewrite scope . bp)
 
       check i scoped =
           if i == scope then
@@ -187,17 +189,17 @@ rewrite scope (Step sym bp) =
                       ignore
 
           Nothing ->
-              Step sym (rewrite scope . bp)
+              Send sym (rewrite scope . bp)
 
 
 
 choosing
-    :: Is Guarding fs m
+    :: Is Guarding scope parent
     => Int
     -> [a]
-    -> (a -> Pattern fs m r)
-    -> Pattern fs m r
-    -> Pattern fs m r
+    -> (a -> Pattern scope parent r)
+    -> Pattern scope parent r
+    -> Pattern scope parent r
 choosing _ [] _ alt =
     alt
 
@@ -207,24 +209,25 @@ choosing scope (a:as) bp alt =
 
 
 nestedChoosing
-    :: Is Guarding fs m
+    :: Is Guarding scope parent
     => Int
     -> [a]
-    -> Pattern fs m r
-    -> (a -> Pattern fs m r)
-    -> Pattern fs m r
-    -> Pattern fs m r
+    -> Pattern scope parent result
+    -> (a -> Pattern scope parent result)
+    -> Pattern scope parent result
+    -> Pattern scope parent result
+
 nestedChoosing _ _ _ _ (Pure result) =
     return result
 
-nestedChoosing scope choices alt parentContinue (M m) =
+nestedChoosing scope choices alt parentContinue (Super m) =
     let
       continue = nestedChoosing scope choices alt parentContinue
 
     in
-      M (fmap continue m)
+      Super (fmap continue m)
 
-nestedChoosing scope choices alt parentContinue (Step sym childContinue) =
+nestedChoosing scope choices alt parentContinue (Send sym childContinue) =
     let
       ignore =
           let
@@ -232,7 +235,7 @@ nestedChoosing scope choices alt parentContinue (Step sym childContinue) =
                 nestedChoosing scope choices alt parentContinue . childContinue
 
           in
-            Step sym continue
+            Send sym continue
 
       check i scoped =
           if i == scope then

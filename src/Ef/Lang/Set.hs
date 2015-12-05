@@ -18,18 +18,18 @@ data Setting k
   where
 
     Set
-        :: Object gs m
+        :: Object attrs parent
         -> k
         -> Setting k
 
 
 
 become
-    :: ( (Attrs gs) `Witnessing` (Symbol fs)
-       , Is Setting fs m
+    :: ( (Attrs attrs) `Witnessing` (Symbol scope)
+       , Is Setting scope parent
        )
-    => Object gs m
-    -> Pattern fs m ()
+    => Object attrs parent
+    -> Pattern scope parent ()
 
 become newSelf =
     self (Set newSelf ())
@@ -40,15 +40,15 @@ data Settable k
   where
 
     Setter
-        :: (   Object gs m
+        :: (   Object attrs parent
             -> k
            )
         -> Settable k
 
 
 
-instance Uses Settable gs m
-    => Binary (Attribute Settable gs m)
+instance Uses Settable attrs parent
+    => Binary (Attribute Settable attrs parent)
   where
 
     get =
@@ -75,8 +75,8 @@ instance Witnessing Settable Setting
 
 
 setter
-    :: Uses Settable gs m
-    => Attribute Settable gs m
+    :: Uses Settable attrs parent
+    => Attribute Settable attrs parent
 
 setter =
     Setter (const . pure)

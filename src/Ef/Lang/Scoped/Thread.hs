@@ -50,15 +50,15 @@ data Threading k
 
 
 
-data Thread fs m =
+data Thread scope parent =
     Thread
         {
           fork
-              :: Pattern fs m ()
-              -> Pattern fs m ()
+              :: Pattern scope parent ()
+              -> Pattern scope parent ()
 
         , yield
-              :: Pattern fs m ()
+              :: Pattern scope parent ()
         }
 
 
@@ -73,8 +73,8 @@ data Threadable k
 
 
 
-instance Uses Threadable gs m
-    => Binary (Attribute Threadable gs m)
+instance Uses Threadable attrs parent
+    => Binary (Attribute Threadable attrs parent)
   where
 
     get =
@@ -88,8 +88,8 @@ instance Uses Threadable gs m
 
 
 threader
-    :: Uses Threadable gs m
-    => Attribute Threadable gs m
+    :: Uses Threadable attrs parent
+    => Attribute Threadable attrs parent
 
 threader = Threadable 0 $ \fs ->
     let
@@ -118,11 +118,11 @@ instance Threadable `Witnessing` Threading
 -- | Local Scoping Construct + Substitution
 
 threads
-    :: Is Threading fs m
-    => (    Thread fs m
-         -> Pattern fs m a
+    :: Is Threading scope parent
+    => (    Thread scope parent
+         -> Pattern scope parent a
        )
-    -> Pattern fs m a
+    -> Pattern scope parent a
 
 threads f =
     do
@@ -165,8 +165,8 @@ rewrite scope =
         go (Fail e) =
             Fail e
 
-        go (M m) =
-            M (fmap go m)
+        go (Super m) =
+            Super (fmap go m)
 
         go (Pure r) =
             case dequeue queue of
@@ -183,7 +183,7 @@ rewrite scope =
                       newQueue `seq`
                           withQueue newQ (unsafeCoerce nxt)
 
-        go (Step sym bp) =
+        go (Send sym bp) =
             let
               check i scoped =
                   if i == scope then
@@ -192,7 +192,7 @@ rewrite scope =
                       ignore
 
               ignore =
-                  Step sym (go . bp)
+                  Send sym (go . bp)
 
             in
               case prj sym of

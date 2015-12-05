@@ -40,7 +40,7 @@ data Logging k
     Eavesdrop
         :: Int
         -> w
-        -> Pattern fs m a
+        -> Pattern scope parent a
         -> Logging k
 
     Reconfigure
@@ -50,21 +50,21 @@ data Logging k
 
 
 
-data Log fs m a w =
+data Log scope parent a w =
     Log
         { log
               :: a
-              -> Pattern fs m ()
+              -> Pattern scope parent ()
 
         , eavesdrop
               :: forall r.
                  w
-              -> Pattern fs m r
-              -> Pattern fs m (w,r)
+              -> Pattern scope parent r
+              -> Pattern scope parent (w,r)
 
         , reconfigure
               :: (a -> w -> w)
-              -> Pattern fs m ()
+              -> Pattern scope parent ()
         }
 
 
@@ -79,8 +79,8 @@ data Loggable k
 
 
 
-instance Uses Loggable gs m
-    => Binary (Attribute Loggable gs m)
+instance Uses Loggable attrs parent
+    => Binary (Attribute Loggable attrs parent)
   where
 
     get =
@@ -94,8 +94,9 @@ instance Uses Loggable gs m
 
 
 logger
-    :: Uses Loggable fs m
-    => Attribute Loggable fs m
+    :: Uses Loggable attrs parent
+    => Attribute Loggable attrs parent
+
 logger =
     Loggable 0 $ \fs ->
         let
@@ -120,16 +121,16 @@ instance Witnessing Loggable Logging
 
 
 logs
-    :: forall fs m a w r.
-       ( Is Logging fs m
+    :: forall scope parent a w r.
+       ( Is Logging scope parent
        , Monoid w
        )
     => (a -> w -> w)
     -> w
-    -> (    Log fs m a w
-         -> Pattern fs m r
+    -> (    Log scope parent a w
+         -> Pattern scope parent r
        )
-    -> Pattern fs m (w,r)
+    -> Pattern scope parent (w,r)
 logs c0 w0 f =
     do
       scope <- self (FreshScope id)
@@ -155,19 +156,19 @@ logs c0 w0 f =
     rewrite _ _ w (Pure r) =
         Pure (w,r)
 
-    rewrite scope c w (M m) =
+    rewrite scope c w (Super m) =
         let
           continue = rewrite scope c w
         in
-          M (fmap continue m)
+          Super (fmap continue m)
 
-    rewrite scope c w (Step sym bp) =
+    rewrite scope c w (Send sym bp) =
         let
           same =
               rewrite scope c w . bp
 
           ignore =
-              Step sym same
+              Send sym same
 
           check i scoped =
               if i == scope then
@@ -226,12 +227,12 @@ logs c0 w0 f =
 -- | Extended API
 
 intercept
-    :: Monad m
-    => Log fs m a w
+    :: Monad parent
+    => Log scope parent a w
     -> (w -> b)
     -> w
-    -> Pattern fs m r
-    -> Pattern fs m (b,r)
+    -> Pattern scope parent r
+    -> Pattern scope parent (b,r)
 intercept Log{..} f w0 m =
     do
       ~(w, a) <- eavesdrop w0 m

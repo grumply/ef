@@ -32,10 +32,11 @@ data Getting k
 
 
 introspect
-    :: ( (Attrs gs) `Witnessing` (Symbol fs)
-       , Is Getting fs m
+    :: ( (Attrs attrs) `Witnessing` (Symbol scope)
+       , Is Getting scope parent
        )
-    => Pattern fs m (Object gs m)
+    => Pattern scope parent (Object attrs parent)
+
 introspect =
     do
       self (Reify ())
@@ -47,20 +48,20 @@ data Gettable k
   where
 
     Getter
-        :: (Object gs m,k)
+        :: (Object attrs parent,k)
         -> k
         -> Gettable k
 
 
 
-instance ( Uses Gettable gs m
-         , Binary (Object gs m)
+instance ( Uses Gettable attrs parent
+         , Binary (Object attrs parent)
          )
-    => Binary (Attribute Gettable gs m)
+    => Binary (Attribute Gettable attrs parent)
   where
 
     get =
-        return (getter :: Attribute Gettable gs m)
+        return (getter :: Attribute Gettable attrs parent)
 
 
     put _ =
@@ -80,8 +81,8 @@ instance Witnessing Gettable Getting
 
 
 getter
-    :: Uses Gettable gs m
-    => Attribute Gettable gs m
+    :: Uses Gettable attrs parent
+    => Attribute Gettable attrs parent
 
 getter =
     Getter (undefined,reifier) pure

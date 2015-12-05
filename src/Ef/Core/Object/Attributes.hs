@@ -22,39 +22,17 @@ import Unsafe.Coerce
 
 
 
--- Wanting:
---    IsList instance for Attrs (not currently possible as far as I see)
---    Sorted list for Attrs
---
--- Once we have these, it will be possible to implement a much simpler smart
--- constructor for objects that guarantees ordering in a form like:
---
---   let
---     obj def =
---         new [manager,exiter,getter,setter,store def]
---
--- And the sorted list for Attrs would guarantee that there is a single
--- constructed form for the objects. Much easier to guarantee Pattern-Object
--- compatability then since Patterns implement rearrange.
---
--- I attempted to lift Fingerprints to the type level, but failed. I feel
--- a type Nat representation of a Fingerprint is an important extension of
--- the typeable interface. I assume Fingerprints are hash-based and could
--- thus be witnessed by Template Haskell; this is a possible approach.
-
-
-
-data Attrs (as :: [* -> *]) a
+data Attrs (attrs :: [* -> *]) x
   where
 
     Empty
-        :: Attrs '[] a
+        :: Attrs '[] x
 
     Attr
-        :: Denies f fs
-        => f a
-        -> Attrs fs a
-        -> Attrs (f ': fs) a
+        :: Denies attr attrs
+        => attr x
+        -> Attrs attrs x
+        -> Attrs (attr ': attrs) x
 
 
 
@@ -71,11 +49,11 @@ instance Binary (Attrs '[] x)
 
 
 
-instance ( Binary (Attrs as x)
-         , Denies a as
-         , Binary (a x)
+instance ( Binary (Attrs attrs x)
+         , Denies attr attrs
+         , Binary (attr x)
          )
-    => Binary (Attrs (a ': as) x)
+    => Binary (Attrs (attr ': attrs) x)
   where
 
     get =
@@ -91,160 +69,159 @@ instance ( Binary (Attrs as x)
 instance Functor (Attrs '[])
   where
 
-    fmap _ =
-        unsafeCoerce
+    fmap _ _ =
+        Empty
 
 
 
-instance ( Functor f
-         , attrs ~ Attrs fs
-         , Functor attrs
+instance ( Functor attr
+         , Functor (Attrs attrs)
          )
-    => Functor (Attrs (f ': fs))
+    => Functor (Attrs (attr ': attrs))
   where
 
-    fmap f (Attr fa fs) =
+    fmap f (Attr attr attrs) =
         Attr
-            (fmap f fa)
-            (fmap f fs)
+            (fmap f attr)
+            (fmap f attrs)
 
 
 
-class Admits (x :: * -> *) (xs :: [* -> *])
+class Admits (attr :: * -> *) (attrs :: [* -> *])
   where
 
     push
-        :: x a -> Attrs xs a -> Attrs xs a
+        :: attr x -> Attrs attrs x -> Attrs attrs x
 
 
 
     pull
-        :: Attrs xs a -> x a
+        :: Attrs attrs x -> attr x
 
 
 
-instance ( i ~ IndexOf x xs
-         , Admits' x xs i
+instance ( index ~ IndexOf attr attrs
+         , Admits' attr attrs index
          )
-    => Admits x xs
+    => Admits attr attrs
   where
 
-    push xa =
+    push attr =
         let
-          i =
-              Index :: Index (IndexOf x xs)
+          index =
+              Index :: Index (IndexOf attr attrs)
 
         in
-          push' i xa
+          push' index attr
 
 
 
-    pull xs =
+    pull attrs =
         let
-          i =
-              Index :: Index (IndexOf x xs)
+          index =
+              Index :: Index (IndexOf attr attrs)
 
         in
-          pull' i xs
+          pull' index attrs
 
 
 
 stretch
-    :: ( i ~ IndexOf x xs
-       , Admits' x xs i
+    :: ( index ~ IndexOf attr attrs
+       , Admits' attr attrs index
        )
-    => (forall z. x z -> x z)
-    -> Attrs xs a
-    -> Attrs xs a
-stretch f xs =
+    => (forall z. attr z -> attr z)
+    -> Attrs attrs x
+    -> Attrs attrs x
+stretch f attrs =
     let
-      ys =
-          pull xs
+      attr =
+          pull attrs
 
     in
-      push (f ys) xs
+      push (f attr) attrs
 
 
 
-class Admits' (x :: * -> *) (xs :: [* -> *]) (n :: Nat)
+class Admits' (attr :: * -> *) (attrs :: [* -> *]) (n :: Nat)
   where
 
     push'
         :: Index n
-        -> x a
-        -> Attrs xs a
-        -> Attrs xs a
+        -> attr x
+        -> Attrs attrs x
+        -> Attrs attrs x
 
 
 
     pull'
         :: Index n
-        -> Attrs xs a
-        -> x a
+        -> Attrs attrs x
+        -> attr x
 
 
 
-instance xs ~ (x ': xs')
-    => Admits' x xs 'Z
+instance attrs ~ (attr ': xs)
+    => Admits' attr attrs 'Z
   where
 
-    push' _ xa (Attr _ fs) =
-        Attr xa fs
+    push' _ attr (Attr _ attrs) =
+        Attr attr attrs
 
 
 
-    pull' _ (Attr fa _) =
-        fa
+    pull' _ (Attr attr _) =
+        attr
 
 
 
-instance ( i ~ IndexOf x xs'
-         , Admits' x xs' i
+instance ( index ~ IndexOf attr attrs
+         , Admits' attr attrs index
          )
-    => Admits' x (x' ': xs') ('S n)
+    => Admits' attr (attr' ': attrs) ('S n)
   where
 
-    push' _ xa (Attr fa xs) =
+    push' _ attr (Attr attr' attrs) =
         let
-          i =
-              Index :: Index (IndexOf x xs')
+          index =
+              Index :: Index (IndexOf attr attrs)
 
         in
-          Attr fa (push' i xa xs)
+          Attr attr' (push' index attr attrs)
 
 
 
-    pull' _ (Attr _ xs) =
+    pull' _ (Attr _ attrs) =
         let
-          i =
-              Index :: Index (IndexOf x xs')
+          index =
+              Index :: Index (IndexOf attr attrs)
 
         in
-          pull' i xs
+          pull' index attrs
 
 
 
-class AdmitsSubset (xs :: [* -> *]) (ys :: [* -> *])
+class AdmitsSubset (small :: [* -> *]) (large :: [* -> *])
   where
 
     pushSubset
-        :: Attrs xs a
-        -> Attrs ys a
-        -> Attrs ys a
+        :: Attrs small x
+        -> Attrs large x
+        -> Attrs large x
 
 
 
     pullSubset
-        :: Attrs ys a
-        -> Attrs xs a
+        :: Attrs large x
+        -> Attrs small x
 
 
 
-instance AdmitsSubset '[] ys
+instance AdmitsSubset '[] largeAttrs
   where
 
-    pushSubset _ ys =
-        ys
+    pushSubset _ large =
+        large
 
 
 
@@ -253,18 +230,18 @@ instance AdmitsSubset '[] ys
 
 
 
-instance ( Denies x xs
-         , i ~ IndexOf x ys
-         , Admits' x ys i
-         , AdmitsSubset xs ys
+instance ( Denies attr small
+         , index ~ IndexOf attr large
+         , Admits' attr large index
+         , AdmitsSubset small large
          )
-    => AdmitsSubset (x ': xs) ys
+    => AdmitsSubset (attr ': small) large
   where
 
-    pushSubset (Attr xa xs) ys =
-        pushSubset xs (push xa ys)
+    pushSubset (Attr attr small) large=
+        pushSubset small(push attr large)
 
 
 
-    pullSubset ys =
-        Attr (pull ys) (pullSubset ys)
+    pullSubset large =
+        Attr (pull large) (pullSubset large)

@@ -23,8 +23,8 @@ data ITEing k
   where
 
     ITE
-        :: (IORef (Pattern fs m a))
-        -> (IORef (Pattern fs m a))
+        :: (IORef (Pattern scope parent result))
+        -> (IORef (Pattern scope parent result))
         -> k
         -> ITEing k
 
@@ -39,8 +39,8 @@ data ITEable k
 
 
 
-instance Uses ITEable gs m
-    => Binary (Attribute ITEable gs m)
+instance Uses ITEable attrs parent
+    => Binary (Attribute ITEable attrs parent)
   where
 
     get =
@@ -53,11 +53,11 @@ instance Uses ITEable gs m
 
 
 ifThenElse
-    :: Is ITEing fs m
+    :: Is ITEing scope parent
     => Bool
-    -> Pattern fs m a
-    -> Pattern fs m a
-    -> Pattern fs m a
+    -> Pattern scope parent result
+    -> Pattern scope parent result
+    -> Pattern scope parent result
 
 ifThenElse i t e =
     let
@@ -85,8 +85,8 @@ ifThenElse i t e =
 
 
 ifThenElser
-    :: Uses ITEable fs m
-    => Attribute ITEable fs m
+    :: Uses ITEable scope parent
+    => Attribute ITEable scope parent
 
 ifThenElser =
     ITEable return

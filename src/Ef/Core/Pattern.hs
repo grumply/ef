@@ -35,36 +35,36 @@ instance Exception MonadFailString
 
 
 
-data Pattern symbols m a
+data Pattern scope parent result
   where
 
-    Step
-        :: Symbol symbols b
-        -> (    b
-             -> Pattern symbols m a
+    Send
+        :: Symbol scope intermediate
+        -> (    intermediate
+             -> Pattern scope parent result
            )
-        -> Pattern symbols m a
+        -> Pattern scope parent result
 
-    M
-        :: m (Pattern symbols m a)
-        -> Pattern symbols m a
+    Super
+        :: parent (Pattern scope parent result)
+        -> Pattern scope parent result
 
     Pure
-        :: a
-        -> Pattern symbols m a
+        :: result
+        -> Pattern scope parent result
 
     Fail
         :: SomeException
-        -> Pattern symbols m a
+        -> Pattern scope parent result
 
 
 
 rearrange
-    :: ( Functor m
-       , As (Symbol fs) (Symbol sf)
+    :: ( Functor parent
+       , As (Symbol scope) (Symbol scope')
        )
-    => Pattern fs m a
-    -> Pattern sf m a
+    => Pattern scope parent a
+    -> Pattern scope' parent a
 
 rearrange (Fail e) =
     Fail e
@@ -72,36 +72,38 @@ rearrange (Fail e) =
 rearrange (Pure r) =
     Pure r
 
-rearrange (M m) =
-    M (fmap rearrange m)
+rearrange (Super m) =
+    Super (fmap rearrange m)
 
-rearrange (Step sym bp) =
-    Step (conv sym) (rearrange . bp)
+rearrange (Send symbol k) =
+    Send (conv symbol) (rearrange . k)
 
 
 
 upcast
-    :: ( Functor m
-       , Cast small large
+    :: ( Functor parent
+       , Cast scopeSmall scopeLarge
        )
-    => Pattern small m a
-    -> Pattern large m a
+    => Pattern scopeSmall parent result
+    -> Pattern scopeLarge parent result
 
 upcast (Fail e) =
     Fail e
 
-upcast (Pure r) =
-    Pure r
+upcast (Pure result) =
+    Pure result
 
-upcast (M m) =
-    M (fmap upcast m)
+upcast (Super p) =
+    Super (fmap upcast p)
 
-upcast (Step sym bp) =
-    Step (cast sym) (upcast . bp)
+upcast (Send symbol k) =
+    Send (cast symbol) (upcast . k)
 
 
 
-class As x y
+-- | As is an internal convenience utility used to reorder
+--   a set of symbols.
+class x `As` y
   where
 
     conv
@@ -110,7 +112,7 @@ class As x y
 
 
 
-instance As x x
+instance x `As` x
   where
 
     conv =
@@ -118,14 +120,14 @@ instance As x x
 
 
 
-instance As (Symbol '[]) (Symbol '[])
+instance (Symbol '[]) `As` (Symbol '[])
 
 
 
 instance ( Allows x ys
-         , As (Symbol xs) (Symbol ys)
+         , (Symbol xs) `As` (Symbol ys)
          )
-    => As (Symbol (x ': xs)) (Symbol ys)
+    => (Symbol (x ': xs)) `As` (Symbol ys)
   where
 
     conv (Symbol sa) =
@@ -155,8 +157,8 @@ instance Functor m
 
 
 
-instance Functor m
-    => Lift m (Pattern fs m)
+instance Functor parent
+    => Lift parent (Pattern scope parent)
   where
 
     lift =
@@ -164,8 +166,8 @@ instance Functor m
 
 
 
-instance Lift m m'
-    => Lift m (Pattern fs m')
+instance Lift newParent parent
+    => Lift newParent (Pattern scope parent)
   where
 
     lift =
@@ -174,67 +176,70 @@ instance Lift m m'
 
 
 lift_
-    :: Functor m
-    => m a
-    -> Pattern symbols m a
+    :: Functor parent
+    => parent result
+    -> Pattern scope parent result 
 
 lift_ m =
-    M (fmap Pure m)
+    Super (fmap Pure m)
 
 
 
 super
-    :: Functor m
-    => Pattern fs m a
-    -> Pattern gs (Pattern fs m) a
+    :: Functor parent
+    => parent result
+    -> Pattern scope parent result
 
 super =
-    lift
+    lift_
 
 
 
 self
-    :: Is x symbols m
-    => x a
-    -> Pattern symbols m a
+    :: Is symbol scope parent
+    => symbol result
+    -> Pattern scope parent result
 
-self xa =
-    Step (inj xa) return
+self symbol =
+    Send (inj symbol) return
 
 
 
-instance Functor m
-    => Functor (Pattern symbols m)
+instance Functor parent
+    => Functor (Pattern scope parent)
   where
 
-    fmap f p0 =
-        _fmap f p0
+    fmap =
+        _fmap
 
 
 
-instance Monad m
-    => Applicative (Pattern symbols m)
+instance Monad parent
+    => Applicative (Pattern scope parent)
   where
 
-    pure = return
+    pure =
+        return
 
 
 
-    (<*>) = ap
+    (<*>) =
+        ap
 
 
 
-    (*>) = (>>)
+    (*>) =
+        (>>)
 
 
 
-instance Monad m
-    => Monad (Pattern symbols m)
+instance Monad parent
+    => Monad (Pattern scope parent)
   where
 
 #ifdef TRANSFORMERS_SAFE
     return =
-        M . return . Pure
+        Super . return . Pure
 #else
     return =
         Pure
@@ -242,7 +247,8 @@ instance Monad m
 
 
 
-    (>>=) = _bind
+    (>>=) =
+        _bind
 
 
 
@@ -253,10 +259,10 @@ instance Monad m
 
 {-# NOINLINE _fmap #-}
 _fmap
-    :: Functor m
+    :: Functor parent
     => (a -> b)
-    -> Pattern symbols m a
-    -> Pattern symbols m b
+    -> Pattern scope parent a
+    -> Pattern scope parent b
 
 _fmap f =
     go
@@ -268,37 +274,43 @@ _fmap f =
     go (Pure a) =
         Pure (f a)
 
-    go (M m) =
-        M (fmap go m)
+    go (Super m) =
+        Super (fmap go m)
 
-    go (Step sym bp) =
-        Step sym (go . bp)
+    go (Send symbol k) =
+        Send symbol (go . k)
 
 
 
 {-# RULES
 
-    "_fmap f (Step syms k)"
-        forall syms k f.
-            _fmap f (Step syms k) =
-                Step syms (_fmap f . k)
+    "_fmap f (Fail e)"
+        forall f e.
+            _fmap f (Fail e) =
+                Fail e
     ;
 
-    "_fmap f (M m)"
+    "_fmap f (Send symbol k)"
+        forall symbol k f.
+            _fmap f (Send symbol k) =
+                Send symbol (_fmap f . k)
+    ;
+
+    "_fmap f (Super m)"
         forall f m.
-            _fmap f (M m) =
+            _fmap f (Super m) =
                 let
                   continue =
                       _fmap f
 
                 in
-                  M (fmap continue m)
+                  Super (fmap continue m)
     ;
 
-    "_fmap f (Pure r)"
-        forall f r.
-            _fmap f (Pure r) =
-                Pure (f r)
+    "_fmap f (Pure result)"
+        forall f result.
+            _fmap f (Pure result) =
+                Pure (f result)
     ;
 
   #-}
@@ -307,10 +319,10 @@ _fmap f =
 
 {-# NOINLINE _bind #-}
 _bind
-    :: Functor m
-    => Pattern symbols m a
-    -> (a -> Pattern symbols m a')
-    -> Pattern symbols m a'
+    :: Functor parent
+    => Pattern scope parent intermediate
+    -> (intermediate-> Pattern scope parent result)
+    -> Pattern scope parent result
 
 p0 `_bind` f =
     go p0
@@ -319,46 +331,54 @@ p0 `_bind` f =
     go (Fail e) =
         Fail e
 
-    go (Step syms k) =
-        Step syms (go . k)
+    go (Send symbol k) =
+        Send symbol (go . k)
 
     go (Pure res) =
         f res
 
-    go (M m) =
-        M (fmap go m)
+    go (Super m) =
+        Super (fmap go m)
 
 
 
 {-# RULES
 
-    "_bind (Step syms k) f"
-        forall syms k f .
-            _bind (Step syms k) f =
-                Step syms (flip _bind f . k)
+    "_bind (Fail e) f"
+        forall e f .
+            _bind (Fail e) f =
+                Fail e
     ;
 
-    "_bind (M m) f"
-        forall m f.
-            _bind (M m) f =
+    "_bind (Send symbol k) f"
+        forall symbol k f .
+            _bind (Send symbol k) f =
+                Send symbol (flip _bind f . k)
+    ;
+
+    "_bind (Super m) f"
+        forall m f .
+            _bind (Super m) f =
                 let
                   continue =
                       flip _bind f
 
                 in
-                  M (fmap continue m)
+                  Super (fmap continue m)
     ;
 
-    "_bind (Pure r) f"
-        forall r f.
-            _bind (Pure r) f =
-                f r
+    "_bind (Pure result) f"
+        forall result f .
+            _bind (Pure result) f =
+                f result
     ;
 
   #-}
 
-instance MonadPlus m
-    => Alternative (Pattern fs m)
+
+
+instance MonadPlus parent
+    => Alternative (Pattern scope parent)
   where
 
     empty =
@@ -371,8 +391,8 @@ instance MonadPlus m
 
 
 
-instance MonadPlus m
-    => MonadPlus (Pattern fs m)
+instance MonadPlus parent
+    => MonadPlus (Pattern scope parent)
   where
 
     mzero =
@@ -386,30 +406,30 @@ instance MonadPlus m
 
 
 _mplus
-    :: MonadPlus m
-    => Pattern fs m a
-    -> Pattern fs m a
-    -> Pattern fs m a
+    :: MonadPlus parent
+    => Pattern scope parent result
+    -> Pattern scope parent result
+    -> Pattern scope parent result
 
 _mplus p0 p1 =
     go p0
   where
 
-    go (M m) =
-        M (fmap go m `mplus` return p1)
+    go (Super m) =
+        Super (fmap go m `mplus` return p1)
 
-    go (Step sym bp) =
-        Step sym (go . bp)
+    go (Send symbol k) =
+        Send symbol (go . k)
 
     go x =
         x
 
 
 
-instance ( Monad m
-         , Monoid r
+instance ( Monad parent
+         , Monoid result
          )
-    => Monoid (Pattern fs m r)
+    => Monoid (Pattern scope parent result)
   where
 
     mempty =
@@ -423,12 +443,12 @@ instance ( Monad m
 
 
 _mappend
-    :: ( Monad m
-       , Monoid r
+    :: ( Monad parent
+       , Monoid result
        )
-    => Pattern fs m r
-    -> Pattern fs m r
-    -> Pattern fs m r
+    => Pattern scope parent result
+    -> Pattern scope parent result
+    -> Pattern scope parent result
 
 _mappend p0 p1 =
     go p0
@@ -437,14 +457,14 @@ _mappend p0 p1 =
     go (Fail e) =
         Fail e
 
-    go (Pure r) =
-        fmap (mappend r) p1
+    go (Pure result) =
+        fmap (mappend result) p1
 
-    go (M m) =
-        M (fmap go m)
+    go (Super m) =
+        Super (fmap go m)
 
-    go (Step sym bp) =
-        Step sym (go . bp)
+    go (Send symbol k) =
+        Send symbol (go . k)
 
 
 
@@ -487,10 +507,10 @@ _mappend p0 p1 =
 
 
 cutoffSteps
-    :: Monad m
+    :: Monad parent
     => Integer
-    -> Pattern fs m a
-    -> Pattern fs m (Maybe a)
+    -> Pattern scope parent result
+    -> Pattern scope parent (Maybe result)
 
 cutoffSteps _ (Fail e) =
     Fail e
@@ -498,32 +518,32 @@ cutoffSteps _ (Fail e) =
 cutoffSteps ((<= 0) -> True) _ =
     return Nothing
 
-cutoffSteps n (Pure a) =
-    Pure (Just a)
+cutoffSteps _ (Pure result) =
+    Pure (Just result)
 
-cutoffSteps n (M m) =
+cutoffSteps stepsRemaining (Super m) =
     let
       newCutoff =
-          cutoff (n - 1)
+          cutoffSteps (stepsRemaining - 1)
 
     in
-      M (fmap newCutoff m)
+      Super (fmap newCutoff m)
 
-cutoffSteps n (Step sym k) =
+cutoffSteps stepsRemaining (Send symbol k) =
     let
       newCutoff =
-          cutoff (n - 1)
+          cutoffSteps (stepsRemaining - 1)
 
     in
-      Step sym (newCutoff . k)
+      Send symbol (newCutoff . k)
 
 
 
 cutoff
-    :: Monad m
+    :: Monad parent
     => Integer
-    -> Pattern fs m a
-    -> Pattern fs m (Maybe a)
+    -> Pattern scope parent result
+    -> Pattern scope parent (Maybe result)
 
 cutoff _ (Fail e) =
     Fail e
@@ -531,21 +551,21 @@ cutoff _ (Fail e) =
 cutoff ((<= 0) -> True) _ =
     return Nothing
 
-cutoff n (Pure a) =
-    Pure (Just a)
+cutoff _ (Pure result) =
+    Pure (Just result)
 
-cutoff n (M m) =
+cutoff stepsRemaining (Super m) =
     let
       newCutoff =
-          cutoff (n - 1)
+          cutoff (stepsRemaining - 1)
 
     in
-      M (fmap newCutoff m)
+      Super (fmap newCutoff m)
 
-cutoff n (Step sym k) =
+cutoff stepsRemaining (Send symbol k) =
     let
       newCutoff =
-          cutoff (n - 1)
+          cutoff (stepsRemaining - 1)
 
     in
-      Step sym (newCutoff . k)
+      Send symbol (newCutoff . k)

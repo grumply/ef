@@ -51,40 +51,40 @@ instance Exception Breaches
 
 
 
-data Consideration variables result fs m
+data Consideration variables result scope parent
   where
 
     Precondition
-        :: Pattern fs m ()
-        -> Consideration variables result fs m
+        :: Pattern scope parent ()
+        -> Consideration variables result scope parent
 
     Postcondition
         :: (    result
-             -> Pattern fs m ()
+             -> Pattern scope parent ()
            )
-        -> Consideration variables result fs m
+        -> Consideration variables result scope parent
 
     Invariant
-        :: Pattern fs m ()
-        -> Consideration variables result fs m
+        :: Pattern scope parent ()
+        -> Consideration variables result scope parent
 
 
 
 
-data Contract variables result fs m
+data Contract variables result scope parent
   where
 
     Contract
-        :: [Consideration variables result fs m]
-        -> Pattern fs m result
-        -> Contract variables result fs m
+        :: [Consideration variables result scope parent]
+        -> Pattern scope parent result
+        -> Contract variables result scope parent
 
 
 
 consider
-    :: Monad m
-    => [Pattern fs m ()]
-    -> Pattern fs m [SomeException]
+    :: Monad parent
+    => [Pattern scope parent ()]
+    -> Pattern scope parent [SomeException]
 
 consider considerations =
     do
@@ -98,10 +98,10 @@ consider considerations =
 
 
 runWithInvariants
-    :: Monad m
-    => [Pattern fs m ()]
-    -> Pattern fs m result
-    -> Pattern fs m result
+    :: Monad parent
+    => [Pattern scope parent ()]
+    -> Pattern scope parent result
+    -> Pattern scope parent result
 
 runWithInvariants invariants method =
     let
@@ -114,24 +114,21 @@ runWithInvariants invariants method =
       test (Fail e) =
           Fail e
 
-      test (M m) =
-          M (fmap test m)
+      test (Super m) =
+          Super (fmap test m)
 
-      test (Step sym bp) =
-          Step sym $ \value ->
+      test (Send symbol k) =
+          Send symbol $ \result ->
               do
                 results <- invariant
                 let
                   failures =
                       fst (partitionEithers results)
 
-                case failures of
-
-                    [] ->
-                        test (bp value)
-
-                    xs ->
-                        throw (Breaches During xs)
+                if null failures then
+                    test (k result)
+                else
+                    throw (Breaches During failures)
 
     in
       test method
@@ -139,10 +136,10 @@ runWithInvariants invariants method =
 
 
 contract
-    :: forall variables result fs m.
-       Monad m
-    => Contract variables result fs m
-    -> Pattern fs m result
+    :: forall variables result scope parent.
+       Monad parent
+    => Contract variables result scope parent
+    -> Pattern scope parent result
 
 contract (Contract considerations method) =
 #ifndef NO_CONTRACTS

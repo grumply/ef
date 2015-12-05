@@ -13,28 +13,28 @@ import Ef.Lang.Set
 
 
 
-data Reflection fs gs m =
+data Reflection scope attrs parent =
     Reflection
         {
           project
-              :: Pattern fs m (Object gs m)
+              :: Pattern scope parent (Object attrs parent)
 
         , inject
-              :: Object gs m
-              -> Pattern fs m ()
+              :: Object attrs parent
+              -> Pattern scope parent ()
         }
 
 
 
 withReflection
-    :: ( Is Getting fs m
-       , Is Setting fs m
-       , (Attrs gs) `Witnessing` (Symbol fs)
+    :: ( Is Getting scope parent
+       , Is Setting scope parent
+       , (Attrs attrs) `Witnessing` (Symbol scope)
        )
-    => (    Reflection fs gs m
-         -> Pattern fs m a
+    => (    Reflection scope attrs parent
+         -> Pattern scope parent result
        )
-    -> Pattern fs m a
+    -> Pattern scope parent result
 
 withReflection f =
     f Reflection

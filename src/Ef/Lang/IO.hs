@@ -19,9 +19,9 @@ import qualified Control.Exception as Exc
 
 
 unsafe
-    :: Lift IO m
-    => IO a
-    -> Pattern fs m a
+    :: Lift IO parent
+    => IO result
+    -> Pattern scope parent result
 
 unsafe =
     lift
@@ -29,9 +29,9 @@ unsafe =
 
 
 masked_
-    :: Lift IO m
-    => IO a
-    -> Pattern fs m a
+    :: Lift IO parent
+    => IO result
+    -> Pattern scope parent result
 
 masked_ =
     lift . Exc.mask_
@@ -39,11 +39,11 @@ masked_ =
 
 
 masked
-    :: Lift IO m
+    :: Lift IO parent
     => (   (forall (a :: *). IO a -> IO a)
-         -> IO b
+         -> IO result
        )
-    -> Pattern fs m b
+    -> Pattern scope parent result
 
 masked =
     lift . Exc.mask
@@ -51,11 +51,11 @@ masked =
 
 
 io
-    :: ( Monad m
-       , Lift IO m
+    :: ( Monad parent
+       , Lift IO parent
        )
-    => IO a
-    -> Pattern fs m a
+    => IO result
+    -> Pattern scope parent result
 
 io ioa =
     do

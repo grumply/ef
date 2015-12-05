@@ -23,11 +23,11 @@ import GHC.Generics
 
 
 
-newtype Promise a =
+newtype Promise result =
 
     Promise
         { getPromise
-              :: MVar a
+              :: MVar result
         }
 
   deriving Eq
@@ -35,7 +35,7 @@ newtype Promise a =
 
 
 newPromiseIO
-    :: IO (Promise a)
+    :: IO (Promise result)
 
 newPromiseIO =
     Promise <$> newEmptyMVar
@@ -43,10 +43,10 @@ newPromiseIO =
 
 
 newPromise
-    :: ( Monad m
-       , Lift IO m
+    :: ( Monad parent
+       , Lift IO parent
        )
-    => Pattern fs m (Promise a)
+    => Pattern scope parent (Promise result)
 
 newPromise =
     io newPromiseIO
@@ -54,11 +54,11 @@ newPromise =
 
 
 demand
-    :: ( Monad m
-       , Lift IO m
+    :: ( Monad parent
+       , Lift IO parent
        )
-    => Promise a
-    -> Pattern fs m a
+    => Promise result
+    -> Pattern scope parent result
 
 demand =
     io . demandIO
@@ -66,8 +66,8 @@ demand =
 
 
 demandIO
-    :: Promise a
-    -> IO a
+    :: Promise result
+    -> IO result
 
 demandIO =
     readMVar . getPromise
@@ -75,12 +75,12 @@ demandIO =
 
 
 fulfill
-    :: ( Monad m
-       , Lift IO m
+    :: ( Monad parent
+       , Lift IO parent
        )
-    => Promise a
-    -> a
-    -> Pattern fs m Bool
+    => Promise result
+    -> result
+    -> Pattern scope parent Bool
 
 fulfill =
     (io .) . fulfillIO
@@ -88,9 +88,9 @@ fulfill =
 
 
 fulfillIO
-    :: Promise a
-    -> a
+    :: Promise result
+    -> result
     -> IO Bool
 
-fulfillIO (Promise p) a =
-    tryPutMVar p a
+fulfillIO (Promise p) result =
+    tryPutMVar p result

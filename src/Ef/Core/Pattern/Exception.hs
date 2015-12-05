@@ -35,7 +35,7 @@ import Control.Exception
 throw
     :: Exception e
     => e
-    -> Pattern fs m a
+    -> Pattern scope parent a
 
 throw e =
     Fail (toException e)
@@ -43,12 +43,12 @@ throw e =
 
 
 catch
-    :: ( Functor m
+    :: ( Functor parent
        , Exception e
        )
-    => Pattern fs m a
-    -> (e -> Pattern fs m a)
-    -> Pattern fs m a
+    => Pattern scope parent a
+    -> (e -> Pattern scope parent a)
+    -> Pattern scope parent a
 
 catch plan handler =
     rewrite plan
@@ -56,11 +56,11 @@ catch plan handler =
     rewrite (Pure r) =
         Pure r
 
-    rewrite (M m) =
-        M (fmap rewrite m)
+    rewrite (Super m) =
+        Super (fmap rewrite m)
 
-    rewrite (Step sym bp) =
-        Step sym (rewrite . bp)
+    rewrite (Send sym bp) =
+        Send sym (rewrite . bp)
 
 
     rewrite (Fail se) =
@@ -75,25 +75,25 @@ catch plan handler =
 
 
 handle
-    :: ( Functor m
+    :: ( Functor parent
        , Exception e
        )
-    => (e -> Pattern fs m a)
-    -> Pattern fs m a
-    -> Pattern fs m a
+    => (e -> Pattern scope parent a)
+    -> Pattern scope parent a
+    -> Pattern scope parent a
 
 handle = flip catch
 
 
 
 catchJust
-    :: ( Functor m
+    :: ( Functor parent
        , Exception e
        )
     => (e -> Maybe b)
-    -> Pattern fs m a
-    -> (b -> Pattern fs m a)
-    -> Pattern fs m a
+    -> Pattern scope parent a
+    -> (b -> Pattern scope parent a)
+    -> Pattern scope parent a
 
 catchJust p a handler =
     catch a handler'
@@ -110,13 +110,13 @@ catchJust p a handler =
 
 
 handleJust
-    :: ( Functor m
+    :: ( Functor parent
        , Exception e
        )
     => (e -> Maybe b)
-    -> (b -> Pattern fs m a)
-    -> Pattern fs m a
-    -> Pattern fs m a
+    -> (b -> Pattern scope parent a)
+    -> Pattern scope parent a
+    -> Pattern scope parent a
 
 handleJust p =
     flip (catchJust p)
@@ -124,13 +124,13 @@ handleJust p =
 
 
 mapException
-    :: ( Functor m
+    :: ( Functor parent
        , Exception e
        , Exception e'
        )
     => (e -> e')
-    -> Pattern fs m a
-    -> Pattern fs m a
+    -> Pattern scope parent a
+    -> Pattern scope parent a
 
 mapException f p =
     let
@@ -143,11 +143,11 @@ mapException f p =
 
 
 try
-    :: ( Monad m
+    :: ( Monad parent
        , Exception e
        )
-    => Pattern fs m a
-    -> Pattern fs m (Either e a)
+    => Pattern scope parent a
+    -> Pattern scope parent (Either e a)
 
 try p =
     let
@@ -166,13 +166,13 @@ try p =
 
 tryJust
     :: ( Exception e
-       , Monad m
+       , Monad parent
        )
     => (    e
          -> Maybe b
        )
-    -> Pattern fs m a
-    -> Pattern fs m (Either b a)
+    -> Pattern scope parent a
+    -> Pattern scope parent (Either b a)
 
 tryJust analyze p =
     do
@@ -200,10 +200,10 @@ tryJust analyze p =
 
 
 onException
-    :: Monad m
-    => Pattern fs m a
-    -> Pattern fs m b
-    -> Pattern fs m a
+    :: Monad parent
+    => Pattern scope parent a
+    -> Pattern scope parent b
+    -> Pattern scope parent a
 
 onException p sequel =
     let
@@ -218,10 +218,10 @@ onException p sequel =
 
 
 finally
-    :: Monad m
-    => Pattern fs m a
-    -> Pattern fs m b
-    -> Pattern fs m a
+    :: Monad parent
+    => Pattern scope parent a
+    -> Pattern scope parent b
+    -> Pattern scope parent a
 
 finally p sequel =
     do
@@ -232,12 +232,12 @@ finally p sequel =
 
 
 bracket
-    :: forall fs m a b c.
-       Monad m
-    => Pattern fs m a
-    -> (a -> Pattern fs m b)
-    -> (a -> Pattern fs m c)
-    -> Pattern fs m c
+    :: forall scope parent a b c.
+       Monad parent
+    => Pattern scope parent a
+    -> (a -> Pattern scope parent b)
+    -> (a -> Pattern scope parent c)
+    -> Pattern scope parent c
 
 bracket acquire cleanup p =
     do
@@ -259,11 +259,11 @@ bracket acquire cleanup p =
 
 
 bracket_
-    :: Monad m
-    => Pattern fs m a
-    -> Pattern fs m b
-    -> Pattern fs m c
-    -> Pattern fs m c
+    :: Monad parent
+    => Pattern scope parent a
+    -> Pattern scope parent b
+    -> Pattern scope parent c
+    -> Pattern scope parent c
 
 bracket_ acquire after computation =
     bracket
@@ -274,11 +274,11 @@ bracket_ acquire after computation =
 
 
 bracketOnError
-    :: Monad m
-    => Pattern fs m a
-    -> (a -> Pattern fs m b)
-    -> (a -> Pattern fs m c)
-    -> Pattern fs m c
+    :: Monad parent
+    => Pattern scope parent a
+    -> (a -> Pattern scope parent b)
+    -> (a -> Pattern scope parent c)
+    -> Pattern scope parent c
 
 bracketOnError acquire cleanup p =
     do
@@ -294,20 +294,20 @@ bracketOnError acquire cleanup p =
 
 
 
-data Handler fs m a
+data Handler scope parent a
   where
 
     Handler
         :: Exception e
         => (    e
-             -> Pattern fs m a
+             -> Pattern scope parent a
            )
-        -> Handler fs m a
+        -> Handler scope parent a
 
 
 
-instance Functor m
-    => Functor (Handler fs m)
+instance Functor parent
+    => Functor (Handler scope parent)
   where
 
     fmap f (Handler h) =
@@ -316,28 +316,28 @@ instance Functor m
 
 
 catches
-    :: Functor m
-    => Pattern fs m a
-    -> [Handler fs m a]
-    -> Pattern fs m a
+    :: Functor parent
+    => Pattern scope parent a
+    -> [Handler scope parent a]
+    -> Pattern scope parent a
 
 catches p handlers =
     p `catch` catchesHandler handlers
 
 
 handles
-    :: Functor m
-    => [Handler fs m a]
-    -> Pattern fs m a
-    -> Pattern fs m a
+    :: Functor parent
+    => [Handler scope parent a]
+    -> Pattern scope parent a
+    -> Pattern scope parent a
 handles =
     flip catches
 
 
 catchesHandler
-    :: [Handler fs m a]
+    :: [Handler scope parent a]
     -> SomeException
-    -> Pattern fs m a
+    -> Pattern scope parent a
 
 catchesHandler handlers e =
     let

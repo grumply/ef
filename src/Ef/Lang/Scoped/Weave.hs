@@ -90,13 +90,13 @@ data Weaving k
     Request
         :: Int
         -> a'
-        -> (a  -> Pattern fs m r)
+        -> (a  -> Pattern scope parent r)
         -> Weaving k
 
     Respond
         :: Int
         -> b
-        -> (b' -> Pattern fs m r)
+        -> (b' -> Pattern scope parent r)
         -> Weaving k
 
 
@@ -111,8 +111,8 @@ data Weavable k
 
 
 
-instance Uses Weavable gs m
-    => Binary (Attribute Weavable gs m)
+instance Uses Weavable attrs parent
+    => Binary (Attribute Weavable attrs parent)
   where
 
     get =
@@ -126,8 +126,8 @@ instance Uses Weavable gs m
 
 
 freshScope
-    :: Is Weaving fs m
-    => Pattern fs m Int
+    :: Is Weaving scope parent
+    => Pattern scope parent Int
 
 freshScope =
     self (FreshScope id)
@@ -135,8 +135,8 @@ freshScope =
 
 
 weaver
-    :: Uses Weavable fs m
-    => Attribute Weavable fs m
+    :: Uses Weavable attrs parent
+    => Attribute Weavable attrs parent
 
 weaver =
     Weavable 0 $ \fs ->
@@ -154,12 +154,12 @@ weaver =
 
 
 getScope
-    :: Is Weaving fs m
-    => Pattern fs m a
-    -> m Int
+    :: Is Weaving scope parent
+    => Pattern scope parent a
+    -> parent Int
 
-getScope (Step sym _) =
-    case prj sym of
+getScope (Send symbol _) =
+    case prj symbol of
 
         Just x ->
             case x of
@@ -181,15 +181,19 @@ instance Witnessing Weavable Weaving
 
 
 weave
-    :: Is Weaving fs m
-    => Effect fs m r
-    -> Pattern fs m r
+    :: Is Weaving scope parent
+    => Effect scope parent r
+    -> Pattern scope parent r
 
 weave e =
     do
       scope <- freshScope
-      rewrite scope $ runWoven e (\a' apl -> self (Request scope a' apl))
-                                 (\b b'p -> self (Respond scope b b'p))
+      rewrite scope $
+          runWoven e
+              (\a' apl -> self (Request scope a' apl))
+              (\b b'p -> self (Respond scope b b'p))
+
+
 
 rewrite rewriteScope = go
   where
@@ -200,10 +204,10 @@ rewrite rewriteScope = go
     go (Pure r) =
         Pure r
 
-    go (M m) =
-        M (fmap go m)
+    go (Super m) =
+        Super (fmap go m)
 
-    go (Step sym bp) =
+    go (Send symbol k) =
         let
           check currentScope scoped =
               if currentScope == rewriteScope then
@@ -212,10 +216,10 @@ rewrite rewriteScope = go
                   ignore
 
           ignore =
-              Step sym (go . bp)
+              Send symbol (go . k)
 
         in
-          case prj sym of
+          case prj symbol of
 
               Just x  ->
                   case x of
@@ -228,7 +232,7 @@ rewrite rewriteScope = go
                           check currentScope $
                               closed (unsafeCoerce b)
 
-              Nothing -> Step sym (go . bp)
+              Nothing -> Send symbol (go . k)
 
 
 
@@ -261,11 +265,11 @@ instance Monad m
             go (Fail err) =
                 Fail err
 
-            go (M m) =
-                M (fmap go m)
+            go (Super m) =
+                Super (fmap go m)
 
-            go (Step sym bp) =
-                Step sym (go . bp)
+            go (Send sym k) =
+                Send sym (go . k)
 
             go (Pure f) =
                 fmap f (runWoven wx (unsafeCoerce up)
@@ -314,11 +318,11 @@ instance ( Monad m
             go (Fail err) =
                 Fail err
 
-            go (M m) =
-                M (fmap go m)
+            go (Super m) =
+                Super (fmap go m)
 
-            go (Step sym bp) =
-                Step sym (go . bp)
+            go (Send sym bp) =
+                Send sym (go . bp)
 
             go (Pure result) =
                 let
@@ -368,16 +372,16 @@ instance MonadPlus m
             go (Pure r) =
                 Pure r
 
-            go (Step sym bp) =
-                Step sym (go . bp)
+            go (Send sym bp) =
+                Send sym (go . bp)
 
-            go (M m) =
+            go (Super m) =
               let
                 routine =
                     runWoven w1 (unsafeCoerce up) (unsafeCoerce dn)
 
               in
-                M (fmap go m `mplus` return routine)
+                Super (fmap go m `mplus` return routine)
 
 
 
@@ -687,10 +691,10 @@ substituteResponds fb rewriteScope up dn =
     go (Pure r) =
         Pure r
 
-    go (M m) =
-        M (fmap go m)
+    go (Super m) =
+        Super (fmap go m)
 
-    go (Step sym bp) =
+    go (Send sym bp) =
         let
           check currentScope scoped =
               if currentScope == rewriteScope then
@@ -699,7 +703,7 @@ substituteResponds fb rewriteScope up dn =
                   ignore
 
           ignore =
-              Step sym (go . bp)
+              Send sym (go . bp)
 
         in
           case prj sym of
@@ -862,10 +866,10 @@ substituteRequests fb' rewriteScope up dn p1 = go p1
     go (Pure r) =
         Pure r
 
-    go (M m) =
-        M (fmap go m)
+    go (Super m) =
+        Super (fmap go m)
 
-    go (Step sym bp) =
+    go (Send sym bp) =
         let
           check currentScope scoped =
               if currentScope == rewriteScope then
@@ -874,7 +878,7 @@ substituteRequests fb' rewriteScope up dn p1 = go p1
                   ignore
 
           ignore =
-              Step sym (go . bp)
+              Send sym (go . bp)
 
         in
           case prj sym of
@@ -1023,10 +1027,10 @@ pushRewrite rewriteScope up dn fb0 p0 =
         goLeft' (Fail err) =
             Fail err
 
-        goLeft' (M m) =
-            M (fmap goLeft' m)
+        goLeft' (Super m) =
+            Super (fmap goLeft' m)
 
-        goLeft' (Step sym bp) =
+        goLeft' (Send sym bp) =
             let
               check currentScope scoped =
                   if currentScope == rewriteScope then
@@ -1035,7 +1039,7 @@ pushRewrite rewriteScope up dn fb0 p0 =
                       ignore
 
               ignore =
-                  Step sym (goLeft' . bp)
+                  Send sym (goLeft' . bp)
 
             in
               case prj sym of
@@ -1059,13 +1063,13 @@ pushRewrite rewriteScope up dn fb0 p0 =
         goRight' (Fail err) =
             Fail err
 
-        goRight' (M m) =
-            M (fmap goRight' m)
+        goRight' (Super m) =
+            Super (fmap goRight' m)
 
         goRight' (Pure r) =
             Pure r
 
-        goRight' (Step sym bp) =
+        goRight' (Send sym bp) =
             let
               check currentScope scoped =
                   if currentScope == rewriteScope then
@@ -1074,7 +1078,7 @@ pushRewrite rewriteScope up dn fb0 p0 =
                       ignore
 
               ignore =
-                  Step sym (goRight' . bp)
+                  Send sym (goRight' . bp)
             in
               case prj sym of
 
@@ -1181,13 +1185,13 @@ pullRewrite rewriteScope up dn fb' p =
         goRight' (Fail err) =
             Fail err
 
-        goRight' (M m) =
-            M (fmap goRight' m)
+        goRight' (Super m) =
+            Super (fmap goRight' m)
 
         goRight' (Pure r) =
             Pure r
 
-        goRight' (Step sym bp) =
+        goRight' (Send sym bp) =
             let
               check currentScope scoped =
                   if currentScope == rewriteScope then
@@ -1196,7 +1200,7 @@ pullRewrite rewriteScope up dn fb' p =
                       ignore
 
               ignore =
-                  Step sym (goRight' . bp)
+                  Send sym (goRight' . bp)
             in
               case prj sym of
 
@@ -1220,13 +1224,13 @@ pullRewrite rewriteScope up dn fb' p =
         goLeft' (Fail err) =
             Fail err
 
-        goLeft' (M m) =
-            M (fmap goLeft' m)
+        goLeft' (Super m) =
+            Super (fmap goLeft' m)
 
         goLeft' (Pure r) =
             Pure r
 
-        goLeft' (Step sym bp') =
+        goLeft' (Send sym bp') =
             let
               check currentScope scoped =
                   if currentScope == rewriteScope then
@@ -1235,7 +1239,7 @@ pullRewrite rewriteScope up dn fb' p =
                       ignore
 
               ignore =
-                  Step sym (goLeft' . bp')
+                  Send sym (goLeft' . bp')
 
             in
               case prj sym of

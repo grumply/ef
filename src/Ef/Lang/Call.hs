@@ -28,7 +28,7 @@ module Ef.Lang.Call
     , ReceiveResult(..)
     , runChannel
 
-    , TypeOfScope(..)
+    , TypeOfAttrs(..)
     , TypeOfParent(..)
     , CommunicationFailure(..)
     , HandshakeFailure(..)
@@ -70,14 +70,14 @@ import Unsafe.Coerce
 
 
 runChannel
-    :: ( (Attrs gs) `Witnessing` (Symbol fs)
-       , Monad m
-       , Lift IO m
-       , Typeable fs
-       , Typeable m
+    :: ( (Attrs attrs) `Witnessing` (Symbol scope)
+       , Monad parent
+       , Lift IO parent
+       , Typeable scope
+       , Typeable parent
        )
-    => Channel gs m
-    -> Pattern fs m (Either CommunicationFailure ReceiveResult)
+    => Channel attrs parent
+    -> Pattern scope parent (Either CommunicationFailure ReceiveResult)
 
 runChannel chan = try loop
   where
@@ -115,26 +115,26 @@ data BinaryResult =
 
 
 
-data Remoteable variables fs m a =
-       ( Typeable fs
-       , Typeable m
+data Remoteable variables scope parent result =
+       ( Typeable scope
+       , Typeable parent
        , Binary variables
        )
-    => Remoteable (BSL.ByteString -> Pattern fs m BinaryResult)
+    => Remoteable (BSL.ByteString -> Pattern scope parent BinaryResult)
 
 
 
 remoteable
-    :: ( Typeable fs
-       , Typeable m
-       , Functor m
+    :: ( Typeable scope
+       , Typeable parent
+       , Functor parent
        , Binary result
        , Binary variables
        )
     => (    variables
-         -> Pattern fs m result  
+         -> Pattern scope parent result
        )
-    -> Remoteable variables fs m result
+    -> Remoteable variables scope parent result
 
 remoteable method =
     Remoteable $ 
@@ -152,12 +152,12 @@ type Remote variables fs m a =
 
 
 
-data Channel (fs :: [* -> *]) (m :: * -> *)
+data Channel (attrs :: [* -> *]) (parent :: * -> *)
   where
 
     Channel
         :: NS.Socket
-        -> Channel fs m
+        -> Channel attrs parent
 
 undefined_sp =
     static (0 :: Int)
@@ -173,17 +173,18 @@ close chan =
 --       BadMessageLength
 --       BadMessage
 sendRPC
-    :: ( Monad m'
-       , Typeable fs
-       , Lift IO m'
-       , Binary a
+    :: ( Monad parent'
+       , Typeable scope
+       , Lift IO parent'
+       , Binary result
        , Binary variables
+       , (Attrs attrs) `Witnessing` (Symbol scope)
        )
-    => Channel fs m
+    => Channel attrs parent
     -> RequestType
     -> variables
-    -> Remote variables fs m a
-    -> Pattern gs m' a
+    -> Remote variables scope parent result
+    -> Pattern scope' parent' result
 
 sendRPC (Channel sock) Close _ _ =
     do
@@ -273,15 +274,15 @@ sendRPC (Channel sock) requestType variables sp =
 --       CouldNotSend
 --   as well as any exceptions the method itself might throw.
 receiveRPC
-    :: forall fs gs m.
-       ( Lift IO m
-       , (Attrs gs) `Witnessing` (Symbol fs)
-       , Monad m
-       , Typeable fs
-       , Typeable m
+    :: forall scope attrs parent.
+       ( Lift IO parent
+       , (Attrs attrs) `Witnessing` (Symbol scope)
+       , Monad parent
+       , Typeable scope
+       , Typeable parent
        )
-    => Channel gs m
-    -> Pattern fs m ReceiveResult
+    => Channel attrs parent
+    -> Pattern scope parent ReceiveResult
 
 receiveRPC chan@(Channel sock) =
     do
@@ -342,11 +343,11 @@ receiveRPC chan@(Channel sock) =
 
 
 
-newtype TypeOfScope =
-    TypeOfScope TypeRep
+newtype TypeOfAttrs =
+    TypeOfAttrs TypeRep
   deriving (Eq,Show,Generic)
 
-instance Binary TypeOfScope
+instance Binary TypeOfAttrs
 
 
 
@@ -403,12 +404,12 @@ data HandshakeFailure
   where
 
     BadScopeAndParent
-        :: (TypeOfScope,TypeOfScope)
+        :: (TypeOfAttrs,TypeOfAttrs)
         -> (TypeOfParent,TypeOfParent)
         -> HandshakeFailure
 
     BadScope
-        :: (TypeOfScope,TypeOfScope)
+        :: (TypeOfAttrs,TypeOfAttrs)
         -> HandshakeFailure
 
     BadParent
@@ -425,7 +426,7 @@ data Handshake
   where
 
     Handshake
-        :: TypeOfScope
+        :: TypeOfAttrs
         -> TypeOfParent
         -> Handshake
 
@@ -534,13 +535,13 @@ data Remoteness
 
 
 receive_
-    :: ( Binary a
-       , Lift IO m
-       , Monad m
+    :: ( Binary result
+       , Lift IO parent
+       , Monad parent
        )
     => NS.Socket
     -> Compression
-    -> Pattern fs m a
+    -> Pattern scope parent result
 
 receive_ sock compression =
     do
@@ -578,14 +579,14 @@ receive_ sock compression =
 
 
 send_
-    :: ( Binary a
-       , Lift IO m
-       , Monad m
+    :: ( Binary result
+       , Lift IO parent
+       , Monad parent
        )
     => Compression
     -> NS.Socket
-    -> a
-    -> Pattern fs m ()
+    -> result
+    -> Pattern scope parent ()
 
 send_ Compressed sock a =
     let
@@ -646,16 +647,16 @@ send_ _ sock a =
 
 
 awaitOn
-    :: forall fs gs m.
-       ( Typeable gs
-       , (Attrs gs) `Witnessing` (Symbol fs)
-       , Typeable m
-       , Monad m
-       , Lift IO m
+    :: forall scope attrs parent.
+       ( Typeable attrs
+       , (Attrs attrs) `Witnessing` (Symbol scope)
+       , Typeable parent
+       , Monad parent
+       , Lift IO parent
        )
     => Remoteness
     -> NS.SockAddr
-    -> Pattern fs m (Channel gs m)
+    -> Pattern scope parent (Channel attrs parent)
 
 awaitOn remoteness sockAddr =
     do
@@ -675,28 +676,28 @@ awaitOn remoteness sockAddr =
                     NS.close sock
                     return sender
       let
-        expectedScope =
-            TypeOfScope $ (typeOf :: Proxy gs -> TypeRep) (undefined :: Proxy gs)
+        expectedAttrs =
+            TypeOfAttrs $ (typeOf :: Proxy attrs -> TypeRep) (undefined :: Proxy attrs)
 
         expectedParent =
-            TypeOfParent $ (typeOf :: Proxy m -> TypeRep) (undefined :: Proxy m)
+            TypeOfParent $ (typeOf :: Proxy parent -> TypeRep) (undefined :: Proxy parent)
 
-      Handshake wantedScope wantedParent <- receive_ sock Uncompressed
+      Handshake wantedAttrs wantedParent <- receive_ sock Uncompressed
       let
-        compareScope =
-            expectedScope == wantedScope
+        compareAttrs =
+            expectedAttrs == wantedAttrs
 
         compareParent =
             expectedParent == wantedParent
 
-      case (compareScope, compareParent) of
+      case (compareAttrs, compareParent) of
 
           (False,False) ->
               do
                 let
                   failure =
                       BadScopeAndParent
-                          (expectedScope,wantedScope)
+                          (expectedAttrs,wantedAttrs)
                           (expectedParent,wantedParent)
 
                 send_ Uncompressed sock (Denied failure)
@@ -707,7 +708,7 @@ awaitOn remoteness sockAddr =
               do
                 let
                   failure =
-                      BadScope (expectedScope,wantedScope)
+                      BadScope (expectedAttrs,wantedAttrs)
 
                 send_ Uncompressed sock (Denied failure)
                 io (NS.close sock)
@@ -731,15 +732,15 @@ awaitOn remoteness sockAddr =
 
 
 connectTo
-    :: forall fs gs m m'.
-       ( Typeable gs
-       , Typeable m'
-       , Lift IO m
-       , Monad m
+    :: forall scope attrs parent parent'.
+       ( Typeable attrs
+       , Typeable parent'
+       , Lift IO parent
+       , Monad parent
        )
     => Remoteness
     -> NS.SockAddr
-    -> Pattern fs m (Channel gs m')
+    -> Pattern scope parent (Channel attrs parent')
 
 connectTo remoteness sockAddr =
     do
@@ -750,14 +751,14 @@ connectTo remoteness sockAddr =
             else
                 NS.AF_UNIX
 
-        wantedScope =
-            TypeOfScope $ (typeOf :: Proxy gs -> TypeRep) (undefined :: Proxy gs)
+        wantedAttrs =
+            TypeOfAttrs $ (typeOf :: Proxy attrs -> TypeRep) (undefined :: Proxy attrs)
 
         wantedParent =
-            TypeOfParent $ (typeOf :: Proxy m' -> TypeRep) (undefined :: Proxy m')
+            TypeOfParent $ (typeOf :: Proxy parent' -> TypeRep) (undefined :: Proxy parent')
 
         handshake =
-            Handshake wantedScope wantedParent
+            Handshake wantedAttrs wantedParent
 
       sock <- io $
                   do
@@ -778,16 +779,16 @@ connectTo remoteness sockAddr =
 
 
 call
-    :: ( Lift IO m
-       , (Attrs gs) `Witnessing` (Symbol fs)
-       , Monad m
-       , Typeable fs
-       , Typeable m
+    :: ( Lift IO parent
+       , (Attrs attrs) `Witnessing` (Symbol scope)
+       , Monad parent
+       , Typeable scope
+       , Typeable parent
        )
-    => Channel gs m
+    => Channel attrs parent
     -> BSL.ByteString
     -> StaticKey
-    -> Pattern fs m BinaryResult
+    -> Pattern scope parent BinaryResult
 
 call (Channel sock) encodedVariables key =
     do

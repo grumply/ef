@@ -52,10 +52,10 @@ instance (Viewable r) `Witnessing` (Viewing r)
         witness use (r,k) rk
 
 
-instance ( Uses (Viewable r) gs m
+instance ( Uses (Viewable r) attrs parent
          , Binary r
          )
-    => Binary (Attribute (Viewable r) gs m)
+    => Binary (Attribute (Viewable r) attrs parent)
   where
 
     get =
@@ -68,8 +68,8 @@ instance ( Uses (Viewable r) gs m
 
 
 ask
-    :: Is (Viewing r) fs m
-    => Pattern fs m r
+    :: Is (Viewing r) scope parent
+    => Pattern scope parent r
 
 ask =
     self (Viewing id)
@@ -77,9 +77,9 @@ ask =
 
 
 asks
-    :: Is (Viewing r) fs m
+    :: Is (Viewing r) scope parent
     => (r -> a)
-    -> Pattern fs m a
+    -> Pattern scope parent a
 
 asks f =
     self (Viewing f)
@@ -87,9 +87,9 @@ asks f =
 
 
 reader
-    :: Uses (Viewable r) fs m
+    :: Uses (Viewable r) scope parent
     => r
-    -> Attribute (Viewable r) fs m
+    -> Attribute (Viewable r) scope parent
 
 reader r =
     Viewable r pure
@@ -97,11 +97,11 @@ reader r =
 
 
 local
-    :: forall fs m r.
-       Is (Viewing r) fs m
+    :: forall scope parent r.
+       Is (Viewing r) scope parent
     => (r -> r)
-    -> Pattern fs m r
-    -> Pattern fs m r
+    -> Pattern scope parent r
+    -> Pattern scope parent r
 
 local f =
     go
@@ -110,7 +110,7 @@ local f =
     go (Fail e) =
         Fail e
 
-    go (Step sym bp) =
+    go (Send sym bp) =
         case prj sym of
 
             Just (Viewing (r :: r -> b)) ->
@@ -119,12 +119,12 @@ local f =
                     inj (Viewing (r . f))
 
                 in
-                  Step newSymbol (go . bp)
+                  Send newSymbol (go . bp)
 
-            Nothing -> Step sym (\b -> go (bp b))
+            Nothing -> Send sym (\b -> go (bp b))
 
-    go (M m) =
-        M (fmap go m)
+    go (Super m) =
+        Super (fmap go m)
 
     go (Pure r) =
         Pure r
