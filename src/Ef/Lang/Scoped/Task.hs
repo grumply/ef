@@ -157,6 +157,16 @@ data Tasking k
         -> (result -> k)
         -> Tasking k
 
+    SetPriority
+        :: Int
+        -> Priority
+        -> Tasking k
+
+    SetChunking
+        :: Int
+        -> Chunking
+        -> Tasking k
+
     Await
         :: Int
         -> Operation status result
@@ -169,7 +179,6 @@ data Tasking k
 
     Yield
         :: Int
-        -> k
         -> Tasking k
 
 
@@ -210,33 +219,13 @@ query (Operation statusRef) =
 
 
 
-isFinished
-    :: ( Lift IO parent
-       , Monad parent
-       )
-    => Operation status result
-    -> Pattern scope parent Bool
-
-isFinished (Operation statusRef) =
-    do
-      status <- io (readIORef statusRef)
-      return $
-          case status of
-
-              Running _ ->
-                  False
-
-              Done _ ->
-                  True
-
-
-
 data Task scope parent =
     Task
         {
           fork
               :: forall status result.
-                 Priority
+                 Monad parent
+              => Priority
               -> Chunking
               -> Pattern scope parent result
               -> Pattern scope parent (Operation status result)
@@ -245,6 +234,14 @@ data Task scope parent =
               :: forall result.
                  Pattern scope parent result
               -> Pattern scope parent result
+
+        , setPriority
+              :: Priority
+              -> Pattern scope parent ()
+
+        , setChunking
+              :: Chunking
+              -> Pattern scope parent ()
 
         , yield
               :: Pattern scope parent ()
@@ -293,6 +290,7 @@ instance Witnessing Taskable Tasking
 tasks
     :: ( Is Tasking scope parent
        , Lift IO parent
+       , Monad parent
        )
     => (    Task scope parent
          -> Pattern scope parent result
@@ -320,10 +318,22 @@ tasks f =
                               thread =
                                   wrappedChild $ unsafeCoerce operation
 
-                            self (Fork scope priority chunking operation thread id)
+                            self (Fork scope priority chunking (unsafeCoerce operation) thread id)
+
+                , atomic =
+                      \block ->
+                          self (Atomically scope block id)
+
+                , setPriority =
+                      \priority ->
+                          self (SetPriority scope priority)
+
+                , setChunking =
+                      \chunking ->
+                          self (SetChunking scope chunking)
 
                 , yield =
-                      self (Yield scope ())
+                      self (Yield scope)
 
                 , await =
                       \operation ->
@@ -332,6 +342,13 @@ tasks f =
                 }
 
 
+rewrite
+    :: ( Lift IO parent
+       , Is Tasking scope parent
+       )
+    => Int
+    -> Pattern scope parent result
+    -> Pattern scope parent result
 
 rewrite rewriteScope =
     start
@@ -372,8 +389,8 @@ rewrite rewriteScope =
                                       TaskInfo
                                           Highest
                                           NonChunked
-                                          rootOperation
-                                          (k operation)
+                                          (unsafeCoerce rootOperation)
+                                          (unsafeCoerce $ k operation)
 
                                   childTask =
                                       TaskInfo priority chunking operation child
@@ -381,19 +398,11 @@ rewrite rewriteScope =
                                   queue =
                                       newQueue [rootTask,childTask]
 
-                                withSubsystem rootOperation [(1,queue)]
+                                withSubsystem (unsafeCoerce rootOperation) [(1,queue)]
 
-                      Await currentScope operation k ->
+                      Yield currentScope ->
                           check currentScope $
-                              undefined
-
-                      Yield currentScope k ->
-                          check currentScope $
-                              undefined
-
-                      Stop currentScope ->
-                          check currentScope $
-                              undefined
+                              start (k $ unsafeCoerce ())
 
                       _ ->
                           ignore
@@ -412,7 +421,7 @@ rewrite rewriteScope =
               status <- query root
               case status of
                   -- Don't case on Running: it should be impossible
-
+                  -- since run queue is empty.
                   Failed e -> 
                       throw e
 
@@ -423,7 +432,7 @@ rewrite rewriteScope =
             go 1 [] (reverse ran)
             
         go tier ran subsystem =
-            
+
 
 
 -- | Inlines
