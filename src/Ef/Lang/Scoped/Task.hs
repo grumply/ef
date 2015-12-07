@@ -10,8 +10,8 @@ module Ef.Lang.Scoped.Task
     , Taskable
     , inform
     , query
-    , isFinished
     , tasks
+    , calculateTier
     ) where
 
 
@@ -413,31 +413,63 @@ rewrite rewriteScope =
 
 
     withSubsystem root =
-        go (1 :: Int) []
+        go 1 emptyQueue []
       where
-      
-        go _ [] [] =
+
+        go _ _ [] [] =
             do
+              case undefined of
+                _ -> undefined
               status <- query root
               case status of
-                  -- Don't case on Running: it should be impossible
+                  -- Don't case on Running as it should be impossible
                   -- since run queue is empty.
                   Failed e -> 
                       throw e
 
                   Done result ->
                       return result
-                      
-        go tier ran [] =
-            go 1 [] (reverse ran)
-            
-        go tier ran subsystem =
+
+        go _ t1 acc [] =
+            go 1 emptyQueue [] (t1:reverse acc)
+
+        go tier t1 acc queues@((t,queue):rest)
+            | tier <= t =
+                  case dequeue queue of
+
+                      Nothing ->
+                          go tier t1 acc rest
+
+                      Just (newQueue,task) ->
+                          do
+                            result <- runTask task
+                            case result of
+
+                                (_,Nothing,newTasks) ->
+                                    go tier t1 acc ((t,newQueue):rest)
+
+                                (count,Just taskRest,newTasks) ->
+                                    undefined
+
+            | otherwise =
+                  go 1 emptyQueue [] $ addTierOne t1 ((reverse acc) ++ queues)
 
 
+
+calculateTier
+    :: Int
+    -> Int
+
+calculateTier n =
+    let
+      base =
+          logBase 2 (fromIntegral n)
+
+    in
+      succ (floor base)
 
 -- | Inlines
 
-{-# INLINE isFinished #-}
 {-# INLINE query #-}
 {-# INLINE inform #-}
 {-# INLINE tasks #-}
