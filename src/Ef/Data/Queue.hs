@@ -1,11 +1,21 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE AutoDeriveTypeable #-}
-module Ef.Data.Queue where
+module Ef.Data.Queue
+    ( Queue
+    , Binary(..)
+    , emptyQueue
+    , newQueue
+    , enqueue
+    , dequeue
+    , append
+    , toList
+    ) where
 
 
 
 import Data.Binary
+import Data.List
 
 
 
@@ -17,7 +27,7 @@ data Queue a
         -> [a]
         -> Queue a
 
-  deriving (Functor,Eq,Ord)
+  deriving (Functor,Eq,Ord,Show)
 
 
 
@@ -62,35 +72,77 @@ enqueue a (Queue l r) =
 
 dequeue
     :: Queue a
-    -> Maybe (Queue a,a)
+    -> Maybe (a,Queue a)
 
 dequeue (Queue [] []) =
     Nothing
 
 dequeue (Queue [] xs) =
     let
-      stack =
-          reverse xs
-
-      rest =
-          tail stack
-
-      frst =
-          head stack
+      (frst:rest) =
+          foldr_reverse xs
 
     in
-      Just (Queue rest [],frst)
+      Just (frst,Queue rest [])
 
-dequeue (Queue xs ys) =
+dequeue (Queue (frst:rest) ys) =
     let
-      rest =
-          tail xs
-
-      frst =
-          head xs
+      newQueue =
+          Queue rest ys
 
     in
-      Just (Queue rest ys,frst)
+      Just (frst,newQueue)
+
+
+
+foldr_append
+    :: [a]
+    -> [a]
+    -> [a]
+
+foldr_append xs ys =
+    foldr (:) ys xs
+
+
+
+foldr_reverse
+    :: [a]
+    -> [a]
+
+foldr_reverse as =
+    foldr (\a cont rest -> cont (a:rest)) id as []
+
+
+
+append
+    :: Queue a
+    -> Queue a
+    -> Queue a
+
+append (Queue xs ys) (Queue xs' ys') =
+    let
+      end =
+          foldr_append xs' (foldr_reverse ys')
+
+      begin =
+          foldr_append xs (foldr_reverse ys)
+
+      new =
+          foldr_append begin end
+
+    in
+      newQueue new
+
+
+
+toList
+    :: Queue a
+    -> [a]
+
+toList =
+    unfoldr dequeue
+
+
 
 -- | Inlines
 
@@ -98,3 +150,7 @@ dequeue (Queue xs ys) =
 {-# INLINE emptyQueue #-}
 {-# INLINE enqueue #-}
 {-# INLINE dequeue #-}
+{-# INLINE append #-}
+{-# INLINE toList #-}
+{-# INLINE foldr_append #-}
+{-# INLINE foldr_reverse #-}
