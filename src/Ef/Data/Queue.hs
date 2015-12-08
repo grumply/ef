@@ -9,6 +9,7 @@ module Ef.Data.Queue
     , enqueue
     , dequeue
     , append
+    , isEmpty 
     , toList
     ) where
 
@@ -60,6 +61,17 @@ newQueue stack =
 
 
 
+isEmpty
+    :: Queue a
+    -> Bool
+    
+isEmpty (Queue [] []) =
+    True
+    
+isEmpty _ =
+    False
+
+
 enqueue
     :: a
     -> Queue a
@@ -100,6 +112,12 @@ foldr_append
     -> [a]
     -> [a]
 
+foldr_append xs [] =
+    xs
+    
+foldr_append [] ys =
+    ys
+
 foldr_append xs ys =
     foldr (:) ys xs
 
@@ -109,6 +127,9 @@ foldr_reverse
     :: [a]
     -> [a]
 
+foldr_reverse [] =
+    []
+    
 foldr_reverse as =
     foldr (\a cont rest -> cont (a:rest)) id as []
 
