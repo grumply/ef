@@ -3,6 +3,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Ef.Lang.Scoped.Task
     ( Tasking
     , Task(..)
@@ -50,16 +51,7 @@ than their queue tier would normally allow.
 
 
 
-data Subsystem
-  where
-
-    Subsystem
-        :: [(Int,Queue TaskInfo)]
-        -> Subsystem
-
-
-
-data TaskInfo
+data TaskInfo scope parent
   where
 
     TaskInfo
@@ -67,7 +59,7 @@ data TaskInfo
         -> Chunking
         -> Operation status result
         -> Pattern scope parent result
-        -> TaskInfo
+        -> TaskInfo scope parent
 
 
 
@@ -183,27 +175,34 @@ data Tasking k
 
 
 
+supplement
+    :: ( Lift IO parent
+       , Monad parent
+       )
+    => (Maybe status -> Maybe status)
+    -> Operation status result
+    -> Pattern scope parent ()
+
+supplement supp (Operation statusRef) =
+    let
+      supplementer (Running currentStatus) =
+          Running (supp currentStatus)
+
+    in
+      io (modifyIORef statusRef supplementer)
+
+
+
 inform
     :: ( Lift IO parent
        , Monad parent
        )
-    => Operation status result
-    -> status
+    => status
+    -> Operation status result
     -> Pattern scope parent ()
 
-inform (Operation statusRef) newStatus =
-    do
-      let
-        modify status =
-            case status of
-
-                Running _ ->
-                    Running (Just newStatus)
-
-                Done result ->
-                    Done result
-
-      io $ modifyIORef statusRef modify
+inform newStatus =
+    supplement $ const (Just newStatus)
 
 
 
@@ -313,12 +312,15 @@ tasks f =
                                     io $ writeIORef op (Done result)
                                     self (Stop scope)
 
-                            operation <- io $ newIORef (Running Nothing)
+                              op =
+                                  newIORef (Running Nothing)
+
+                            operation <- fmap Operation (io op)
                             let
                               thread =
-                                  wrappedChild $ unsafeCoerce operation
+                                  wrappedChild operation
 
-                            self (Fork scope priority chunking (unsafeCoerce operation) thread id)
+                            self (Fork scope priority chunking operation thread id)
 
                 , atomic =
                       \block ->
@@ -343,7 +345,9 @@ tasks f =
 
 
 rewrite
-    :: ( Lift IO parent
+    :: forall scope parent result.
+       ( Monad parent
+       , Lift IO parent
        , Is Tasking scope parent
        )
     => Int
@@ -353,6 +357,9 @@ rewrite
 rewrite rewriteScope =
     start
   where
+    start
+        :: Pattern scope parent result
+        -> Pattern scope parent result
 
     start (Fail e) =
         Fail e
@@ -366,39 +373,46 @@ rewrite rewriteScope =
     start (Send symbol k) =
         let
           check currentScope continue =
-              if currentScope == rewriteScope then 
+              if currentScope == rewriteScope then
                   continue
-              else 
+              else
                   ignore
-                  
+
           ignore =
               Send symbol (start . k)
-              
+
         in
           case prj symbol of
 
               Just x ->
                   case x of
 
-                      Fork currentScope priority chunking operation child k ->
+                      Fork currentScope priority chunking operation child _ ->
                           check currentScope $
                               do
-                                rootOperation <- io $ newIORef (Running Nothing)
+                                let
+                                  op =
+                                      newIORef (Running Nothing)
+
+                                rootOperation <- fmap Operation (io op)
                                 let
                                   rootTask =
                                       TaskInfo
                                           Highest
                                           NonChunked
-                                          (unsafeCoerce rootOperation)
-                                          (unsafeCoerce $ k operation)
+                                          rootOperation
+                                          (k $ unsafeCoerce rootOperation)
+
+                                  childTask
+                                      :: TaskInfo scope parent
 
                                   childTask =
-                                      TaskInfo priority chunking operation child
+                                      TaskInfo priority chunking operation $ unsafeCoerce child
 
                                   queue =
                                       newQueue [rootTask,childTask]
 
-                                withSubsystem (unsafeCoerce rootOperation) [(1,queue)]
+                                withSubsystem (unsafeCoerce rootOperation) [(1,unsafeCoerce queue)]
 
                       Yield currentScope ->
                           check currentScope $
@@ -412,14 +426,17 @@ rewrite rewriteScope =
 
 
 
-    withSubsystem root =
-        go 1 emptyQueue []
+    withSubsystem
+        :: Operation status result
+        -> [(Int, Queue (TaskInfo scope parent))]
+        -> Pattern scope parent result
+
+    withSubsystem root startQueues =
+        go 1 [] [] startQueues
       where
 
-        go _ _ [] [] =
+        go _ [] [] [] =
             do
-              case undefined of
-                _ -> undefined
               status <- query root
               case status of
                   -- Don't case on Running as it should be impossible
@@ -430,29 +447,87 @@ rewrite rewriteScope =
                   Done result ->
                       return result
 
-        go _ t1 acc [] =
-            go 1 emptyQueue [] (t1:reverse acc)
+        go _ slow [] =
+            go 1 [] [] slow
 
-        go tier t1 acc queues@((t,queue):rest)
-            | tier <= t =
-                  case dequeue queue of
+        go tier slow subsystem =
+            do
+              (newTasks,newSubsystem,slowTasks) <- execute tier subsystem
+              let
+                newSlow =
+                    merge slow slowTasks
 
-                      Nothing ->
-                          go tier t1 acc rest
+              go (tier + 1) newSlow
 
-                      Just (newQueue,task) ->
-                          do
-                            result <- runTask task
-                            case result of
 
-                                (_,Nothing,newTasks) ->
-                                    go tier t1 acc ((t,newQueue):rest)
 
-                                (count,Just taskRest,newTasks) ->
-                                    undefined
+    execute
+        :: Int
+        -> [(Int,Queue (TaskInfo scope parent))]
+        -> Pattern scope parent ( Queue (TaskInfo scope parent)
+                                , [(Int,Queue (TaskInfo scope parent))]
+                                , [(Int,Queue (TaskInfo scope parent))]
+                                )
 
-            | otherwise =
-                  go 1 emptyQueue [] $ addTierOne t1 ((reverse acc) ++ queues)
+    execute tier subsystem =
+        do
+          let
+            tier1 =
+                emptyQueue
+
+          undefined <- undefined
+          let
+            newTier1 =
+                undefined
+
+            newAcc =
+                undefined
+
+            newSlowTasks =
+                undefined
+
+          return (newTier1,slowTasks)
+
+
+
+merge
+    :: [(Int,Queue (TaskInfo fs m))]
+    -> [(Int,Queue (TaskInfo fs m))]
+    -> [(Int,Queue (TaskInfo fs m))]
+
+merge subsystem [] =
+    subsystem
+
+merge ((level,newQueue):restToBeMerged) subsystem =
+    go subsystem
+  where
+
+    go ((tier,queue):rest)
+        | level < tier =
+              (level,newQueue):merge restToBeMerged subsystem
+
+        | level == tier =
+              (tier,append queue newQueue):merge restToBeMerged rest
+
+        | otherwise =
+              (tier,queue):go rest
+
+
+
+insert
+    :: (Int,TaskInfo fs m)
+    -> [(Int,Queue (TaskInfo fs m))]
+    -> [(Int,Queue (TaskInfo fs m))]
+
+insert (level,task) [] =
+    [(level,newQueue [task])]
+
+insert (level,task) ((tier,queue):rest)
+    | tier == level =
+          (tier,enqueue task queue):rest
+
+    | level < tier =
+          (tier,queue):insert (level,task) rest
 
 
 
