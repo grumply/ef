@@ -60,7 +60,7 @@ data TaskInfo scope parent
         -> Operation status result
         -> Pattern scope parent result
         -> TaskInfo scope parent
-
+ 
 
 
 data Priority
@@ -432,10 +432,10 @@ rewrite rewriteScope =
         -> Pattern scope parent result
 
     withSubsystem root startQueues =
-        go 1 [] [] startQueues
+        go 1 [] startQueues
       where
 
-        go _ [] [] [] =
+        go _ [] [] =
             do
               status <- query root
               case status of
@@ -448,52 +448,93 @@ rewrite rewriteScope =
                       return result
 
         go _ slow [] =
-            go 1 [] [] slow
+            go 1 [] slow
 
         go tier slow subsystem =
             do
-              (newTasks,newSubsystem,slowTasks) <- execute tier subsystem
-              let
-                newSlow =
-                    merge slow slowTasks
+              (newTasks,newSlow,newSubsystem) <- execute tier slow subsystem
+              case newSubsystem of
 
-              go (tier + 1) newSlow
+                  [] ->
+                      go 1 [] $
+                          if isEmpty newTasks then
+                              newSlow
+                          else
+                              merge [(1,newTasks)] newSlow
+
+                  _ ->
+                      let
+                        (nextSlow,nextSubsystem) =
+                            mergeUpToTier tier newSlow newSubsystem
+
+                      in
+                        go (tier + 1) nextSlow $
+                            if isEmpty newTasks then
+                                nextSubsystem
+                            else
+                                merge [(1,newTasks)] nextSubsystem
 
 
 
     execute
         :: Int
         -> [(Int,Queue (TaskInfo scope parent))]
+        -> [(Int,Queue (TaskInfo scope parent))]
         -> Pattern scope parent ( Queue (TaskInfo scope parent)
                                 , [(Int,Queue (TaskInfo scope parent))]
                                 , [(Int,Queue (TaskInfo scope parent))]
                                 )
+    -- returns the new slow, new tier1, and new subsystem
+    execute tier slow subsystem =
+        go emptyQueue slow [] subsystem
+      where
+      
+        go tier1 slow acc [] =
+            return (tier1,slow,[])
 
-    execute tier subsystem =
-        do
-          let
-            tier1 =
-                emptyQueue
+        go tier1 slow acc subsystem@((t,queue):rest)
+            | t > tier =
+                  return (tier1,slow,subsystem)
 
-          undefined <- undefined
-          let
-            newTier1 =
-                undefined
+            | t == 1 =
+                  do
+                    (newTasks,newSlow,newTier) <- evaluate slow queue
+                    go (append tier1 newTasks) newSlow [(1,newTier)] rest
 
-            newAcc =
-                undefined
+            | otherwise =
+                let
+                  ct =
+                      calculateTier t
+                      
+                in
+                  case ct `divMod` tier of
 
-            newSlowTasks =
-                undefined
+                      (n,0) -> undefined 
 
-          return (newTier1,slowTasks)
+    evaluate slow queue = 
+        undefined 
+
+mergeUpToTier
+    :: Int
+    -> [(Int,Queue (TaskInfo scope parent))]
+    -> [(Int,Queue (TaskInfo scope parent))]
+    -> ([(Int,Queue (TaskInfo scope parent))],[(Int,Queue (TaskInfo scope parent))])
+
+mergeUpToTier tier from0 to0 =
+    (more,to)
+  where
+    (less,more) = 
+        span (\(t,qs) -> t <= tier) from0
+
+    to =
+        merge less to0
 
 
 
 merge
-    :: [(Int,Queue (TaskInfo fs m))]
-    -> [(Int,Queue (TaskInfo fs m))]
-    -> [(Int,Queue (TaskInfo fs m))]
+    :: [(Int,Queue (TaskInfo scope parent))]
+    -> [(Int,Queue (TaskInfo scope parent))]
+    -> [(Int,Queue (TaskInfo scope parent))]
 
 merge subsystem [] =
     subsystem
@@ -515,9 +556,9 @@ merge ((level,newQueue):restToBeMerged) subsystem =
 
 
 insert
-    :: (Int,TaskInfo fs m)
-    -> [(Int,Queue (TaskInfo fs m))]
-    -> [(Int,Queue (TaskInfo fs m))]
+    :: (Int,TaskInfo scope parent)
+    -> [(Int,Queue (TaskInfo scope parent))]
+    -> [(Int,Queue (TaskInfo scope parent))]
 
 insert (level,task) [] =
     [(level,newQueue [task])]
@@ -531,17 +572,26 @@ insert (level,task) ((tier,queue):rest)
 
 
 
-calculateTier
+stepsToTier
     :: Int
     -> Int
 
-calculateTier n =
+stepsToTier n =
     let
       base =
           logBase 2 (fromIntegral n)
 
     in
       succ (floor base)
+      
+
+
+tierToSteps
+    :: Int
+    -> Int
+
+tierToSteps n =
+    2 ^ n - 1
 
 -- | Inlines
 
