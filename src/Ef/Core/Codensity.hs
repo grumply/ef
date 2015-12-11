@@ -1,4 +1,7 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Ef.Core.Codensity where
 
 
@@ -55,6 +58,13 @@ import Control.Monad
 -- :}
 --True
 
+-- | Codensity hides intermediate results by way of composition. That is,
+-- (>>=), for Codesnity, ties the result of a computation into a continuation
+-- of that result to create a wrapped sequence of computational steps.
+-- The wrapping enables the compiler to see that the intermediate results
+-- cannot be inspected - modulo 'unsafeCoerce'. Some (all?) Free monad
+-- encodings are amenable to a Codensity representation and Pattern is a
+-- Free monad representation.
 newtype Codensity scope parent result =
 
     Codensity
@@ -95,11 +105,42 @@ instance Monad (Codensity scope parent)
 
 
 
-    m >>= k =
-        Codensity $ \c ->
+    (>>=)
+        :: forall firstResult secondResult.
+           Codensity scope parent firstResult
+        -> (    firstResult
+             -> Codensity scope parent secondResult
+           )
+        -> Codensity scope parent secondResult
 
-            runCodensity m $ \a ->
-                runCodensity (k a) c
+    one >>= twoFrom =
+        Codensity composed
+      where
+
+        -- compose two steps of a Codensity computation
+        composed
+            :: forall thirdResult.
+               (    secondResult
+                 -> Pattern scope parent thirdResult
+               )
+            -> Pattern scope parent thirdResult
+
+        composed threeFrom =
+            runCodensity one (two threeFrom)
+          where
+
+            -- build the second step of a computation with:
+            --     1. the first result
+            --     2. a continuation of the second result
+            two
+                :: (    secondResult
+                     -> Pattern scope parent thirdResult
+                   )
+                -> firstResult
+                -> Pattern scope parent thirdResult
+
+            two threeFrom firstResult =
+                runCodensity (twoFrom firstResult) threeFrom
 
 
 
@@ -110,7 +151,7 @@ instance ( Alternative parent
   where
 
     empty =
-        Codensity (\_ -> empty)
+        Codensity (const empty)
 
 
 
