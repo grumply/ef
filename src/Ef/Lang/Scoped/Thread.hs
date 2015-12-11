@@ -7,6 +7,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Ef.Lang.Scoped.Thread
     ( Threading
     , threads
@@ -145,14 +146,16 @@ threads f =
 
 
 
--- This type signature decreases performance! Why? Look at core.
+-- This type signature decreases performance even though this is the derived type! Why? Need to look at core. 
+-- Seems likely to be either a GHC bug or an optimization from an unsafeCoerce. Either way, tests don't seem to 
+-- show a failure here.
 -- rewrite
---     :: forall (t :: [* -> *]) (m :: * -> *) a.
---        (Monad m, Allows' Threading t (IndexOf Threading t))
+--     :: forall scope parent result.
+--        Is Threading scope parent
 --     => Int
---     -> Queue (Pattern t m a)
---     -> Pattern t m a
---     -> Pattern t m a
+--     -> Queue (Pattern scope parent result)
+--     -> Pattern scope parent result
+--     -> Pattern scope parent result
 
 rewrite scope =
     withQueue
@@ -174,7 +177,7 @@ rewrite scope =
                 Nothing ->
                     return r
 
-                Just (rest,nxt) ->
+                Just (nxt,rest) ->
                     let
                       newQ =
                           enqueue (return r) rest
@@ -186,7 +189,7 @@ rewrite scope =
         go (Send sym bp) =
             let
               check i scoped =
-                  if i == scope then
+                  if i == scope then 
                       scoped
                   else
                       ignore
@@ -217,7 +220,7 @@ rewrite scope =
                                     Nothing ->
                                         go (bp k)
 
-                                    Just (rest,nxt) ->
+                                    Just (nxt,rest) ->
                                         let
                                           newQ =
                                               enqueue (bp k) rest
@@ -232,7 +235,7 @@ rewrite scope =
 
                                      ~(Just q) ->
                                          let
-                                           (rest,nxt) =
+                                           ~(nxt,rest) =
                                                q
 
                                          in
