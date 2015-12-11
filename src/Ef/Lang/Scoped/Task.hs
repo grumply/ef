@@ -1,9 +1,11 @@
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 module Ef.Lang.Scoped.Task
     ( Tasking
     , Task(..)
@@ -12,7 +14,8 @@ module Ef.Lang.Scoped.Task
     , inform
     , query
     , tasks
-    , calculateTier
+    , tierToSteps
+    , stepsToTier 
     ) where
 
 
@@ -24,6 +27,22 @@ import Ef.Data.Queue
 import Data.IORef
 import Unsafe.Coerce
 
+
+
+main = do
+    let 
+      obj = 
+          Object $ tasker *:* Empty
+
+    delta obj $ 
+        tasks $ \Task {..} ->
+            do
+              fork Normal NonChunked $ do
+                  io $ putStr "Hello"
+              fork Normal NonChunked $ do
+                  io $ putStr "World"
+              io $ putStrLn "!"
+    return ()
 
 
 {-
@@ -172,7 +191,7 @@ data Tasking k
     Yield
         :: Int
         -> Tasking k
-
+        
 
 
 supplement
@@ -450,9 +469,9 @@ rewrite rewriteScope =
         go _ slow [] =
             go 1 [] slow
 
-        go tier slow subsystem =
+        go step slow subsystem =
             do
-              (newTasks,newSlow,newSubsystem) <- execute tier slow subsystem
+              (newTasks,newSlow,newSubsystem) <- runSubsystem step slow subsystem
               case newSubsystem of
 
                   [] ->
@@ -465,10 +484,10 @@ rewrite rewriteScope =
                   _ ->
                       let
                         (nextSlow,nextSubsystem) =
-                            mergeUpToTier tier newSlow newSubsystem
+                            mergeUpTo (stepsToTier step) newSlow newSubsystem
 
                       in
-                        go (tier + 1) nextSlow $
+                        go (step + 1) nextSlow $
                             if isEmpty newTasks then
                                 nextSubsystem
                             else
@@ -476,58 +495,173 @@ rewrite rewriteScope =
 
 
 
-    execute
-        :: Int
-        -> [(Int,Queue (TaskInfo scope parent))]
-        -> [(Int,Queue (TaskInfo scope parent))]
-        -> Pattern scope parent ( Queue (TaskInfo scope parent)
-                                , [(Int,Queue (TaskInfo scope parent))]
-                                , [(Int,Queue (TaskInfo scope parent))]
-                                )
+    -- uses step slow and subsystem
     -- returns the new slow, new tier1, and new subsystem
-    execute tier slow subsystem =
+    runSubsystem step slow subsystem =
         go emptyQueue slow [] subsystem
       where
       
-        go tier1 slow acc [] =
-            return (tier1,slow,[])
+        go tier1 slowQueue acc [] =
+            return (tier1,slowQueue,reverse acc)
 
-        go tier1 slow acc subsystem@((t,queue):rest)
-            | t > tier =
-                  return (tier1,slow,subsystem)
+        go tier1 slowQueue acc subsystem@((t,queue):rest)
+            | t > step =
+                  return (tier1,slowQueue,merge (reverse acc) subsystem)
 
             | t == 1 =
                   do
-                    (newTasks,newSlow,newTier) <- evaluate slow queue
+                    (newTasks,newSlow,newTier) <- runTier 1 slowQueue queue
                     go (append tier1 newTasks) newSlow [(1,newTier)] rest
 
             | otherwise =
                 let
-                  ct =
-                      calculateTier t
-                      
+                  quantaAllowed =
+                      tierToSteps t
+
                 in
-                  case ct `divMod` tier of
+                  case quantaAllowed `divMod` step of
 
-                      (n,0) -> undefined 
+                      (n,0) ->
+                          do
+                            (newTasks,newSlow,newTier) <- runTier quantaAllowed slowQueue queue
+                            undefined 
 
-    evaluate slow queue = 
-        undefined 
 
-mergeUpToTier
+
+    -- uses quantaAllowed, slow, tier/queue
+    -- returns (new,slow,updatedQueue)
+    runTier allowed =
+        withSlow
+      where
+
+        withSlow slow =
+            withNew emptyQueue 
+
+          where
+            withNew newTasks =
+                withRan emptyQueue
+              where
+
+                withRan ran queue =
+                    case dequeue queue of
+
+                        Nothing ->
+                            return (newTasks,slow,ran)
+
+                        Just (task,tasks) ->
+                            do
+                              result <- runTask task
+                              undefined
+                  where
+
+                    runTask (TaskInfo priority chunking (Operation operation) task) =
+                        let
+                          quanta =
+                              max (chunkingMax chunking) allowed
+    
+                        in
+                          go emptyQueue quanta task
+    
+                      where
+
+                        -- ignore quanta and fail fast
+                        go newest _ (Fail e) =
+                            do
+                              let
+                                finish =
+                                    writeIORef operation (Failed e)
+
+                                taskResult =
+                                    Left newest
+
+                              io finish
+                              return taskResult
+
+                        -- ignore quanta and return fast
+                        go newest _ (Pure result) =
+                            do
+                              let
+                                finish =
+                                    writeIORef operation (Done result)
+
+                                taskResult =
+                                    Left newest
+
+                              io finish
+                              return taskResult
+
+                        go newest 0 continue =
+                            let
+                              result =
+                                  Right (newest,continue)
+                                  
+                            in 
+                              return result
+
+                        go newest quantaLeft (Super m) =
+                            let
+                              newQuantaLeft =
+                                  quantaLeft - 1
+
+                              continue =
+                                  go newest newQuantaLeft
+
+                            in
+                              Super (fmap continue m)
+
+                        go newest quantaLeft (Send symbol k) =
+                            undefined
+
+
+chunkingMax (Chunked n) =
+    n
+    
+chunkingMax _ = 
+    1
+
+
+calculateTierWithPriority
+    :: Priority
+    -> Int
+    -> Int
+
+calculateTierWithPriority priority n =
+    case priority of
+
+        Highest -> 
+            1
+
+        Higher ->
+            min 1 (n - 2)
+
+        High ->
+            min 1 (n - 1)
+
+        Normal ->
+            n
+
+        Low ->
+            n + 1
+
+        Lower ->
+            n + 2
+
+
+
+mergeUpTo
     :: Int
     -> [(Int,Queue (TaskInfo scope parent))]
     -> [(Int,Queue (TaskInfo scope parent))]
     -> ([(Int,Queue (TaskInfo scope parent))],[(Int,Queue (TaskInfo scope parent))])
 
-mergeUpToTier tier from0 to0 =
+mergeUpTo tier from to =
     (more,to)
   where
     (less,more) = 
-        span (\(t,qs) -> t <= tier) from0
+        span (\(t,qs) -> t <= tier) from
 
     to =
-        merge less to0
+        merge less to
 
 
 
