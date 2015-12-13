@@ -24,7 +24,7 @@ data Queue a
   where
 
     Queue
-        :: [a]
+        :: ![a]
         -> [a]
         -> Queue a
 
@@ -78,7 +78,12 @@ enqueue
     -> Queue a
 
 enqueue a (Queue l r) =
-    Queue l (a:r)
+    let
+        newr =
+            a:r
+            
+    in
+        newr `seq` Queue l newr
 
 
 
@@ -119,7 +124,7 @@ foldr_append [] ys =
     ys
 
 foldr_append xs ys =
-    foldr (:) ys xs
+    {-# SCC "foldr_append" #-} foldr (:) ys xs
 
 
 
@@ -131,7 +136,7 @@ foldr_reverse [] =
     []
     
 foldr_reverse as =
-    foldr (\a cont rest -> cont (a:rest)) id as []
+    {-# SCC "foldr_reverse" #-} foldr (\a cont rest -> cont (a:rest)) id as []
 
 
 
@@ -152,7 +157,7 @@ append (Queue xs ys) (Queue xs' ys') =
           foldr_append begin end
 
     in
-      newQueue new
+        newQueue new
 
 
 

@@ -59,8 +59,8 @@ data TaskInfo scope parent
   where
 
     TaskInfo
-        :: Priority
-        -> Chunking
+        :: !Priority
+        -> !Chunking
         -> Operation status result
         -> Pattern scope parent result
         -> TaskInfo scope parent
@@ -104,7 +104,7 @@ data Chunking
         :: Chunking
 
     Chunked
-        :: Int
+        :: !Int
         -> Chunking
 
 
@@ -113,15 +113,15 @@ data Status status result
   where
 
     Running
-        :: Maybe status
+        :: !(Maybe status)
         -> Status status result
 
     Failed
-        :: SomeException
+        :: !SomeException
         -> Status status result
 
     Done
-        :: result
+        :: !result
         -> Status status result
 
 
@@ -130,7 +130,7 @@ data Operation status result
   where
 
     Operation
-        :: IORef (Status status result)
+        :: !(IORef (Status status result))
         -> Operation status result
 
 
@@ -312,7 +312,7 @@ tasks f =
                               wrappedChild (Operation op) =
                                   do
                                     result <- child
-                                    io $ writeIORef op (Done result)
+                                    result `seq` io $ writeIORef op (Done result)
                                     self (Stop scope)
 
                               op =
@@ -354,7 +354,7 @@ rewrite
     -> Pattern scope parent result
 
 rewrite rewriteScope =
-    start
+    {-# SCC "rewrite.start" #-} start
   where
     start
         :: Pattern scope parent result
@@ -485,7 +485,7 @@ rewrite rewriteScope =
         -> Pattern scope parent result
 
     withSubsystem root startQueues =
-        go 1 [] startQueues
+        {-# withSubsystem.go  #-} go 1 [] startQueues
       where
 
         go _ [] [] =
@@ -540,7 +540,7 @@ rewrite rewriteScope =
     -- uses step slow and subsystem
     -- returns the new slow, new tier1, and new subsystem
     runSubsystem step slow subsystem =
-        go emptyQueue slow [] subsystem
+        {-# SCC "runSubsystem.go" #-} go emptyQueue slow [] subsystem
       where
 
         go
@@ -558,20 +558,21 @@ rewrite rewriteScope =
 
         go tier1 slowQueue acc subsystem@((t,queue):rest)
             | isEmpty queue =
-                  go tier1 slowQueue acc rest
+                  {-# SCC "runSubsystem.go" #-} go tier1 slowQueue acc rest
 
             | t > step =
                   return (tier1,slowQueue,merge (reverse acc) subsystem)
 
             | t == 1 =
                   do
-                    (newTasks,newSlow,newTier) <- runTier 1 emptyQueue emptyQueue slowQueue queue
+                    (newTasks,newSlow,newTier) <- {-# SCC "runTier" #-} runTier 1 emptyQueue emptyQueue slowQueue queue
                     let
                         newTier1 =
                             append tier1 newTasks
 
-                    newTier1 `seq`
-                        go newTier1 newSlow [(1,newTier)] rest
+                    {-# SCC "runSubsystem.go" #-} 
+                        newTier1 `seq`
+                            go newTier1 newSlow [(1,newTier)] rest
 
             | otherwise =
                 let
@@ -583,7 +584,7 @@ rewrite rewriteScope =
 
                       (n,0) ->
                           do
-                            (newTasks,newSlow,newTier) <- runTier quantaAllowed emptyQueue emptyQueue slowQueue queue
+                            (newTasks,newSlow,newTier) <- {-# SCC "runTier" #-} runTier quantaAllowed emptyQueue emptyQueue slowQueue queue
                             let
                                 newTier1 =
                                     append tier1 newTasks
@@ -594,11 +595,12 @@ rewrite rewriteScope =
                                 mergedAcc =
                                     merge [(t,newTier)] acc
 
-                            newTier1 `seq` mergedSlow `seq` mergedAcc `seq`
-                                go newTier1 mergedSlow mergedAcc rest
+                            {-# SCC "runSubsystem.go" #-} 
+                                newTier1 `seq` mergedSlow `seq` mergedAcc `seq`
+                                    go newTier1 mergedSlow mergedAcc rest
 
                       _ ->
-                          go tier1 slowQueue (merge [(t,queue)] acc) rest
+                          {-# SCC "runSubsystem.go" #-} go tier1 slowQueue (merge [(t,queue)] acc) rest
 
 
     runTier
@@ -628,7 +630,7 @@ rewrite rewriteScope =
                                   append newTasks newNewTasks
                           in
                               news `seq`
-                                  runTier allowed news ran slow tasks
+                                  {-# SCC "runTier" #-} runTier allowed news ran slow tasks
 
                       Right (quantaLeft,newNewTasks,newTask) ->
                           if quantaLeft > 0 then
@@ -640,8 +642,9 @@ rewrite rewriteScope =
                                       enqueue newTask ran
 
                               in
-                                  appendedNews `seq` newRan `seq`
-                                      runTier allowed appendedNews newRan slow tasks
+                                  {-# SCC "runTier" #-} 
+                                      appendedNews `seq` newRan `seq`
+                                          runTier allowed appendedNews newRan slow tasks
                           else
                               let
                                   stepsUsed =
@@ -663,8 +666,9 @@ rewrite rewriteScope =
                                       insert (newTier,newTask) slow
 
                               in
-                                  appendedNews `seq` newSlow `seq`
-                                      runTier allowed appendedNews ran newSlow tasks
+                                  {-# SCC "runTier" #-} 
+                                      appendedNews `seq` newSlow `seq`
+                                          runTier allowed appendedNews ran newSlow tasks
        where
 
          runTask
@@ -683,7 +687,7 @@ rewrite rewriteScope =
                      max (chunkingMax chunking) allowed
 
              in
-                 go emptyQueue quanta task
+                 {-# SCC "runTask.go" #-} go emptyQueue quanta task
 
              where
 
@@ -705,7 +709,7 @@ rewrite rewriteScope =
                  go newest _ (Pure result) =
                      let
                          finish =
-                             writeIORef operation (Done $ unsafeCoerce result)
+                             result `seq` writeIORef operation (Done $ unsafeCoerce result)
 
 
                          taskResult =
@@ -735,7 +739,7 @@ rewrite rewriteScope =
                  go newest quantaLeft (Super m) =
                      let
                          continue =
-                             go newest quantaLeft
+                             {-# SCC "runTask.go" #-} go newest quantaLeft
 
                      in
                          Super (fmap continue m)
@@ -753,7 +757,7 @@ rewrite rewriteScope =
 
                          ignore =
                              newQuantaLeft `seq`
-                                 Send symbol (go newest newQuantaLeft . k)
+                                 Send symbol ({-# SCC "runTask.go" #-} go newest newQuantaLeft . k)
 
                      in
                          case prj symbol of
@@ -781,8 +785,9 @@ rewrite rewriteScope =
                                                      k (ok op)
 
                                              in
-                                                 newNewest `seq`
-                                                     go newNewest quantaLeft continue
+                                                 {-# SCC "runTask.go" #-} 
+                                                     newNewest `seq`
+                                                         go newNewest quantaLeft continue
 
                                      Atomically currentScope block rk ->
                                          check currentScope $
@@ -816,6 +821,7 @@ rewrite rewriteScope =
 
                                                          in
                                                              if newQuantaLeft > 0 then
+                                                                 {-# SCC "runTask.go" #-}
                                                                    newQuantaLeft `seq`
                                                                        go newNewest newQuantaLeft continue
                                                              else
@@ -900,7 +906,7 @@ rewrite rewriteScope =
         startAtomic 0
         where
             startAtomic quanta priority chunking newest =
-                go quanta
+                {-# SCC "startAtomic.go" #-} go quanta
                 where
                     go quantaUsed (Fail exception) =
                         Fail exception
@@ -911,7 +917,7 @@ rewrite rewriteScope =
                     go quantaUsed (Super m) =
                         let
                             continue =
-                                go quantaUsed
+                                {-# SCC "startAtomic.go" #-} go quantaUsed
 
                         in
                             Super (fmap continue m)
@@ -957,7 +963,7 @@ rewrite rewriteScope =
 
                                                 in
                                                     newNewest `seq`
-                                                        startAtomic quantaUsed priority chunking newNewest continue
+                                                         startAtomic quantaUsed priority chunking newNewest continue
 
                                         Atomically currentScope block rk ->
                                             check currentScope $
@@ -990,6 +996,7 @@ rewrite rewriteScope =
                                                         k (unsafeCoerce ())
 
                                                 in
+                                                    
                                                     startAtomic quantaUsed newPriority chunking newest continue
 
                                         SetChunking currentScope newChunking ->
@@ -1042,6 +1049,9 @@ calculateTierWithPriority priority n =
 
         Highest ->
             1
+            
+        HighBy x ->
+            min 1 (n - x)
 
         Higher ->
             min 1 (n - 2)
@@ -1057,6 +1067,9 @@ calculateTierWithPriority priority n =
 
         Lower ->
             n + 2
+            
+        LowBy x ->
+            n + x
 
 
 
@@ -1073,7 +1086,7 @@ mergeUpTo tier from to =
         span (\(t,qs) -> t <= tier) from
 
     upto =
-        merge less to
+        {-# SCC "mergeUpTo.upto" #-} merge less to
 
 
 
@@ -1089,7 +1102,7 @@ merge [] subsystem =
     subsystem
 
 merge ((level,newQueue):restToBeMerged) subsystem =
-    go subsystem
+    {-# SCC "merge.go" #-} go subsystem
   where
 
     go ((tier,queue):rest)
