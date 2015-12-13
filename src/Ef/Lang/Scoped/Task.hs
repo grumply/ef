@@ -12,13 +12,11 @@ module Ef.Lang.Scoped.Task
     , Task(..)
     , tasker
     , Taskable
+    , Priority(..)
+    , Chunking(..)
     , inform
     , query
     , tasks
-    , tierToSteps
-    , stepsToTier
-    , rewrite
-    , main
     ) where
 
 
@@ -30,22 +28,6 @@ import Ef.Data.Queue
 import Data.IORef
 import Unsafe.Coerce
 
-
-
-main = do
-    let
-      obj =
-          Object $ tasker *:* Empty
-
-    delta obj $
-        tasks $ \Task {..} ->
-            do
-              fork Normal NonChunked $ do
-                  io $ putStr "Hello"
-              fork Normal NonChunked $ do
-                  io $ putStr "World"
-              io $ putStrLn "!"
-    return ()
 
 
 {-
@@ -539,11 +521,12 @@ rewrite rewriteScope =
                             mergeUpTo (stepsToTier step) newSlow newSubsystem
 
                       in
-                        go (step + 1) nextSlow $
-                            if isEmpty newTasks then
-                                nextSubsystem
-                            else
-                                merge [(1,newTasks)] nextSubsystem
+                        nextSlow `seq` nextSubsystem `seq`
+                            go (step + 1) nextSlow $
+                                if isEmpty newTasks then
+                                    nextSubsystem
+                                else
+                                    merge [(1,newTasks)] nextSubsystem
 
 
     runSubsystem
@@ -576,14 +559,19 @@ rewrite rewriteScope =
         go tier1 slowQueue acc subsystem@((t,queue):rest)
             | isEmpty queue =
                   go tier1 slowQueue acc rest
-                  
+
             | t > step =
                   return (tier1,slowQueue,merge (reverse acc) subsystem)
 
             | t == 1 =
                   do
                     (newTasks,newSlow,newTier) <- runTier 1 emptyQueue emptyQueue slowQueue queue
-                    go (append tier1 newTasks) newSlow [(1,newTier)] rest
+                    let
+                        newTier1 =
+                            append tier1 newTasks
+
+                    newTier1 `seq`
+                        go newTier1 newSlow [(1,newTier)] rest
 
             | otherwise =
                 let
@@ -596,8 +584,19 @@ rewrite rewriteScope =
                       (n,0) ->
                           do
                             (newTasks,newSlow,newTier) <- runTier quantaAllowed emptyQueue emptyQueue slowQueue queue
-                            go (append tier1 newTasks) (merge newSlow slowQueue) (merge [(t,newTier)] acc) rest
-                            
+                            let
+                                newTier1 =
+                                    append tier1 newTasks
+
+                                mergedSlow =
+                                    merge newSlow slowQueue
+
+                                mergedAcc =
+                                    merge [(t,newTier)] acc
+
+                            newTier1 `seq` mergedSlow `seq` mergedAcc `seq`
+                                go newTier1 mergedSlow mergedAcc rest
+
                       _ ->
                           go tier1 slowQueue (merge [(t,queue)] acc) rest
 
@@ -622,14 +621,28 @@ rewrite rewriteScope =
                 do
                   result <- runTask task
                   case result of
-                    
-                      Left newNewTasks -> 
-                          runTier allowed (append newTasks newNewTasks) ran slow tasks
-                          
+
+                      Left newNewTasks ->
+                          let
+                              news =
+                                  append newTasks newNewTasks
+                          in
+                              news `seq`
+                                  runTier allowed news ran slow tasks
+
                       Right (quantaLeft,newNewTasks,newTask) ->
-                          if quantaLeft > 0 then 
-                              runTier allowed (append newTasks newNewTasks) (enqueue newTask ran) slow tasks
-                          else 
+                          if quantaLeft > 0 then
+                              let
+                                  appendedNews =
+                                      append newTasks newNewTasks
+
+                                  newRan =
+                                      enqueue newTask ran
+
+                              in
+                                  appendedNews `seq` newRan `seq`
+                                      runTier allowed appendedNews newRan slow tasks
+                          else
                               let
                                   stepsUsed =
                                       allowed + (abs quantaLeft)
@@ -643,10 +656,17 @@ rewrite rewriteScope =
                                   newTier =
                                       calculateTierWithPriority priority tier
 
+                                  appendedNews =
+                                      append newTasks newNewTasks
+
+                                  newSlow =
+                                      insert (newTier,newTask) slow
+
                               in
-                                  runTier allowed (append newTasks newNewTasks) ran (insert (newTier,newTask) slow) tasks
+                                  appendedNews `seq` newSlow `seq`
+                                      runTier allowed appendedNews ran newSlow tasks
        where
-       
+
          runTask
              :: TaskInfo scope parent
              -> Pattern scope parent (Either
@@ -727,9 +747,13 @@ rewrite rewriteScope =
                                  run
                              else
                                  ignore
+    
+                         newQuantaLeft =
+                             quantaLeft - 1
 
                          ignore =
-                             Send symbol (go newest (quantaLeft - 1) . k)
+                             newQuantaLeft `seq`
+                                 Send symbol (go newest newQuantaLeft . k)
 
                      in
                          case prj symbol of
@@ -757,7 +781,8 @@ rewrite rewriteScope =
                                                      k (ok op)
 
                                              in
-                                                 go newNewest quantaLeft continue
+                                                 newNewest `seq`
+                                                     go newNewest quantaLeft continue
 
                                      Atomically currentScope block rk ->
                                          check currentScope $
@@ -791,7 +816,8 @@ rewrite rewriteScope =
 
                                                          in
                                                              if newQuantaLeft > 0 then
-                                                                   go newNewest newQuantaLeft continue
+                                                                   newQuantaLeft `seq`
+                                                                       go newNewest newQuantaLeft continue
                                                              else
                                                                  let
                                                                      newTask =
@@ -841,8 +867,18 @@ rewrite rewriteScope =
                                      Yield currentScope ->
                                          check currentScope $
                                              let
+                                                 continue =
+                                                     k (unsafeCoerce ())
+
+                                                 newTask =
+                                                     TaskInfo
+                                                         priority
+                                                         chunking
+                                                         op
+                                                         continue
+
                                                  result =
-                                                     Right (quantaLeft,newest,ti)
+                                                     Right (quantaLeft,newest,newTask)
 
                                              in
                                                  return result
@@ -894,7 +930,8 @@ rewrite rewriteScope =
                                         quantaUsed + 1
 
                                 in
-                                    Send symbol (go newQuantaUsed . k)
+                                    newQuantaUsed `seq`
+                                        Send symbol (go newQuantaUsed . k)
 
                         in
                             case prj symbol of
@@ -919,7 +956,8 @@ rewrite rewriteScope =
                                                         k (ok op)
 
                                                 in
-                                                    startAtomic quantaUsed priority chunking newNewest continue
+                                                    newNewest `seq`
+                                                        startAtomic quantaUsed priority chunking newNewest continue
 
                                         Atomically currentScope block rk ->
                                             check currentScope $
@@ -942,7 +980,8 @@ rewrite rewriteScope =
                                                                     unsafeCoerce rk intermediate
 
                                                             in
-                                                                startAtomic newNewQuantaUsed newPriority newChunking newNewest continue
+                                                                newNewest `seq` newNewQuantaUsed `seq`
+                                                                    startAtomic newNewQuantaUsed newPriority newChunking newNewest continue
 
                                         SetPriority currentScope newPriority ->
                                             check currentScope $
@@ -979,10 +1018,10 @@ rewrite rewriteScope =
 
 
 
-taskInfoPriority 
+taskInfoPriority
     :: TaskInfo scope parent
     -> Priority
-    
+
 taskInfoPriority (TaskInfo p _ _ _) =
     p
 
@@ -1045,7 +1084,7 @@ merge
 
 merge subsystem [] =
     subsystem
-    
+
 merge [] subsystem =
     subsystem
 
@@ -1055,10 +1094,25 @@ merge ((level,newQueue):restToBeMerged) subsystem =
 
     go ((tier,queue):rest)
         | level < tier =
-              (level,newQueue):merge restToBeMerged subsystem
+              let
+                  newSubsystem =
+                      merge restToBeMerged subsystem
+                      
+              in
+                  newSubsystem `seq`
+                      (level,newQueue):newSubsystem
 
         | level == tier =
-              (tier,append queue newQueue):merge restToBeMerged rest
+              let
+                  newNewQueue =
+                      append queue newQueue
+                      
+                  newRest =
+                      merge restToBeMerged rest
+                      
+              in
+                  newNewQueue `seq` newRest `seq`
+                      (tier,newNewQueue):newRest
 
         | otherwise =
               (tier,queue):go rest
@@ -1075,10 +1129,22 @@ insert (level,task) [] =
 
 insert (level,task) ((tier,queue):rest)
     | tier == level =
-          (tier,enqueue task queue):rest
+          let
+              newQueue =
+                  enqueue task queue
+                 
+          in
+              newQueue `seq`
+                  (tier,newQueue):rest
 
     | level < tier =
-          (tier,queue):insert (level,task) rest
+          let
+              newRest =
+                  insert (level,task) rest
+          
+          in
+              newRest `seq`
+                  (tier,queue):newRest
 
 
 
@@ -1088,11 +1154,14 @@ stepsToTier
 
 stepsToTier n =
     let
-      base =
-          logBase 2 (fromIntegral n)
+        base =
+            logBase 2 (fromIntegral n)
+
+        tier =
+            succ (floor base)
 
     in
-      succ (floor base)
+        tier `seq` tier
 
 
 
@@ -1101,7 +1170,12 @@ tierToSteps
     -> Int
 
 tierToSteps n =
-    2 ^ n - 1
+    let
+        steps =
+            2 ^ n - 1
+            
+    in
+        steps `seq` steps
 
 -- | Inlines
 
@@ -1110,3 +1184,11 @@ tierToSteps n =
 {-# INLINE tasks #-}
 {-# INLINE rewrite #-}
 {-# INLINE tasker #-}
+{-# INLINE insert #-}
+{-# INLINE merge #-}
+{-# INLINE mergeUpTo #-}
+{-# INLINE tierToSteps #-}
+{-# INLINE stepsToTier #-}
+{-# INLINE taskInfoPriority #-}
+{-# INLINE calculateTierWithPriority #-}
+{-# INLINE chunkingMax #-}
