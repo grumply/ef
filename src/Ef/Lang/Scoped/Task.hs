@@ -16,7 +16,7 @@ module Ef.Lang.Scoped.Task
     , query
     , tasks
     , tierToSteps
-    , stepsToTier 
+    , stepsToTier
     ) where
 
 
@@ -31,11 +31,11 @@ import Unsafe.Coerce
 
 
 main = do
-    let 
-      obj = 
+    let
+      obj =
           Object $ tasker *:* Empty
 
-    delta obj $ 
+    delta obj $
         tasks $ \Task {..} ->
             do
               fork Normal NonChunked $ do
@@ -80,7 +80,7 @@ data TaskInfo scope parent
         -> Operation status result
         -> Pattern scope parent result
         -> TaskInfo scope parent
- 
+
 
 
 data Priority
@@ -88,6 +88,10 @@ data Priority
 
     Highest
         :: Priority
+
+    HighBy
+        :: Int
+        -> Priority
 
     Higher
         :: Priority
@@ -104,9 +108,9 @@ data Priority
     Lower
         :: Priority
 
-    Lowest
-        :: Priority
-
+    LowBy
+        :: Int
+        -> Priority
 
 
 data Chunking
@@ -127,7 +131,7 @@ data Status status result
     Running
         :: Maybe status
         -> Status status result
-        
+
     Failed
         :: SomeException
         -> Status status result
@@ -192,7 +196,7 @@ data Tasking k
     Yield
         :: Int
         -> Tasking k
-        
+
 
 
 supplement
@@ -265,11 +269,6 @@ data Task scope parent =
         , yield
               :: Pattern scope parent ()
 
-        , await
-              :: forall status result.
-                 Operation status result
-              -> Pattern scope parent result
-
         }
 
 
@@ -321,7 +320,7 @@ tasks f =
       scope <- self (FreshScope id)
       rewrite scope $ f
           Task
-                { 
+                {
                   fork =
                       \priority chunking child ->
                           do
@@ -357,10 +356,6 @@ tasks f =
                 , yield =
                       self (Yield scope)
 
-                , await =
-                      \operation ->
-                          self (Await scope operation id)
-                
                 }
 
 
@@ -407,7 +402,7 @@ rewrite rewriteScope =
               Just x ->
                   case x of
 
-                      Fork currentScope priority chunking operation child _ ->
+                      Fork currentScope priority chunking operation child ok ->
                           check currentScope $
                               do
                                 let
@@ -416,27 +411,81 @@ rewrite rewriteScope =
 
                                 rootOperation <- fmap Operation (io op)
                                 let
-                                  rootTask =
-                                      TaskInfo
-                                          Highest
-                                          NonChunked
-                                          rootOperation
-                                          (k $ unsafeCoerce rootOperation)
+                                    continue =
+                                        ok (unsafeCoerce rootOperation)
 
-                                  childTask
-                                      :: TaskInfo scope parent
+                                    rootTask =
+                                        TaskInfo
+                                            Highest
+                                            NonChunked
+                                            rootOperation
+                                            (k $ unsafeCoerce ok)
 
-                                  childTask =
-                                      TaskInfo priority chunking operation $ unsafeCoerce child
+                                    childTask =
+                                        TaskInfo priority chunking operation (unsafeCoerce child)
 
-                                  queue =
-                                      newQueue [rootTask,childTask]
+                                    queue =
+                                        newQueue [rootTask,childTask]
 
-                                withSubsystem (unsafeCoerce rootOperation) [(1,unsafeCoerce queue)]
+                                withSubsystem rootOperation [(1,queue)]
 
                       Yield currentScope ->
                           check currentScope $
-                              start (k $ unsafeCoerce ())
+                              let
+                                  continue =
+                                      k (unsafeCoerce ())
+
+                              in
+                                  start continue
+
+                      SetChunking currentScope newChunking ->
+                          check currentScope $
+                              do
+                                  let
+                                      op =
+                                          newIORef (Running Nothing)
+
+                                  rootOperation <- fmap Operation (io op)
+                                  let
+                                      continue =
+                                          k (unsafeCoerce rootOperation)
+
+                                      rootTask =
+                                          TaskInfo
+                                              Highest
+                                              newChunking
+                                              rootOperation
+                                              continue
+
+                                      queue =
+                                          newQueue [rootTask]
+
+                                  withSubsystem rootOperation [(1,queue)]
+
+
+                      SetPriority currentScope newPriority ->
+                          check currentScope $
+                              do
+                                  let
+                                      op =
+                                          newIORef (Running Nothing)
+
+                                  rootOperation <- fmap Operation (io op)
+                                  let
+                                      continue =
+                                          k (unsafeCoerce ())
+
+                                      rootTask =
+                                          TaskInfo
+                                              newPriority
+                                              NonChunked
+                                              rootOperation
+                                              continue
+
+                                      queue =
+                                          newQueue [rootTask]
+
+                                  withSubsystem rootOperation [(1,queue)]
 
                       _ ->
                           ignore
@@ -461,7 +510,7 @@ rewrite rewriteScope =
               case status of
                   -- Don't case on Running as it should be impossible
                   -- since run queue is empty.
-                  Failed e -> 
+                  Failed e ->
                       throw e
 
                   Done result ->
@@ -495,23 +544,30 @@ rewrite rewriteScope =
                                 merge [(1,newTasks)] nextSubsystem
 
 
-           
+    runSubsystem
+        :: Int
+        -> [(Int,Queue (TaskInfo scope parent))]
+        -> [(Int,Queue (TaskInfo scope parent))]
+        -> Pattern scope parent ( Queue (TaskInfo scope parent)
+                                , [(Int,Queue (TaskInfo scope parent))]
+                                , [(Int,Queue (TaskInfo scope parent))]
+                                )
     -- uses step slow and subsystem
     -- returns the new slow, new tier1, and new subsystem
     runSubsystem step slow subsystem =
         go emptyQueue slow [] subsystem
       where
-      
-        -- go
-        --     :: Queue (TaskInfo scope parent)
-        --     -> [(Int,Queue (TaskInfo scope parent))]
-        --     -> [(Int,Queue (TaskInfo scope parent))]
-        --     -> [(Int,Queue (TaskInfo scope parent))]
-        --     -> ( Queue (TaskInfo scope parent)
-        --        , [(Int,Queue (TaskInfo scope parent))]
-        --        , [(Int,Queue (TaskInfo scope parent))]
-        --        )
-               
+
+        go
+            :: Queue (TaskInfo scope parent)
+            -> [(Int,Queue (TaskInfo scope parent))]
+            -> [(Int,Queue (TaskInfo scope parent))]
+            -> [(Int,Queue (TaskInfo scope parent))]
+            -> Pattern scope parent ( Queue (TaskInfo scope parent)
+                                    , [(Int,Queue (TaskInfo scope parent))]
+                                    , [(Int,Queue (TaskInfo scope parent))]
+                                    )
+
         go tier1 slowQueue acc [] =
             return (tier1,slowQueue,reverse acc)
 
@@ -521,7 +577,7 @@ rewrite rewriteScope =
 
             | t == 1 =
                   do
-                    (newTasks,newSlow,newTier) <- runTier 1 slowQueue queue
+                    (newTasks,newSlow,newTier) <- runTier 1 emptyQueue emptyQueue slowQueue queue
                     go (append tier1 newTasks) newSlow [(1,newTier)] rest
 
             | otherwise =
@@ -535,10 +591,19 @@ rewrite rewriteScope =
                       (n,0) ->
                           do
                             (newTasks,newSlow,newTier) <- runTier quantaAllowed emptyQueue emptyQueue slowQueue queue
-                            undefined 
+                            undefined
 
 
-
+    runTier
+        :: Int
+        -> Queue (TaskInfo scope parent)
+        -> Queue (TaskInfo scope parent)
+        -> [(Int,Queue (TaskInfo scope parent))]
+        -> Queue (TaskInfo scope parent)
+        -> Pattern scope parent ( Queue (TaskInfo scope parent)
+                                , [(Int,Queue (TaskInfo scope parent))]
+                                , Queue (TaskInfo scope parent)
+                                )
     runTier allowed newTasks ran slow queue =
         case dequeue queue of
 
@@ -551,137 +616,341 @@ rewrite rewriteScope =
                   undefined
       where
 
+        runTask
+            :: TaskInfo scope parent
+            -> Pattern scope parent (Either
+                                         ( Queue (TaskInfo scope parent) )
+                                         ( Queue (TaskInfo scope parent)
+                                         , TaskInfo scope parent
+                                         )
+                                    )
+
         runTask ti@(TaskInfo priority chunking op@(Operation operation) task) =
             let
-              quanta =
-                  max (chunkingMax chunking) allowed
+                quanta =
+                    max (chunkingMax chunking) allowed
 
             in
-              go emptyQueue quanta task
+                go emptyQueue quanta task
 
-          where
+            where
 
-            -- ignore quanta and fail fast
-            go newest _ (Fail e) =
-                do
-                  let
-                    finish =
-                        writeIORef operation (Failed e)
+                -- ignore quanta and fail fast
+                go newest _ (Fail e) =
+                    let
+                        finish =
+                            writeIORef operation (Failed e)
 
-                    taskResult =
-                        Left newest
+                        taskResult =
+                            Left newest
 
-                  io finish
-                  return taskResult
+                    in
+                        do
+                            io finish
+                            return taskResult
 
-            -- ignore quanta and return fast
-            go newest _ (Pure result) =
-                do
-                  let
-                    finish =
-                        writeIORef operation (Done $ unsafeCoerce result)
+                -- ignore quanta and return fast
+                go newest _ (Pure result) =
+                    let
+                        finish =
+                            writeIORef operation (Done $ unsafeCoerce result)
 
-                    taskResult =
-                        Left newest
 
-                  io finish
-                  return taskResult
+                        taskResult =
+                            Left newest
 
-            go newest 0 task =
-                let
-                  continue =
-                      TaskInfo 
-                          priority
-                          chunking
-                          op
-                          (unsafeCoerce task)
+                    in
+                        do
+                            io finish
+                            return taskResult
 
-                  result =
-                      Right (newest,continue)
+                go newest 0 task =
+                    let
+                        continue =
+                            TaskInfo
+                                priority
+                                chunking
+                                op
+                                (unsafeCoerce task)
 
-                in 
-                  return result
+                        result =
+                            Right (newest,continue)
 
-            -- don't count calls to Super
-            go newest quantaLeft (Super m) =
-                let
-                  continue =
-                      go newest quantaLeft
+                    in
+                        return result
 
-                in
-                  Super (fmap continue m)
+                -- don't count calls to Super
+                go newest quantaLeft (Super m) =
+                    let
+                        continue =
+                            go newest quantaLeft
 
-            go newest quantaLeft x@(Send symbol k) =
-                let
-                  check currentScope run =
-                      if currentScope == rewriteScope then 
-                          run
-                      else
-                          ignore
+                    in
+                        Super (fmap continue m)
 
-                  ignore =
-                      Send symbol (go newest (quantaLeft - 1) . k)
+                go newest quantaLeft x@(Send symbol k) =
+                    let
+                        check currentScope run =
+                            if currentScope == rewriteScope then
+                                run
+                            else
+                                ignore
 
-                in
-                  case prj symbol of
+                        ignore =
+                            Send symbol (go newest (quantaLeft - 1) . k)
 
-                      Nothing ->
-                          ignore
+                    in
+                        case prj symbol of
 
-                      Just x ->
-                          case x of
+                            Nothing ->
+                                ignore
 
-                              Fork currentScope priority chunking op child ok ->
-                                  check currentScope $
-                                      let
-                                        newTask =
-                                            TaskInfo
-                                                priority
-                                                chunking
-                                                op
-                                                child
+                            Just x ->
+                                case x of
 
-                                      in
-                                        go 
-                                            (enqueue (unsafeCoerce newTask) newest)
-                                            (quantaLeft - 1)
-                                            (unsafeCoerce ok op)
+                                    Fork currentScope priority chunking op child ok ->
+                                        check currentScope $
+                                            let
+                                                newTask =
+                                                    TaskInfo
+                                                        priority
+                                                        chunking
+                                                        op
+                                                        child
 
-                              Atomically currentScope block rk ->
-                                  check currentScope $
-                                      do
-                                        (result,newestTasks,quantaUsed) <- runAtomic block
+                                                newNewest =
+                                                    enqueue (unsafeCoerce newTask) newest
+
+                                                continue =
+                                                    k (ok op)
+
+                                            in
+                                                go newNewest quantaLeft continue
+
+                                    Atomically currentScope block rk ->
+                                        check currentScope $
+                                            do
+                                                atomicResult <- try $ runAtomic priority chunking newest (unsafeCoerce block)
+                                                case atomicResult of
+
+                                                    Left (e :: SomeException) ->
+                                                        let
+                                                            fail =
+                                                                writeIORef operation (Failed e)
+
+                                                            result =
+                                                                Left newest
+
+                                                        in
+                                                            do
+                                                                io fail
+                                                                return result
+
+                                                    Right (newPriority,newChunking,intermediate,newNewest,quantaUsed) ->
+                                                        let
+                                                            newQuantaLeft =
+                                                                quantaLeft - quantaUsed
+
+                                                            newTier =
+                                                                stepsToTier quantaUsed
+
+                                                            continue =
+                                                                unsafeCoerce rk intermediate
+
+                                                        in
+                                                            if newQuantaLeft > 0 then
+                                                                  go newNewest newQuantaLeft continue
+                                                            else
+                                                                let
+                                                                    newTask =
+                                                                        TaskInfo
+                                                                            newPriority
+                                                                            newChunking
+                                                                            op
+                                                                            continue
+
+                                                                    result =
+                                                                        Right (newNewest,newTask)
+
+                                                                in
+                                                                    return result
+
+                                    SetPriority currentScope newPriority ->
                                         let
-                                          newTier =
-                                              stepsToTier quantaUsed
+                                            continue =
+                                                k (unsafeCoerce ())
+
+                                            newTask =
+                                                TaskInfo newPriority chunking op continue
+
+                                        in
+                                            runTask newTask
+
+                                    SetChunking currentScope newChunking ->
+                                        let
+                                            continue =
+                                                k (unsafeCoerce ())
+
+                                            newTask =
+                                                TaskInfo priority newChunking op continue
+
+                                        in
+                                            runTask newTask
+
+                                    Stop currentScope ->
+                                        check currentScope $
+                                            let
+                                                result =
+                                                    Left newest
+
+                                            in
+                                                return result
+
+                                    Yield currentScope ->
+                                        check currentScope $
+                                            let
+                                                result =
+                                                    Right (newest,ti)
+
+                                            in
+                                                return result
 
 
+    runAtomic
+        :: Priority
+        -> Chunking
+        -> Queue (TaskInfo scope parent)
+        -> Pattern scope parent result
+        -> Pattern scope parent ( Priority
+                                , Chunking
+                                , result
+                                , Queue (TaskInfo scope parent)
+                                , Int
+                                )
 
-                                        go 
-                                            (append newest newestTasks)
-                                            quantaLeft
-                                            (unsafeCoerce rk result)
+    runAtomic =
+        startAtomic 0
+        where
+            startAtomic quanta priority chunking newest =
+                go quanta
+                where
+                    go quantaUsed (Fail exception) =
+                        Fail exception
 
-                              SetPriority currentScope newPriority ->
-                                  undefined
+                    go quantaUsed (Pure result) =
+                        return (priority,chunking,result,newest,quantaUsed)
 
-                              SetChunking currentScope newChunking ->
-                                  undefined
+                    go quantaUsed (Super m) =
+                        let
+                            continue =
+                                go quantaUsed
 
-                              Await currentScope operation rk ->
-                                  undefined
+                        in
+                            Super (fmap continue m)
 
-                              Stop currentScope ->
-                                  return (Left newest)
+                    go quantaUsed (Send symbol k) =
+                        let
+                            check currentScope run =
+                                if currentScope == rewriteScope then
+                                    run
+                                else
+                                    ignore
 
-                              Yield currentScope ->
-                                  return (Right (newest,ti))
+                            ignore =
+                                let
+                                    newQuantaUsed =
+                                        quantaUsed + 1
+
+                                in
+                                    Send symbol (go newQuantaUsed . k)
+
+                        in
+                            case prj symbol of
+
+                                Just x ->
+                                    case x of
+
+                                        Fork currentScope priority chunking op child ok ->
+                                            check currentScope $
+                                                let
+                                                    newTask =
+                                                        TaskInfo
+                                                            priority
+                                                            chunking
+                                                            op
+                                                            child
+
+                                                    newNewest =
+                                                        enqueue (unsafeCoerce newTask) newest
+
+                                                    continue =
+                                                        k (ok op)
+
+                                                in
+                                                    startAtomic quantaUsed priority chunking newNewest continue
+
+                                        Atomically currentScope block rk ->
+                                            check currentScope $
+                                                do
+                                                    atomicResult <- try $ runAtomic priority chunking newest (unsafeCoerce block)
+                                                    case atomicResult of
+
+                                                        Left (exception :: SomeException) ->
+                                                            Fail exception
+
+                                                        Right (newPriority,newChunking,intermediate,newNewest,newQuantaUsed) ->
+                                                            let
+                                                                newNewQuantaUsed =
+                                                                    quantaUsed + newQuantaUsed
+
+                                                                newNewest =
+                                                                    append newest newNewest
+
+                                                                continue =
+                                                                    unsafeCoerce rk intermediate
+
+                                                            in
+                                                                startAtomic newNewQuantaUsed newPriority newChunking newNewest continue
+
+                                        SetPriority currentScope newPriority ->
+                                            check currentScope $
+                                                let
+                                                    continue =
+                                                        k (unsafeCoerce ())
+
+                                                in
+                                                    startAtomic quantaUsed newPriority chunking newest continue
+
+                                        SetChunking currentScope newChunking ->
+                                            check currentScope $
+                                                let
+                                                    continue =
+                                                        k (unsafeCoerce ())
+
+                                                in
+                                                    startAtomic quantaUsed priority newChunking newest continue
+
+                                        Yield currentScope ->
+                                            check currentScope $
+                                                let
+                                                    continue =
+                                                        k (unsafeCoerce ())
+
+                                                in
+                                                    go quantaUsed continue
+
+                                        _ ->
+                                            ignore
+
+                                _ ->
+                                    ignore
+
 
 
 chunkingMax (Chunked n) =
     n
-    
-chunkingMax _ = 
+
+chunkingMax _ =
     1
 
 
@@ -693,7 +962,7 @@ calculateTierWithPriority
 calculateTierWithPriority priority n =
     case priority of
 
-        Highest -> 
+        Highest ->
             1
 
         Higher ->
@@ -722,7 +991,7 @@ mergeUpTo
 mergeUpTo tier from to =
     (more,to)
   where
-    (less,more) = 
+    (less,more) =
         span (\(t,qs) -> t <= tier) from
 
     to =
@@ -782,7 +1051,7 @@ stepsToTier n =
 
     in
       succ (floor base)
-      
+
 
 
 tierToSteps
