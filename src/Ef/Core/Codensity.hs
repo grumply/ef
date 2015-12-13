@@ -79,16 +79,31 @@ newtype Codensity scope parent result =
 instance Functor (Codensity scope parent)
   where
 
-    fmap f (Codensity m) =
-        Codensity $ m . (. f)
+    -- fmap a function, f, over a Codensity computation by unwrapping the
+    -- computation and applying it to a continuation composed with f and
+    -- rewrapping.
+    fmap f (Codensity computation) =
+        let
+          compose continue =
+              computation (continue . f)
+
+        in
+          Codensity compose
 
 
 
 instance Applicative (Codensity scope parent)
   where
 
+    -- lift a value, x, into a Codensity computation by applying a
+    -- continuation to the value and wrapping in Codensity.
     pure x =
-        Codensity ($ x)
+        let
+          computation continue =
+              continue x
+        
+        in
+          Codensity computation
 
 
 
@@ -100,8 +115,8 @@ instance Applicative (Codensity scope parent)
 instance Monad (Codensity scope parent)
   where
 
-    return x =
-        Codensity ($ x)
+    return =
+        pure
 
 
 
