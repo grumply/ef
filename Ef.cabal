@@ -55,6 +55,7 @@ library
                        Ef.Lang.Scoped.Notate
                        Ef.Lang.Scoped.Or
                        Ef.Lang.Scoped.React
+                       Ef.Lang.Scoped.Task
                        Ef.Lang.Scoped.Thread
                        Ef.Lang.Scoped.Try
                        Ef.Lang.Scoped.Vary
@@ -62,13 +63,7 @@ library
 
   -- other-modules:       
   -- other-extensions:    
-  build-depends:       base >=4.8 && <4.9, random >= 1.1, binary >= 0.7.6, containers >= 0.5.6, zlib >= 0.6.1, bytestring >= 0.10.6, network
+  build-depends:       base >=4.8 && <4.9, random >= 1.1, binary >= 0.7.6, containers >= 0.5.6, zlib >= 0.5, bytestring >= 0.10.6, network
   hs-source-dirs:      src
   default-language:    Haskell2010
 
-test-suite doctests
-  type:           exitcode-stdio-1.0
-  ghc-options:    -threaded
-  main-is:        doctests.hs
-  hs-source-dirs: src
-  build-depends:  base, Ef >= 1.0, doctest >= 0.8, time, random >= 1.1
