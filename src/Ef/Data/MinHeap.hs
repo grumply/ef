@@ -1,14 +1,14 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE GADTs #-}
-module Ef.Data.MinHeap where
+-- module Ef.Data.MinHeap where
+module Main where
 
 import Control.Monad
 import Control.Monad.ST
 
-import Data.Array
-import Data.STRef
 import Data.Array.ST
+import Data.STRef
 
 
 
@@ -23,18 +23,14 @@ data MinHeap s a
 
 main = do
     let
-        minHeap =
-            runST $
-                do
-                    array <- newListArray (1,1 :: Int) [10 :: Int] :: ST s (STArray s Int Int)
-                    (buildMinHeap :: STArray s Int Int -> ST s (MinHeap s Int)) array :: ST s (MinHeap s Int)
-
         min =
             runST $
                 do
-                    (extractMinST :: MinHeap s Int -> ST s (Maybe Int)) minHeap
-
+                    array <- newListArray (1,5000000) [1 .. 5000000 :: Int]
+                    minHeap <- buildMinHeap array
+                    replicateM 10 (extractMinST minHeap)
     print min
+    -- print $ head $ reverse [5000000,49999995000,4999 .. 1 .. 1 :: Int]
 
 buildMinHeap
     :: Ord a
@@ -85,10 +81,13 @@ minHeapify
     -> Int
     -> ST s ()
 
-minHeapify (Heap elems heap) =
-    go
+minHeapify (Heap elems heap) start =
+    do
+        current <- readArray heap start
+        go start current
     where
-        go index =
+        {-# INLINE go #-}
+        go index current =
             do
                 elements <- readSTRef elems
                 let
@@ -104,16 +103,11 @@ minHeapify (Heap elems heap) =
                     hasRight =
                         rightIndex <= elements
 
-                    readCurrent =
-                        readArray heap index
-
                     readLeft =
                         readArray heap leftIndex
 
                     readRight =
                         readArray heap rightIndex
-
-                current <- readCurrent
 
                 small@(smaller,smallerIndex) <-
                     if hasLeft then
@@ -144,7 +138,7 @@ minHeapify (Heap elems heap) =
                     do
                         writeArray heap index smallest
                         writeArray heap indexOfSmallest current
-                        go indexOfSmallest
+                        go indexOfSmallest smallest
 
 
 
@@ -152,3 +146,6 @@ minHeapify (Heap elems heap) =
 --     :: Int
 --     -> 
 
+{-# INLINE extractMinST #-}
+{-# INLINE minHeapify #-}
+{-# INLINE buildMinHeap #-}
