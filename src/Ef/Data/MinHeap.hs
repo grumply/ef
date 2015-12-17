@@ -1,151 +1,220 @@
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE GADTs #-}
--- module Ef.Data.MinHeap where
 module Main where
 
 import Control.Monad
 import Control.Monad.ST
-
-import Data.Array.ST
-import Data.STRef
-
-
-
-data MinHeap s a
-    where
-
-        Heap
-            :: STRef s Int
-            -> STArray s Int a
-            -> MinHeap s a
+import Data.List
+import Debug.Trace
+import GHC.Arr
 
 
 main = do
     let
-        min =
+        minsorted = 
+            [undefined,1,2,3,2,3,6,7,2,8,4]
+
+        arr =
+            listArray (0,11) minsorted
+
+        minHeap =
+            Heap 10 10 arr
+
+        go 0 _ = 
+           []
+
+        go n mh =
+            let 
+                Just (min,newMH) =
+                    extractMin mh
+                    
+            in 
+                min:go (n - 1) newMH
+    
+    arr `seq` print "Done" -- print (go 10 minHeap)
+
+data MinHeap a =
+    Heap
+        {
+          currentSize
+              :: {-# UNPACK #-} !Int
+
+        , maxSize
+              :: {-# UNPACK #-} !Int
+
+        , minHeap
+              :: {-# UNPACK #-} !(Array Int a)
+
+        }
+
+instance Show a => Show (MinHeap a)
+    where
+    
+        show (Heap currentSize maxSize minHeap) =
+            "Heap" 
+                ++ "  {"
+                       ++ "\n\t\tcurrentSize: " ++ show currentSize 
+                       ++ "\n\t\tmaxSize: " ++ show maxSize 
+                       ++ "\n\t\tminHeap: [" ++ concat (intersperse "," showMinHeap) ++ "]\n" 
+                ++ "  }"
+            where
+                
+                showMinHeap = 
+                    go 0
+                    where
+                        
+                        go index
+                            | index == currentSize = 
+                                  []
+                            | otherwise =
+                                  let
+                                      valueAtIndex =
+                                          unsafeAt minHeap index
+                                          
+                                  in
+                                      show valueAtIndex : go (index + 1)
+extractMin
+    :: forall a.
+       (Ord a,Show a)
+    => MinHeap a
+    -> Maybe (a,MinHeap a)
+
+extractMin Heap{..} =
+    --trace (show $ Heap {..}) $
+    case currentSize of
+
+        0 ->
+            Nothing
+
+        1 ->
+            runST $
+                do  
+                    arr <- thawSTArray minHeap
+                    min <- readSTArray arr 1
+                    newMinHeap <- freezeSTArray arr
+                    let
+                        newHeap =
+                            Heap 0 maxSize newMinHeap
+
+                        result =
+                            Just (min,newHeap)
+
+                    return result
+
+        _ ->
             runST $
                 do
-                    array <- newListArray (1,5000000) [1 .. 5000000 :: Int]
-                    minHeap <- buildMinHeap array
-                    replicateM 10 (extractMinST minHeap)
-    print min
-    -- print $ head $ reverse [5000000,49999995000,4999 .. 1 .. 1 :: Int]
+                    arr <- thawSTArray minHeap
+                    min <- readSTArray arr 1
+                    largest <- readSTArray arr currentSize
+                    writeSTArray arr 1 largest
+                    sink largest arr
+                    newMinHeap <- freezeSTArray arr
+                    let
+                        newHeap =
+                            Heap (currentSize - 1) maxSize newMinHeap
 
-buildMinHeap
-    :: Ord a
-    => STArray s Int a
-    -> ST s (MinHeap s a)
+                        result =
+                            Just (min,newHeap)
 
-buildMinHeap array =
-    do
-        (_,elements) <- getBounds array
-        elems <- newSTRef elements
-        let
-            largestIndex =
-                elements `div` 2
+                    return result
 
-            nextLargestIndex =
-                pred largestIndex
-
-        forM [largestIndex, nextLargestIndex .. 1] $ \index ->
-            minHeapify (Heap elems array) index
-        return (Heap elems array)
-
-
-
-extractMinST
-    :: Ord a
-    => MinHeap s a
-    -> ST s (Maybe a)
-
-extractMinST (Heap elems heap) =
-    do
-        elements <- readSTRef elems
-        if elements < 1 then
-            return Nothing
-        else
-            do
-                min <- readArray heap 1
-                newFirst <- readArray heap elements
-                writeArray heap 1 newFirst
-                writeSTRef elems (pred elements)
-                minHeapify (Heap elems heap) 1
-                return (Just min)
-
-
-
-minHeapify
-    :: Ord a
-    => MinHeap s a
-    -> Int
-    -> ST s ()
-
-minHeapify (Heap elems heap) start =
-    do
-        current <- readArray heap start
-        go start current
     where
-        {-# INLINE go #-}
-        go index current =
-            do
-                elements <- readSTRef elems
-                let
-                    leftIndex =
-                        2 * index
+        sink
+            :: a
+            -> STArray s Int a
+            -> ST s ()
+ 
+        sink largest arr =
+            go 1
+            where
 
-                    rightIndex =
-                        leftIndex + 1
-
-                    hasLeft =
-                        leftIndex <= elements
-
-                    hasRight =
-                        rightIndex <= elements
-
-                    readLeft =
-                        readArray heap leftIndex
-
-                    readRight =
-                        readArray heap rightIndex
-
-                small@(smaller,smallerIndex) <-
-                    if hasLeft then
-                        do
-                            left <- readLeft
-                            return $
-                                if left < current then
-                                    (left,leftIndex)
-                                else
-                                    (current,index)
-
-                    else
-                        return (current,index)
-
-                (smallest,indexOfSmallest) <-
-                    if hasRight then
-                        do
-                            right <- readRight
-                            return $
-                                if right < smaller then
-                                    (right,rightIndex)
-                                else
-                                    small
-                    else
-                        return small
-
-                when (indexOfSmallest /= index) $
+                go index =
                     do
-                        writeArray heap index smallest
-                        writeArray heap indexOfSmallest current
-                        go indexOfSmallest smallest
+                        let
+                            leftIndex =
+                                index * 2
+
+                            hasLeft =
+                                leftIndex <= currentSize
+
+                            rightIndex =
+                                leftIndex + 1
+
+                            hasRight =
+                                rightIndex <= currentSize
+
+                            readLeft =
+                                readSTArray arr leftIndex
+
+                            readRight =
+                                readSTArray arr rightIndex
+
+                            current =
+                                (largest,index)
+
+                        smaller@(small,smallIndex) <-
+                            if hasLeft then
+                                do
+                                    left <- readLeft
+                                    return $
+                                        if left < largest then
+                                            (left,leftIndex)
+                                        else
+                                            current
+
+                            else
+                                return current
+
+                        (smallest,smallestIndex) <-
+                            if hasRight then
+                                do
+                                    right <- readRight
+                                    return $
+                                        if right < small then
+                                            (right,rightIndex)
+                                        else
+                                            smaller
+                            else
+                                return smaller
+
+                        when (smallestIndex /= index) $
+                            do
+                                writeSTArray arr smallestIndex largest
+                                writeSTArray arr index smallest
+                                go smallestIndex
 
 
 
--- insert
---     :: Int
---     -> 
 
-{-# INLINE extractMinST #-}
-{-# INLINE minHeapify #-}
-{-# INLINE buildMinHeap #-}
+
+insert
+    :: Ord a
+    => a
+    -> MinHeap a
+    -> MinHeap a
+
+insert new Heap{..} =
+    undefined
+
+
+
+bubble
+    :: Ord a
+    => Int
+    -> MinHeap a
+    -> MinHeap a
+
+bubble index Heap{..} =
+    undefined
+
+
+
+sink
+    :: Ord a
+    => MinHeap a
+    -> MinHeap a
+
+sink Heap{..} =
+    undefined
