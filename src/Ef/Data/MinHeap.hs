@@ -21,7 +21,7 @@ import qualified Data.Heap as Heap
 
 main' = do
     let
-        heap = Heap.fromAscList [1..10000000] :: Heap.MinHeap Integer
+        heap = Heap.fromList [1..10000000] :: Heap.MinHeap Integer
 
     print =<< (extractAll heap)
     where
@@ -41,35 +41,41 @@ main' = do
                         Nothing ->
                             return n
 
-main = do
-    currentSize <- newIORef 10000000
-    maxSize <- newIORef 10000000
-    minHeap <- newListArray (0,10000000) (undefined:[1..10000000 :: Integer])
-    let
+-- main = do
+--     currentSize <- newIORef 10000000
+--     maxSize <- newIORef 10000000
+--     heap <- newListArray (0,10000000) (undefined:[1..10000000 :: Integer])
+--     minHeap <- newIORef heap
+--     let
 
-        heap =
-            Heap currentSize maxSize minHeap
+--         heap =
+--             Heap currentSize maxSize minHeap
     
-    print =<< extractAll heap
-    where
-        extractAll heap = 
-            go 0 0
-            where
-                go !prev !n =
-                    do
-                        currentMin <- extractMin heap
-                        case currentMin of
+--     print =<< extractAll heap
+--     where
+--         extractAll heap = 
+--             go 0 0
+--             where
+--                 go !prev !n =
+--                     do
+--                         currentMin <- extractMin heap
+--                         case currentMin of
 
-                            Nothing -> 
-                                return n
+--                             Nothing -> 
+--                                 return n
 
-                            Just min ->
-                                if min > prev then
-                                    go min (n + 1)
-                                else 
-                                    do
-                                        print $ show min ++ " /> " ++ show prev
-                                        return 0
+--                             Just min ->
+--                                 if min > prev then
+--                                     go min (n + 1)
+--                                 else 
+--                                     do
+--                                         print $ show min ++ " /> " ++ show prev
+--                                         return 0
+
+main = 
+    do
+        heap <- new [10,9..1]
+        print heap
 
 data MinHeap a =
     Heap
@@ -81,7 +87,7 @@ data MinHeap a =
               :: {-# UNPACK #-} !(IORef Int)
 
         , minHeap
-              :: {-# UNPACK #-} !(IOArray Int a)
+              :: {-# UNPACK #-} !(IORef (IOArray Int a))
 
         }
 
@@ -95,11 +101,11 @@ instance Show a => Show (MinHeap a)
                 ++ "  {"
                        ++ "\n\t\tcurrentSize: " ++ show (unsafePerformIO $ readIORef currentSize)
                        ++ "\n\t\tmaxSize: " ++ show (unsafePerformIO $ readIORef maxSize)
-                       ++ "\n\t\tminHeap: [" ++ concat (intersperse "," showMinHeap) ++ "]\n"
+                       ++ "\n\t\tminHeap: [" ++ concat (intersperse "," (showMinHeap (unsafePerformIO $ readIORef minHeap))) ++ "]\n"
                 ++ "  }"
             where
 
-                showMinHeap =
+                showMinHeap heap =
                     go 1
                     where
 
@@ -109,7 +115,7 @@ instance Show a => Show (MinHeap a)
                             | otherwise =
                                   let
                                       valueAtIndex =
-                                          unsafePerformIO $ readArray minHeap index
+                                          unsafePerformIO $ readArray heap index
 
                                   in
                                       show valueAtIndex : go (index + 1)
@@ -163,9 +169,11 @@ sizedEmpty height =
             size =
                 heightToSize height
 
+        heap <- newArray_ (0,size)
         currentSize <- newIORef 0
         maxSize <- newIORef size
-        minHeap <- newArray_ (0,size)
+        minHeap <- newIORef heap
+        
         return Heap{..}
 
 
@@ -188,11 +196,13 @@ new as =
             elements =
                 as
 
+        heap <- newListArray (0,size) (undefined:elements)
         currentSize <- newIORef count
         maxSize <- newIORef size
-        minHeap <- newListArray (0,size) (undefined:elements)
-
+        minHeap <- newIORef heap
+        
         sort Heap{..}
+        return Heap {..}
 
 
 
@@ -218,10 +228,11 @@ isFull Heap{..} =
 
 
 grow
-    :: MinHeap a
-    -> IO (MinHeap a)
+    :: Int
+    -> MinHeap a
+    -> IO ()
 
-grow Heap{..} =
+grow curSize Heap{..} =
     undefined
 
 
@@ -230,10 +241,22 @@ grow Heap{..} =
 sort
     :: Ord a
     => MinHeap a
-    -> IO (MinHeap a)
+    -> IO ()
 
 sort Heap {..} = 
-    return Heap {..}
+    do
+        curSize <- readIORef currentSize
+        heap <- readIORef minHeap
+        let
+            middle =
+                curSize `div` 2
+                
+            loopRange =
+                [middle,middle - 1 .. 1]
+        traceShow loopRange $ forM_ loopRange $ \i ->
+            do
+                large <- unsafeRead heap i
+                sink curSize large heap
 
 
 
@@ -248,7 +271,8 @@ viewMin Heap{..} =
             return Nothing
         else
             do
-                min <- unsafeRead minHeap 1
+                heap <- readIORef minHeap
+                min <- unsafeRead heap 1
                 return (Just min)
 
 
@@ -260,30 +284,22 @@ extractMin
 
 extractMin Heap{..} =
     do
+        heap <- readIORef minHeap
         curSize <- readIORef currentSize
-        case curSize of
-
-            0 ->
-                return Nothing
-
-            1 ->
-                do
-                    min <- unsafeRead minHeap 1
-                    writeIORef currentSize 0
-                    return (Just min)
-
-            _ ->
-                do
-                    min <- unsafeRead minHeap 1
-                    largest <- unsafeRead minHeap curSize
-                    unsafeWrite minHeap 1 largest
-                    sink curSize largest minHeap
-                    let
-                        newCurSize =
-                            curSize - 1
-                    newCurSize `seq`
-                        writeIORef currentSize newCurSize
-                    return (Just min)
+        if curSize == 0 then
+            return Nothing
+        else
+            do
+                min <- unsafeRead heap 1
+                largest <- unsafeRead heap curSize
+                unsafeWrite heap 1 largest
+                sink curSize largest heap
+                let
+                    newCurSize =
+                        curSize - 1
+                newCurSize `seq`
+                    writeIORef currentSize newCurSize
+                return (Just min)
 
 {-# INLINE sink #-}
 sink
@@ -293,7 +309,7 @@ sink
     -> IOArray Int a
     -> IO ()
     
-sink curSize largest minHeap =
+sink curSize large minHeap =
     go 1
     where
     
@@ -320,35 +336,34 @@ sink curSize largest minHeap =
                         unsafeRead minHeap rightIndex
 
                     current =
-                        (largest,index)
+                        (large,index)
 
                 smaller@(small,smallIndex) <-
                     if hasLeft then
                         do
                             left <- readLeft
-                            return $
-                                if left < largest then
-                                    (left,leftIndex)
-                                else
-                                    current
+                            if left < large then
+                                return (left,leftIndex)
+                            else
+                                return current
 
                     else
                         return current
+                        
                 (smallest,smallestIndex) <-
                     if hasRight then
                         do
                             right <- readRight
-                            return $
-                                if right < small then
-                                    (right,rightIndex)
-                                else
-                                    smaller
+                            if right < small then
+                                return (right,rightIndex)
+                            else
+                                return smaller
                     else
                         return smaller
 
                 when (smallestIndex /= index) $
                     do
-                        unsafeWrite minHeap smallestIndex largest
+                        unsafeWrite minHeap smallestIndex large
                         unsafeWrite minHeap index smallest
                         go smallestIndex
 
@@ -360,25 +375,49 @@ insert
     :: Ord a
     => a
     -> MinHeap a
-    -> IO (MinHeap a)
+    -> IO ()
 
-insert new heap =
+insert new Heap{..} =
     do
-        full <- isFull heap
-        if full then
-            undefined
-        else
-            undefined
-
+        max <- readIORef maxSize
+        curSize <- readIORef currentSize
+        when (curSize == max) (grow curSize Heap{..})
+        heap <- readIORef minHeap
+        let
+            !newCurrentSize =
+                curSize + 1
+        writeIORef currentSize newCurrentSize
+        unsafeWrite heap newCurrentSize new
+        bubble new heap newCurrentSize
 
 bubble
     :: Ord a
-    => Int
+    => a
     -> IOArray Int a
+    -> Int
     -> IO ()
 
-bubble index arr =
-    undefined
+bubble new arr =
+    go
+    where
+        go index =
+            let
+                parent =
+                    index `div` 2
+
+            in
+                if parent > 0 then
+                    do
+                        parentValue <- unsafeRead arr parent
+                        if parentValue > new then
+                            do
+                                unsafeWrite arr parent new
+                                unsafeWrite arr index parentValue
+                                go parent
+                        else
+                            return ()
+                else 
+                    return ()
 
 
 {-# INLINE heightToSize #-}
