@@ -19,6 +19,8 @@ import Debug.Trace
 
 import qualified Data.Heap as Heap
 
+import System.Random
+
 main' = do
     let
         heap = Heap.fromList [1..10000000] :: Heap.MinHeap Integer
@@ -72,10 +74,26 @@ main' = do
 --                                         print $ show min ++ " /> " ++ show prev
 --                                         return 0
 
-main = 
+main =
     do
-        heap <- new [10,9..1]
-        print heap
+        gen <- newStdGen
+        let
+            rs =
+                take 1000000 (randoms gen)
+
+            heap =
+                Heap.fromList rs :: Heap.MinHeap Int
+
+        heap `seq` print "Done"
+
+main'' = 
+    do
+        gen <- newStdGen
+        let
+            rs =
+                take 1000000 (randoms gen)
+        heap <- new (rs :: [Int])
+        heap `seq` print "Done"
 
 data MinHeap a =
     Heap
@@ -180,7 +198,7 @@ sizedEmpty height =
 
 -- | Create a new min-heap from the given size and list, unsafely.
 new
-    :: Ord a
+    :: (Ord a,Show a)
     => [a]
     -> IO (MinHeap a)
 
@@ -239,7 +257,7 @@ grow curSize Heap{..} =
 
 
 sort
-    :: Ord a
+    :: (Ord a,Show a)
     => MinHeap a
     -> IO ()
 
@@ -253,10 +271,7 @@ sort Heap {..} =
                 
             loopRange =
                 [middle,middle - 1 .. 1]
-        traceShow loopRange $ forM_ loopRange $ \i ->
-            do
-                large <- unsafeRead heap i
-                sink curSize large heap
+        forM_ loopRange (sink Heap{..})
 
 
 
@@ -293,7 +308,7 @@ extractMin Heap{..} =
                 min <- unsafeRead heap 1
                 largest <- unsafeRead heap curSize
                 unsafeWrite heap 1 largest
-                sink curSize largest heap
+                sink Heap{..} 1
                 let
                     newCurSize =
                         curSize - 1
@@ -301,71 +316,80 @@ extractMin Heap{..} =
                     writeIORef currentSize newCurSize
                 return (Just min)
 
+
+
 {-# INLINE sink #-}
 sink
     :: Ord a
-    => Int
-    -> a
-    -> IOArray Int a
+    => MinHeap a
+    -> Int
     -> IO ()
-    
-sink curSize large minHeap =
-    go 1
+
+sink Heap{..} index0 =
+    do
+        curSize <- readIORef currentSize
+        heap <- readIORef minHeap
+        withCurrentSize curSize heap index0
     where
     
-        {-# INLINE go #-}
-        go !index =
-            do
-                let
-                    leftIndex =
-                        index * 2
+        withCurrentSize curSize heap =
+            go 
+            where
+                
+                {-# INLINE go #-}
+                go !index =
+                    do
+                        sinking <- unsafeRead heap index
+                        let
+                            leftIndex =
+                                index * 2
 
-                    hasLeft =
-                        leftIndex <= curSize
+                            hasLeft =
+                                leftIndex <= curSize
 
-                    rightIndex =
-                        leftIndex + 1
+                            rightIndex =
+                                leftIndex + 1
 
-                    hasRight =
-                        rightIndex <= curSize
+                            hasRight =
+                                rightIndex <= curSize
 
-                    readLeft =
-                        unsafeRead minHeap leftIndex
+                            readLeft =
+                                unsafeRead heap leftIndex
 
-                    readRight =
-                        unsafeRead minHeap rightIndex
+                            readRight =
+                                unsafeRead heap rightIndex
 
-                    current =
-                        (large,index)
+                            current =
+                                (sinking,index)
 
-                smaller@(small,smallIndex) <-
-                    if hasLeft then
-                        do
-                            left <- readLeft
-                            if left < large then
-                                return (left,leftIndex)
+                        smaller@(small,smallIndex) <-
+                            if hasLeft then
+                                do
+                                    left <- readLeft
+                                    if left < sinking then
+                                        return (left,leftIndex)
+                                    else
+                                        return current
+
                             else
                                 return current
 
-                    else
-                        return current
-                        
-                (smallest,smallestIndex) <-
-                    if hasRight then
-                        do
-                            right <- readRight
-                            if right < small then
-                                return (right,rightIndex)
+                        (smallest,smallestIndex) <-
+                            if hasRight then
+                                do
+                                    right <- readRight
+                                    if right < small then
+                                        return (right,rightIndex)
+                                    else
+                                        return smaller
                             else
                                 return smaller
-                    else
-                        return smaller
 
-                when (smallestIndex /= index) $
-                    do
-                        unsafeWrite minHeap smallestIndex large
-                        unsafeWrite minHeap index smallest
-                        go smallestIndex
+                        when (smallestIndex /= index) $
+                            do
+                                unsafeWrite heap smallestIndex sinking
+                                unsafeWrite heap index smallest
+                                go smallestIndex
 
 
 
