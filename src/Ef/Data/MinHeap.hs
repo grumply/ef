@@ -14,6 +14,8 @@ import Data.Array.Unsafe
 import Data.IORef
 import System.IO.Unsafe
 
+
+
 -- main = do
 --     currentSize <- newIORef 10000000
 --     maxSize <- newIORef 10000000
@@ -47,9 +49,9 @@ import System.IO.Unsafe
 
 main =
     do
-        heap <- newSizedAsc 10000000 [1..1000000]
+        heap <- fromAscListSize 10000000 [1..10000000 :: Int]
         heap `seq` print "Done"
-        
+
 data MinHeap a =
     Heap
         {
@@ -95,11 +97,6 @@ instance Show a => Show (MinHeap a)
 
 
 
-type Height =
-    Int
-
-
-
 -- | sizeToHeight converts a binary tree size to its minimum height.
 sizeToHeight
     :: Int
@@ -126,22 +123,18 @@ empty
     => IO (MinHeap a)
 
 empty =
-    emptySized 2
+    emptySize (heightToSize 2)
 
 
 
--- | Create an empty min-heap of the given height.
-emptySized
+-- | Create an empty MinHeap of the given size.
+emptySize
     :: Ord a
-    => Height
+    => Int
     -> IO (MinHeap a)
 
-emptySized height =
+emptySize size =
     do
-        let
-            size =
-                heightToSize height
-
         heap <- newArray_ (0,size)
         currentSize <- newIORef 0
         maxSize <- newIORef size
@@ -150,14 +143,70 @@ emptySized height =
         return Heap{..}
 
 
+-- | O(n log_2 n) convert a MinHeap to an ordered list. The returned list is
+-- spine strict.
+toList
+    :: Ord a
+    => MinHeap a
+    -> IO [a]
 
--- | Create a new min-heap from the given size and list, unsafely.
-new
+toList heap =
+    do
+        list <- go
+        list `seq` return list
+    where
+
+        go =
+            do
+                mayValue <- extractMin heap
+                case mayValue of
+
+                    Nothing ->
+                        return []
+
+                    Just value ->
+                        do
+                            rest <- go
+                            return (value:rest)
+
+
+-- | O(n) convert a MinHeap to an unorderd list with a guarantee that
+-- the smallest element is at the head. The returned list is spine-strict.
+rawToList
+    :: MinHeap a
+    -> IO [a]
+
+rawToList Heap{..} =
+    do
+        heap <- readIORef minHeap
+        curSize <- readIORef currentSize
+        list <- withHeap heap curSize
+        list `seq` return list
+    where
+
+        withHeap heap =
+            go
+            where
+
+                go 0 =
+                    return []
+
+                go n =
+                    do
+                        value <- unsafeRead heap n
+                        rest <- go (n - 1)
+                        return (value:rest)
+
+
+
+-- | O(n) create a new min-heap from the given list. If you know the length of the
+-- list ahead of time, use 'fromListSize'.
+fromList
     :: Ord a
     => [a]
     -> IO (MinHeap a)
 
-new as =
+fromList as =
     do
         let
             count =
@@ -174,96 +223,37 @@ new as =
         return Heap {..}
 
 
-
-newFitted
-    :: Ord a
-    => [a]
-    -> IO (MinHeap a)
-
-newFitted as =
-    do
-        let
-            count =
-                length as
-
-        heap <- newListArray (0,count) (undefined:as)
-        currentSize <- newIORef count
-        maxSize <- newIORef count
-        minHeap <- newIORef heap
-        sort Heap{..}
-        return Heap{..}
-        
-
-
-newSized
-    :: Ord a
-    => Int
-    -> [a]
-    -> IO (MinHeap a)
-
-newSized size as =
-    let
-        elements =
-            take size as
-            
-    in
-        do
-            heap <- newListArray (0,size) (undefined:elements)
-            currentSize <- newIORef size
-            maxSize <- newIORef size
-            minHeap <- newIORef heap
-            sort Heap{..}
-            return Heap{..}
-
-
-newAsc
-    :: Ord a
-    => [a]
-    -> IO (MinHeap a)
-
-newAsc as =
-    let
-        count =
-            length as
-
-        size =
-            heightToSize (sizeToHeight count)
-
-    in
-        do
-            heap <- newListArray (0,size) (undefined:as)
-            currentSize <- newIORef count
-            maxSize <- newIORef size
-            minHeap <- newIORef heap
-            return Heap{..}
-
-
-newSizedAsc
+-- | O(min(size,length as)) construct a MinHeap from the given list, as, and 
+-- size by taking size elements from the list. If size < length list, this 
+-- function will trim the list to size.
+fromListSize
     :: Ord a
     => Int
     -> [a]
     -> IO (MinHeap a)
     
-newSizedAsc size as =
-    let
-        elements =
-            take size as
-            
-    in
-        do
-            heap <- newListArray (0,size) (undefined:elements)
-            currentSize <- newIORef size
-            maxSize <- newIORef size
-            minHeap <- newIORef heap
-            return Heap{..}
+fromListSize size as =
+    do
+        let
+            elements =
+                take size as
+                
+        heap <- newListArray (0,size) (undefined:elements)
+        currentSize <- newIORef size
+        maxSize <- newIORef size
+        minHeap <- newIORef heap
+        sort Heap {..}
+        return Heap {..}
 
 
-newFittedAsc
+-- | O(n) construct a MinHeap from the given list pre-sorted in ascending order.
+-- The MinHeap will be fitted to the size of the list. 
+fromAscList
     :: Ord a
     => [a]
     -> IO (MinHeap a)
 
-newFittedAsc as =
+fromAscList as =
     let
         count =
             length as
@@ -277,13 +267,37 @@ newFittedAsc as =
             return Heap{..}
 
 
+-- | O(min(size,length)) construct a MinHeap of a given size with the given
+-- list pre-sorted in ascending order. If length list > size, the list will 
+-- be trimmed to fit.
+fromAscListSize
+    :: Ord a
+    => Int
+    -> [a]
+    -> IO (MinHeap a)
+    
+fromAscListSize size as =
+    let
+        elements =
+            take size as
+            
+    in
+        do
+            heap <- newListArray (0,size) (undefined:elements)
+            currentSize <- newIORef size
+            maxSize <- newIORef size
+            minHeap <- newIORef heap
+            return Heap {..}
 
-newDesc
+
+-- | O(n) construct a MinHeap from the given list pre-sorted in descending 
+-- order. The MinHeap will be fitted to the length of the list.
+fromDescList
     :: Ord a
     => [a]
     -> IO (MinHeap a)
 
-newDesc as =
+fromDescList as =
     let
         count =
             length as
@@ -301,10 +315,12 @@ newDesc as =
             return Heap{..}
     where
 
+        {-# INLINE fill #-}
         fill heap =
             go
             where
 
+                {-# INLINE go #-}
                 go !_ [] =
                     return ()
 
@@ -315,46 +331,15 @@ newDesc as =
 
 
 
-newSizedDesc
+-- | O(min(size,length as)) construct a MinHeap from the given list pre-sorted
+-- in descending order. If length list > size, the list will be trimmed to fit.
+fromDescListSize
     :: Ord a
     => Int
     -> [a]
     -> IO (MinHeap a)
-    
-newSizedDesc size as =
-    let
-        elements =
-            take size as
-            
-    in
-        do
-            heap <- newArray_ (0,size)
-            fill heap size elements
-            currentSize <- newIORef size
-            maxSize <- newIORef size
-            minHeap <- newIORef heap
-            return Heap{..}
-    where
-    
-        fill heap =
-            go
-            where
-                go !_ [] =
-                    return ()
-                    
-                go n (x:xs) =
-                    do
-                        unsafeWrite heap n x
-                        go (n - 1) xs
 
-
-
-newFittedDesc
-    :: Ord a
-    => [a]
-    -> IO (MinHeap a)
-
-newFittedDesc as =
+fromDescListSize size as =
     let
         count =
             length as
@@ -368,11 +353,13 @@ newFittedDesc as =
             minHeap <- newIORef heap
             return Heap{..}
     where
-
+    
+        {-# INLINE fill #-}
         fill heap =
             go
             where
 
+                {-# INLINE go #-}
                 go !_ [] =
                     return ()
 
@@ -405,13 +392,79 @@ isFull Heap{..} =
 
 
 grow
+    :: MinHeap a
+    -> IO ()
+
+grow Heap{..} =
+    do
+        max <- readIORef maxSize
+        curSize <- readIORef currentSize
+        let
+            newMaxSize =
+                heightToSize . succ . sizeToHeight $ max
+
+        oldHeap <- readIORef minHeap
+        newHeap <- newArray_ (0,newMaxSize)
+        copy oldHeap newHeap curSize
+        writeIORef minHeap newHeap
+        writeIORef maxSize newMaxSize
+    where
+
+        {-# INLINE copy #-}
+        copy old new =
+            go
+            where
+            
+                {-# INLINE go #-}
+                go 0 =
+                    return ()
+
+                go n =
+                    do
+                        value <- unsafeRead old n
+                        unsafeWrite new n value
+                        go (n - 1)
+
+
+shrink
     :: Int
     -> MinHeap a
     -> IO ()
+    
+shrink size Heap{..} =
+    do
+        curSize <- readIORef currentSize
+        oldHeap <- readIORef minHeap
+        newHeap <- newArray_ (0,size)
+        copy oldHeap newHeap curSize
+        writeIORef minHeap newHeap
+        writeIORef maxSize size
+    where
+     
+        {-# INLINE copy #-}
+        copy old new =
+            go
+            where
+            
+                {-# INLINE go #-}
+                go 0 =
+                    return ()
 
-grow curSize Heap{..} =
-    undefined
+                go n =
+                    do
+                        value <- unsafeRead old n
+                        unsafeWrite new n value
+                        go (n - 1)
 
+
+fit
+    :: MinHeap a
+    -> IO ()
+
+fit Heap {..} =
+    do
+        curSize <- readIORef currentSize
+        shrink curSize Heap{..}
 
 
 
@@ -452,7 +505,7 @@ viewMin Heap{..} =
 
 
 extractMin
-    :: (Show a, Ord a)
+    :: Ord a
     => MinHeap a
     -> IO (Maybe a)
 
@@ -477,7 +530,6 @@ extractMin Heap{..} =
 
 
 
-{-# INLINE sink #-}
 sink
     :: Ord a
     => MinHeap a
@@ -491,6 +543,7 @@ sink Heap{..} index0 =
         withCurrentSize curSize heap index0
     where
 
+        {-# INLINE withCurrentSize #-}
         withCurrentSize curSize heap =
             go
             where
@@ -552,8 +605,6 @@ sink Heap{..} index0 =
 
 
 
-
-
 insert
     :: Ord a
     => a
@@ -564,7 +615,7 @@ insert new Heap{..} =
     do
         max <- readIORef maxSize
         curSize <- readIORef currentSize
-        when (curSize == max) (grow curSize Heap{..})
+        when (curSize == max) (grow Heap{..})
         heap <- readIORef minHeap
         let
             !newCurrentSize =
@@ -573,6 +624,8 @@ insert new Heap{..} =
         writeIORef currentSize newCurrentSize
         unsafeWrite heap newCurrentSize new
         bubble new heap newCurrentSize
+
+
 
 bubble
     :: Ord a
@@ -584,6 +637,8 @@ bubble
 bubble new arr =
     go
     where
+        
+        {-# INLINE go #-}
         go index =
             do
                 let
@@ -600,12 +655,37 @@ bubble new arr =
                                 go parent
 
 
-{-# INLINE heightToSize #-}
-{-# INLINE sizeToHeight #-}
+{-# INLINE empty #-}
+{-# INLINE emptySize #-}
+
+{-# INLINE fromList #-}
+{-# INLINE fromListSize #-}
+
+{-# INLINE fromAscList #-}
+{-# INLINE fromAscListSize #-}
+
+{-# INLINE fromDescList #-}
+{-# INLINE fromDescListSize #-}
+
 {-# INLINE extractMin #-}
 {-# INLINE insert #-}
-{-# INLINE bubble #-}
-{-# INLINE new #-}
+
 {-# INLINE viewMin #-}
-{-# INLINE empty #-}
-{-# INLINE emptySized #-}
+
+{-# INLINE isEmpty #-}
+{-# INLINE isFull #-}
+
+{-# INLINE toList #-}
+{-# INLINE rawToList #-}
+
+{-# INLINE shrink #-}
+{-# INLINE fit #-}
+{-# INLINE grow #-}
+
+{-# INLINE sort #-}
+
+{-# INLINE heightToSize #-}
+{-# INLINE sizeToHeight #-}
+
+{-# INLINE sink #-}
+{-# INLINE bubble #-}
