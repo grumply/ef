@@ -1,5 +1,3 @@
--- | -- DO NOT USE --
--- This is abhorrent and disgusting Haskell. These dragons are mutated and move orthogonally; expect nothing predictable.
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -15,33 +13,6 @@ import Data.Array.Base
 import Data.Array.Unsafe
 import Data.IORef
 import System.IO.Unsafe
-import Debug.Trace
-
-import qualified Data.Heap as Heap
-
-import System.Random
-
-main' = do
-    let
-        heap = Heap.fromList [1..10000000] :: Heap.MinHeap Integer
-
-    print =<< (extractAll heap)
-    where
-        extractAll =
-            go 0 0
-            where
-                go !prev !n !heap =
-                    case Heap.view heap of
-
-                        Just (min,newHeap) ->
-                            if min > prev then
-                                go min (n + 1) newHeap
-                            else
-                                do
-                                    print $ show min ++ " /> " ++ show prev
-                                    return 0
-                        Nothing ->
-                            return n
 
 -- main = do
 --     currentSize <- newIORef 10000000
