@@ -9,7 +9,7 @@ module Main where
 
 import Control.Monad
 import Data.List (intersperse,unfoldr)
-
+import qualified Data.List as List
 import Data.Array.IO
 import Data.Array.Base
 import Data.Array.Unsafe
@@ -33,7 +33,7 @@ main' = do
                 go !prev !n !heap =
                     case Heap.view heap of
 
-                        Just (min,newHeap) -> 
+                        Just (min,newHeap) ->
                             if min > prev then
                                 go min (n + 1) newHeap
                             else
@@ -52,10 +52,10 @@ main' = do
 
 --         heap =
 --             Heap currentSize maxSize minHeap
-    
+
 --     print =<< extractAll heap
 --     where
---         extractAll heap = 
+--         extractAll heap =
 --             go 0 0
 --             where
 --                 go !prev !n =
@@ -63,44 +63,28 @@ main' = do
 --                         currentMin <- extractMin heap
 --                         case currentMin of
 
---                             Nothing -> 
+--                             Nothing ->
 --                                 return n
 
 --                             Just min ->
 --                                 if min > prev then
 --                                     go min (n + 1)
---                                 else 
+--                                 else
 --                                     do
 --                                         print $ show min ++ " /> " ++ show prev
 --                                         return 0
 
 main =
     do
-        gen <- newStdGen
-        let
-            rs =
-                take 1000000 (randoms gen)
-
-            heap =
-                Heap.fromList rs :: Heap.MinHeap Int
-
+        heap <- newSizedAsc 10000000 [1..1000000]
         heap `seq` print "Done"
-
-main'' = 
-    do
-        gen <- newStdGen
-        let
-            rs =
-                take 1000000 (randoms gen)
-        heap <- new (rs :: [Int])
-        heap `seq` print "Done"
-
+        
 data MinHeap a =
     Heap
         {
           currentSize
               :: {-# UNPACK #-} !(IORef Int)
-              
+
         , maxSize
               :: {-# UNPACK #-} !(IORef Int)
 
@@ -171,17 +155,17 @@ empty
     => IO (MinHeap a)
 
 empty =
-    sizedEmpty 2
+    emptySized 2
 
 
 
 -- | Create an empty min-heap of the given height.
-sizedEmpty
+emptySized
     :: Ord a
     => Height
     -> IO (MinHeap a)
 
-sizedEmpty height =
+emptySized height =
     do
         let
             size =
@@ -191,14 +175,14 @@ sizedEmpty height =
         currentSize <- newIORef 0
         maxSize <- newIORef size
         minHeap <- newIORef heap
-        
+
         return Heap{..}
 
 
 
 -- | Create a new min-heap from the given size and list, unsafely.
 new
-    :: (Ord a,Show a)
+    :: Ord a
     => [a]
     -> IO (MinHeap a)
 
@@ -211,16 +195,220 @@ new as =
             size =
                 heightToSize (sizeToHeight count)
 
-            elements =
-                as
-
-        heap <- newListArray (0,size) (undefined:elements)
+        heap <- newListArray (0,size) (undefined:as)
         currentSize <- newIORef count
         maxSize <- newIORef size
         minHeap <- newIORef heap
-        
         sort Heap{..}
         return Heap {..}
+
+
+
+newFitted
+    :: Ord a
+    => [a]
+    -> IO (MinHeap a)
+
+newFitted as =
+    do
+        let
+            count =
+                length as
+
+        heap <- newListArray (0,count) (undefined:as)
+        currentSize <- newIORef count
+        maxSize <- newIORef count
+        minHeap <- newIORef heap
+        sort Heap{..}
+        return Heap{..}
+        
+
+
+newSized
+    :: Ord a
+    => Int
+    -> [a]
+    -> IO (MinHeap a)
+
+newSized size as =
+    let
+        elements =
+            take size as
+            
+    in
+        do
+            heap <- newListArray (0,size) (undefined:elements)
+            currentSize <- newIORef size
+            maxSize <- newIORef size
+            minHeap <- newIORef heap
+            sort Heap{..}
+            return Heap{..}
+
+
+newAsc
+    :: Ord a
+    => [a]
+    -> IO (MinHeap a)
+
+newAsc as =
+    let
+        count =
+            length as
+
+        size =
+            heightToSize (sizeToHeight count)
+
+    in
+        do
+            heap <- newListArray (0,size) (undefined:as)
+            currentSize <- newIORef count
+            maxSize <- newIORef size
+            minHeap <- newIORef heap
+            return Heap{..}
+
+
+newSizedAsc
+    :: Ord a
+    => Int
+    -> [a]
+    -> IO (MinHeap a)
+    
+newSizedAsc size as =
+    let
+        elements =
+            take size as
+            
+    in
+        do
+            heap <- newListArray (0,size) (undefined:elements)
+            currentSize <- newIORef size
+            maxSize <- newIORef size
+            minHeap <- newIORef heap
+            return Heap{..}
+
+
+newFittedAsc
+    :: Ord a
+    => [a]
+    -> IO (MinHeap a)
+
+newFittedAsc as =
+    let
+        count =
+            length as
+
+    in
+        do
+            heap <- newListArray (0,count) (undefined:as)
+            currentSize <- newIORef count
+            maxSize <- newIORef count
+            minHeap <- newIORef heap
+            return Heap{..}
+
+
+
+newDesc
+    :: Ord a
+    => [a]
+    -> IO (MinHeap a)
+
+newDesc as =
+    let
+        count =
+            length as
+
+        size =
+            heightToSize (sizeToHeight count)
+
+    in
+        do
+            heap <- newArray_ (0,size)
+            fill heap count as
+            currentSize <- newIORef count
+            maxSize <- newIORef size
+            minHeap <- newIORef heap
+            return Heap{..}
+    where
+
+        fill heap =
+            go
+            where
+
+                go !_ [] =
+                    return ()
+
+                go n (x:xs) =
+                    do
+                        unsafeWrite heap n x
+                        go (n - 1) xs
+
+
+
+newSizedDesc
+    :: Ord a
+    => Int
+    -> [a]
+    -> IO (MinHeap a)
+    
+newSizedDesc size as =
+    let
+        elements =
+            take size as
+            
+    in
+        do
+            heap <- newArray_ (0,size)
+            fill heap size elements
+            currentSize <- newIORef size
+            maxSize <- newIORef size
+            minHeap <- newIORef heap
+            return Heap{..}
+    where
+    
+        fill heap =
+            go
+            where
+                go !_ [] =
+                    return ()
+                    
+                go n (x:xs) =
+                    do
+                        unsafeWrite heap n x
+                        go (n - 1) xs
+
+
+
+newFittedDesc
+    :: Ord a
+    => [a]
+    -> IO (MinHeap a)
+
+newFittedDesc as =
+    let
+        count =
+            length as
+
+    in
+        do
+            heap <- newArray_ (0,count)
+            fill heap count as
+            currentSize <- newIORef count
+            maxSize <- newIORef count
+            minHeap <- newIORef heap
+            return Heap{..}
+    where
+
+        fill heap =
+            go
+            where
+
+                go !_ [] =
+                    return ()
+
+                go n (x:xs) =
+                    do
+                        unsafeWrite heap n x
+                        go (n - 1) xs
 
 
 
@@ -257,18 +445,18 @@ grow curSize Heap{..} =
 
 
 sort
-    :: (Ord a,Show a)
+    :: Ord a
     => MinHeap a
     -> IO ()
 
-sort Heap {..} = 
+sort Heap {..} =
     do
         curSize <- readIORef currentSize
         heap <- readIORef minHeap
         let
             middle =
                 curSize `div` 2
-                
+
             loopRange =
                 [middle,middle - 1 .. 1]
         forM_ loopRange (sink Heap{..})
@@ -331,11 +519,11 @@ sink Heap{..} index0 =
         heap <- readIORef minHeap
         withCurrentSize curSize heap index0
     where
-    
+
         withCurrentSize curSize heap =
-            go 
+            go
             where
-                
+
                 {-# INLINE go #-}
                 go !index =
                     do
@@ -410,6 +598,7 @@ insert new Heap{..} =
         let
             !newCurrentSize =
                 curSize + 1
+
         writeIORef currentSize newCurrentSize
         unsafeWrite heap newCurrentSize new
         bubble new heap newCurrentSize
@@ -425,23 +614,19 @@ bubble new arr =
     go
     where
         go index =
-            let
-                parent =
-                    index `div` 2
+            do
+                let
+                    parent =
+                        index `div` 2
 
-            in
-                if parent > 0 then
+                when (parent > 0) $
                     do
                         parentValue <- unsafeRead arr parent
-                        if parentValue > new then
+                        when (parentValue > new) $
                             do
                                 unsafeWrite arr parent new
                                 unsafeWrite arr index parentValue
                                 go parent
-                        else
-                            return ()
-                else 
-                    return ()
 
 
 {-# INLINE heightToSize #-}
@@ -452,4 +637,4 @@ bubble new arr =
 {-# INLINE new #-}
 {-# INLINE viewMin #-}
 {-# INLINE empty #-}
-{-# INLINE sizedEmpty #-}
+{-# INLINE emptySized #-}
