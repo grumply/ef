@@ -627,10 +627,10 @@ sort Heap {..} =
     where
         
         sink curSize heap =
-            go
+            sinkElement
             where
 
-                go !index =
+                sinkElement !index =
                     do
                         sinking <- unsafeRead heap index
                         let
@@ -682,7 +682,7 @@ sort Heap {..} =
                             do
                                 unsafeWrite heap smallestIndex sinking
                                 unsafeWrite heap index smallest
-                                go smallestIndex
+                                sinkElement smallestIndex
 
 
 
