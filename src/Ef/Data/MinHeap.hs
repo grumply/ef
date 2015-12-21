@@ -89,12 +89,13 @@ instance forall a.
                         unsafePerformIO $
                             do
                                 currentSize <- newIORef curSize
-                                maxSize <- newIORef curSize
-                                heap <- unsafeThaw arr
-                                minHeap <- newIORef heap
+                                maxSize     <- newIORef curSize
+                                heap        <- unsafeThaw arr
+                                minHeap     <- newIORef heap
                                 return Heap {..}
 
                 make `seq` return make
+
 
         put Heap {..} =
             let
@@ -577,18 +578,18 @@ shrink size Heap{..} =
 
         {-# INLINE copy #-}
         copy old new =
-            go
+            copyElement
             where
 
-                {-# INLINE go #-}
-                go 0 =
+                {-# INLINE copyElement #-}
+                copyElement 0 =
                     return ()
 
-                go n =
+                copyElement n =
                     do
                         value <- unsafeRead old n
                         unsafeWrite new n value
-                        go (pred n)
+                        copyElement (pred n)
 
 
 
@@ -723,20 +724,18 @@ extractMin Heap{..} =
                 sink curSize heap 1
 
                 let
-                    newCurSize =
+                    !newCurSize =
                          pred curSize
 
-                newCurSize `seq`
-                    writeIORef currentSize newCurSize
-
+                writeIORef currentSize newCurSize
                 return (Just min)
     where
 
         sink curSize heap =
-            go
+            sinkElement
             where
 
-                go !index =
+                sinkElement !index =
                     do
                         sinking <- unsafeRead heap index
                         let
@@ -788,7 +787,7 @@ extractMin Heap{..} =
                             do
                                 unsafeWrite heap smallestIndex sinking
                                 unsafeWrite heap index smallest
-                                go smallestIndex
+                                sinkElement smallestIndex
 
 
 
