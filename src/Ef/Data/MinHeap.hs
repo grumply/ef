@@ -3,8 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
-module MinHeap
--- module Ef.Data.MinHeap
+module Ef.Data.MinHeap
     ( Heap
 
     , empty
@@ -311,7 +310,7 @@ rawFromListSize =
 
 
 
--- | O(min(size,length as)) construct a Heap from the given list, as, and
+-- | O(min(size,n)) construct a Heap from the given list, as, and
 -- size by taking size elements from the list. If size < length list, this
 -- function will trim the list to size.
 fromListSize
@@ -344,7 +343,7 @@ fromAscList =
     rawFromList
 
 
--- | O(min(size,length)) construct a Heap of a given size with the given
+-- | O(min(size,n)) construct a Heap of a given size with the given
 -- list pre-sorted in ascending order. If length list > size, the list will
 -- be trimmed to fit.
 fromAscListSize
@@ -408,7 +407,7 @@ fromDescList as =
 
 
 
--- | O(min(size,length as)) construct a Heap from the given list pre-sorted
+-- | O(min(size,n)) construct a Heap from the given list pre-sorted
 -- in descending order. If length list > size, the list will be trimmed to fit.
 fromDescListSize
     :: Ord a
@@ -610,7 +609,7 @@ viewMin Heap{..} =
 
 
 
--- | O(log n) extract the minimum value from a Heap.
+-- | O(log_2 n) extract the minimum value from a Heap.
 extractMin
     :: Ord a
     => Heap a
@@ -711,7 +710,7 @@ sink Heap{..} index0 =
                                 go smallestIndex
 
 
--- | O(log n) insert a value into a Heap.
+-- | O(log_2 n) insert a value into a Heap.
 insert
     :: Ord a
     => a

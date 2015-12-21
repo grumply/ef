@@ -36,6 +36,9 @@ library
                        Ef.Core.Witness
                        Ef.Data.Promise
                        Ef.Data.Queue
+                       Ef.Data.MinHeap
+                       Ef.Data.MaxHeap
+                       Ef.Data.MedianHeap
                        Ef.Lang.Notate
                        Ef.Lang.Vary
                        Ef.Lang.View

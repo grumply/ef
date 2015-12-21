@@ -1,85 +1,45 @@
 {-# LANGUAGE RecordWildCards #-}
-module Main where
+module Ef.Data.MedianHeap
+    ( Heap
+    , empty
+    , emptySize
 
-import qualified MinHeap as Min
-import qualified MaxHeap as Max
+    , singleton
+    , singletonSize
+
+    , fromList
+    , fromListSize
+
+    , fromAscList
+    , fromAscListSize
+
+    , fromDescList
+    , fromDescListSize
+
+    , isEmpty
+    , isFull
+
+    , insert
+    , extractMedian
+
+    , grow
+    , shrink
+    , fit
+
+    ) where
+
+import qualified Ef.Data.MinHeap as Min
+import qualified Ef.Data.MaxHeap as Max
 
 import Control.Monad
 
 import Data.Binary
 import Data.IORef
+import Data.Maybe
 
 import System.IO.Unsafe
 
-import qualified Data.Sequence as Seq
 
-import System.CPUTime
-import System.Random
-
-main =
-    do
-        gen <- newStdGen
-        let
-            rs =
-                take 1000000 (randoms gen)
-                
-        (rs :: [Int]) `seq` 
-                       do
-                           test1 rs
-                           test2 rs
-    where
-        test1 rs =
-            do
-                start <- getCPUTime
-                heap <- empty
-                fill heap rs
-                middle <- extractMedian heap
-                end <- middle `seq` getCPUTime
-                print (end - start,middle)
-            where
-               
-                fill heap =
-                    go
-                    where
-                    
-                        go [] =
-                            return ()
-                            
-                        go (x:xs) =
-                            do
-                                insert x heap
-                                go xs
-        test2 rs =
-            do
-                start <- getCPUTime
-                let 
-                    sequence = 
-                        Seq.fromList (rs :: [Int])
-
-                    middle =
-                        flip Seq.index 500000 (Seq.unstableSort sequence)
-
-                            
-
-                middle `seq` 
-                    do
-                        end <- getCPUTime
-                        print (end - start,middle)
-
-
-
-main' =
-    do
-        let heap = Seq.fromList [1..10000000 :: Int]
-        case Seq.viewl (Seq.drop 5000000 heap) of
-
-            a Seq.:< _ -> print a
-
-main'' =
-    do
-        heap <- fromAscListSize 10000000 [1..10000000 :: Int]
-        middle <- extractMedian heap
-        print middle
 
 data Heap a =
     Heap
@@ -108,6 +68,8 @@ showHeap Heap {..} =
     "\n\t,median:\n\t\t" ++ show (unsafePerformIO (readIORef median)) ++
     "\n\t,greaterThan:\n\t\t" ++ Min.showHeap greaterThan ++
     "\n\t}"
+
+
 
 instance ( Binary a
          , Ord a
@@ -161,6 +123,7 @@ instance ( Binary a
 
 
 
+-- | O(1) create an empty MedianHeap.
 empty
     :: Ord a
     => IO (Heap a)
@@ -174,6 +137,7 @@ empty =
 
 
 
+-- | O(1) seed a new MedianHeap with 1 element.
 singleton
     :: Ord a
     => a
@@ -188,6 +152,7 @@ singleton a =
 
 
 
+-- | O(1) seed a new MedianHeap of a given size with 1 element.
 singletonSize
     :: Ord a
     => Int
@@ -202,6 +167,7 @@ singletonSize size a =
 
 
 
+-- | O(1) construct an empty MedianHeap of the given size.
 emptySize
     :: Ord a
     => Int
@@ -224,6 +190,7 @@ emptySize size
 
 
 
+-- | O(n) constuct a median heap from a given list and sort.
 fromList
     :: Ord a
     => [a]
@@ -237,10 +204,10 @@ fromList as =
         insertAll heap =
             go
             where
-            
+
                 go [] =
                     return heap
-                    
+
                 go (x:xs) =
                     do
                         insert x heap
@@ -254,42 +221,47 @@ fromList as =
                 return Heap {..}
 
 
-fromListSize 
+
+-- | O(min(size,n)) construct a MedianHeap from a list and sort until the Heap conforms to the MedianHeap properties.
+fromListSize
     :: Ord a
     => Int
     -> [a]
     -> IO (Heap a)
-    
+
 
 fromListSize size as =
     do
         heap <- initialize
         insertAll heap as
     where
-    
+
         insertAll heap =
             go
             where
-            
+
                 go [] =
                     return heap
-                    
+
                 go (x:xs) =
                     do
                         insert x heap
                         go xs
-                        
+
         initialize =
             do
                 let
                     half =
                         size `div` 2
-                        
+
                 lessThan <- Max.emptySize half
                 median <- newIORef Nothing
                 greaterThan <- Min.emptySize half
                 return Heap {..}
-                
+
+
+
+-- | O(n) construct a MedianHeap from a list pre-sorted in descending order.
 fromDescList
     :: Ord a
     => [a]
@@ -322,6 +294,7 @@ fromDescList as =
 
 
 
+-- | O(n) construct a MedianHeap from a list pre-sorted in ascending order.
 fromAscList
     :: Ord a
     => [a]
@@ -354,6 +327,8 @@ fromAscList as =
 
 
 
+-- | O(min(size,n)) construct a Heap from the given list pre-sorted
+-- in descending order. If length list > size, the list will be trimmed to fit.
 fromDescListSize
     :: Ord a
     => Int
@@ -397,6 +372,9 @@ fromDescListSize size as
               return Heap {..}
 
 
+
+-- | O(min(size,n)) construct a Heap from the given list pre-sorted
+-- in descending order. If length list > size, the list will be trimmed to fit.
 
 fromAscListSize
     :: Ord a
@@ -443,8 +421,7 @@ fromAscListSize size as
 
 
 
-
-
+-- | O(log_2 n) insert a value into a MedianHeap.
 insert
     :: Ord a
     => a
@@ -501,6 +478,7 @@ rebalance Heap {..} =
 
 
 
+-- | O(log_2 n) extract the median element.
 extractMedian
     :: Ord a
     => Heap a
@@ -538,9 +516,100 @@ extractMedian Heap {..} =
 
 
 
+-- | O(1) view the median value without extracting it.
+viewMedian
+    :: Heap a
+    -> IO (Maybe a)
+    
+viewMedian Heap {..} =
+    readIORef median
+
+
+
+-- | O(n) shrink a MedianHeap to the given size.
+shrink
+    :: Int
+    -> Heap a
+    -> IO ()
+
+shrink size Heap {..} =
+    do
+        let
+            half =
+                size `div` 2
+
+        Max.shrink half lessThan
+        Min.shrink half greaterThan
+
+
+
+-- | O(n) grow a MedianHeap by one level as if it were a complete binary tree.
+grow
+    :: Heap a
+    -> IO ()
+
+grow Heap {..} =
+    do
+        Max.grow lessThan
+        Min.grow greaterThan
+
+
+
+-- | O(n) shrink a MedianHeap to fit its contents.
+fit
+    :: Heap a
+    -> IO ()
+
+fit Heap {..} =
+    do
+        Max.fit lessThan
+        Min.fit greaterThan
+
+
+
+-- | O(1) determine if MedianHeap is empty.
+isEmpty
+    :: Heap a
+    -> IO Bool
+
+isEmpty Heap {..} =
+    do
+        mayMiddle <- readIORef median
+        return (isNothing mayMiddle)
+
+
+
+-- | O(1) determine if MedianHeap is full.
+isFull
+    :: Heap a
+    -> IO Bool
+
+isFull Heap {..} =
+    do
+        isHeapEmpty <- isEmpty Heap {..}
+        if isHeapEmpty then
+            return False
+        else
+            do
+                lessThanFull <- Max.isFull lessThan
+                greaterThanFull <- Min.isFull greaterThan
+                return (lessThanFull && greaterThanFull)
+
+
+
+{-# INLINE empty #-}
+{-# INLINE emptySize #-}
 {-# INLINE fromList #-}
+{-# INLINE fromListSize #-}
 {-# INLINE fromAscList #-}
 {-# INLINE fromAscListSize #-}
+{-# INLINE fromDescList #-}
+{-# INLINE fromDescListSize #-}
 {-# INLINE insert #-}
 {-# INLINE extractMedian #-}
-{-# INLINE fromListSize #-}
+{-# INLINE isEmpty #-}
+{-# INLINE isFull #-}
+{-# INLINE rebalance #-}
+{-# INLINE shrink #-}
+{-# INLINE grow #-}
+{-# INLINE fit #-}

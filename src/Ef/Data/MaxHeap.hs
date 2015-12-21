@@ -3,8 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
--- module Ef.Data.MaxHeap
-module MaxHeap
+module Ef.Data.MaxHeap
     ( Heap
 
     , empty
@@ -611,7 +610,7 @@ viewMax Heap{..} =
 
 
 
--- | O(log n) extract the maximum value from a Heap.
+-- | O(log_2 n) extract the maximum value from a Heap.
 extractMax
     :: Ord a
     => Heap a
@@ -712,7 +711,7 @@ sink Heap{..} index0 =
                                 go smallestIndex
 
 
--- | O(log n) insert a value into a Heap.
+-- | O(log_2 n) insert a value into a Heap.
 insert
     :: Ord a
     => a
