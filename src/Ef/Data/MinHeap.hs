@@ -72,6 +72,7 @@ data Heap a =
         } deriving (Eq)
 
 
+
 instance forall a.
           Binary a
     => Binary (Heap a)
@@ -96,15 +97,16 @@ instance forall a.
                 make `seq` return make
 
         put Heap {..} =
-            do
-                let
-                    arr =
-                        unsafePerformIO $
-                            do
-                                heap <- readIORef minHeap
-                                unsafeFreeze heap
+            let
+                arr =
+                    unsafePerformIO $
+                        do
+                            heap <- readIORef minHeap
+                            unsafeFreeze heap
 
+            in
                 arr `seq` put (arr :: Array Int a)
+
 
 
 -- | O(n) convert a heap to a human-readable representation (for debugging). Use
@@ -133,16 +135,19 @@ showHeap Heap{..} =
             go 1
             where
 
-                go index
-                    | index > (unsafePerformIO $ readIORef currentSize) =
-                          []
-                    | otherwise =
-                          let
-                              valueAtIndex =
-                                  unsafePerformIO $ readArray heap index
+                go index =
+                    let
+                        curSize =
+                            unsafePerformIO (readIORef currentSize)
 
-                          in
-                              show valueAtIndex : go (index + 1)
+                        valueAtIndex =
+                            unsafePerformIO (readArray heap index)
+
+                    in
+                        if index > curSize then
+                            []
+                        else
+                            show valueAtIndex : go (succ index)
 
 
 
@@ -184,12 +189,12 @@ emptySize
 
 emptySize size =
     do
-        heap <- newArray_ (0,size)
+        heap        <- newArray_ (0,size)
         currentSize <- newIORef 0
-        maxSize <- newIORef size
-        minHeap <- newIORef heap
+        maxSize     <- newIORef size
+        minHeap     <- newIORef heap
+        return Heap {..}
 
-        return Heap{..}
 
 
 -- | O(n log_2 n) convert a Heap to an ordered list. The returned list is
@@ -219,6 +224,7 @@ toList heap =
                             return (value:rest)
 
 
+
 -- | O(n) convert a Heap to an unorderd list with a guarantee that
 -- the smallest element is at the head. The returned list is spine-strict.
 rawToList
@@ -227,9 +233,9 @@ rawToList
 
 rawToList Heap{..} =
     do
-        heap <- readIORef minHeap
+        heap    <- readIORef minHeap
         curSize <- readIORef currentSize
-        list <- withHeap heap curSize
+        list    <- withHeap heap curSize
         list `seq` return list
     where
 
@@ -243,7 +249,7 @@ rawToList Heap{..} =
                 go n =
                     do
                         value <- unsafeRead heap n
-                        rest <- go (n - 1)
+                        rest  <- go (pred n)
                         return (value:rest)
 
 
@@ -264,11 +270,11 @@ fromList as =
             size =
                 heightToSize (sizeToHeight count)
 
-        heap <- newListArray (0,size) (undefined:as)
+        heap        <- newListArray (0,size) (undefined:as)
         currentSize <- newIORef count
-        maxSize <- newIORef size
-        minHeap <- newIORef heap
-        sort Heap{..}
+        maxSize     <- newIORef size
+        minHeap     <- newIORef heap
+        sort   Heap {..}
         return Heap {..}
 
 
@@ -288,11 +294,11 @@ rawFromList as =
             size =
                heightToSize (sizeToHeight count)
 
-        heap <- newListArray (0,size) (undefined:as)
+        heap        <- newListArray (0,size) (undefined:as)
         currentSize <- newIORef count
-        maxSize <- newIORef size
-        minHeap <- newIORef heap
-        return Heap{..}
+        maxSize     <- newIORef size
+        minHeap     <- newIORef heap
+        return Heap {..}
 
 
 
@@ -325,12 +331,13 @@ fromListSize size as =
             elements =
                 take size as
 
-        heap <- newListArray (0,size) (undefined:elements)
+        heap        <- newListArray (0,size) (undefined:elements)
         currentSize <- newIORef size
-        maxSize <- newIORef size
-        minHeap <- newIORef heap
-        sort Heap {..}
+        maxSize     <- newIORef size
+        minHeap     <- newIORef heap
+        sort   Heap {..}
         return Heap {..}
+
 
 
 -- | O(n) construct a Heap from the given list pre-sorted in ascending order.
@@ -341,6 +348,7 @@ fromAscList
 
 fromAscList =
     rawFromList
+
 
 
 -- | O(min(size,n)) construct a Heap of a given size with the given
@@ -359,11 +367,12 @@ fromAscListSize size as =
 
     in
         do
-            heap <- newListArray (0,size) (undefined:elements)
+            heap        <- newListArray (0,size) (undefined:elements)
             currentSize <- newIORef size
-            maxSize <- newIORef size
-            minHeap <- newIORef heap
+            maxSize     <- newIORef size
+            minHeap     <- newIORef heap
             return Heap {..}
+
 
 
 -- | O(n) construct a Heap from the given list pre-sorted in descending
@@ -383,12 +392,12 @@ fromDescList as =
 
     in
         do
-            heap <- newArray_ (0,size)
-            fill heap count as
+            heap        <- newArray_ (0,size)
             currentSize <- newIORef count
-            maxSize <- newIORef size
-            minHeap <- newIORef heap
-            return Heap{..}
+            maxSize     <- newIORef size
+            minHeap     <- newIORef heap
+            fill heap count as
+            return Heap {..}
     where
 
         {-# INLINE fill #-}
@@ -403,7 +412,7 @@ fromDescList as =
                 go n (x:xs) =
                     do
                         unsafeWrite heap n x
-                        go (n - 1) xs
+                        go (pred n) xs
 
 
 
@@ -422,12 +431,12 @@ fromDescListSize size as =
 
     in
         do
-            heap <- newArray_ (0,count)
-            fill heap count as
+            heap        <- newArray_ (0,count)
             currentSize <- newIORef count
-            maxSize <- newIORef count
-            minHeap <- newIORef heap
-            return Heap{..}
+            maxSize     <- newIORef count
+            minHeap     <- newIORef heap
+            fill heap count as
+            return Heap {..}
     where
 
         {-# INLINE fill #-}
@@ -442,7 +451,7 @@ fromDescListSize size as =
                 go n (x:xs) =
                     do
                         unsafeWrite heap n x
-                        go (n - 1) xs
+                        go (pred n) xs
 
 
 
@@ -472,7 +481,15 @@ isEmpty
     -> IO Bool
 
 isEmpty Heap{..} =
-    (== 0) <$> readIORef currentSize
+    let
+        getCurrentSize =
+            readIORef currentSize
+
+        isZero =
+            (== 0)
+
+    in
+        fmap isZero getCurrentSize
 
 
 
@@ -484,8 +501,9 @@ isFull
 isFull Heap{..} =
     do
         currentSize <- readIORef currentSize
-        maxSize <- readIORef maxSize
+        maxSize     <- readIORef maxSize
         return (currentSize == maxSize)
+
 
 
 -- | O(n) grow a heap as if it were a complete tree.
@@ -496,14 +514,19 @@ grow
 grow Heap{..} =
     do
         max <- readIORef maxSize
-        curSize <- readIORef currentSize
         let
-            newMaxSize =
-                heightToSize . succ . sizeToHeight $ max
+            growMaxSize =
+                heightToSize . succ . sizeToHeight
 
+            newMaxSize =
+                growMaxSize max
+
+        curSize <- readIORef currentSize
         oldHeap <- readIORef minHeap
         newHeap <- newArray_ (0,newMaxSize)
+
         copy oldHeap newHeap curSize
+
         writeIORef minHeap newHeap
         writeIORef maxSize newMaxSize
     where
@@ -521,7 +544,8 @@ grow Heap{..} =
                     do
                         value <- unsafeRead old n
                         unsafeWrite new n value
-                        go (n - 1)
+                        go (pred n)
+
 
 
 -- | O(n) shrink a Heap to the given size. Drops arbitrary elements
@@ -536,9 +560,19 @@ shrink size Heap{..} =
         curSize <- readIORef currentSize
         oldHeap <- readIORef minHeap
         newHeap <- newArray_ (0,size)
-        copy oldHeap newHeap curSize
-        writeIORef minHeap newHeap
-        writeIORef maxSize size
+        let
+            updateMaxSize =
+                writeIORef maxSize size
+
+            replaceArray =
+                writeIORef minHeap newHeap
+
+            copyElements =
+                copy oldHeap newHeap curSize
+
+        replaceArray
+        copyElements
+        updateMaxSize
     where
 
         {-# INLINE copy #-}
@@ -554,7 +588,7 @@ shrink size Heap{..} =
                     do
                         value <- unsafeRead old n
                         unsafeWrite new n value
-                        go (n - 1)
+                        go (pred n)
 
 
 
@@ -580,81 +614,21 @@ sort
 sort Heap {..} =
     do
         curSize <- readIORef currentSize
-        heap <- readIORef minHeap
+        heap    <- readIORef minHeap
         let
             middle =
                 curSize `div` 2
 
-            loopRange =
-                [middle,middle - 1 .. 1]
-        forM_ loopRange (sink Heap{..})
+            upperHalfOfHeap =
+                [middle,pred middle .. 1]
 
-
-
--- | O(1) view the minimum value in a Heap.
-viewMin
-    :: Heap a
-    -> IO (Maybe a)
-
-viewMin Heap{..} =
-    do
-        currentSize <- readIORef currentSize
-        if currentSize == 0 then
-            return Nothing
-        else
-            do
-                heap <- readIORef minHeap
-                min <- unsafeRead heap 1
-                return (Just min)
-
-
-
--- | O(log_2 n) extract the minimum value from a Heap.
-extractMin
-    :: Ord a
-    => Heap a
-    -> IO (Maybe a)
-
-extractMin Heap{..} =
-    do
-        heap <- readIORef minHeap
-        curSize <- readIORef currentSize
-        if curSize == 0 then
-            return Nothing
-        else
-            do
-                min <- unsafeRead heap 1
-                largest <- unsafeRead heap curSize
-                unsafeWrite heap 1 largest
-                sink Heap{..} 1
-                let
-                    newCurSize =
-                        curSize - 1
-                newCurSize `seq`
-                    writeIORef currentSize newCurSize
-                return (Just min)
-
-
-
-sink
-    :: Ord a
-    => Heap a
-    -> Int
-    -> IO ()
-
-sink Heap{..} index0 =
-    do
-        curSize <- readIORef currentSize
-        heap <- readIORef minHeap
-        withCurrentSize curSize heap index0
+        forM_ upperHalfOfHeap (sink curSize heap)
     where
-
-        {-# INLINE withCurrentSize #-}
-        withCurrentSize curSize heap =
+        
+        sink curSize heap =
             go
             where
 
-                {-# INLINE go #-}
                 go !index =
                     do
                         sinking <- unsafeRead heap index
@@ -666,7 +640,7 @@ sink Heap{..} index0 =
                                 leftIndex <= curSize
 
                             rightIndex =
-                                leftIndex + 1
+                                succ leftIndex
 
                             hasRight =
                                 rightIndex <= curSize
@@ -710,55 +684,176 @@ sink Heap{..} index0 =
                                 go smallestIndex
 
 
+
+-- | O(1) view the minimum value in a Heap.
+viewMin
+    :: Heap a
+    -> IO (Maybe a)
+
+viewMin Heap{..} =
+    do
+        currentSize <- readIORef currentSize
+        if currentSize == 0 then
+            return Nothing
+        else
+            do
+                heap <- readIORef minHeap
+                min  <- unsafeRead heap 1
+                return (Just min)
+
+
+
+-- | O(log_2 n) extract the minimum value from a Heap.
+extractMin
+    :: Ord a
+    => Heap a
+    -> IO (Maybe a)
+
+extractMin Heap{..} =
+    do
+        heap    <- readIORef minHeap
+        curSize <- readIORef currentSize
+        if curSize == 0 then
+            return Nothing
+        else
+            do
+                min     <- unsafeRead heap 1
+                largest <- unsafeRead heap curSize
+                unsafeWrite heap 1 largest
+                sink curSize heap 1
+
+                let
+                    newCurSize =
+                         pred curSize
+
+                newCurSize `seq`
+                    writeIORef currentSize newCurSize
+
+                return (Just min)
+    where
+
+        sink curSize heap =
+            go
+            where
+
+                go !index =
+                    do
+                        sinking <- unsafeRead heap index
+                        let
+                            leftIndex =
+                                index * 2
+
+                            hasLeft =
+                                leftIndex <= curSize
+
+                            rightIndex =
+                                succ leftIndex
+
+                            hasRight =
+                                rightIndex <= curSize
+
+                            readLeft =
+                                unsafeRead heap leftIndex
+
+                            readRight =
+                                unsafeRead heap rightIndex
+
+                            current =
+                                (sinking,index)
+
+                        smaller@(small,smallIndex) <-
+                            if hasLeft then
+                                do
+                                    left <- readLeft
+                                    if left < sinking then
+                                        return (left,leftIndex)
+                                    else
+                                        return current
+
+                            else
+                                return current
+
+                        (smallest,smallestIndex) <-
+                            if hasRight then
+                                do
+                                    right <- readRight
+                                    if right < small then
+                                        return (right,rightIndex)
+                                    else
+                                        return smaller
+                            else
+                                return smaller
+
+                        when (smallestIndex /= index) $
+                            do
+                                unsafeWrite heap smallestIndex sinking
+                                unsafeWrite heap index smallest
+                                go smallestIndex
+
+
+
 -- | O(log_2 n) insert a value into a Heap.
 insert
     :: Ord a
     => a
     -> Heap a
     -> IO ()
-
+    
 insert new Heap{..} =
     do
-        max <- readIORef maxSize
-        curSize <- readIORef currentSize
-        when (curSize == max) (grow Heap{..})
-        heap <- readIORef minHeap
-        let
-            !newCurrentSize =
-                curSize + 1
-
-        writeIORef currentSize newCurrentSize
-        unsafeWrite heap newCurrentSize new
-        bubble new heap newCurrentSize
-
-
-
-bubble
-    :: Ord a
-    => a
-    -> IOArray Int a
-    -> Int
-    -> IO ()
-
-bubble new arr =
-    go
+        curSize <- growIfNecessary
+        addElement curSize
     where
 
-        {-# INLINE go #-}
-        go index =
+        addElement curSize =
+            do
+                heap <- readIORef minHeap
+                let
+                    newCurrentSize =
+                        succ curSize
+
+                    updateCurrentSize =
+                        writeIORef currentSize newCurrentSize
+
+                    insertNew =
+                        unsafeWrite heap newCurrentSize new
+
+                insertNew
+                updateCurrentSize
+                bubble heap newCurrentSize
+
+        growIfNecessary =
             do
                 let
-                    parent =
-                        index `div` 2
+                    canHoldNew =
+                        do
+                            maxSize <- readIORef maxSize
+                            curSize <- readIORef currentSize
+                            return (maxSize > curSize,curSize)
 
-                when (parent > 0) $
-                    do
-                        parentValue <- unsafeRead arr parent
-                        when (parentValue > new) $
+                (canHold,curSize) <- canHoldNew
+                unless canHold (grow Heap {..})
+                return curSize
+
+        bubble arr =
+            go
+            where
+                    
+                go index =
+                    let
+                        parent =
+                            index `div` 2
+
+                    in
+                        when (parent > 0) $
                             do
-                                unsafeWrite arr parent new
-                                unsafeWrite arr index parentValue
-                                go parent
+                                parentValue <- unsafeRead arr parent
+                                when (parentValue > new) $
+                                    do
+                                        unsafeWrite arr parent new
+                                        unsafeWrite arr index parentValue
+                                        go parent
+
 
 
 {-# INLINE empty #-}
@@ -792,6 +887,3 @@ bubble new arr =
 
 {-# INLINE heightToSize #-}
 {-# INLINE sizeToHeight #-}
-
-{-# INLINE sink #-}
-{-# INLINE bubble #-}
