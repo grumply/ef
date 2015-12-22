@@ -56,6 +56,13 @@ import System.IO.Unsafe
 import Data.Binary
 
 
+main =
+    do
+        queue <- fromList [1,2]
+        max <- extractMax queue
+        next <- extractMax queue
+        print (max,next)
+
 data Heap a =
     Heap
         {

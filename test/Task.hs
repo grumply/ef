@@ -1,12 +1,14 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Main where
 
 
 import Ef.Core
 
-import Ef.Lang.Scoped.Task
-
+import Ef.Lang.Scoped.NewTask
+import Ef.Lang.IO
 
 
 main =
@@ -22,8 +24,8 @@ main =
         str <- runTest
                    main_thread
 
-                   ten_e_5
-                   -- ten_e_6
+                   -- ten_e_5
+                   ten_e_6
 
         putStrLn str
 
@@ -75,10 +77,7 @@ runTest (Test go) n =
 
 
 main_thread
-    :: ( Eq n
-       , Num n
-       )
-    => Test n String
+    :: Test Int String
 
 main_thread =
     let
@@ -87,6 +86,11 @@ main_thread =
     in
         Test (fmap snd . delta obj . tasks . test)
   where
+
+    test 
+        :: Int
+        -> Task '[Tasking] IO
+        -> Pattern '[Tasking] IO String
 
     test n Task{..} =
         go n
@@ -102,6 +106,8 @@ main_thread =
 
         go n =
             do
-              fork Normal NonChunked thread
+              io (print "forking")
+              fork NonChunked thread
+              io (print "forked")
               -- yield
               go (n - 1)

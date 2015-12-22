@@ -55,7 +55,12 @@ import System.IO.Unsafe
 
 import Data.Binary
 
-
+main =
+    do
+        queue <- rawFromList [1,2 :: Int]
+        min <- extractMin queue
+        next <- extractMin queue
+        print (min,next)
 
 data Heap a =
     Heap
@@ -201,7 +206,7 @@ emptySize size =
 -- | O(n log_2 n) convert a Heap to an ordered list. The returned list is
 -- spine strict.
 toList
-    :: Ord a
+    :: (Ord a,Show a)
     => Heap a
     -> IO [a]
 
@@ -706,7 +711,7 @@ viewMin Heap{..} =
 
 -- | O(log_2 n) extract the minimum value from a Heap.
 extractMin
-    :: Ord a
+    :: (Show a,Ord a)
     => Heap a
     -> IO (Maybe a)
 
@@ -714,6 +719,7 @@ extractMin Heap{..} =
     do
         heap    <- readIORef minHeap
         curSize <- readIORef currentSize
+        print (showHeap Heap {..})
         if curSize == 0 then
             return Nothing
         else
@@ -728,6 +734,7 @@ extractMin Heap{..} =
                          pred curSize
 
                 writeIORef currentSize newCurSize
+                print (showHeap Heap {..})
                 return (Just min)
     where
 
