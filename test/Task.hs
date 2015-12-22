@@ -24,9 +24,10 @@ main =
         str <- runTest
                    main_thread
 
+                   -- (round 10e5)
                    -- ten_e_5
                    ten_e_6
-
+                   -- 10
         putStrLn str
 
 
@@ -106,8 +107,6 @@ main_thread =
 
         go n =
             do
-              io (print "forking")
               fork NonChunked thread
-              io (print "forked")
               -- yield
               go (n - 1)

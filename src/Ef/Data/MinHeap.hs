@@ -55,12 +55,14 @@ import System.IO.Unsafe
 
 import Data.Binary
 
-main =
+
+main = 
     do
-        queue <- rawFromList [1,2 :: Int]
+        queue <- fromList [1,2 :: Int]
         min <- extractMin queue
         next <- extractMin queue
-        print (min,next)
+        noth <- extractMin queue
+        return (min,next,noth)
 
 data Heap a =
     Heap
@@ -162,8 +164,15 @@ sizeToHeight
     :: Int
     -> Int
 
-sizeToHeight =
-    ceiling . logBase 2 . fromIntegral
+sizeToHeight size
+    | size < 0 =
+          error "Ef.Data.MinHeap.sizeToHeight: size must be greater than 0."
+
+    | size == 0 =
+          1
+          
+    | otherwise =
+          1 + floor (logBase 2 $ fromIntegral size)
 
 
 
@@ -172,8 +181,15 @@ heightToSize
     :: Int
     -> Int
 
-heightToSize =
-    pred . (2^)
+heightToSize height
+    | height < 0 =
+          error "Ef.Data.MinHeap.heightToSIze: height must be greater than 0."
+
+    | height <= 1 =
+          1
+          
+    | otherwise =
+           pred . (2^) $ height
 
 
 
@@ -206,7 +222,7 @@ emptySize size =
 -- | O(n log_2 n) convert a Heap to an ordered list. The returned list is
 -- spine strict.
 toList
-    :: (Ord a,Show a)
+    :: Ord a
     => Heap a
     -> IO [a]
 
@@ -532,7 +548,6 @@ grow Heap{..} =
         newHeap <- newArray_ (0,newMaxSize)
 
         copy oldHeap newHeap curSize
-
         writeIORef minHeap newHeap
         writeIORef maxSize newMaxSize
     where
@@ -711,7 +726,7 @@ viewMin Heap{..} =
 
 -- | O(log_2 n) extract the minimum value from a Heap.
 extractMin
-    :: (Show a,Ord a)
+    :: Ord a
     => Heap a
     -> IO (Maybe a)
 
@@ -719,7 +734,6 @@ extractMin Heap{..} =
     do
         heap    <- readIORef minHeap
         curSize <- readIORef currentSize
-        print (showHeap Heap {..})
         if curSize == 0 then
             return Nothing
         else
@@ -734,7 +748,6 @@ extractMin Heap{..} =
                          pred curSize
 
                 writeIORef currentSize newCurSize
-                print (showHeap Heap {..})
                 return (Just min)
     where
 

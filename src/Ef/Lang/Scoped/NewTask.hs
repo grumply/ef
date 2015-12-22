@@ -29,10 +29,10 @@ data TaskInfo scope parent
   where
 
     TaskInfo
-        :: QuantaUsed
-        -> Chunking
-        -> Operation status result
-        -> Pattern scope parent result
+        :: {-# UNPACK #-} !QuantaUsed
+        -> {-# UNPACK #-} !Chunking
+        -> {-# UNPACK #-} !(Operation status result)
+        -> {-# UNPACK #-} !(Pattern scope parent result)
         -> TaskInfo scope parent
 
 
@@ -410,9 +410,7 @@ rewrite rewriteScope =
 
                     go =
                         do
-                            io (print "Extracting min")
                             minTask <- io (extractMin queue)
-                            io (print "Extracted min")
                             case minTask of
 
                                 Nothing ->
@@ -456,7 +454,7 @@ rewrite rewriteScope =
                                 -> Pattern scope parent taskResult
                                 -> Pattern scope parent result
 
-                            runSteps _ _ (Fail e) =
+                            runSteps !_ _ (Fail e) =
                                 let
                                     finish =
                                         writeIORef operation (Failed e)
@@ -528,7 +526,7 @@ rewrite rewriteScope =
                                                 Fork currentScope newChunking newOperation child ok ->
                                                     check currentScope $
                                                         let
-                                                            newTask =
+                                                            !newTask =
                                                                 TaskInfo
                                                                     0
                                                                     newChunking
@@ -542,7 +540,7 @@ rewrite rewriteScope =
                                                                 runSteps
                                                                     steps
                                                                     newQuantaUsed
-                                                                    (unsafeCoerce ok newOperation)
+                                                                    (k $ ok $ unsafeCoerce newOperation)
                                                         in
                                                             do
                                                                 io addNewTask
@@ -552,9 +550,9 @@ rewrite rewriteScope =
                                                     check currentScope $
                                                         let
                                                             update =
-                                                                insert $
+                                                                insert $!
                                                                     TaskInfo
-                                                                        (newQuantaUsed - steps)
+                                                                        (newQuantaUsed - steps + 1)
                                                                         chunking
                                                                         (Operation operation)
                                                                         (k $ unsafeCoerce ())
@@ -572,14 +570,16 @@ rewrite rewriteScope =
                                                 SetChunking currentScope chunking ->
                                                     check currentScope $
                                                         withOperation (quantaUsed + steps) (Operation operation) chunking (k $ unsafeCoerce ())
-  
+ 
+                                                _ ->
+                                                    ignore 
                                 where
 
                                     runAtomic afterAtomic =
                                         withCount 0
                                         where
 
-                                            withCount count (Pure result) =
+                                            withCount !count (Pure result) =
                                                 runSteps (steps - count) newQuantaUsed (afterAtomic result)
 
                                             withCount count (Fail e) =
@@ -684,3 +684,7 @@ rewrite rewriteScope =
   
                                                         _ ->
                                                             ignore
+
+{-# INLINE rewrite #-}
+{-# INLINE tasks #-}
+{-# INLINE tasker #-}
