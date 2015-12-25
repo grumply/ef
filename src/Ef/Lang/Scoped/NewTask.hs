@@ -18,6 +18,8 @@ import Unsafe.Coerce
 
 import System.IO.Unsafe
 
+import Data.Typeable
+import Debug.Trace
 
 
 type QuantaUsed =
@@ -30,7 +32,6 @@ data TaskInfo scope parent
 
     TaskInfo
         :: {-# UNPACK #-} !QuantaUsed
-        -> {-# UNPACK #-} !Chunking
         -> {-# UNPACK #-} !(Operation status result)
         -> {-# UNPACK #-} !(Pattern scope parent result)
         -> TaskInfo scope parent
@@ -40,7 +41,7 @@ data TaskInfo scope parent
 instance Eq (TaskInfo scope parent)
     where
 
-        (==) (TaskInfo qu _ _ _) (TaskInfo qu' _ _ _) =
+        (==) (TaskInfo qu _ _) (TaskInfo qu' _ _) =
             qu == qu'
 
 
@@ -48,36 +49,24 @@ instance Eq (TaskInfo scope parent)
 instance Ord (TaskInfo scope parent)
     where
 
-        compare (TaskInfo qu _ _ _) (TaskInfo qu' _ _ _) =
+        compare (TaskInfo qu _ _) (TaskInfo qu' _ _) =
             compare qu qu'
-
-
-
-data Chunking
-  where
-
-    NonChunked
-        :: Chunking
-
-    Chunked
-        :: Int
-        -> Chunking
-
+            
 
 
 data Status status result
   where
 
     Running
-        :: Maybe status
+        :: {-# UNPACK #-} !(Maybe status)
         -> Status status result
 
     Failed
-        :: SomeException
+        :: {-# UNPACK #-} !SomeException
         -> Status status result
 
     Done
-        :: result
+        :: {-# UNPACK #-} !result
         -> Status status result
 
 
@@ -86,7 +75,7 @@ data Operation status result
   where
 
     Operation
-        :: IORef (Status status result)
+        :: {-# UNPACK #-} !(IORef (Status status result))
         -> Operation status result
 
 
@@ -100,37 +89,28 @@ data Tasking k
 
     -- Note: Fork creates a fresh scope; thus exception handling must be applied in-line.
     Fork
-        :: Int
-        -> Chunking
-        -> Operation status result
-        -> Pattern scope parent result
-        -> (Operation status result -> k)
+        :: {-# UNPACK #-} !Int
+        -> TaskInfo scope parent
         -> Tasking k
 
     -- Note: Atomic creates a fresh scope; thus exception handling must be applied in-line.
     Atomic
-        :: Int
+        :: {-# UNPACK #-} !Int
         -> Pattern scope parent result
-        -> (result -> k)
-        -> Tasking k
-
-    SetChunking
-        :: Int
-        -> Chunking
         -> Tasking k
 
     Await
-        :: Int
+        :: {-# UNPACK #-} !Int
         -> Operation status result
         -> (result -> k)
         -> Tasking k
 
     Stop
-        :: Int
+        :: {-# UNPACK #-} !Int
         -> Tasking k
 
     Yield
-        :: Int
+        :: {-# UNPACK #-} !Int
         -> Tasking k
 
 
@@ -183,16 +163,11 @@ data Task scope parent =
         {
           fork
               :: forall status result.
-                 Chunking
-              -> Pattern scope parent result
+                 Pattern scope parent result
               -> Pattern scope parent (Operation status result)
 
         , yield
               :: Pattern scope parent ()
-
-        , setChunking
-              :: Chunking
-              -> Pattern scope parent ()
 
         , atomic
               :: forall result.
@@ -232,7 +207,7 @@ instance Witnessing Taskable Tasking
 
     witness use (Taskable i k) (FreshScope ik) =
         use k (ik i)
-
+        
 
 
 tasks
@@ -252,7 +227,7 @@ tasks f =
           Task
                 {
                   fork =
-                      \chunking child ->
+                      \child ->
                           do
                             let
                               wrappedChild (Operation op) =
@@ -269,15 +244,11 @@ tasks f =
                               thread =
                                   wrappedChild operation
 
-                            self (Fork scope chunking operation thread id)
+                            self (Fork scope (TaskInfo 0 operation thread))
 
                 , atomic =
                       \block ->
-                          self (Atomic scope block id)
-
-                , setChunking =
-                      \chunking ->
-                          self (SetChunking scope chunking)
+                          self (Atomic scope block)
 
                 , yield =
                       self (Yield scope)
@@ -325,7 +296,7 @@ rewrite rewriteScope =
               Just x ->
                   case x of
 
-                      Fork currentScope chunking operation child ok ->
+                      Fork currentScope childTask@(TaskInfo _ newOp _) ->
                           check currentScope $
                                do
                                    let
@@ -334,26 +305,22 @@ rewrite rewriteScope =
 
                                    rootOperation <- fmap Operation (io op)
                                    let
-                                       result =
-                                           ok (unsafeCoerce operation)
-
                                        rootTask =
                                            TaskInfo
                                                0
-                                               NonChunked
                                                rootOperation
-                                               (k result)
-
-                                       childTask =
-                                           TaskInfo
-                                               0
-                                               chunking
-                                               operation
-                                               (unsafeCoerce child)
-
+                                               (k $ unsafeCoerce newOp)
+                                   
                                    queue <- io empty
-                                   io (insert childTask queue)
-                                   io (insert rootTask queue)
+                                   let
+                                       addChild =
+                                           insert (unsafeCoerce childTask) queue
+
+                                       addRoot =
+                                           insert (unsafeCoerce rootTask) queue
+
+                                   io addChild
+                                   io addRoot
                                    withRoot queue rootOperation
 
 
@@ -366,38 +333,13 @@ rewrite rewriteScope =
                               in
                                   start continue
 
-                      SetChunking currentScope newChunking ->
-                          check currentScope $
-                              do
-                                  let
-                                      op =
-                                          newIORef (Running Nothing)
-
-                                  rootOperation <- fmap Operation (io op)
-                                  let
-                                      continue =
-                                          k (unsafeCoerce rootOperation)
-
-                                      rootTask =
-                                          TaskInfo
-                                              0
-                                              newChunking
-                                              rootOperation
-                                              continue
-
-                                      newQueue =
-                                          fromList [rootTask]
-
-                                  queue <- io newQueue
-                                  withRoot queue rootOperation
-
                       _ ->
                           ignore
 
               _ ->
                   ignore
         where
-
+  
             withRoot
                 :: forall status.
                    Heap (TaskInfo scope parent)
@@ -408,6 +350,9 @@ rewrite rewriteScope =
                 go
                 where
 
+                    go
+                        :: Pattern scope parent result
+                        
                     go =
                         do
                             minTask <- io (extractMin queue)
@@ -424,266 +369,255 @@ rewrite rewriteScope =
                                             Done result ->
                                                 return result
 
-                                Just (TaskInfo quantaUsed chunking op task) ->
-                                    withOperation quantaUsed (unsafeCoerce op) chunking task
-
-
+                                Just (TaskInfo quantaUsed op task) ->
+                                    withOperation op quantaUsed task
 
                     withOperation
-                        :: forall taskResult.
-                           QuantaUsed
-                        -> Operation status taskResult
-                        -> Chunking
-                        -> Pattern scope parent taskResult
+                        :: forall status opResult.
+                           Operation status opResult
+                        -> Int
+                        -> Pattern scope parent opResult
                         -> Pattern scope parent result
-
-                    withOperation quantaUsed (Operation operation) chunking task0 =
-                        case chunking of
-
-                            NonChunked ->
-                                runSteps 1 (quantaUsed + 1) task0
-
-                            Chunked steps ->
-                                runSteps steps (quantaUsed + steps) task0
-
+                        
+                    withOperation op@(Operation operation) =
+                        withQuanta
                         where
 
-                            runSteps
+                            withQuanta
                                 :: Int
-                                -> QuantaUsed
-                                -> Pattern scope parent taskResult
+                                -> Pattern scope parent opResult
                                 -> Pattern scope parent result
+                                
+                            withQuanta !quantaUsed =
+                                run
+                                where
+                                  
+                                    run
+                                        :: Pattern scope parent opResult
+                                        -> Pattern scope parent result
 
-                            runSteps !_ _ (Fail e) =
-                                let
-                                    finish =
-                                        writeIORef operation (Failed e)
-
-                                in
-                                    do
-                                        io finish
-                                        go
-
-                            runSteps _ _ (Pure result) =
-                                let
-                                    finish =
-                                        writeIORef operation (Done $ unsafeCoerce result)
-
-                                in
-                                    do
-                                        io finish
-                                        go
-
-                            runSteps steps newQuantaUsed (Super task) =
-                                let
-                                    continue =
-                                        runSteps steps newQuantaUsed
-
-                                in
-                                    Super (fmap continue task)
-
-                            runSteps steps@((<= 0) -> True) newQuantaUsed task =
-                                 let
-                                     newTask =
-                                         TaskInfo
-                                             (newQuantaUsed - steps)
-                                             chunking
-                                             (Operation operation)
-                                             (task)
-
-                                     reinsert =
-                                        insert (unsafeCoerce task) queue
-
-                                 in
-                                     do
-                                         io reinsert
-                                         go
-
-                            runSteps steps newQuantaUsed (Send symbol k) =
-                                let
-                                    check currentScope continue =
-                                        if currentScope == rewriteScope then
-                                            continue
-                                        else
-                                            ignore
-
-                                    ignore =
+                                    run (Fail e) =
                                         let
-                                            continue =
-                                                runSteps (steps - 1) newQuantaUsed
+                                            finish =
+                                                writeIORef operation $! Failed e
 
                                         in
-                                            Send symbol (continue . k)
-                                in
-                                    case prj symbol of
+                                            do
+                                                io finish
+                                                go
 
-                                        Nothing ->
-                                            ignore
+                                    run (Pure result) =
+                                        let
+                                            finish =
+                                                writeIORef operation $! Done $ unsafeCoerce result
 
-                                        Just x ->
-                                            case x of
+                                        in
+                                            do
+                                                io finish
+                                                go
 
-                                                Fork currentScope newChunking newOperation child ok ->
-                                                    check currentScope $
-                                                        let
-                                                            !newTask =
-                                                                TaskInfo
-                                                                    0
-                                                                    newChunking
-                                                                    newOperation
-                                                                    child
+                                    run (Super task) =
+                                        let
+                                            quanta =
+                                                quantaUsed + 1
+                                                
+                                            continue =
+                                                withQuanta quanta
 
-                                                            addNewTask =
-                                                                insert (unsafeCoerce newTask) queue
+                                        in
+                                            Super (fmap continue task)
 
-                                                            continue =
-                                                                runSteps
-                                                                    steps
-                                                                    newQuantaUsed
-                                                                    (k $ ok $ unsafeCoerce newOperation)
-                                                        in
-                                                            do
-                                                                io addNewTask
-                                                                continue
+                                    run (Send symbol k) =
+                                        let
+                                            check currentScope continue =
+                                                if currentScope == rewriteScope then
+                                                    continue
+                                                else
+                                                    step
 
-                                                Yield currentScope ->
-                                                    check currentScope $
-                                                        let
-                                                            update =
-                                                                insert $!
-                                                                    TaskInfo
-                                                                        (newQuantaUsed - steps + 1)
-                                                                        chunking
-                                                                        (Operation operation)
-                                                                        (k $ unsafeCoerce ())
-
-                                                        in
-                                                            do
-                                                                io (update queue)
-                                                                go
-
-                                                Atomic currentScope block rk ->
-                                                    check currentScope $
-                                                        runAtomic (unsafeCoerce rk) (unsafeCoerce block)
-                                                            
-
-                                                SetChunking currentScope chunking ->
-                                                    check currentScope $
-                                                        withOperation (quantaUsed + steps) (Operation operation) chunking (k $ unsafeCoerce ())
- 
-                                                _ ->
-                                                    ignore 
-                                where
-
-                                    runAtomic afterAtomic =
-                                        withCount 0
-                                        where
-
-                                            withCount !count (Pure result) =
-                                                runSteps (steps - count) newQuantaUsed (afterAtomic result)
-
-                                            withCount count (Fail e) =
+                                            continue next =
                                                 let
-                                                    fail =
-                                                        writeIORef operation (Failed e)
+                                                    !quanta =
+                                                        quantaUsed + 1
+
+                                                    rest =
+                                                        TaskInfo quanta op $ unsafeCoerce next
+
+                                                    reinsert =
+                                                        insert rest queue
 
                                                 in
                                                     do
-                                                        io fail
+                                                        io reinsert
                                                         go
 
-                                            withCount count (Super m) =
-                                                let
-                                                    continue =
-                                                        withCount count
-  
-                                                in
-                                                    Super (fmap continue m)
+                                            step =
+                                                Send symbol (continue . k)
 
-                                            withCount count (Send symbol k) =
-                                                let
-                                                    check currentScope continue =
-                                                        if currentScope == rewriteScope then
-                                                            continue
-                                                        else
-                                                            ignore
+                                        in
+                                            case prj symbol of
 
-                                                    ignore =
-                                                        let
-                                                            continue =
-                                                                withCount (pred count)
-  
-                                                        in
-                                                            Send symbol (continue . k)
+                                                Nothing ->
+                                                    step
 
-                                                in
-                                                    case prj symbol of
+                                                Just x ->
+                                                    case x of
 
-                                                        Just x ->
-                                                            case x of
-  
-                                                                Fork currentScope newChunking newOperation child ok ->
-                                                                    check currentScope $
-                                                                        do
-                                                                            let
-                                                                                continue =
-                                                                                    ok (unsafeCoerce newOperation)
-   
-                                                                                task =
-                                                                                    TaskInfo
-                                                                                        0
-                                                                                        newChunking
-                                                                                        newOperation
-                                                                                        (unsafeCoerce child)
-  
-                                                                                updateQueue =
-                                                                                    insert task queue
+                                                        Fork currentScope newTask@(TaskInfo _ newOp _) ->
+                                                            check currentScope $
+                                                                let
+                                                                    addNewTask =
+                                                                        insert (unsafeCoerce newTask) queue
 
-                                                                            io updateQueue
-                                                                            withCount count $ k continue
+                                                                    continue =
+                                                                        run (k $ unsafeCoerce newOp)
 
-                                                                Yield currentScope ->
-                                                                    check currentScope $
+                                                                in
+                                                                    do
+                                                                        io addNewTask
+                                                                        continue
+
+                                                        Yield currentScope ->
+                                                            check currentScope $
+                                                                let
+                                                                    !quanta =
+                                                                        quantaUsed + 1
+
+                                                                    task =
+                                                                        TaskInfo
+                                                                            quanta
+                                                                            (Operation operation)
+                                                                            (unsafeCoerce k $ unsafeCoerce ())
+
+                                                                    reinsert =
+                                                                        insert task queue
+
+                                                                in
+                                                                    do
+                                                                        io reinsert
+                                                                        go
+
+                                                        Atomic currentScope block  ->
+                                                            check currentScope $
+                                                                runAtomic k (unsafeCoerce block)
+
+                                                        Stop currentScope ->
+                                                            check currentScope go
+
+                                                        _ ->
+                                                            step
+
+                                    runAtomic
+                                        :: forall atomicResult.
+                                           (atomicResult -> Pattern scope parent opResult)
+                                        -> Pattern scope parent atomicResult
+                                        -> Pattern scope parent result
+                                        
+                                    runAtomic afterAtomic =
+                                                        withCount (0 :: Int)
+                                                        where
+
+                                                            withCount !count (Pure result) =
+                                                                withQuanta (quantaUsed + count) (afterAtomic result)
+
+                                                            withCount count (Fail e) =
+                                                                let
+                                                                    fail =
+                                                                        writeIORef operation (Failed e)
+
+                                                                in
+                                                                    do
+                                                                        io fail
+                                                                        go
+
+                                                            withCount count (Super m) =
+                                                                let
+                                                                    continue =
+                                                                        withCount count
+
+                                                                in
+                                                                    Super (fmap continue m)
+
+                                                            withCount count (Send symbol k) =
+                                                                let
+                                                                    check currentScope continue =
+                                                                        if currentScope == rewriteScope then
+                                                                            continue
+                                                                        else
+                                                                            ignore
+
+                                                                    ignore =
                                                                         let
                                                                             continue =
-                                                                                k (unsafeCoerce ())
-
-                                                                            atomic =
-                                                                                Atomic
-                                                                                    currentScope
-                                                                                    continue
-                                                                                    id
-
-                                                                            task =
-                                                                                Send (inj atomic) afterAtomic
-
-                                                                            taskInfo =
-                                                                                TaskInfo
-                                                                                    (newQuantaUsed - steps)
-                                                                                    chunking
-                                                                                    (Operation operation)
-                                                                                    (unsafeCoerce task)
-
-                                                                            reinsert =
-                                                                                insert taskInfo queue
+                                                                                withCount (pred count)
 
                                                                         in
-                                                                            do
-                                                                                io reinsert
-                                                                                go
+                                                                            Send symbol (continue . k)
 
-                                                                Atomic currentScope block rk ->
-                                                                    check currentScope $
-                                                                        withCount count (unsafeCoerce block >>= \result -> k $ rk result)
+                                                                in
+                                                                    case prj symbol of
 
-                                                                SetChunking currentScope chunking ->
-                                                                    withOperation (quantaUsed + steps) (Operation operation) chunking (k $ unsafeCoerce ())
+                                                                        Just x ->
+                                                                            case x of
 
-                                                                _ ->
-                                                                    ignore
-  
-                                                        _ ->
-                                                            ignore
+                                                                                Fork currentScope newTask@(TaskInfo _ newOp _) ->
+                                                                                    check currentScope $
+                                                                                        let
+                                                                                            continue =
+                                                                                                k (unsafeCoerce newOp)
+
+                                                                                            insertNew =
+                                                                                                insert (unsafeCoerce newTask) queue
+
+                                                                                        in
+                                                                                            do
+                                                                                                io insertNew
+                                                                                                withCount count continue
+
+                                                                                Yield currentScope ->
+                                                                                    check currentScope $
+                                                                                        let
+                                                                                            continue =
+                                                                                                k (unsafeCoerce ())
+
+                                                                                            atomic =
+                                                                                                Atomic
+                                                                                                    currentScope
+                                                                                                    continue
+
+                                                                                            task =
+                                                                                                Send (inj atomic) afterAtomic
+
+                                                                                            !quanta =
+                                                                                                 quantaUsed + count
+
+                                                                                            taskInfo =
+                                                                                                TaskInfo quanta op (unsafeCoerce task)
+
+                                                                                            reinsert =
+                                                                                                insert taskInfo queue
+
+                                                                                        in
+                                                                                            do
+                                                                                                io reinsert
+                                                                                                go
+
+                                                                                Atomic currentScope block ->
+                                                                                    check currentScope $
+                                                                                        let
+                                                                                            continue =
+                                                                                                do
+                                                                                                    result <- unsafeCoerce block
+                                                                                                    k result
+
+                                                                                        in
+                                                                                            withCount count continue
+
+                                                                                _ ->
+                                                                                    ignore
+
+                                                                        _ ->
+                                                                            ignore
 
 {-# INLINE rewrite #-}
 {-# INLINE tasks #-}
