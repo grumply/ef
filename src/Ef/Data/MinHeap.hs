@@ -25,6 +25,7 @@ module Ef.Data.MinHeap
 
     , extractMin
     , viewMin
+    , adjust
 
     , insert
 
@@ -724,31 +725,30 @@ viewMin Heap{..} =
 
 
 
--- | O(log_2 n) extract the minimum value from a Heap.
-extractMin
+-- | O(log_2 n) adjust the minimum value and relocate via sink.
+-- This avoid calling extractMin followed by insert which would
+-- cost O(2 * log_2 n) and instead just updates in place and then
+-- calls 'insert's 'sink'
+adjust
     :: Ord a
-    => Heap a
-    -> IO (Maybe a)
-
-extractMin Heap{..} =
+    => (a -> a)
+    -> Heap a
+    -> IO ()
+    
+adjust f Heap {..} =
     do
-        heap    <- readIORef minHeap
-        curSize <- readIORef currentSize
-        if curSize == 0 then
-            return Nothing
-        else
-            do
-                min     <- unsafeRead heap 1
-                largest <- unsafeRead heap curSize
-                unsafeWrite heap 1 largest
-                sink curSize heap 1
-
-                let
-                    !newCurSize =
-                         pred curSize
-
-                writeIORef currentSize newCurSize
-                return (Just min)
+        min <- viewMin Heap {..}
+        case min of
+          
+            Nothing -> 
+                return ()
+                
+            Just x ->
+                do
+                    heap <- readIORef minHeap
+                    curSize <- readIORef currentSize
+                    unsafeWrite heap 1 (f x)
+                    sink curSize heap 1
     where
 
         sink curSize heap =
@@ -809,6 +809,92 @@ extractMin Heap{..} =
                                 unsafeWrite heap index smallest
                                 sinkElement smallestIndex
 
+
+
+-- | O(log_2 n) extract the minimum value from a Heap.
+extractMin
+    :: Ord a
+    => Heap a
+    -> IO (Maybe a)
+
+extractMin Heap{..} =
+    do
+        heap    <- readIORef minHeap
+        curSize <- readIORef currentSize
+        if curSize == 0 then
+            return Nothing
+        else
+            do
+                min     <- unsafeRead heap 1
+                largest <- unsafeRead heap curSize
+                unsafeWrite heap 1 largest
+                sink curSize heap 1
+
+                let
+                    !newCurSize =
+                         pred curSize
+
+                writeIORef currentSize newCurSize
+                return (Just min)
+    where
+
+        sink curSize heap =
+            sinkElement
+            where
+
+                sinkElement !index =
+                    do
+                        sinking <- unsafeRead heap index
+                        let
+                            leftIndex =
+                                index * 2
+
+                            hasLeft =
+                                leftIndex <= curSize
+
+                            rightIndex =
+                                succ leftIndex
+
+                            hasRight =
+                                rightIndex <= curSize
+
+                            readLeft =
+                                unsafeRead heap leftIndex
+
+                            readRight =
+                                unsafeRead heap rightIndex
+
+                            current =
+                                (sinking,index)
+
+                        smaller@(small,smallIndex) <-
+                            if hasLeft then
+                                do
+                                    left <- readLeft
+                                    if left <= sinking then
+                                        return (left,leftIndex)
+                                    else
+                                        return current
+
+                            else
+                                return current
+
+                        (smallest,smallestIndex) <-
+                            if hasRight then
+                                do
+                                    right <- readRight
+                                    if right <= small then
+                                        return (right,rightIndex)
+                                    else
+                                        return smaller
+                            else
+                                return smaller
+
+                        when (smallestIndex /= index) $
+                            do
+                                unsafeWrite heap smallestIndex sinking
+                                unsafeWrite heap index smallest
+                                sinkElement smallestIndex
 
 
 -- | O(log_2 n) insert a value into a Heap.
@@ -889,6 +975,8 @@ insert new Heap{..} =
 
 {-# INLINE extractMin #-}
 {-# INLINE viewMin #-}
+
+{-# INLINE adjust #-}
 
 {-# INLINE insert #-}
 

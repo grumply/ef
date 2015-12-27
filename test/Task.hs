@@ -26,8 +26,8 @@ main =
 
                    -- (round 10e5)
                    -- ten_e_5
-                   ten_e_6
-                   -- 10
+                   -- ten_e_6
+                   10
         putStrLn str
 
 
@@ -94,19 +94,27 @@ main_thread =
         -> Pattern '[Tasking] IO String
 
     test n Task{..} =
-        go n
+        focus (go n)
       where
 
-        thread =
+        thread cur =
             do
-              yield
+              -- yield
+              () <- focus $ 
+                        do
+                            io (print cur)
+                            yield
+                            io (print cur)
+                            return ()
               return ()
 
         go 0 =
-            return "Success"
+            do
+                io (print 0)
+                return "Success"
 
         go n =
             do
-              fork NonChunked thread
+              fork (thread n)
               -- yield
               go (n - 1)
