@@ -28,7 +28,7 @@ import Ef.Lang.Scoped.Generate  as Base
 import Ef.Lang.Scoped.Guard     as Base
 import Ef.Lang.Scoped.Try       as Base
 import Ef.Lang.Scoped.React     as Base
-import Ef.Lang.Scoped.Thread    as Base
+import Ef.Lang.Scoped.Fiber    as Base
 import Ef.Lang.Scoped.Manage    as Base
 import Ef.Lang.Scoped.Weave     as Base
 import Ef.Lang.Scoped.Vary      as Base
@@ -42,7 +42,7 @@ type Ef
        , Exitable
        , Gettable
        , Settable
-       , Threadable
+       , Fiberable
        , Weavable
        , Exceptable
        , Guardable
@@ -59,7 +59,7 @@ type Main
        , Exiting
        , Getting
        , Setting
-       , Threading
+       , Fibering
        , Weaving
        , Excepting
        , Guarding
@@ -88,7 +88,7 @@ base =
       *:* exiter
       *:* getter
       *:* setter
-      *:* threader
+      *:* fiberer
       *:* weaver
       *:* excepter
       *:* guarder

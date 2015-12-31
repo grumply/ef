@@ -8,6 +8,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE BangPatterns #-}
 module Ef.Lang.Scoped.Fiber
     ( Fibering
     , fibers
@@ -41,7 +42,7 @@ data Fibering k
     Yield
         :: Int
         -> Fibering k
-        
+
     Focus
         :: Int
         -> Pattern scope parent result
@@ -88,7 +89,7 @@ query
 
 query (Operation op) =
     io (readIORef op)
-    
+
 
 
 data Ops scope parent status result =
@@ -97,7 +98,7 @@ data Ops scope parent status result =
           notify
               :: status
               -> Pattern scope parent ()
-              
+
         , supplement
               :: (    Maybe status
                    -> Maybe status
@@ -128,6 +129,12 @@ data Fiber scope parent =
 
         , yield
               :: Pattern scope parent ()
+
+        , chunk
+              :: forall chunkResult.
+                 Int
+              -> Pattern scope parent chunkResult
+              -> Pattern scope parent chunkResult
         }
 
 
@@ -139,6 +146,20 @@ data Fiberable k
         :: Int
         -> k
         -> Fiberable k
+
+
+
+instance Uses Fiberable attrs parent
+    => Binary (Attribute Fiberable attrs parent)
+  where
+
+    get =
+        return fiberer
+
+
+
+    put _ =
+        pure ()
 
 
 
@@ -198,7 +219,7 @@ fibers f =
                                         Ops
                                             {
                                               notify =
-                                                  \status -> 
+                                                  \status ->
                                                       let
                                                           running =
                                                               Running (Just status)
@@ -224,7 +245,7 @@ fibers f =
                                         op <- io newOp
                                         self (Fork scope op (p (ops op)))
 
-                      , await = 
+                      , await =
                           \(Operation op) ->
                                  let
                                      awaiting =
@@ -232,7 +253,7 @@ fibers f =
                                              status <- io (readIORef op)
                                              case status of
 
-                                                 Running _ -> 
+                                                 Running _ ->
                                                      do
                                                          self (Yield scope)
                                                          awaiting
@@ -249,59 +270,109 @@ fibers f =
 
                       , yield =
                             self (Yield scope)
+
+                      , chunk =
+                            \chunking block ->
+                                let
+                                    chunked =
+                                        go chunking block
+
+                                    focused =
+                                        self (Focus scope chunked)
+
+                                    go !n (Pure result) =
+                                        Pure result
+
+                                    go n (Fail exception) =
+                                        Fail exception
+
+                                    go 1 (Super sup) =
+                                        do
+                                            self (Yield scope)
+                                            let
+                                                restart =
+                                                    go chunking
+                                                    
+                                            Super (fmap restart sup)
+                                            
+                                    go n (Super sup) =
+                                        let
+                                            continue =
+                                                go (n - 1)
+
+                                        in
+                                            Super (fmap continue sup)
+
+                                    go 1 (Send symbol k) =
+                                        do
+                                            self (Yield scope)
+                                            Send symbol (go chunking . k)
+
+                                    go n (Send symbol k) =
+                                        let
+                                            continue value =
+                                                go newN (k value)
+
+                                            newN =
+                                                n - 1
+
+                                        in
+                                            Send symbol continue
+
+                                in
+                                    focused
                       }
-        
+
         rootOp <- io newOp
         rewrite scope (unsafeCoerce rootOp) [unsafeCoerce (root,rootOp)]
 
 
 
-    
 rewrite scope (Operation rootOp) =
-    withThreads []
+    withFibers []
     where
-            
-        withThreads [] [] =
+
+        withFibers [] [] =
             do
                 result <- io (readIORef rootOp)
                 case result of
-                  
-                    Failed exception -> 
+
+                    Failed exception ->
                         throw exception
-                        
+
                     ~(Done result) ->
                         return result
 
-        withThreads acc [] =
-            withThreads [] acc
+        withFibers acc [] =
+            withFibers [] (reverse acc)
 
-        withThreads acc ( (thread,op@(Operation operation)) : threads ) =
-            go thread
+        withFibers acc ( (fiber,op@(Operation operation)) : fibers ) =
+            go fiber
             where
-            
+
                 go (Pure result) =
                     let
                         finish =
                             writeIORef operation (Done result)
-                            
-                    in 
+
+                    in
                         do
                             io finish
-                            withThreads acc threads
+                            withFibers acc fibers
 
                 go (Fail exception) =
                     let
                         fail =
                             writeIORef operation (Failed exception)
-                            
+
                     in
                         do
                             io fail
-                            withThreads acc threads 
+                            withFibers acc fibers
 
                 go (Super sup) =
                     Super (fmap go sup)
-                    
+
                 go (Send symbol k) =
                     let
                         check currentScope continue =
@@ -309,7 +380,7 @@ rewrite scope (Operation rootOp) =
                                 continue
                             else
                                 ignore
-                                
+
                         ignore =
                             Send symbol $ \intermediate ->
                                 let
@@ -321,44 +392,44 @@ rewrite scope (Operation rootOp) =
 
                                     newAcc =
                                          ran:acc
-                                         
+
                                 in
-                                    withThreads newAcc threads
+                                    withFibers newAcc fibers
 
                     in
                         case prj symbol of
-                          
-                            Nothing -> 
+
+                            Nothing ->
                                 ignore
-                                
+
                             Just x ->
                                 case x of
-                                  
-                                    Fork currentScope childOp child -> 
+
+                                    Fork currentScope childOp child ->
                                         check currentScope $
                                             let
                                                 newAcc =
                                                     (k $ unsafeCoerce childOp,op):acc
 
-                                                newThreads =
-                                                    unsafeCoerce (child,childOp):threads
+                                                newFibers =
+                                                    unsafeCoerce (child,childOp):fibers
 
                                             in
-                                                withThreads newAcc newThreads
-                                                
+                                                withFibers newAcc newFibers
+
                                     Yield currentScope ->
                                         let
                                             newAcc =
                                                 (k $ unsafeCoerce (),op):acc
 
                                         in
-                                            withThreads newAcc threads
+                                            withFibers newAcc fibers
 
 
                                     Focus currentScope block ->
                                         check currentScope $
                                             runFocus (unsafeCoerce k) (unsafeCoerce block)
-                                            
+
                                     _ ->
                                         ignore
 
@@ -372,7 +443,7 @@ rewrite scope (Operation rootOp) =
                                     (focusK $ unsafeCoerce atomicResult,op):acc
 
                             in
-                                withThreads newAcc (new ++ threads)
+                                withFibers newAcc (new ++ fibers)
 
                         withNew new (Fail exception) =
                             let
@@ -382,7 +453,7 @@ rewrite scope (Operation rootOp) =
                             in
                                 do
                                     io fail
-                                    withThreads acc (new ++ threads)
+                                    withFibers acc (new ++ fibers)
 
                         withNew new (Super sup) =
                             let
@@ -397,7 +468,7 @@ rewrite scope (Operation rootOp) =
                                check currentScope continue =
                                    if currentScope == scope then
                                        continue
-                                   else 
+                                   else
                                        ignore
 
                                ignore =
@@ -411,7 +482,7 @@ rewrite scope (Operation rootOp) =
                             in
                                 case prj symbol of
 
-                                    Nothing -> 
+                                    Nothing ->
                                         ignore
 
                                     Just x ->
@@ -431,7 +502,7 @@ rewrite scope (Operation rootOp) =
                                                     let
                                                         continue =
                                                             self (Focus currentScope $ k $ unsafeCoerce ())
-        
+
                                                         refocus =
                                                             do
                                                                 focusResult <- continue
@@ -441,8 +512,8 @@ rewrite scope (Operation rootOp) =
                                                             (refocus,op):acc
 
                                                     in
-                                                        withThreads newAcc threads
-        
+                                                        withFibers newAcc fibers
+
                                             Focus currentScope block ->
                                                 check currentScope $
                                                     withNew new $
