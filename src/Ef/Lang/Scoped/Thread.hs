@@ -248,6 +248,5 @@ rewrite scope =
 
 -- | Inlines
 
-{-# INLINE rewrite #-}
 {-# INLINE threader #-}
 {-# INLINE threads #-}

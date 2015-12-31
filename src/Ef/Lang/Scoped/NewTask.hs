@@ -1,3 +1,4 @@
+{-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -28,11 +29,43 @@ type QuantaUsed =
 
 
 
+data Priority
+  where
+
+    Highest
+        :: Priority
+
+    HighBy
+        :: Int
+        -> Priority
+
+    Higher
+        :: Priority
+
+    High
+        :: Priority
+
+    Normal
+        :: Priority
+
+    Low
+        :: Priority
+
+    Lower
+        :: Priority
+
+    LowBy
+        :: Int
+        -> Priority
+
+
+
 data TaskInfo scope parent
   where
 
     TaskInfo
         :: {-# UNPACK #-} !QuantaUsed
+        -> {-# UNPACK #-} !Priority
         -> {-# UNPACK #-} !(Operation status result)
         -> {-# UNPACK #-} !(Pattern scope parent result)
         -> TaskInfo scope parent
@@ -42,7 +75,7 @@ data TaskInfo scope parent
 instance Eq (TaskInfo scope parent)
     where
 
-        (==) (TaskInfo qu _ _) (TaskInfo qu' _ _) =
+        (==) (TaskInfo qu _ _ _) (TaskInfo qu' _ _ _) =
             qu == qu'
 
 
@@ -50,7 +83,7 @@ instance Eq (TaskInfo scope parent)
 instance Ord (TaskInfo scope parent)
     where
 
-        compare (TaskInfo qu _ _) (TaskInfo qu' _ _) =
+        compare (TaskInfo qu _ _ _) (TaskInfo qu' _ _ _) =
             compare qu qu'
 
 
@@ -91,7 +124,8 @@ data Tasking k
     -- Note: Fork creates a fresh scope; thus, exception handling must be applied in-line.
     Fork
         :: {-# UNPACK #-} !Int
-        -> Operation status result
+        -> {-# UNPACK #-} !Priority
+        -> {-# UNPACK #-} !(Operation status result)
         -> Pattern scope parent result
         -> Tasking k
 
@@ -103,7 +137,7 @@ data Tasking k
 
     Await
         :: {-# UNPACK #-} !Int
-        -> Operation status result
+        -> {-# UNPACK #-} !(Operation status result)
         -> Tasking k
 
     Stop
@@ -116,37 +150,6 @@ data Tasking k
 
 
 
-supplement
-    :: ( Lift IO parent
-       , Monad parent
-       )
-    => (Maybe status -> Maybe status)
-    -> Operation status result
-    -> Pattern scope parent ()
-
-supplement supp (Operation statusRef) =
-    let
-      supplementer (Running currentStatus) =
-          Running (supp currentStatus)
-
-    in
-      io (modifyIORef statusRef supplementer)
-
-
-
-inform
-    :: ( Lift IO parent
-       , Monad parent
-       )
-    => status
-    -> Operation status result
-    -> Pattern scope parent ()
-
-inform newStatus =
-    supplement $ const (Just newStatus)
-
-
-
 query
     :: ( Lift IO parent
        , Monad parent
@@ -154,9 +157,91 @@ query
     => Operation status result
     -> Pattern scope parent (Status status result)
 
-query (Operation statusRef) =
-    io (readIORef statusRef)
+query (Operation op) =
+    io (readIORef op)
 
+
+
+isRunning
+    :: ( Lift IO parent
+       , Monad parent
+       )
+    => Operation status result
+    -> Pattern scope parent Bool
+
+isRunning (Operation op) =
+    io $
+        do
+            status <- readIORef op
+            return $
+                case status of
+
+                    Running _ ->
+                        True
+
+                    _ ->
+                        False
+
+
+
+isDone
+    :: ( Lift IO parent
+       , Monad parent
+       )
+    => Operation status result
+    -> Pattern scope parent Bool
+
+isDone (Operation op) =
+    io $
+        do
+            status <- readIORef op
+            return $
+                case status of
+
+                    Done _ ->
+                        True
+
+                    _ ->
+                        False
+
+
+
+isFailed
+    :: ( Lift IO parent
+       , Monad parent
+       )
+    => Operation status result
+    -> Pattern scope parent Bool
+
+isFailed (Operation op) =
+    io $
+        do
+            status <- readIORef op
+            return $
+                case status of
+
+                    Failed _ ->
+                        True
+
+                    _ ->
+                        False
+
+
+
+data Ops scope parent status result =
+    Ops
+        {
+          supplement
+              :: (    Maybe status
+                   -> Maybe status
+                 )
+              -> Pattern scope parent ()
+
+        , inform
+              :: status
+              -> Pattern scope parent ()
+
+        }
 
 
 data Task scope parent =
@@ -164,7 +249,10 @@ data Task scope parent =
         {
           fork
               :: forall status result.
-                 Pattern scope parent result
+                 Priority
+              -> (    Ops scope parent status result
+                   -> Pattern scope parent result
+                 )
               -> Pattern scope parent (Operation status result)
 
         , yield
@@ -173,6 +261,11 @@ data Task scope parent =
         , focus
               :: forall result.
                  Pattern scope parent result
+              -> Pattern scope parent result
+
+        , await
+              :: forall status result.
+                 Operation status result
               -> Pattern scope parent result
 
         }
@@ -209,35 +302,6 @@ instance Witnessing Taskable Tasking
     witness use (Taskable i k) (FreshScope ik) =
         use k (ik i)
 
-adjustM
-    :: ( Lift IO parent
-       , Monad parent
-       , Ord a
-       )
-    => Heap a
-    -> (a -> Pattern scope parent (Maybe a))
-    -> Pattern scope parent ()
-
-adjustM heap mf =
-    do
-        min <- io (viewMin heap)
-        case min of
-
-            Nothing ->
-                return ()
-
-            Just m ->
-                do
-                    new <- mf m
-                    io $
-                        case new of
-
-                            Nothing ->
-                                void $ extractMin heap
-
-                            Just n ->
-                                adjust (const n) heap
-
 
 
 tasks
@@ -264,15 +328,39 @@ tasks f =
                 Task
                     {
                       fork =
-                          \child ->
+                          \priority child ->
                               let
-                                  op =
+                                  newOp =
                                       newIORef (Running Nothing)
 
+                                  ops (Operation op) =
+                                      Ops
+                                          {
+                                            supplement =
+                                                \supp ->
+                                                    let
+                                                        alter ~(Running old) =
+                                                            Running (supp old)
+
+                                                        update =
+                                                            modifyIORef op alter
+
+                                                    in
+                                                        io update
+
+                                          , inform =
+                                                \new ->
+                                                    let
+                                                        update =
+                                                            writeIORef op (Running $ Just new)
+
+                                                    in
+                                                        io update
+                                          }
                               in
                                   do
-                                      operation <- fmap Operation (io op)
-                                      self (Fork scope operation child)
+                                      operation <- fmap Operation (io newOp)
+                                      self (Fork scope priority operation (child (ops operation)))
 
                     , focus =
                           \block ->
@@ -281,10 +369,47 @@ tasks f =
                     , yield =
                           self (Yield scope)
 
+                    , await =
+                          \(Operation op) ->
+                              do
+                                  let
+                                      check
+                                          :: IORef (Status status childResult)
+                                          -> Pattern scope parent (Maybe (Either SomeException childResult))
+
+                                      check op =
+                                          do
+                                              status <- io (readIORef op)
+                                              return $
+                                                  case status of
+
+                                                      Running _ ->
+                                                          Nothing
+
+                                                      Failed exception ->
+                                                          Just $ Left exception
+
+                                                      Done result ->
+                                                          Just $ Right result
+
+                                      acquireOrYieldAndRetry =
+                                          do
+                                              attempt <- self (Focus scope (check op))
+                                              case attempt of
+
+                                                  Nothing ->
+                                                      do
+                                                          self (Yield scope)
+                                                          acquireOrYieldAndRetry
+
+                                                  Just result ->
+                                                      return result
+
+                                  acquireOrYieldAndRetry
                     }
 
             root =
-                TaskInfo 0 (Operation op) (f task)
+                TaskInfo 0 Normal (Operation op) (f task)
 
         io (insert root queue)
         withScope queue scope
@@ -296,6 +421,8 @@ tasks f =
 
             Done value ->
                 return value
+
+
 
 {-# INLINE withScope #-}
 withScope
@@ -330,167 +457,178 @@ withScope queue rewriteScope =
               :: TaskInfo scope parent
               -> Pattern scope parent ()
 
-          rewrite (TaskInfo quanta op@(Operation operation) task) =
-              run task
+          rewrite (TaskInfo quanta priority op@(Operation operation) task) =
+              withOperation operation task
               where
 
-                  run
-                      :: forall taskResult.
-                         Pattern scope parent taskResult
+                  withOperation
+                      :: forall status taskResult.
+                         IORef (Status status taskResult)
+                      -> Pattern scope parent taskResult
                       -> Pattern scope parent ()
+                      
+                  withOperation operation =
+                      run
+                      where
+                      
+                          run
+                              :: Pattern scope parent taskResult
+                              -> Pattern scope parent ()
 
-                  run (Pure value) =
-                      let
-                          result =
-                              Done value
-
-                          finish =
-                              writeIORef operation $ unsafeCoerce result
-
-                      in
-                          do
-                              io finish
-                              go
-
-                  run (Fail e) =
-                      let
-                          failure =
-                              Failed e
-
-                          finish =
-                              writeIORef operation failure
-
-                      in
-                          do
-                              io finish
-                              go
-
-                  run (Super sup) =
-                      Super (fmap run sup)
-
-                  run (Send symbol k) =
-                      let
-                          check !currentScope continue =
-                              if currentScope == rewriteScope then
-                                  continue
-                              else
-                                  ignore
-
-                          ignore =
+                          run (Pure value) =
                               let
-                                  reinsert next =
-                                      let
-                                          !newQuanta =
-                                              quanta + 1
+                                  result =
+                                      Done value
 
-                                          task =
-                                              TaskInfo newQuanta op next
-
-                                      in
-                                           insert task queue
+                                  finish =
+                                      writeIORef operation $ unsafeCoerce result
 
                               in
-                                  Send symbol $ \intermediate ->
+                                  do
+                                      io finish
+                                      go
+
+                          run (Fail e) =
+                              let
+                                  failure =
+                                      Failed e
+
+                                  finish =
+                                      writeIORef operation failure
+
+                              in
+                                  do
+                                      io finish
+                                      go
+
+                          run (Super sup) =
+                              Super (fmap run sup)
+
+                          run (Send symbol k) =
+                              let
+                                  check !currentScope continue =
+                                      if currentScope == rewriteScope then
+                                          continue
+                                      else
+                                          ignore
+
+                                  ignore =
                                       let
-                                           next =
-                                               unsafeCoerce k intermediate
+                                          reinsert
+                                              :: Pattern scope parent taskResult
+                                              -> IO ()
+
+                                          reinsert next =
+                                              let
+                                                  !newQuanta =
+                                                      quanta + 1
+
+                                                  task
+                                                      :: TaskInfo scope parent
+                                                  task =
+                                                      TaskInfo newQuanta priority (Operation operation :: Operation status taskResult) next
+
+                                              in
+                                                   insert task queue
 
                                       in
                                           do
-                                              io (reinsert next)
+                                              Send symbol (io . reinsert . k)
                                               go
 
-                      in
-                          case prj symbol of
+                              in
+                                  case prj symbol of
 
-                              Nothing ->
-                                  ignore
+                                      Nothing ->
+                                          ignore
 
-                              Just x ->
-                                  case x of
+                                      Just x ->
+                                          case x of
 
-                                      Fork !currentScope childOp child ->
-                                          check currentScope $
-                                              let
-                                                  !task =
-                                                      TaskInfo quanta childOp $ unsafeCoerce child
+                                              Fork !currentScope childPriority childOp child ->
+                                                  check currentScope $
+                                                      let
+                                                          task =
+                                                              TaskInfo quanta childPriority childOp $ unsafeCoerce child
 
-                                                  insertNew =
-                                                      insert task queue
+                                                          insertNew =
+                                                              insert task queue
 
-                                                  !newQuanta =
-                                                      quanta + 1
+                                                          updated =
+                                                              TaskInfo (quanta + 1) priority op $ k $ unsafeCoerce childOp
 
-                                                  !updatedTask =
-                                                      TaskInfo newQuanta op (unsafeCoerce k $ unsafeCoerce childOp)
+                                                          insertUpdated =
+                                                              insert updated queue
 
-                                                  reinsert =
-                                                      insert updatedTask queue
-                                              in
-                                                  do
-                                                      io (reinsert >> insertNew)
-                                                      go
+                                                      in
+                                                          do
+                                                              io insertNew
+                                                              io insertUpdated
+                                                              go
 
-                                      Yield !currentScope ->
-                                          check currentScope $
-                                              let
-                                                  !newQuanta =
-                                                      quanta + 1
+                                              Yield !currentScope ->
+                                                  check currentScope $
+                                                      let
+                                                          !newQuanta =
+                                                              quanta + 1
 
-                                                  !task =
-                                                      TaskInfo newQuanta op (unsafeCoerce k $ unsafeCoerce ())
+                                                          !task =
+                                                              TaskInfo newQuanta priority op (unsafeCoerce k $ unsafeCoerce ())
 
-                                                  reinsert =
-                                                      insert task queue
+                                                          reinsert =
+                                                              insert task queue
 
-                                              in
-                                                  do
-                                                      io reinsert
-                                                      go
+                                                      in
+                                                          do
+                                                              io reinsert
+                                                              go
 
-                                      Focus !currentScope block ->
-                                          check currentScope $
-                                              do
-                                                  mayResult <- focus quanta $ unsafeCoerce block
-                                                  case mayResult of
+                                              Focus !currentScope block ->
+                                                  check currentScope $
+                                                      do
+                                                          mayResult <- focus quanta $ unsafeCoerce block
+                                                          case mayResult of
 
-                                                      Nothing ->
-                                                          go
-
-                                                      Just (Left (newQuanta,value)) ->
-                                                          let
-                                                              task =
-                                                                  TaskInfo
-                                                                      newQuanta
-                                                                      op
-                                                                      (unsafeCoerce k value)
-
-                                                              reinsert =
-                                                                  insert task queue
-
-                                                          in
-                                                              do
-                                                                  io reinsert
+                                                              Nothing ->
                                                                   go
 
-                                                      Just (Right (newQuanta,rest)) ->
-                                                          let
-                                                              task =
-                                                                  TaskInfo
-                                                                      newQuanta
-                                                                      op
-                                                                      (do
-                                                                          atomicResult <- self (Focus currentScope rest)
-                                                                          unsafeCoerce k atomicResult
-                                                                      )
+                                                              Just (Left (newQuanta,value)) ->
+                                                                  let
+                                                                      task =
+                                                                          TaskInfo
+                                                                              newQuanta
+                                                                              priority
+                                                                              op
+                                                                              (unsafeCoerce k value)
 
-                                                              reinsert =
-                                                                  insert task queue
+                                                                      reinsert =
+                                                                          insert task queue
 
-                                                         in
-                                                             do
-                                                                 io reinsert
-                                                                 go
+                                                                  in
+                                                                      do
+                                                                          io reinsert
+                                                                          go
+
+                                                              Just (Right (newQuanta,rest)) ->
+                                                                  let
+                                                                      task =
+                                                                          TaskInfo
+                                                                              newQuanta
+                                                                              priority
+                                                                              op
+                                                                              (do
+                                                                                  atomicResult <- self (Focus currentScope rest)
+                                                                                  unsafeCoerce k atomicResult
+                                                                              )
+
+                                                                      reinsert =
+                                                                          insert task queue
+
+                                                                 in
+                                                                     do
+                                                                         io reinsert
+                                                                         go
+
 
                   focus
                       :: forall atomicResult.
@@ -498,76 +636,122 @@ withScope queue rewriteScope =
                       -> Pattern scope parent atomicResult
                       -> Pattern scope parent (Maybe (Either (Int,atomicResult) (Int,Pattern scope parent atomicResult)))
 
-                  focus count (Pure value) =
-                      return (Just $ Left (count + 1,value))
+                  focus count =
+                      focusing 0
+                      where
 
-                  focus _ (Fail e) =
-                      let
-                          failure =
-                              Failed e
-
-                          finish =
-                              writeIORef operation failure
-
-                      in
-                          do
-                              io finish
-                              return Nothing
-
-                  focus count (Super sup) =
-                      Super (fmap (focus count) sup)
-
-                  focus count (Send symbol k) =
-                      let
-                          check !currentScope continue =
-                              if currentScope == rewriteScope then
-                                  continue
-                              else
-                                  ignore
-
-                          ignore =
+                          focusing n (Pure value) =
                               let
-                                  !newCount =
-                                      count + 1
+                                  newCount =
+                                      count + calculateFromPriority (n + 1)
 
                               in
-                                  Send symbol (focus newCount . k)
+                                  return (Just $ Left (newCount,value))
 
-                      in
-                          case prj symbol of
+                          focusing _ (Fail e) =
+                              let
+                                  failure =
+                                      Failed e
 
-                              Nothing ->
-                                  ignore
+                                  finish =
+                                      writeIORef operation failure
 
-                              Just x ->
-                                  case x of
+                              in
+                                  do
+                                      io finish
+                                      return Nothing
 
-                                      Fork !currentScope childOp child ->
-                                          check currentScope $
-                                              let
-                                                  !task =
-                                                      TaskInfo quanta childOp $ unsafeCoerce child
+                          focusing n (Super sup) =
+                              Super (fmap (focus n) sup)
 
-                                                  insertNew =
-                                                      insert task queue
+                          focusing n (Send symbol k) =
+                              let
+                                  check !currentScope continue =
+                                      if currentScope == rewriteScope then
+                                          continue
+                                      else
+                                          ignore
 
-                                                  !newCount =
-                                                      count + 1
+                                  ignore =
+                                      let
+                                          !newN =
+                                              n + 1
 
-                                              in
-                                                  do
-                                                      io insertNew
-                                                      focus newCount (k $ unsafeCoerce childOp)
+                                      in
+                                          Send symbol (focus newN . k)
 
-                                      Yield !currentScope ->
-                                          check currentScope $
-                                              return (Just $ Right (count + 1,k $ unsafeCoerce ()))
+                              in
+                                  case prj symbol of
 
-                                      Focus !currentScope block ->
-                                          check currentScope $
-                                               focus count $ unsafeCoerce block
+                                      Nothing ->
+                                          ignore
+
+                                      Just x ->
+                                          case x of
+
+                                              Fork !currentScope childPriority childOp child ->
+                                                  check currentScope $
+                                                      let
+                                                          !task =
+                                                              TaskInfo count childPriority childOp $ unsafeCoerce child
+
+                                                          insertNew =
+                                                              insert task queue
+
+                                                          !newN =
+                                                              n + 1
+
+                                                      in
+                                                          do
+                                                              io insertNew
+                                                              focusing newN (k $ unsafeCoerce childOp)
+
+                                              Yield !currentScope ->
+                                                  check currentScope $
+                                                      let
+                                                          !newCount =
+                                                              count + calculateFromPriority priority (n + 1)
+
+                                                          continue =
+                                                              k $ unsafeCoerce ()
+                                                              
+                                                      in
+                                                          return $ Just $ Right (newCount,continue)
+
+                                              Focus !currentScope block ->
+                                                  check currentScope $
+                                                       focus count $ unsafeCoerce block
 
 
 
-{-# INLINE tasks #-}
+calculateFromPriority priority x =
+    case priority of
+      
+        HighBy n -> 
+            max 1 (x `div` n)
+
+        Highest ->
+            1
+            
+        Higher ->
+            max 1 (x `div` 3)
+
+        High ->
+            max 1 (x `div` 2)
+
+        Normal ->
+            max 1 x
+
+        Low ->
+            max 1 (x * 2)
+
+        Lower ->
+            max 1 (x * 3)
+
+        LowBy n ->
+            max 1 (n * x)
+
+
+
 {-# INLINE tasker #-}
+{-# INLINE tasks #-}

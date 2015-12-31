@@ -59,7 +59,7 @@ library
                        Ef.Lang.Scoped.Or
                        Ef.Lang.Scoped.React
                        Ef.Lang.Scoped.Task
-                       Ef.Lang.Scoped.NewTask
+                       Ef.Lang.Scoped.Fiber
                        Ef.Lang.Scoped.Thread
                        Ef.Lang.Scoped.Try
                        Ef.Lang.Scoped.Vary
