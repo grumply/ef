@@ -21,8 +21,8 @@ main =
         str <- runTest
                    main_thread
 
-                   -- ten_e_5
-                   ten_e_6
+                   ten_e_5
+                   -- ten_e_6
 
         putStrLn str
 

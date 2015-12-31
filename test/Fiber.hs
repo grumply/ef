@@ -7,7 +7,7 @@ module Main where
 
 import Ef.Core
 
-import Ef.Lang.Scoped.NewTask
+import Ef.Lang.Scoped.Fiber
 import Ef.Lang.IO
 
 
@@ -22,41 +22,12 @@ main =
     in
       do
         str <- runTest
-                   main_thread
+                   main_fiber
 
                    -- (round 10e5)
-                   -- ten_e_5
+                   ten_e_5
                    -- ten_e_6
-                   10
         putStrLn str
-
-
-
-{-
-
-All compilations and executions performed with:
-    compiler: ghc-7.10.2
-    flags: -O2
-    processor: 3.4 GHz i7 from late 2012
-    memory: 1600 MHz DDR3
-
-Results show that:
-
-  main_thread (10e5) > Time (s) :     Use :   Heap  :      GC : Resident
-  ----------------------------------------------------------------------
-      yield          :     0.02 :    1 MB :   72 MB :    0 MB :     0 MB
-      fork           :     0.38 :  112 MB :  384 MB :  396 MB :    50 MB
-      fork and yield :     0.09 :    1 MB :  584 MB :    0 MB :     0 MB
-
-  main_thread (10e6) > Time (s) :     Use :    Heap :      GC : Resident
-  ----------------------------------------------------------------------
-      yield          :     0.17 :    1 MB :  720 MB :    0 MB :     0 MB
-      fork           :     3.91 : 1349 MB : 3840 MB : 4328 MB :   560 MB
-      fork and yield :     0.91 :    1 MB : 5840 MB :    2 MB :     0 MB
-
-These results demonstrate linearity in time and near-linearity in space.
-
--}
 
 
 
@@ -77,44 +48,36 @@ runTest (Test go) n =
 
 
 
-main_thread
+main_fiber
     :: Test Int String
 
-main_thread =
+main_fiber =
     let
         obj =
-            Object (tasker *:* Empty)
+            Object (fiberer *:* Empty)
     in
-        Test (fmap snd . delta obj . tasks . test)
+        Test (fmap snd . delta obj . fibers . test)
   where
 
     test 
         :: Int
-        -> Task '[Tasking] IO
-        -> Pattern '[Tasking] IO String
+        -> Fiber '[Fibering] IO
+        -> Pattern '[Fibering] IO String
 
-    test n Task{..} =
-        focus (go n)
+    test n Fiber{..} =
+        focus $ go n
       where
 
-        thread cur =
+        fiber =
             do
-              -- yield
-              () <- focus $ 
-                        do
-                            io (print cur)
-                            yield
-                            io (print cur)
-                            return ()
+              yield
               return ()
 
         go 0 =
-            do
-                io (print 0)
-                return "Success"
+            return "Success"
 
         go n =
             do
-              fork (thread n)
-              -- yield
+              fork (const fiber)
+              yield
               go (n - 1)
