@@ -1,3 +1,5 @@
+-- | An embedding of Gabriel Gonzalez's Pipes library with 
+-- slight modifications for nesting and scoping and minor renaming.
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeOperators #-}
@@ -6,11 +8,11 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
-module Ef.Lang.Scoped.Weave
-    ( Weavable
-    , weaver
-    , Weaving
-    , weave
+module Ef.Lang.Scoped.Switch
+    ( Switchable
+    , switcher
+    , Switching
+    , switch
 
     , Producer
     , Producer'
@@ -20,8 +22,8 @@ module Ef.Lang.Scoped.Weave
     , Consumer'
     , consumer
 
-    , Pipe
-    , pipe
+    , Line
+    , line
 
     , Client
     , Client'
@@ -31,10 +33,10 @@ module Ef.Lang.Scoped.Weave
     , Server'
     , server
 
-    , Woven(..)
+    , Switched(..)
     , Effect
     , Effect'
-    , woven
+    , switched
 
     , X
 
@@ -80,43 +82,43 @@ import Unsafe.Coerce
 
 
 
-data Weaving k
+data Switching k
   where
 
     FreshScope
         :: (Int -> k)
-        -> Weaving k
+        -> Switching k
 
     Request
         :: Int
         -> a'
         -> (a  -> Pattern scope parent r)
-        -> Weaving k
+        -> Switching k
 
     Respond
         :: Int
         -> b
         -> (b' -> Pattern scope parent r)
-        -> Weaving k
+        -> Switching k
 
 
 
-data Weavable k
+data Switchable k
   where
 
-    Weavable
+    Switchable
         :: Int
         -> k
-        -> Weavable k
+        -> Switchable k
 
 
 
-instance Uses Weavable attrs parent
-    => Binary (Attribute Weavable attrs parent)
+instance Uses Switchable attrs parent
+    => Binary (Attribute Switchable attrs parent)
   where
 
     get =
-        return weaver
+        return switcher
 
 
 
@@ -126,7 +128,7 @@ instance Uses Weavable attrs parent
 
 
 freshScope
-    :: Is Weaving scope parent
+    :: Is Switching scope parent
     => Pattern scope parent Int
 
 freshScope =
@@ -134,14 +136,14 @@ freshScope =
 
 
 
-weaver
-    :: Uses Weavable attrs parent
-    => Attribute Weavable attrs parent
+switcher
+    :: Uses Switchable attrs parent
+    => Attribute Switchable attrs parent
 
-weaver =
-    Weavable 0 $ \fs ->
+switcher =
+    Switchable 0 $ \fs ->
         let
-          Weavable n k =
+          Switchable n k =
               view fs
 
           n' =
@@ -149,12 +151,12 @@ weaver =
 
         in
           n' `seq` pure $ fs .=
-              Weavable n' k
+              Switchable n' k
 
 
 
 getScope
-    :: Is Weaving scope parent
+    :: Is Switching scope parent
     => Pattern scope parent a
     -> parent Int
 
@@ -172,24 +174,24 @@ getScope (Send symbol _) =
 
 
 
-instance Witnessing Weavable Weaving
+instance Witnessing Switchable Switching
   where
 
-    witness p (Weavable i k) (FreshScope ik) =
+    witness p (Switchable i k) (FreshScope ik) =
         p k (ik i)
 
 
 
-weave
-    :: Is Weaving scope parent
+switch
+    :: Is Switching scope parent
     => Effect scope parent r
     -> Pattern scope parent r
 
-weave e =
+switch e =
     do
       scope <- freshScope
       rewrite scope $
-          runWoven e
+          runSwitched e
               (\a' apl -> self (Request scope a' apl))
               (\b b'p -> self (Respond scope b b'p))
 
@@ -237,25 +239,25 @@ rewrite rewriteScope = go
 
 
 instance Functor m
-    => Functor (Woven fs a' a b' b m)
+    => Functor (Switched fs a' a b' b m)
   where
 
-    fmap f (Woven w) =
-        Woven $ \up dn -> fmap f (w up dn)
+    fmap f (Switched w) =
+        Switched $ \up dn -> fmap f (w up dn)
 
 
 
 instance Monad m
-    => Applicative (Woven fs a' a b' b m)
+    => Applicative (Switched fs a' a b' b m)
   where
 
     pure a =
-        Woven $ \_ _ -> pure a
+        Switched $ \_ _ -> pure a
 
 
 
     wf <*> wx =
-        Woven $ \up dn -> rewriteAp up dn (runWoven wf up dn)
+        Switched $ \up dn -> rewriteAp up dn (runSwitched wf up dn)
       where
 
         rewriteAp up dn =
@@ -272,7 +274,7 @@ instance Monad m
                 Send sym (go . k)
 
             go (Pure f) =
-                fmap f (runWoven wx (unsafeCoerce up)
+                fmap f (runSwitched wx (unsafeCoerce up)
                                     (unsafeCoerce dn)
                        )
 
@@ -283,7 +285,7 @@ instance Monad m
 
 
 instance Monad m
-    => Monad (Woven fs a' a b' b m)
+    => Monad (Switched fs a' a b' b m)
   where
 
     return =
@@ -292,24 +294,24 @@ instance Monad m
 
 
     r >>= rs =
-        Woven $ \up dn ->
+        Switched $ \up dn ->
             do
-              v <- runWoven r (unsafeCoerce up) (unsafeCoerce dn)
-              runWoven (rs v) up dn
+              v <- runSwitched r (unsafeCoerce up) (unsafeCoerce dn)
+              runSwitched (rs v) up dn
 
 
 
 instance ( Monad m
          , Monoid r
-         ) => Monoid (Woven fs a' a b' b m r)
+         ) => Monoid (Switched fs a' a b' b m r)
   where
 
     mempty =
         pure mempty
 
     mappend w1 w2 =
-        Woven $ \up dn ->
-            rewriteMappend up dn (runWoven w1 up dn)
+        Switched $ \up dn ->
+            rewriteMappend up dn (runSwitched w1 up dn)
       where
 
         rewriteMappend up dn = go
@@ -327,7 +329,7 @@ instance ( Monad m
             go (Pure result) =
                 let
                   routine =
-                      runWoven w2 (unsafeCoerce up) (unsafeCoerce dn)
+                      runSwitched w2 (unsafeCoerce up) (unsafeCoerce dn)
 
                 in
                   fmap (mappend result) routine
@@ -335,7 +337,7 @@ instance ( Monad m
 
 
 instance MonadPlus m
-    => Alternative (Woven fs a' a b' b m)
+    => Alternative (Switched fs a' a b' b m)
   where
 
     empty =
@@ -349,17 +351,17 @@ instance MonadPlus m
 
 
 instance MonadPlus m
-    => MonadPlus (Woven fs a' a b' b m)
+    => MonadPlus (Switched fs a' a b' b m)
   where
 
     mzero =
-        Woven $ \_ _ -> lift_ mzero
+        Switched $ \_ _ -> lift_ mzero
 
     mplus w0 w1 =
-        Woven $ \up dn ->
+        Switched $ \up dn ->
             let
               routine =
-                  runWoven w0 (unsafeCoerce up) (unsafeCoerce dn)
+                  runSwitched w0 (unsafeCoerce up) (unsafeCoerce dn)
             in
               rewriteMplus up dn routine
       where
@@ -378,7 +380,7 @@ instance MonadPlus m
             go (Super m) =
               let
                 routine =
-                    runWoven w1 (unsafeCoerce up) (unsafeCoerce dn)
+                    runSwitched w1 (unsafeCoerce up) (unsafeCoerce dn)
 
               in
                 Super (fmap go m `mplus` return routine)
@@ -399,18 +401,18 @@ closed (X x) =
 
 
 type Effect fs m r =
-    Woven fs X () () X m r
+    Switched fs X () () X m r
 
 
 
 type Producer b fs m r =
-    Woven fs X () () b m r
+    Switched fs X () () b m r
 
 
 
 producer
     :: forall fs m b r.
-       Is Weaving fs m
+       Is Switching fs m
     => (    (    b
               -> Pattern fs m ()
             )
@@ -419,7 +421,7 @@ producer
     -> Producer' b fs m r
 
 producer f =
-    Woven $ \_ dn ->
+    Switched $ \_ dn ->
         do
           let
             scopedDown =
@@ -434,20 +436,20 @@ producer f =
 
 
 type Consumer a fs m r =
-    Woven fs () a () X m r
+    Switched fs () a () X m r
 
 
 
 consumer
     :: forall fs m a r.
-       Is Weaving fs m
+       Is Switching fs m
     => (    Pattern fs m a
          -> Pattern fs m r
        )
     -> Consumer' a fs m r
 
 consumer f =
-    Woven $ \up _ ->
+    Switched $ \up _ ->
         do
           let
             scopedUp =
@@ -461,23 +463,23 @@ consumer f =
 
 
 
-type Pipe a b fs m r = Woven fs () a () b m r
+type Line a b fs m r = Switched fs () a () b m r
 
 
 
-pipe
+line
     :: forall fs m a b x r.
-       Is Weaving fs m
+       Is Switching fs m
     => (    Pattern fs m a
          -> (    b
               -> Pattern fs m x
             )
          -> Pattern fs m r
        )
-    -> Pipe a b fs m r
+    -> Line a b fs m r
 
-pipe f =
-    Woven $ \up _ ->
+line f =
+    Switched $ \up _ ->
         do
           let
             scopedUp =
@@ -496,13 +498,13 @@ pipe f =
 
 
 type Client a' a fs m r =
-    Woven fs a' a () X m r
+    Switched fs a' a () X m r
 
 
 
 client
     :: forall fs m a' a r.
-       Is Weaving fs m
+       Is Switching fs m
     => (    (    a'
               -> Pattern fs m a
             )
@@ -511,7 +513,7 @@ client
     -> Client' a' a fs m r
 
 client f =
-    Woven $ \up _ ->
+    Switched $ \up _ ->
         do
           let
             scopedUp =
@@ -527,13 +529,13 @@ client f =
 
 
 type Server b' b fs m r =
-    Woven fs X () b' b m r
+    Switched fs X () b' b m r
 
 
 
 server
     :: forall fs m b' b r.
-       Is Weaving fs m
+       Is Switching fs m
     => (    (    b
               -> Pattern fs m b'
             )
@@ -542,7 +544,7 @@ server
     -> Server' b' b fs m r
 
 server f =
-    Woven $ \_ dn ->
+    Switched $ \_ dn ->
         do
          let
            scopedDown =
@@ -557,10 +559,10 @@ server f =
 
 
 
-newtype Woven fs a' a b' b m r =
-    Woven
+newtype Switched fs a' a b' b m r =
+    Switched
         {
-          runWoven
+          runSwitched
               :: (forall x.
                       a'
                    -> (    a
@@ -580,9 +582,9 @@ newtype Woven fs a' a b' b m r =
 
 
 
-woven
+switched
     :: forall fs a a' b b' m r.
-       Is Weaving fs m
+       Is Switching fs m
     => (    (    a
               -> Pattern fs m a'
             )
@@ -591,10 +593,10 @@ woven
             )
          -> Pattern fs m r
        )
-    -> Woven fs a' a b' b m r
+    -> Switched fs a' a b' b m r
 
-woven f =
-    Woven $ \up _ ->
+switched f =
+    Switched $ \up _ ->
         do
           let
             scopedUp =
@@ -614,31 +616,31 @@ woven f =
 
 type Effect' fs m r =
     forall x' x y' y.
-    Woven fs x' x y' y m r
+    Switched fs x' x y' y m r
 
 
 
 type Producer' b fs m r =
     forall x' x.
-    Woven fs x' x () b m r
+    Switched fs x' x () b m r
 
 
 
 type Consumer' a fs m r =
     forall y' y.
-    Woven fs () a y' y m r
+    Switched fs () a y' y m r
 
 
 
 type Server' b' b fs m r =
     forall x' x.
-    Woven fs x' x b' b m r
+    Switched fs x' x b' b m r
 
 
 
 type Client' a' a fs m r =
     forall y' y.
-    Woven fs a' a y' y m r
+    Switched fs a' a y' y m r
 
 
 
@@ -646,11 +648,11 @@ type Client' a' a fs m r =
 -- Respond; substitute yields with a function
 
 cat
-    :: Is Weaving fs m
-    => Pipe a a fs m r
+    :: Is Switching fs m
+    => Line a a fs m r
 
 cat =
-    pipe $ \awt yld ->
+    line $ \awt yld ->
         forever (awt >>= yld)
 
 
@@ -658,15 +660,15 @@ cat =
 infixl 3 //>
 (//>)
     :: forall fs x' x b' b c' c m a'.
-       Is Weaving fs m
-    => Woven fs x' x b' b m a'
+       Is Switching fs m
+    => Switched fs x' x b' b m a'
     -> (    b
-         -> Woven fs x' x c' c m b'
+         -> Switched fs x' x c' c m b'
        )
-    -> Woven fs x' x c' c m a'
+    -> Switched fs x' x c' c m a'
 
 p0 //> fb =
-    Woven $ \up dn ->
+    Switched $ \up dn ->
         do
           let
             scopedUp =
@@ -675,7 +677,7 @@ p0 //> fb =
           i <- lift (getScope scopedUp)
           let
             routine =
-                runWoven p0 up (unsafeCoerce dn)
+                runSwitched p0 up (unsafeCoerce dn)
 
           substituteResponds fb i up dn routine
 
@@ -716,7 +718,7 @@ substituteResponds fb rewriteScope up dn =
                               do
                                 let
                                   routine =
-                                      runWoven (fb (unsafeCoerce b))
+                                      runSwitched (fb (unsafeCoerce b))
                                                (unsafeCoerce up)
                                                (unsafeCoerce dn)
 
@@ -736,12 +738,12 @@ substituteResponds fb rewriteScope up dn =
 
 
 for
-    :: Is Weaving fs m
-    => Woven fs x' x b' b m a'
+    :: Is Switching fs m
+    => Switched fs x' x b' b m a'
     -> (    b
-         -> Woven fs x' x c' c m b'
+         -> Switched fs x' x c' c m b'
        )
-    -> Woven fs x' x c' c m a'
+    -> Switched fs x' x c' c m a'
 
 for =
     (//>)
@@ -750,12 +752,12 @@ for =
 
 infixr 3 <\\
 (<\\)
-    :: Is Weaving fs m
+    :: Is Switching fs m
     => (    b
-         -> Woven fs x' x c' c m b'
+         -> Switched fs x' x c' c m b'
        )
-    -> Woven fs x' x b' b m a'
-    -> Woven fs x' x c' c m a'
+    -> Switched fs x' x b' b m a'
+    -> Switched fs x' x c' c m a'
 
 f <\\ p =
     p //> f
@@ -764,15 +766,15 @@ f <\\ p =
 
 infixl 4 \<\
 (\<\)
-    :: Is Weaving fs m
+    :: Is Switching fs m
     => (    b
-         -> Woven fs x' x c' c m b'
+         -> Switched fs x' x c' c m b'
        )
     -> (    a
-         -> Woven fs x' x b' b m a'
+         -> Switched fs x' x b' b m a'
        )
     -> a
-    -> Woven fs x' x c' c m a'
+    -> Switched fs x' x c' c m a'
 
 p1 \<\ p2 = p2 />/ p1
 
@@ -780,15 +782,15 @@ p1 \<\ p2 = p2 />/ p1
 
 infixr 4 ~>
 (~>)
-    :: Is Weaving fs m
+    :: Is Switching fs m
     => (    a
-         -> Woven fs x' x b' b m a'
+         -> Switched fs x' x b' b m a'
        )
     -> (    b
-         -> Woven fs x' x c' c m b'
+         -> Switched fs x' x c' c m b'
        )
     -> a
-    -> Woven fs x' x c' c m a'
+    -> Switched fs x' x c' c m a'
 
 (~>) =
     (/>/)
@@ -797,15 +799,15 @@ infixr 4 ~>
 
 infixl 4 <~
 (<~)
-    :: Is Weaving fs m
+    :: Is Switching fs m
     => (    b
-         -> Woven fs x' x c' c m b'
+         -> Switched fs x' x c' c m b'
        )
     -> (    a
-         -> Woven fs x' x b' b m a'
+         -> Switched fs x' x b' b m a'
        )
     -> a
-    -> Woven fs x' x c' c m a'
+    -> Switched fs x' x c' c m a'
 
 g <~ f =
     f ~> g
@@ -814,15 +816,15 @@ g <~ f =
 
 infixr 4 />/
 (/>/)
-    :: Is Weaving fs m
+    :: Is Switching fs m
     => (    a
-         -> Woven fs x' x b' b m a'
+         -> Switched fs x' x b' b m a'
        )
     -> (    b
-         -> Woven fs x' x c' c m b'
+         -> Switched fs x' x c' c m b'
        )
     -> a
-    -> Woven fs x' x c' c m a'
+    -> Switched fs x' x c' c m a'
 
 (fa />/ fb) a =
     fa a //> fb
@@ -836,15 +838,15 @@ infixr 4 />/
 infixr 4 >\\
 (>\\)
     :: forall fs y' y a' a b' b m c.
-       Is Weaving fs m
+       Is Switching fs m
     => (    b'
-         -> Woven fs a' a y' y m b
+         -> Switched fs a' a y' y m b
        )
-    -> Woven fs b' b y' y m c
-    -> Woven fs a' a y' y m c
+    -> Switched fs b' b y' y m c
+    -> Switched fs a' a y' y m c
 
 fb' >\\ p0 =
-    Woven $ \up dn ->
+    Switched $ \up dn ->
         do
           let
             scopedUp =
@@ -853,7 +855,7 @@ fb' >\\ p0 =
           i <- lift (getScope scopedUp)
           let
             routine =
-                runWoven p0 (unsafeCoerce up) dn
+                runSwitched p0 (unsafeCoerce up) dn
 
           substituteRequests fb' i up dn routine
 
@@ -891,7 +893,7 @@ substituteRequests fb' rewriteScope up dn p1 = go p1
                               do
                                 let
                                   routine =
-                                      runWoven (fb' (unsafeCoerce b'))
+                                      runSwitched (fb' (unsafeCoerce b'))
                                                (unsafeCoerce up)
                                                (unsafeCoerce dn)
 
@@ -912,15 +914,15 @@ substituteRequests fb' rewriteScope up dn p1 = go p1
 
 infixr 5 /</
 (/</)
-    :: Is Weaving fs m
+    :: Is Switching fs m
     => (    c'
-         -> Woven fs b' b x' x m c
+         -> Switched fs b' b x' x m c
        )
     -> (    b'
-         -> Woven fs a' a x' x m b
+         -> Switched fs a' a x' x m b
        )
     -> c'
-    -> Woven fs a' a x' x m c
+    -> Switched fs a' a x' x m c
 
 p1 /</ p2 =
     p2 \>\ p1
@@ -929,10 +931,10 @@ p1 /</ p2 =
 
 infixr 5 >~
 (>~)
-    :: Is Weaving fs m
-    => Woven fs a' a y' y m b
-    -> Woven fs () b y' y m c
-    -> Woven fs a' a y' y m c
+    :: Is Switching fs m
+    => Switched fs a' a y' y m b
+    -> Switched fs () b y' y m c
+    -> Switched fs a' a y' y m c
 
 p1 >~ p2 =
     (\() -> p1) >\\ p2
@@ -941,10 +943,10 @@ p1 >~ p2 =
 
 infixl 5 ~<
 (~<)
-    :: Is Weaving fs m
-    => Woven fs () b y' y m c
-    -> Woven fs a' a y' y m b
-    -> Woven fs a' a y' y m c
+    :: Is Switching fs m
+    => Switched fs () b y' y m c
+    -> Switched fs a' a y' y m b
+    -> Switched fs a' a y' y m c
 
 p2 ~< p1 =
     p1 >~ p2
@@ -953,15 +955,15 @@ p2 ~< p1 =
 
 infixl 5 \>\
 (\>\)
-    :: Is Weaving fs m
+    :: Is Switching fs m
     => (    b'
-         -> Woven fs a' a y' y m b
+         -> Switched fs a' a y' y m b
        )
     -> (    c'
-         -> Woven fs b' b y' y m c
+         -> Switched fs b' b y' y m c
        )
     -> c'
-    -> Woven fs a' a y' y m c
+    -> Switched fs a' a y' y m c
 
 (fb' \>\ fc') c' =
     fb' >\\ fc' c'
@@ -971,12 +973,12 @@ infixl 5 \>\
 infixl 4 \\<
 (\\<)
     :: forall fs y' y a' a b' b m c.
-       Is Weaving fs m
-    => Woven fs b' b y' y m c
+       Is Switching fs m
+    => Switched fs b' b y' y m c
     -> (    b'
-         -> Woven fs a' a y' y m b
+         -> Switched fs a' a y' y m b
        )
-    -> Woven fs a' a y' y m c
+    -> Switched fs a' a y' y m c
 p \\< f =
     f >\\ p
 
@@ -988,14 +990,14 @@ p \\< f =
 
 infixl 7 >>~
 (>>~)
-    :: forall fs a' a b' b c' c m r. Is Weaving fs m
-    => Woven fs a' a b' b m r
+    :: forall fs a' a b' b c' c m r. Is Switching fs m
+    => Switched fs a' a b' b m r
     -> (    b
-         -> Woven fs b' b c' c m r
+         -> Switched fs b' b c' c m r
        )
-    -> Woven fs a' a c' c m r
+    -> Switched fs a' a c' c m r
 p0 >>~ fb0 =
-    Woven $ \up dn ->
+    Switched $ \up dn ->
         do
           let
             scopedUp =
@@ -1009,10 +1011,10 @@ p0 >>~ fb0 =
 pushRewrite rewriteScope up dn fb0 p0 =
     let
       upstream =
-          runWoven p0 (unsafeCoerce up) (unsafeCoerce dn)
+          runSwitched p0 (unsafeCoerce up) (unsafeCoerce dn)
 
       downstream b =
-          runWoven (fb0 b) (unsafeCoerce up) (unsafeCoerce dn)
+          runSwitched (fb0 b) (unsafeCoerce up) (unsafeCoerce dn)
 
     in
       goLeft downstream upstream
@@ -1101,15 +1103,15 @@ pushRewrite rewriteScope up dn fb0 p0 =
 
 infixl 8 <~<
 (<~<)
-    :: Is Weaving fs m
+    :: Is Switching fs m
     => (    b
-         -> Woven fs b' b c' c m r
+         -> Switched fs b' b c' c m r
        )
     -> (    a
-         -> Woven fs a' a b' b m r
+         -> Switched fs a' a b' b m r
        )
     -> a
-    -> Woven fs a' a c' c m r
+    -> Switched fs a' a c' c m r
 
 p1 <~< p2 =
     p2 >~> p1
@@ -1118,15 +1120,15 @@ p1 <~< p2 =
 
 infixr 8 >~>
 (>~>)
-    :: Is Weaving fs m
+    :: Is Switching fs m
     => (    _a
-          -> Woven fs a' a b' b m r
+          -> Switched fs a' a b' b m r
        )
     -> (    b
-         -> Woven fs b' b c' c m r
+         -> Switched fs b' b c' c m r
        )
     -> _a
-    -> Woven fs a' a c' c m r
+    -> Switched fs a' a c' c m r
 
 (fa >~> fb) a =
     fa a >>~ fb
@@ -1135,12 +1137,12 @@ infixr 8 >~>
 
 infixr 7 ~<<
 (~<<)
-    :: Is Weaving fs m
+    :: Is Switching fs m
     => (    b
-         -> Woven fs b' b c' c m r
+         -> Switched fs b' b c' c m r
        )
-    -> Woven fs a' a b' b m r
-    -> Woven fs a' a c' c m r
+    -> Switched fs a' a b' b m r
+    -> Switched fs a' a c' c m r
 
 k ~<< p =
     p >>~ k
@@ -1152,12 +1154,12 @@ k ~<< p =
 
 
 infixr 6 +>>
-(+>>) :: forall fs m a' a b' b c' c r. Is Weaving fs m
-      => (b' -> Woven fs a' a b' b m r)
-      ->        Woven fs b' b c' c m r
-      ->        Woven fs a' a c' c m r
+(+>>) :: forall fs m a' a b' b c' c r. Is Switching fs m
+      => (b' -> Switched fs a' a b' b m r)
+      ->        Switched fs b' b c' c m r
+      ->        Switched fs a' a c' c m r
 fb' +>> p0 =
-    Woven $ \up dn ->
+    Switched $ \up dn ->
         do
           let
             scopedUp =
@@ -1169,10 +1171,10 @@ fb' +>> p0 =
 pullRewrite rewriteScope up dn fb' p =
     let
       upstream b' =
-          runWoven (fb' b') (unsafeCoerce up) (unsafeCoerce dn)
+          runSwitched (fb' b') (unsafeCoerce up) (unsafeCoerce dn)
 
       downstream =
-          runWoven p (unsafeCoerce up) (unsafeCoerce dn)
+          runSwitched p (unsafeCoerce up) (unsafeCoerce dn)
 
     in
       goRight upstream downstream
@@ -1263,10 +1265,10 @@ pullRewrite rewriteScope up dn fb' p =
 
 infixl 7 >->
 (>->)
-    :: Is Weaving fs m
-    => Woven fs a' a () b m r
-    -> Woven fs () b c' c m r
-    -> Woven fs a' a c' c m r
+    :: Is Switching fs m
+    => Switched fs a' a () b m r
+    -> Switched fs () b c' c m r
+    -> Switched fs a' a c' c m r
 
 p1 >-> p2 =
     (\() -> p1) +>> p2
@@ -1274,10 +1276,10 @@ p1 >-> p2 =
 
 infixr 7 <-<
 (<-<)
-    :: Is Weaving fs m
-    => Woven fs () b c' c m r
-    -> Woven fs a' a () b m r
-    -> Woven fs a' a c' c m r
+    :: Is Switching fs m
+    => Switched fs () b c' c m r
+    -> Switched fs a' a () b m r
+    -> Switched fs a' a c' c m r
 
 p2 <-< p1 =
     p1 >-> p2
@@ -1286,15 +1288,15 @@ p2 <-< p1 =
 
 infixr 7 <+<
 (<+<)
-    :: Is Weaving fs m
+    :: Is Switching fs m
     => (    c'
-         -> Woven fs b' b c' c m r
+         -> Switched fs b' b c' c m r
        )
     -> (    b'
-         -> Woven fs a' a b' b m r
+         -> Switched fs a' a b' b m r
        )
     -> c'
-    -> Woven fs a' a c' c m r
+    -> Switched fs a' a c' c m r
 
 p1 <+< p2 =
     p2 >+> p1
@@ -1303,15 +1305,15 @@ p1 <+< p2 =
 
 infixl 7 >+>
 (>+>)
-    :: Is Weaving fs m
+    :: Is Switching fs m
     => (    b'
-         -> Woven fs a' a b' b m r
+         -> Switched fs a' a b' b m r
        )
     -> (    _c'
-         -> Woven fs b' b c' c m r
+         -> Switched fs b' b c' c m r
        )
     -> _c'
-    -> Woven fs a' a c' c m r
+    -> Switched fs a' a c' c m r
 
 (fb' >+> fc') c' =
     fb' +>> fc' c'
@@ -1320,12 +1322,12 @@ infixl 7 >+>
 
 infixl 6 <<+
 (<<+)
-    :: forall fs m a' a b' b c' c r. Is Weaving fs m
-    => Woven fs b' b c' c m r
+    :: forall fs m a' a b' b c' c r. Is Switching fs m
+    => Switched fs b' b c' c m r
     -> (    b'
-         -> Woven fs a' a b' b m r
+         -> Switched fs a' a b' b m r
        )
-    -> Woven fs a' a c' c m r
+    -> Switched fs a' a c' c m r
 
 p <<+ fb =
     fb +>> p
@@ -1351,16 +1353,16 @@ p <<+ fb =
   #-}
 
 {-# INLINE freshScope #-}
-{-# INLINE weaver #-}
+{-# INLINE switcher #-}
 {-# INLINE getScope #-}
-{-# INLINE weave #-}
+{-# INLINE switch #-}
 {-# INLINE closed #-}
 {-# INLINE producer #-}
 {-# INLINE consumer #-}
-{-# INLINE pipe #-}
+{-# INLINE line #-}
 {-# INLINE client #-}
 {-# INLINE server #-}
-{-# INLINE woven #-}
+{-# INLINE switched #-}
 
 {-# INLINE rewrite #-}
 {-# INLINE substituteResponds #-}

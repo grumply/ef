@@ -30,7 +30,7 @@ import Ef.Lang.Scoped.Try       as Base
 import Ef.Lang.Scoped.React     as Base
 import Ef.Lang.Scoped.Fiber    as Base
 import Ef.Lang.Scoped.Manage    as Base
-import Ef.Lang.Scoped.Weave     as Base
+import Ef.Lang.Scoped.Switch     as Base
 import Ef.Lang.Scoped.Vary      as Base
 import Ef.Lang.Scoped.Notate    as Base
 import Ef.Lang.Scoped.Log       as Base
@@ -43,7 +43,7 @@ type Ef
        , Gettable
        , Settable
        , Fiberable
-       , Weavable
+       , Switchable
        , Exceptable
        , Guardable
        , Notatable
@@ -60,7 +60,7 @@ type Main
        , Getting
        , Setting
        , Fibering
-       , Weaving
+       , Switching
        , Excepting
        , Guarding
        , Notating
@@ -89,7 +89,7 @@ base =
       *:* getter
       *:* setter
       *:* fiberer
-      *:* weaver
+      *:* switcher
       *:* excepter
       *:* guarder
       *:* notator

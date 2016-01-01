@@ -14,7 +14,7 @@ module Ef.Lang.Scoped.Generate
 
 
 import Ef.Core
-import Ef.Lang.Scoped.Weave
+import Ef.Lang.Scoped.Switch
 
 
 import Control.Applicative
@@ -28,7 +28,7 @@ import Unsafe.Coerce
 newtype Generator scope parent a =
     Select
         { enumerate
-              :: Is Weaving scope parent
+              :: Is Switching scope parent
               => Producer a scope parent ()
         }
 
@@ -108,9 +108,9 @@ instance Alternative (Generator scope parent)
 
 
     p1 <|> p2 =
-        Select $ woven $ \up dn ->
+        Select $ switched $ \up dn ->
             let
-              run xs = runWoven (enumerate xs) (unsafeCoerce up) (unsafeCoerce dn)
+              run xs = runSwitched (enumerate xs) (unsafeCoerce up) (unsafeCoerce dn)
 
             in
               do
@@ -146,7 +146,7 @@ instance Monoid (Generator scope parent a)
 
 
 generate
-    :: Is Weaving scope parent
+    :: Is Switching scope parent
     => Generator scope parent a
     -> Pattern scope parent ()
 generate l =
@@ -157,12 +157,12 @@ generate l =
             mzero
 
     in
-      weave (enumerate complete)
+      switch (enumerate complete)
 
 
 
 each
-    :: ( Is Weaving scope parent
+    :: ( Is Switching scope parent
        , F.Foldable f
        )
     => f a
@@ -183,19 +183,19 @@ each xs =
 discard
     :: Monad parent
     => t
-    -> Woven scope a' a b' b parent ()
+    -> Switched scope a' a b' b parent ()
 discard _ =
     let
       ignore _ _ =
           return ()
 
     in
-      Woven ignore
+      Switched ignore
 
 
 
 every
-    :: Is Weaving scope parent
+    :: Is Switching scope parent
     => Generator scope parent a
     -> Producer' a scope parent ()
 every it =
