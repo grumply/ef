@@ -22,7 +22,6 @@ module Ef.Lang.Scoped.Fiber
 
 import Ef.Core
 import Ef.Lang.IO
-import Ef.Data.Queue
 
 import Data.Binary
 import Data.IORef

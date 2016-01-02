@@ -1,8 +1,10 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE StaticPointers #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 module Main where
 
 
@@ -14,7 +16,6 @@ import Network.Socket
 import System.Environment
 
 import qualified Data.ByteString.Lazy as BSL
-import Ef.Lang.Scoped.Weave
 import Data.Binary
 import Data.Binary.Get
 import Data.Typeable
@@ -61,18 +62,18 @@ server
 
 server sockAddr =
     do
-      main' $
-           do
-             chan <- awaitOn Local sockAddr
-             result <- try $ runChannel chan
-             io $  
-                 case result of
+      delta (Object Empty) $
+          do
+            chan <- awaitOn Local sockAddr
+            result <- try $ runChannel chan
+            io $  
+                case result of
 
-                     Left (e :: SomeException) -> 
-                         print $ e
+                    Left (e :: SomeException) -> 
+                        print $ e
 
-                     Right r ->
-                         print $ r
+                    Right r ->
+                        print $ r
 
       return ()
 
@@ -86,16 +87,26 @@ client
 
 client sockAddr testSize =
     do
-      main' $
+      delta (Object Empty) $
           do
             chan <- connectTo Local sockAddr
             io (print "Chan created.")
             go chan testSize
+      return ()
 
   where
 
+    go
+        :: Channel '[] IO
+        -> Int
+        -> Pattern '[] IO ()
+
     go chan = loop
       where
+
+        loop
+            :: Int
+            -> Pattern '[] IO ()
 
         loop 0 =
             return ()
@@ -109,7 +120,7 @@ client sockAddr testSize =
 
 {-# INLINE simple #-}
 simple
-    :: Remote () Ef IO ()
+    :: Remote () '[] IO ()
 
 simple =
     static method
@@ -118,7 +129,7 @@ simple =
 
 {-# INLINE method #-}
 method
-    :: Remoteable () Ef IO ()
+    :: Remoteable () '[] IO ()
 
 method =
     remoteable $

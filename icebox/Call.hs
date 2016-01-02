@@ -677,10 +677,10 @@ awaitOn remoteness sockAddr =
                     return sender
       let
         expectedAttrs =
-            TypeOfAttrs $ (typeOf :: Proxy attrs -> TypeRep) (undefined :: Proxy attrs)
+            TypeOfAttrs $ typeOf (undefined :: Proxy attrs)
 
         expectedParent =
-            TypeOfParent $ (typeOf :: Proxy parent -> TypeRep) (undefined :: Proxy parent)
+            TypeOfParent $ typeOf (undefined :: Proxy parent)
 
       Handshake wantedAttrs wantedParent <- receive_ sock Uncompressed
       let
@@ -752,10 +752,10 @@ connectTo remoteness sockAddr =
                 NS.AF_UNIX
 
         wantedAttrs =
-            TypeOfAttrs $ (typeOf :: Proxy attrs -> TypeRep) (undefined :: Proxy attrs)
+            TypeOfAttrs $ typeOf (undefined :: Proxy attrs)
 
         wantedParent =
-            TypeOfParent $ (typeOf :: Proxy parent' -> TypeRep) (undefined :: Proxy parent')
+            TypeOfParent $ typeOf (undefined :: Proxy parent')
 
         handshake =
             Handshake wantedAttrs wantedParent

@@ -20,7 +20,6 @@ import Ef.Lang.Checked          as Base
 import Ef.Lang.Contract         as Base
 import Ef.Lang.Get              as Base
 import Ef.Lang.Set              as Base
-import Ef.Lang.Call             as Base
 
 import Ef.Lang.Scoped.Exit      as Base
 import Ef.Lang.Scoped.Reflect   as Base

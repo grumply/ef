@@ -35,10 +35,6 @@ library
                        Ef.Core.Type.Set
                        Ef.Core.Witness
                        Ef.Data.Promise
-                       Ef.Data.Queue
-                       Ef.Data.MinHeap
-                       Ef.Data.MaxHeap
-                       Ef.Data.MedianHeap
                        Ef.Lang.Notate
                        Ef.Lang.Vary
                        Ef.Lang.View
@@ -49,7 +45,6 @@ library
                        Ef.Lang.Get
                        Ef.Lang.Set
                        Ef.Lang.IfThenElse
-                       Ef.Lang.Call
                        Ef.Lang.Scoped.Exit
                        Ef.Lang.Scoped.Generate
                        Ef.Lang.Scoped.Guard
