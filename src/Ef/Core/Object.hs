@@ -24,7 +24,6 @@ import Data.Typeable.Internal
 import GHC.Generics
 
 import qualified Data.ByteString.Lazy as BSL
-import Codec.Compression.Zlib.Raw hiding (Method)
 
 
 
@@ -84,32 +83,6 @@ instance ( Typeable (Object attrs parent)
         do
           put (typeOf o)
           put as
-
-
-
-serialize
-    :: Binary (Object attrs parent)
-    => Object attrs parent
-    -> BSL.ByteString
-
-serialize =
-    compress . encode
-
-
-
-deserialize
-    :: Binary (Object attrs parent)
-    => BSL.ByteString
-    -> Object attrs parent
-
-deserialize =
-    decode . decompress
-
-
-
-data Purpose =
-    forall attrs parent.
-    Purpose (Object attrs parent)
 
 
 
