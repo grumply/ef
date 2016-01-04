@@ -3,6 +3,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 module Main where
 
 import Ef hiding (Object(..),Attribute,Method)
@@ -11,7 +12,8 @@ import Ef.Core.Object hiding (Object(..),Attribute,Method)
 import qualified Ef.Core.Object as Ef
 import Ef.Core.Pattern
 
-import Language.Haskell.TH
+import Language.Haskell.TH hiding (reify)
+import qualified Language.Haskell.TH as TH
 
 {-
 
@@ -32,6 +34,16 @@ q
 
 q =
     lift
+
+
+
+reify
+    :: Lift Q parent
+    => Name
+    -> Pattern scope parent Info
+
+reify nm =
+    q (TH.reify nm)
 
 
 
