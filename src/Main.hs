@@ -110,7 +110,81 @@ data Language =
 
         }
 
+data Validation k
+    where
 
+        IsValidAttribute
+            :: Name
+            -> Info
+            -> (Bool -> k)
+            -> Validation k
+
+        IsValidMethod
+            :: Name
+            -> Info
+            -> (Bool -> k)
+            -> Validation k
+
+        IsValidObject
+            :: Name
+            -> Info
+            -> (Bool -> k)
+            -> Validation k
+
+        IsValidLanguage
+            :: Name
+            -> Info
+            -> (Bool -> k)
+            -> Validation k
+
+data Validater k =
+    Validater
+        {
+          _isValidAttribute
+              :: Name
+              -> Info
+              -> (Bool,k)
+
+        , _isValidMethod
+              :: Name
+              -> Info
+              -> (Bool,k)
+
+        , _isValidObject
+              :: Name
+              -> Info
+              -> (Bool,k)
+
+        , _isValidLanguage
+              :: Name
+              -> Info
+              -> (Bool,k)
+        }
+
+validater
+    :: Uses Validater attrs parent
+    => Ef.Attribute Validater attrs parent
+
+validater =
+    let
+        _isValidAttribute =
+            \name info ->
+                undefined
+
+        _isValidMethod =
+            \name info ->
+                undefined
+
+        _isValidObject =
+            \name info ->
+                undefined
+
+        _isValidLanguage =
+            \name info ->
+                undefined
+
+    in
+        Validater{..}
 
 data Reification k
     where
@@ -129,29 +203,47 @@ data Reification k
             -> (Method -> k)
             -> Reification k
 
-        ObjectFromTypes
+        ObjectFromType
             :: Openness
             -> [(Name,Type)]
             -> (Object -> k)
             -> Reification k
 
-        LanguageFromTypes
+        LanguageFromType
             :: Openness
             -> [(Name,Type)]
             -> (Language -> k)
             -> Reification k
 
-data AttributeReificationFailure 
+data ReificationFailure
     where
-    
+
         NameNotValidAttribute
             :: Loc
             -> Name
             -> Info
-            -> AttributeReificationFailure
-    
+            -> ReificationFailure
+
+        NameNotValidMethod
+            :: Loc
+            -> Name
+            -> Info
+            -> ReificationFailure
+
+        NameNotValidObject
+            :: Loc
+            -> Name
+            -> Info
+            -> ReificationFailure
+
+        NameNotValidLanguage
+            :: Loc
+            -> Name
+            -> Info
+            -> ReificationFailure
+
     deriving (Show)
-instance Exception AttributeReificationFailure
+instance Exception ReificationFailure
 
 
 
@@ -167,7 +259,7 @@ attributeFromType openness name =
     do
         info <- reify name
         case info of
-            
+
             TyVarI name ty ->
                 self (AttributeFromType openness name ty id)
 
@@ -175,21 +267,6 @@ attributeFromType openness name =
                 do
                     loc <- q location
                     throw (NameNotValidAttribute loc name info)
-
-
-
-data MethodReificationFailure
-    where
-    
-        NameNotValidMethod
-            :: Loc
-            -> Name
-            -> Info
-            -> MethodReificationFailure
-
-
-    deriving (Show)
-instance Exception MethodReificationFailure
 
 
 
@@ -205,7 +282,7 @@ methodFromType openness name =
     do
         info <- reify name
         case info of
-            
+
             TyVarI name ty ->
                 self (MethodFromType openness name ty id)
 
@@ -216,33 +293,51 @@ methodFromType openness name =
 
 
 
-objectFromTypes
+objectFromType
     :: ( Lift Q parent
        , Is Reification scope parent
        )
     => Openness
-    -> [Name]
+    -> Name
     -> Pattern scope parent Object
 
-objectFromTypes openness names =
+objectFromType openness name =
     do
-        self (ObjectFromTypes openness undefined id)
-        undefined
+        info <- reify name
+        case info of
+
+            TyVarI name ty ->
+                do
+                    -- self undefined
+                    self (ObjectFromType openness undefined id)
+
+            _ ->
+                do
+                    loc <- q location
+                    throw (NameNotValidObject loc name info)
 
 
 
-languageFromTypes
+languageFromType
     :: ( Lift Q parent
        , Is Reification scope parent
        )
     => Openness
-    -> [Name]
+    -> Name
     -> Pattern scope parent Language
 
-languageFromTypes openness names =
+languageFromType openness name =
     do
-        self (LanguageFromTypes openness undefined id)
-        undefined
+        info <- reify name
+        case info of
+
+            TyVarI name ty ->
+                self (LanguageFromType openness undefined id)
+
+            _ ->
+                do
+                    loc <- q location
+                    throw (NameNotValidLanguage loc name info)
 
 
 
@@ -261,12 +356,12 @@ data Reifier k =
               -> Type
               -> (Method,k)
 
-        , _objectFromTypes
+        , _objectFromType
               :: Openness
               -> [(Name,Type)]
               -> (Object,k)
 
-        , _languageFromTypes
+        , _languageFromType
               :: Openness
               -> [(Name,Type)]
               -> (Language,k)
@@ -300,10 +395,10 @@ instance Witnessing Reifier Reification
             in
                 use k k'
 
-        witness use Reifier{..} (ObjectFromTypes openness nameTypes otk) =
+        witness use Reifier{..} (ObjectFromType openness nameTypes otk) =
             let
                 (ot,k) =
-                    _objectFromTypes openness nameTypes
+                    _objectFromType openness nameTypes
 
                 k' =
                     otk ot
@@ -312,10 +407,10 @@ instance Witnessing Reifier Reification
                 use k k'
 
 
-        witness use Reifier{..} (LanguageFromTypes openness nameTypes ltk) =
+        witness use Reifier{..} (LanguageFromType openness nameTypes ltk) =
             let
                 (lt,k) =
-                    _languageFromTypes openness nameTypes
+                    _languageFromType openness nameTypes
 
                 k' =
                     ltk lt
@@ -519,11 +614,11 @@ reifier =
             \openness name ->
                 undefined
 
-        _objectFromTypes =
+        _objectFromType =
             \openness names ->
                 undefined
 
-        _languageFromTypes =
+        _languageFromType =
             \openness names ->
                 undefined
 
