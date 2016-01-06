@@ -118,26 +118,40 @@ data Reification k
         AttributeFromType
             :: Openness
             -> Name
+            -> Type
             -> (Attribute -> k)
             -> Reification k
 
         MethodFromType
             :: Openness
             -> Name
+            -> Type
             -> (Method -> k)
             -> Reification k
 
         ObjectFromTypes
             :: Openness
-            -> [Name]
+            -> [(Name,Type)]
             -> (Object -> k)
             -> Reification k
 
         LanguageFromTypes
             :: Openness
-            -> [Name]
+            -> [(Name,Type)]
             -> (Language -> k)
             -> Reification k
+
+data AttributeReificationFailure 
+    where
+    
+        NameNotValidAttribute
+            :: Loc
+            -> Name
+            -> Info
+            -> AttributeReificationFailure
+    
+    deriving (Show)
+instance Exception AttributeReificationFailure
 
 
 
@@ -150,7 +164,32 @@ attributeFromType
     -> Pattern scope parent Attribute
 
 attributeFromType openness name =
-    self (AttributeFromType openness name id)
+    do
+        info <- reify name
+        case info of
+            
+            TyVarI name ty ->
+                self (AttributeFromType openness name ty id)
+
+            _ ->
+                do
+                    loc <- q location
+                    throw (NameNotValidAttribute loc name info)
+
+
+
+data MethodReificationFailure
+    where
+    
+        NameNotValidMethod
+            :: Loc
+            -> Name
+            -> Info
+            -> MethodReificationFailure
+
+
+    deriving (Show)
+instance Exception MethodReificationFailure
 
 
 
@@ -163,7 +202,17 @@ methodFromType
     -> Pattern scope parent Method
 
 methodFromType openness name =
-    self (MethodFromType openness name id)
+    do
+        info <- reify name
+        case info of
+            
+            TyVarI name ty ->
+                self (MethodFromType openness name ty id)
+
+            _ ->
+                do
+                    loc <- q location
+                    throw (NameNotValidMethod loc name info)
 
 
 
@@ -176,7 +225,9 @@ objectFromTypes
     -> Pattern scope parent Object
 
 objectFromTypes openness names =
-    self (ObjectFromTypes openness names id)
+    do
+        self (ObjectFromTypes openness undefined id)
+        undefined
 
 
 
@@ -189,7 +240,9 @@ languageFromTypes
     -> Pattern scope parent Language
 
 languageFromTypes openness names =
-    self (LanguageFromTypes openness names id)
+    do
+        self (LanguageFromTypes openness undefined id)
+        undefined
 
 
 
@@ -199,21 +252,23 @@ data Reifier k =
           _attributeFromType
               :: Openness
               -> Name
+              -> Type
               -> (Attribute,k)
 
         , _methodFromType
               :: Openness
               -> Name
+              -> Type
               -> (Method,k)
 
         , _objectFromTypes
               :: Openness
-              -> [Name]
+              -> [(Name,Type)]
               -> (Object,k)
 
         , _languageFromTypes
               :: Openness
-              -> [Name]
+              -> [(Name,Type)]
               -> (Language,k)
 
         }
@@ -223,10 +278,10 @@ data Reifier k =
 instance Witnessing Reifier Reification
     where
 
-        witness use Reifier{..} (AttributeFromType openness name atk) =
+        witness use Reifier{..} (AttributeFromType openness name ty atk) =
             let
                 (at,k) =
-                    _attributeFromType openness name
+                    _attributeFromType openness name ty
 
                 k' =
                     atk at
@@ -234,10 +289,10 @@ instance Witnessing Reifier Reification
             in
                 use k k'
 
-        witness use Reifier{..} (MethodFromType openness name mtk) =
+        witness use Reifier{..} (MethodFromType openness name ty mtk) =
             let
                 (mt,k) =
-                    _methodFromType openness name
+                    _methodFromType openness name ty
 
                 k' =
                     mtk mt
@@ -245,10 +300,10 @@ instance Witnessing Reifier Reification
             in
                 use k k'
 
-        witness use Reifier{..} (ObjectFromTypes openness names otk) =
+        witness use Reifier{..} (ObjectFromTypes openness nameTypes otk) =
             let
                 (ot,k) =
-                    _objectFromTypes openness names
+                    _objectFromTypes openness nameTypes
 
                 k' =
                     otk ot
@@ -257,10 +312,10 @@ instance Witnessing Reifier Reification
                 use k k'
 
 
-        witness use Reifier{..} (LanguageFromTypes openness names ltk) =
+        witness use Reifier{..} (LanguageFromTypes openness nameTypes ltk) =
             let
                 (lt,k) =
-                    _languageFromTypes openness names
+                    _languageFromTypes openness nameTypes
 
                 k' =
                     ltk lt

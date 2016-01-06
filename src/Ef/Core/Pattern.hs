@@ -178,7 +178,7 @@ instance Lift newParent parent
 lift_
     :: Functor parent
     => parent result
-    -> Pattern scope parent result 
+    -> Pattern scope parent result
 
 lift_ m =
     Super (fmap Pure m)
@@ -321,7 +321,7 @@ _fmap f =
 _bind
     :: Functor parent
     => Pattern scope parent intermediate
-    -> (intermediate-> Pattern scope parent result)
+    -> (intermediate -> Pattern scope parent result)
     -> Pattern scope parent result
 
 p0 `_bind` f =
@@ -416,13 +416,16 @@ _mplus p0 p1 =
   where
 
     go (Super m) =
-        Super (fmap go m `mplus` return p1)
+        Super (fmap go m)
 
     go (Send symbol k) =
         Send symbol (go . k)
 
-    go x =
-        x
+    go (Fail _) =
+        p1
+
+    go result =
+        result
 
 
 
