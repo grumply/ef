@@ -1,9 +1,11 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE KindSignatures #-}
 module Main where
 
 import Ef hiding (Object(..),Attribute,Method)
@@ -25,6 +27,75 @@ DSL-directed design of auto-gen library:
 
 -}
 
+
+type Efreetable = ('[] :: [* -> *])
+
+type Efreet = ('[] :: [* -> *])
+
+
+
+
+data ProjectName
+    where
+    
+        ProjectName 
+            :: String
+            -> ProjectName
+
+data Project
+    where
+    
+        ProjectScheme
+            :: ProjectName
+            -> ProjectVersion
+            -> Directory
+            -> [Dependency]
+            -> [Module]
+            -> ProjectScheme
+
+
+
+data Arch k
+    where
+    
+        Project
+            :: String
+            -> Arch
+            -> (Project -> k)
+            -> Arch k
+
+        Directory
+            :: FilePath
+            -> SchemeLang
+
+
+
+efreet_obj 
+    :: Ef.Object Efreetable Q
+
+efreet_obj =
+    Ef.Object Empty
+
+
+
+efreet
+    :: Name
+    -> DecsQ
+    
+efreet ty_name =
+    do
+        (_,decs) <- delta efreet_obj (run ty_name)
+        return decs
+
+
+run
+    :: Name
+    -> Pattern Efreet Q [Dec]
+
+run name =
+    do
+        componentType <- determineComponentType
+        
 
 
 q
