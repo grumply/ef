@@ -175,11 +175,6 @@ viewAliases =
 
 
 
--- alias
---     :: Is VersionLexicon scope parent
---     => String
---     -> Pattern scope parent Bool
-
 alias
     :: String
     -> Method VersionLexicon scope parent Bool
