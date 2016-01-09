@@ -1,23 +1,44 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE GADTs #-}
-module Arch.Project.Version where
+module Arch.Project.Version
+    ( VersionLexicon
+    , VersionAttribute
+    , version
+    , incMilestone
+    , incMajor
+    , incMinor
+    , incPatch
+    , alias
+    , checkForAlias
+    )
+    where
 
 -- | Versions are up to 4 natural number components known
 -- as Milestone, Major, Minor, and Patch, followed,
--- optionally by a dash '-' and a colon-delimited list of
+-- optionally, by a dash '-' and a colon-delimited list of
 -- version aliases.
 -- Examples:
 --   3
 --   0.3.4.0
---   0.2-internalVersion1:projectPhase3
+--   0.2-internalVersion-1.4:phase3 2
 
+import Ef.Core
+import Ef.Lang.Contract
+
+import Control.Arrow
 import Control.Applicative
-import Data.Aeson
+import Control.Monad
+import Data.Aeson hiding ((.=))
+import qualified Data.Aeson as A
 import Data.Binary
+import qualified Data.Binary as B
 import Data.List
 import Data.Maybe
 import Data.String
@@ -25,149 +46,320 @@ import GHC.Generics
 
 
 
-newtype Alias =
-
-    Alias
-        { versionAlias
-              :: String
-        }
-
-    deriving (Eq,Generic,ToJSON,FromJSON)
-
-instance Show Alias
+data VersionLexicon k
     where
 
-        show =
-            versionAlias
+        ViewMilestone
+            :: (Int -> k)
+            -> VersionLexicon k
 
-instance Binary Alias
+        IncrementMilestone
+            :: k
+            -> VersionLexicon k
 
-instance IsString Alias
-    where
+        ViewMajor
+            :: (Int -> k)
+            -> VersionLexicon k
 
-        fromString =
-            Alias
+        IncrementMajor
+            :: k
+            -> VersionLexicon k
 
+        ViewMinor
+            :: (Int -> k)
+            -> VersionLexicon k
 
+        IncrementMinor
+            :: k
+            -> VersionLexicon k
 
-newtype Milestone =
+        ViewPatch
+            :: (Int -> k)
+            -> VersionLexicon k
 
-    Milestone
-        { milestoneVersion
-              :: Int
-        }
+        IncrementPatch
+            :: k
+            -> VersionLexicon k
 
-    deriving (Enum,Eq,Ord,Show,Generic,ToJSON,FromJSON)
+        ViewAliases
+            :: ([String] -> k)
+            -> VersionLexicon k
 
-instance Binary Milestone
+        Alias
+            :: String
+            -> k
+            -> VersionLexicon k
 
-instance IsString Milestone
-    where
-
-        fromString =
-            Milestone . read
-
-
-
-newtype Major =
-
-    Major
-        { majorVersion
-              :: Int
-        }
-
-    deriving (Enum,Eq,Ord,Show,Generic,ToJSON,FromJSON)
-
-instance Binary Major
-
-instance IsString Major
-    where
-
-        fromString =
-            Major . read
+        HasAlias
+            :: String
+            -> (Bool -> k)
+            -> VersionLexicon k
 
 
+viewMilestone
+    :: Method VersionLexicon scope parent Int
 
-newtype Minor =
-
-    Minor
-        { minorVersion
-              :: Int
-        }
-
-    deriving (Enum,Eq,Ord,Show,Generic,ToJSON,FromJSON)
-
-instance Binary Minor
-
-instance IsString Minor
-    where
-
-        fromString =
-            Minor . read
+viewMilestone =
+    self (ViewMilestone id)
 
 
 
-newtype Patch =
+incMilestone
+    :: Method VersionLexicon scope parent ()
 
-    Patch
-        { patchVersion
-              :: Int
-        }
-
-    deriving (Enum,Eq,Ord,Show,Generic,ToJSON,FromJSON)
-
-instance Binary Patch
-
-instance IsString Patch
-    where
-
-        fromString =
-            Patch . read
+incMilestone =
+    self (IncrementMilestone ())
 
 
 
-data Version =
+viewMajor
+    :: Method VersionLexicon scope parent Int
 
+viewMajor =
+    self (ViewMajor id)
+
+
+
+incMajor
+    :: Method VersionLexicon scope parent ()
+
+incMajor =
+    self (IncrementMajor ())
+
+
+viewMinor
+    :: Method VersionLexicon scope parent Int
+
+viewMinor =
+    self (ViewMinor id)
+
+
+
+incMinor
+    :: Method VersionLexicon scope parent ()
+
+incMinor =
+    self (IncrementMinor ())
+
+
+
+viewPatch
+    :: Method VersionLexicon scope parent Int
+
+viewPatch =
+    self (ViewPatch id)
+
+
+
+incPatch
+    :: Method VersionLexicon scope parent ()
+
+incPatch =
+    self (IncrementPatch ())
+    
+
+
+viewVersion
+    :: Method VersionLexicon scope parent (Int,Int,Int,Int)
+
+viewVersion =
+    (,,,) <$> viewMilestone <*> viewMajor <*> viewMinor <*> viewPatch
+    
+
+
+viewAliases
+    :: Method VersionLexicon scope parent [String]
+
+viewAliases =
+    self (ViewAliases id)
+
+
+
+-- alias
+--     :: Is VersionLexicon scope parent
+--     => String
+--     -> Pattern scope parent Bool
+
+alias
+    :: String
+    -> Method VersionLexicon scope parent Bool
+
+alias newAlias =
+    let
+        noColons =
+            Precondition $
+                let
+                    hasColon =
+                        ':' `elem` newAlias
+
+                in
+                   when hasColon $ throw (AliasContainsColon newAlias)
+
+        considerations =
+            [ noColons ]
+
+        method =
+            self (Alias newAlias True)
+
+        aliasContract =
+            Contract considerations method
+
+    in
+        contract "alias" aliasContract
+
+data AliasContainsColon =
+    AliasContainsColon String
+    deriving Show
+instance Exception AliasContainsColon
+
+
+
+checkForAlias
+    :: String
+    -> Method VersionLexicon scope parent Bool
+
+checkForAlias alias_ =
+    self (HasAlias alias_ id)
+
+
+type VersionObj parent =
+    Attribute VersionAttribute '[VersionAttribute] parent
+
+
+versionObj
+    :: Monad parent
+    => [String]
+    -> Int
+    -> Int
+    -> Int
+    -> Int
+    -> Ef.Core.Object '[VersionAttribute] parent
+
+versionObj aliases milestone major minor patch =
+    let
+        attr =
+            version aliases milestone major minor patch
+
+    in
+        Ef.Core.Object (attr *:* Empty)
+
+simpleVersionObj
+    :: Monad parent
+    => Ef.Core.Object '[VersionAttribute] parent
+
+simpleVersionObj =
+    versionObj [] 0 0 0 0
+
+type Version attrs parent =
+    Uses VersionAttribute attrs parent
+    => Attribute VersionAttribute attrs parent
+
+data VersionAttribute k =
     Version
         {
-          aliases
-              :: [Alias]
-
-        , milestone
-              :: Milestone
+        -- Associated data + views
+          milestone
+              :: (Int,k)
 
         , major
-              :: Major
+              :: (Int,k)
 
         , minor
-              :: Minor
+              :: (Int,k)
 
         , patch
-              :: Patch
+              :: (Int,k)
+
+        , aliases
+              :: ([String],k)
+
+        -- methods
+        , incrementMilestone
+              :: k
+
+        , incrementMajor
+              :: k
+
+        , incrementMinor
+              :: k
+
+        , incrementPatch
+              :: k
+
+        , addAlias
+              :: String
+              -> k
+
+        , hasAlias
+              :: String
+              -> (Bool,k)
 
         }
 
-    deriving (Generic)
+instance Witnessing VersionAttribute VersionLexicon
+    where
+        witness use Version {..} (ViewMilestone k) =
+            use (snd milestone) (k $ fst milestone)
 
-instance Show Version
+        witness use Version {..} (IncrementMilestone k) =
+            use incrementMilestone k
+
+        witness use Version {..} (ViewMajor k) =
+            use (snd major) (k $ fst major)
+            
+        witness use Version {..} (IncrementMajor k) =
+            use incrementMajor k
+
+        witness use Version {..} (ViewMinor k) =
+            use (snd minor) (k $ fst minor)
+            
+        witness use Version {..} (IncrementMinor k) =
+            use incrementMinor k
+
+        witness use Version {..} (ViewPatch k) =
+            use (snd patch) (k $ fst patch)
+            
+        witness use Version {..} (IncrementPatch k) =
+            use incrementPatch k
+
+        witness use Version {..} (ViewAliases k) =
+            use (snd aliases) (k $ fst aliases)
+            
+        witness use Version {..} (Alias newAlias k) =
+            use (addAlias newAlias) k
+
+        witness use Version {..} (HasAlias alias resultk) =
+            let
+                (result,k) =
+                    hasAlias alias
+
+                k' =
+                    resultk result
+
+            in
+                use k k'
+
+
+
+instance Show (VersionAttribute k)
     where
 
         show Version {..} =
             let
                 aliasesString =
-                    intercalate ":" (map show aliases)
+                    intercalate ":" $ fst aliases
 
                 milestoneString =
-                    show (milestoneVersion milestone)
+                    show $ fst milestone
 
                 majorString =
-                    show (majorVersion major)
+                    show $ fst major
 
                 minorString =
-                    show (minorVersion minor)
+                    show $ fst minor
 
                 patchString =
-                    show (patchVersion patch)
+                    show $ fst patch
 
                 versionString =
                     let
@@ -197,33 +389,36 @@ instance Show Version
             in
                 versionString
 
-instance ToJSON Version
+
+
+instance ToJSON (VersionAttribute k)
     where
 
         toJSON Version {..} =
             object
                 [
-                  "aliases" .=
-                      toJSON aliases
+                  "aliases" A..=
+                      (toJSON $ fst aliases)
 
-                , "milestone" .=
-                      toJSON milestone
+                , "milestone" A..=
+                      (toJSON $ fst milestone)
 
-                , "major" .=
-                      toJSON major
+                , "major" A..=
+                      (toJSON $ fst major)
 
-                , "minor" .=
-                      toJSON minor
+                , "minor" A..=
+                      (toJSON $ fst minor)
 
-                , "patch" .=
-                      toJSON patch
+                , "patch" A..=
+                      (toJSON $ fst patch)
 
                 ]
 
-instance FromJSON Version
+instance Uses VersionAttribute attrs parent
+    => FromJSON (Attribute VersionAttribute attrs parent)
     where
 
-        parseJSON (Object v) =
+        parseJSON (A.Object v) =
             do
                 mayAliases   <- v .:? "aliases"
                 mayMilestone <- v .:? "milestone"
@@ -239,41 +434,41 @@ instance FromJSON Version
                             fromMaybe [] mayAliases
 
                         milestone =
-                            fromMaybe "0" mayMilestone
+                            fromMaybe 0 mayMilestone
 
                         major =
-                            fromMaybe "0" mayMajor
+                            fromMaybe 0 mayMajor
 
                         minor =
-                            fromMaybe "0" mayMinor
+                            fromMaybe 0 mayMinor
 
                         patch =
-                            fromMaybe "0" mayPatch
+                            fromMaybe 0 mayPatch
 
                     in
-                        pure Version {..}
+                        pure $ version aliases milestone major minor patch
 
         parseJSON _ =
             empty
 
 
 
-instance Eq Version
+instance Eq (VersionAttribute k)
     where
 
         v0 == v1 =
             let
                 sameMilestone =
-                    milestone v0 == milestone v1
+                    fst (milestone v0) == fst (milestone v1)
 
                 sameMajor =
-                    major v0 == major v1
+                    fst (major v0) == fst (major v1)
 
                 sameMinor =
-                    minor v0 == minor v1
+                    fst (minor v0) == fst (minor v1)
 
                 samePatch =
-                    patch v0 == patch v1
+                    fst (patch v0) == fst (patch v1)
 
             in
                 sameMilestone &&
@@ -283,22 +478,22 @@ instance Eq Version
 
 
 
-instance Ord Version
+instance Ord (VersionAttribute k)
     where
 
         v0 <= v1 =
             let
                 smallerOrSameMilestone =
-                    milestone v0 <= milestone v1
+                    fst (milestone v0) <= fst (milestone v1)
 
                 smallerOrSameMajor =
-                    major v0 <= major v1
+                    fst (major v0) <= fst (major v1)
 
                 smallerOrSameMinor =
-                    minor v0 <= minor v1
+                    fst (minor v0) <= fst (minor v1)
 
                 smallerOrSamePatch =
-                    patch v0 <= patch v1
+                    fst (patch v0) <= fst (patch v1)
 
             in
                 smallerOrSameMilestone &&
@@ -308,9 +503,25 @@ instance Ord Version
 
 
 
-instance Binary Version
+instance Uses VersionAttribute attrs parent
+    => Binary (Attribute VersionAttribute attrs parent)
+    where
 
-instance IsString Version
+        get =
+            version <$> B.get <*> B.get <*> B.get <*> B.get <*> B.get
+
+        put Version {..} =
+            do
+                B.put (fst aliases)
+                B.put (fst milestone)
+                B.put (fst major)
+                B.put (fst minor)
+                B.put (fst patch)
+
+
+
+instance Uses VersionAttribute attrs parent
+    => IsString (Attribute VersionAttribute attrs parent)
     where
 
         fromString versionString =
@@ -324,14 +535,11 @@ instance IsString Version
                 versionIntComponents =
                     map read versionStringComponents
 
-                aliasStrings =
+                tags =
                     if length aliasComponent > 0 then
                         elemSlice ':' (tail aliasComponent)
                     else
                         []
-
-                tags =
-                    map Alias aliasStrings
 
                 [milestone,major,minor,patch] =
                     sequence [(!!0),(!!1),(!!2),(!!3)] versionIntComponents
@@ -355,14 +563,14 @@ instance IsString Version
                         version tags milestone major minor patch
 
                     _ ->
-                        error "Correct Version string format is one of (without braces):\
-                                  \\n\t\"{milestone}.{major}.{minor}.{patch}\"\
-                                  \\n\t\"{milestone}.{major}.{minor}\"\
-                                  \\n\t\"{milestone}.{major}\"\
-                                  \\n\t\"{milestone}\"\
-                                  \\n\t\"\" -> equivalent to version 0.0.0.0"
+                        error "Correct Version string format is one of (without braces; omitted tail versions = 0):\
+                              \\n\t\"{milestone}.{major}.{minor}.{patch}\"\
+                              \\n\t\"{milestone}.{major}.{minor}\"\
+                              \\n\t\"{milestone}.{major}\"\
+                              \\n\t\"{milestone}\"\
+                              \\n\t\"\""
             where
-            
+
                 elemSlice
                     :: Eq a
                     => a
@@ -400,135 +608,117 @@ instance IsString Version
 
 
 
+
 version
-    :: [Alias]
+    :: Uses VersionAttribute attrs parent
+    => [String]
     -> Int
     -> Int
     -> Int
     -> Int
-    -> Version
+    -> Attribute VersionAttribute attrs parent
 
-version aliases mlstn mjr mnr ptch =
+version alss mlst mjr mnr ptch =
     let
+        aliases = 
+            (alss,pure)
+
         milestone =
-            Milestone mlstn
-
+            (mlst,pure)
+            
         major =
-            Major mjr
-
+            (mjr,pure)
+            
         minor =
-            Minor mnr
-
+            (mnr,pure)
+            
         patch =
-            Patch ptch
+            (ptch,pure)
+            
+        incrementMilestone obj =
+            let
+                Version {..} = view obj
+
+            in
+                pure $ obj .=
+                    Version
+                        {
+                          milestone =
+                              first succ milestone
+
+                        , ..
+
+                        }
+
+        incrementMajor obj =
+            let
+                Version {..} = view obj
+
+            in
+                pure $ obj .=
+                    Version
+                        {
+                          major =
+                              first succ major
+
+                        , ..
+
+                        }
+
+        incrementMinor obj =
+            let
+                Version {..} = view obj
+
+            in
+                pure $ obj .=
+                    Version
+                        {
+                          minor =
+                              first succ minor
+
+                        , ..
+
+                        }
+
+        incrementPatch obj =
+            let
+                Version {..} = view obj
+
+            in
+                pure $ obj .=
+                    Version
+                        {
+                          patch =
+                              first succ patch
+
+                        , ..
+
+                        }
+
+        addAlias newAlias obj =
+            let
+                Version {..} = view obj
+
+                newAliases =
+                    first (newAlias :) aliases
+
+            in
+                pure $ obj .=
+                    Version
+                        {
+                          aliases =
+                              newAliases
+
+                        , hasAlias =
+                              \needle ->
+                                  (needle `elem` (fst newAliases),pure)
+
+                        , ..
+
+                        }
+
+        hasAlias needle =
+                (needle `elem` alss, pure)
 
     in
         Version {..}
-
-
-
-isTagged
-    :: Version
-    -> Alias
-    -> Bool
-
-isTagged Version {..} alias =
-    alias `elem` aliases
-
-
-
-removeTag
-    :: Version
-    -> Alias
-    -> Version
-
-removeTag Version {..} alias =
-    Version
-        {
-          aliases =
-              filter (/= alias) aliases
-
-        , ..
-
-        }
-
-
-
-incrementMilestone
-    :: Version
-    -> Version
-
-incrementMilestone Version {..} =
-    Version
-        {
-          milestone =
-              succ milestone
-
-        , ..
-
-        }
-
-
-
-incrementMajor
-    :: Version
-    -> Version
-
-incrementMajor Version {..} =
-    Version
-        {
-          major =
-              succ major
-
-        , ..
-
-        }
-
-
-
-incrementMinor
-    :: Version
-    -> Version
-
-incrementMinor Version {..} =
-    Version
-        {
-          minor =
-              succ minor
-
-        , ..
-
-        }
-
-
-
-incrementPatch
-    :: Version
-    -> Version
-
-incrementPatch Version {..} =
-    Version
-        {
-          patch =
-              succ patch
-
-        , ..
-
-        }
-
-
-
-tagVersion
-    :: Alias
-    -> Version
-    -> Version
-
-tagVersion tag Version {..} =
-    Version
-        {
-          aliases =
-              tag:aliases
-
-        , ..
-
-        }
