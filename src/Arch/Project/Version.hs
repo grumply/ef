@@ -6,13 +6,14 @@
 {-# LANGUAGE GADTs #-}
 module Arch.Project.Version where
 
--- | Versions are up to 3 natural number components, followed, 
--- optionally by a dash '-' and a colon-delimited list of 
--- version aliases. 
--- Examples: 
+-- | Versions are up to 4 natural number components known
+-- as Milestone, Major, Minor, and Patch, followed,
+-- optionally by a dash '-' and a colon-delimited list of
+-- version aliases.
+-- Examples:
 --   3
---   0.3.4
---   0.2-internalVersion0:milestone-2.0
+--   0.3.4.0
+--   0.2-internalVersion1:projectPhase3
 
 import Control.Applicative
 import Data.Aeson
@@ -24,115 +25,140 @@ import GHC.Generics
 
 
 
-newtype VersionAlias =
+newtype Alias =
 
-    VersionAlias
+    Alias
         { versionAlias
               :: String
         }
 
     deriving (Eq,Generic,ToJSON,FromJSON)
 
-instance Show VersionAlias
+instance Show Alias
     where
 
         show =
             versionAlias
 
-instance Binary VersionAlias
+instance Binary Alias
 
-instance IsString VersionAlias
+instance IsString Alias
     where
 
         fromString =
-            VersionAlias
+            Alias
 
 
 
-newtype MajorVersion =
+newtype Milestone =
 
-    MajorVersion
+    Milestone
+        { milestoneVersion
+              :: Int
+        }
+
+    deriving (Enum,Eq,Ord,Show,Generic,ToJSON,FromJSON)
+
+instance Binary Milestone
+
+instance IsString Milestone
+    where
+
+        fromString =
+            Milestone . read
+
+
+
+newtype Major =
+
+    Major
         { majorVersion
               :: Int
         }
 
     deriving (Enum,Eq,Ord,Show,Generic,ToJSON,FromJSON)
 
-instance Binary MajorVersion
+instance Binary Major
 
-instance IsString MajorVersion
+instance IsString Major
     where
 
         fromString =
-            MajorVersion . read
+            Major . read
 
 
 
-newtype MinorVersion =
+newtype Minor =
 
-    MinorVersion
+    Minor
         { minorVersion
               :: Int
         }
 
     deriving (Enum,Eq,Ord,Show,Generic,ToJSON,FromJSON)
 
-instance Binary MinorVersion
+instance Binary Minor
 
-instance IsString MinorVersion
+instance IsString Minor
     where
 
         fromString =
-            MinorVersion . read
+            Minor . read
 
 
 
-newtype PatchVersion =
+newtype Patch =
 
-    PatchVersion
+    Patch
         { patchVersion
               :: Int
         }
 
     deriving (Enum,Eq,Ord,Show,Generic,ToJSON,FromJSON)
 
-instance Binary PatchVersion
+instance Binary Patch
 
-instance IsString PatchVersion
+instance IsString Patch
     where
 
         fromString =
-            PatchVersion . read
+            Patch . read
 
 
 
-data ProjectVersion =
+data Version =
 
-    ProjectVersion
+    Version
         {
           aliases
-              :: [VersionAlias]
+              :: [Alias]
+
+        , milestone
+              :: Milestone
 
         , major
-              :: MajorVersion
+              :: Major
 
         , minor
-              :: MinorVersion
+              :: Minor
 
         , patch
-              :: PatchVersion
+              :: Patch
 
         }
 
     deriving (Generic)
 
-instance Show ProjectVersion
+instance Show Version
     where
 
-        show ProjectVersion {..} =
+        show Version {..} =
             let
                 aliasesString =
                     intercalate ":" (map show aliases)
+
+                milestoneString =
+                    show (milestoneVersion milestone)
 
                 majorString =
                     show (majorVersion major)
@@ -146,7 +172,7 @@ instance Show ProjectVersion
                 versionString =
                     let
                         shortenedReverse =
-                            dropWhile (== "0") [patchString,minorString,majorString]
+                            dropWhile (== "0") [patchString,minorString,majorString,milestoneString]
 
                         versionStrings =
                             reverse shortenedReverse
@@ -171,14 +197,17 @@ instance Show ProjectVersion
             in
                 versionString
 
-instance ToJSON ProjectVersion
+instance ToJSON Version
     where
 
-        toJSON ProjectVersion {..} =
+        toJSON Version {..} =
             object
                 [
                   "aliases" .=
                       toJSON aliases
+
+                , "milestone" .=
+                      toJSON milestone
 
                 , "major" .=
                       toJSON major
@@ -191,22 +220,26 @@ instance ToJSON ProjectVersion
 
                 ]
 
-instance FromJSON ProjectVersion
+instance FromJSON Version
     where
 
         parseJSON (Object v) =
             do
-                mayAliases <- v .:? "aliases"
-                mayMajor   <- v .:? "major"
-                mayMinor   <- v .:? "minor"
-                mayPatch   <- v .:? "patch"
-                constructProjectVersion mayAliases mayMajor mayMinor mayPatch
+                mayAliases   <- v .:? "aliases"
+                mayMilestone <- v .:? "milestone"
+                mayMajor     <- v .:? "major"
+                mayMinor     <- v .:? "minor"
+                mayPatch     <- v .:? "patch"
+                constructVersion mayAliases mayMilestone mayMajor mayMinor mayPatch
             where
 
-                constructProjectVersion mayAliases mayMajor mayMinor mayPatch =
+                constructVersion mayAliases mayMilestone mayMajor mayMinor mayPatch =
                     let
                         aliases =
                             fromMaybe [] mayAliases
+
+                        milestone =
+                            fromMaybe "0" mayMilestone
 
                         major =
                             fromMaybe "0" mayMajor
@@ -218,58 +251,66 @@ instance FromJSON ProjectVersion
                             fromMaybe "0" mayPatch
 
                     in
-                        pure ProjectVersion {..}
+                        pure Version {..}
 
         parseJSON _ =
             empty
 
 
 
-instance Eq ProjectVersion
+instance Eq Version
     where
 
         v0 == v1 =
             let
-                sameMajorVersion =
+                sameMilestone =
+                    milestone v0 == milestone v1
+
+                sameMajor =
                     major v0 == major v1
 
-                sameMinorVersion =
+                sameMinor =
                     minor v0 == minor v1
 
-                samePatchVersion =
+                samePatch =
                     patch v0 == patch v1
 
             in
-                sameMajorVersion &&
-                sameMinorVersion &&
-                samePatchVersion
+                sameMilestone &&
+                sameMajor &&
+                sameMinor &&
+                samePatch
 
 
 
-instance Ord ProjectVersion
+instance Ord Version
     where
 
         v0 <= v1 =
             let
-                smallerOrSameMajorVersion =
+                smallerOrSameMilestone =
+                    milestone v0 <= milestone v1
+
+                smallerOrSameMajor =
                     major v0 <= major v1
 
-                smallerOrSameMinorVersion =
+                smallerOrSameMinor =
                     minor v0 <= minor v1
 
-                smallerOrSamePatchVersion =
+                smallerOrSamePatch =
                     patch v0 <= patch v1
 
             in
-                smallerOrSameMajorVersion &&
-                smallerOrSameMinorVersion &&
-                smallerOrSamePatchVersion
+                smallerOrSameMilestone &&
+                smallerOrSameMajor &&
+                smallerOrSameMinor &&
+                smallerOrSamePatch
 
 
 
-instance Binary ProjectVersion
+instance Binary Version
 
-instance IsString ProjectVersion
+instance IsString Version
     where
 
         fromString versionString =
@@ -290,101 +331,151 @@ instance IsString ProjectVersion
                         []
 
                 tags =
-                    map VersionAlias aliasStrings
+                    map Alias aliasStrings
 
-                [major,minor,patch] =
-                    sequence [(!!0),(!!1),(!!2)] versionIntComponents
+                [milestone,major,minor,patch] =
+                    sequence [(!!0),(!!1),(!!2),(!!3)] versionIntComponents
 
             in
                 case length versionStringComponents of
 
                     0 ->
-                        version tags 0 0 0
+                        version tags 0 0 0 0
 
                     1 ->
-                        version tags major 0 0
+                        version tags milestone 0 0 0
 
                     2 ->
-                        version tags major minor 0
+                        version tags milestone major 0 0
 
                     3 ->
-                        version tags major minor patch
+                        version tags milestone major minor 0
+
+                    4 ->
+                        version tags milestone major minor patch
 
                     _ ->
-                        error "Correct ProjectVersion string format is one of (without braces):\
-                                  \\n\t\"{major}.{minor}.{patch}\"\
-                                  \\n\t\"{major}.{minor}\"\
-                                  \\n\t\"{major}\"\
-                                  \\n\t\"\" -> equivalent to version 0.0.0"
+                        error "Correct Version string format is one of (without braces):\
+                                  \\n\t\"{milestone}.{major}.{minor}.{patch}\"\
+                                  \\n\t\"{milestone}.{major}.{minor}\"\
+                                  \\n\t\"{milestone}.{major}\"\
+                                  \\n\t\"{milestone}\"\
+                                  \\n\t\"\" -> equivalent to version 0.0.0.0"
+            where
+            
+                elemSlice
+                    :: Eq a
+                    => a
+                    -> [a]
+                    -> [[a]]
 
+                elemSlice elem list =
+                    let
+                        indices =
+                            elemIndices elem list
 
+                    in
+                        slice 0 list indices
+                    where
 
-elemSlice
-    :: Eq a
-    => a
-    -> [a]
-    -> [[a]]
+                        slice !count list [] =
+                            [list]
 
-elemSlice elem list =
-    let
-        indices =
-            elemIndices elem list
+                        slice count list (next:rest) =
+                            let
+                                size =
+                                    next - count
 
-    in
-        slice 0 list indices
-    where
+                                !sizeWithElem =
+                                    size + 1
 
-        slice !count list [] =
-            [list]
+                                !newCount =
+                                    count + sizeWithElem
 
-        slice count list (next:rest) =
-            let
-                size =
-                    next - count
+                                newList =
+                                    drop sizeWithElem list
 
-                !sizeWithElem =
-                    size + 1
-
-                !newCount =
-                    count + sizeWithElem
-
-                newList =
-                    drop sizeWithElem list
-
-            in
-                take size list : slice newCount newList rest
+                            in
+                                take size list : slice newCount newList rest
 
 
 
 version
-    :: [VersionAlias]
+    :: [Alias]
     -> Int
     -> Int
     -> Int
-    -> ProjectVersion
+    -> Int
+    -> Version
 
-version aliases mjr mnr ptch =
+version aliases mlstn mjr mnr ptch =
     let
+        milestone =
+            Milestone mlstn
+
         major =
-            MajorVersion mjr
+            Major mjr
 
         minor =
-            MinorVersion mnr
+            Minor mnr
 
         patch =
-            PatchVersion ptch
+            Patch ptch
 
     in
-        ProjectVersion {..}
+        Version {..}
 
 
 
-incrementMajorVersion
-    :: ProjectVersion
-    -> ProjectVersion
+isTagged
+    :: Version
+    -> Alias
+    -> Bool
 
-incrementMajorVersion ProjectVersion {..} =
-    ProjectVersion
+isTagged Version {..} alias =
+    alias `elem` aliases
+
+
+
+removeTag
+    :: Version
+    -> Alias
+    -> Version
+
+removeTag Version {..} alias =
+    Version
+        {
+          aliases =
+              filter (/= alias) aliases
+
+        , ..
+
+        }
+
+
+
+incrementMilestone
+    :: Version
+    -> Version
+
+incrementMilestone Version {..} =
+    Version
+        {
+          milestone =
+              succ milestone
+
+        , ..
+
+        }
+
+
+
+incrementMajor
+    :: Version
+    -> Version
+
+incrementMajor Version {..} =
+    Version
         {
           major =
               succ major
@@ -395,12 +486,12 @@ incrementMajorVersion ProjectVersion {..} =
 
 
 
-incrementMinorVersion
-    :: ProjectVersion
-    -> ProjectVersion
+incrementMinor
+    :: Version
+    -> Version
 
-incrementMinorVersion ProjectVersion {..} =
-    ProjectVersion
+incrementMinor Version {..} =
+    Version
         {
           minor =
               succ minor
@@ -411,12 +502,12 @@ incrementMinorVersion ProjectVersion {..} =
 
 
 
-incrementPatchVersion
-    :: ProjectVersion
-    -> ProjectVersion
+incrementPatch
+    :: Version
+    -> Version
 
-incrementPatchVersion ProjectVersion {..} =
-    ProjectVersion
+incrementPatch Version {..} =
+    Version
         {
           patch =
               succ patch
@@ -428,12 +519,12 @@ incrementPatchVersion ProjectVersion {..} =
 
 
 tagVersion
-    :: VersionAlias
-    -> ProjectVersion
-    -> ProjectVersion
+    :: Alias
+    -> Version
+    -> Version
 
-tagVersion tag ProjectVersion {..} =
-    ProjectVersion
+tagVersion tag Version {..} =
+    Version
         {
           aliases =
               tag:aliases
