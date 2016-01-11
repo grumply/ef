@@ -156,7 +156,7 @@ incPatch
 
 incPatch =
     self (IncrementPatch ())
-    
+
 
 
 viewVersion
@@ -164,7 +164,7 @@ viewVersion
 
 viewVersion =
     (,,,) <$> viewMilestone <*> viewMajor <*> viewMinor <*> viewPatch
-    
+
 
 
 viewAliases
@@ -301,25 +301,25 @@ instance Witnessing VersionAttribute VersionLexicon
 
         witness use Version {..} (ViewMajor k) =
             use (snd major) (k $ fst major)
-            
+
         witness use Version {..} (IncrementMajor k) =
             use incrementMajor k
 
         witness use Version {..} (ViewMinor k) =
             use (snd minor) (k $ fst minor)
-            
+
         witness use Version {..} (IncrementMinor k) =
             use incrementMinor k
 
         witness use Version {..} (ViewPatch k) =
             use (snd patch) (k $ fst patch)
-            
+
         witness use Version {..} (IncrementPatch k) =
             use incrementPatch k
 
         witness use Version {..} (ViewAliases k) =
             use (snd aliases) (k $ fst aliases)
-            
+
         witness use Version {..} (Alias newAlias k) =
             use (addAlias newAlias) k
 
@@ -615,21 +615,21 @@ version
 
 version alss mlst mjr mnr ptch =
     let
-        aliases = 
+        aliases =
             (alss,pure)
 
         milestone =
             (mlst,pure)
-            
+
         major =
             (mjr,pure)
-            
+
         minor =
             (mnr,pure)
-            
+
         patch =
             (ptch,pure)
-            
+
         incrementMilestone obj =
             let
                 Version {..} = view obj

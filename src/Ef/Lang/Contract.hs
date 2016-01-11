@@ -38,11 +38,14 @@ data Phase
 
 
 
+type MethodName = String
+
 data Breaches
   where
 
     Breaches
-        :: Phase
+        :: MethodName
+        -> Phase
         -> [SomeException]
         -> Breaches
 
@@ -99,11 +102,12 @@ consider considerations =
 
 runWithInvariants
     :: Monad parent
-    => [Pattern scope parent ()]
+    => MethodName
+    -> [Pattern scope parent ()]
     -> Pattern scope parent result
     -> Pattern scope parent result
 
-runWithInvariants invariants method =
+runWithInvariants methodName invariants method =
     let
       invariant =
           sequence (map try invariants)
@@ -128,7 +132,7 @@ runWithInvariants invariants method =
                 if null failures then
                     test (k result)
                 else
-                    throw (Breaches During failures)
+                    throw (Breaches methodName During failures)
 
     in
       test method
@@ -138,11 +142,12 @@ runWithInvariants invariants method =
 contract
     :: forall variables result scope parent.
        Monad parent
-    => Contract variables result scope parent
+    => MethodName
+    -> Contract variables result scope parent
     -> Pattern scope parent result
 
-contract (Contract considerations method) =
-#ifndef NO_CONTRACTS
+contract methodName (Contract considerations method) =
+#ifdef CONTRACTS
     do
       let
         (preconditions,invariants,postconditionals) =
@@ -153,7 +158,7 @@ contract (Contract considerations method) =
 
           [] ->
               do
-                result <- try (runWithInvariants invariants method)
+                result <- try (runWithInvariants methodName invariants method)
                 case result of
 
                     Left failure ->
@@ -172,10 +177,10 @@ contract (Contract considerations method) =
                                   return value
 
                               _ ->
-                                  throw (Breaches After postFailures)
+                                  throw (Breaches methodName After postFailures)
 
           _ ->
-              throw (Breaches Before preFailures)
+              throw (Breaches methodName Before preFailures)
 #else
     method
 #endif

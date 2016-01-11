@@ -27,22 +27,28 @@ import qualified Data.ByteString.Lazy as BSL
 
 
 
-type Method attrs parent =
+type Morphism attrs parent =
        Object attrs parent
     -> parent (Object attrs parent)
 
 
 
 type Attribute attr attrs parent =
-    attr (Method attrs parent)
+    attr (Morphism attrs parent)
 
+
+type Implementation attr attrs parent =
+    ( Monad parent
+    , Uses attr attrs parent
+    )
+    => Attribute attr attrs parent
 
 
 newtype Object attrs parent =
     Object
         {
           deconstruct
-              :: Attrs attrs (Method attrs parent)
+              :: Attrs attrs (Morphism attrs parent)
         }
 
 
@@ -64,7 +70,7 @@ deriving instance Generic TypeRep
 
 
 instance ( Typeable (Object attrs parent)
-         , Binary (Attrs attrs (Method attrs parent))
+         , Binary (Attrs attrs (Morphism attrs parent))
          )
     => Binary (Object attrs parent)
   where
@@ -100,13 +106,21 @@ type Extends extended orig parent =
 
 
 
+instance Show (Attrs attrs (Morphism attrs parent))
+         => Show (Object attrs parent)
+    where
+
+        show (Object attrs) =
+            "Object { " ++ show attrs ++ " }"
+
+
+
 simple
     :: Monad parent
     => Object '[] parent
 
 simple =
     Object Empty
-
 
 
 class UnsafeBuild attrs
@@ -147,8 +161,8 @@ instance ( Typeable attr
 
 build
     :: UnsafeBuild attrs
-    => (    Attrs attrs (Method attrs parent)
-         -> Attrs attrs (Method attrs parent)
+    => (    Attrs attrs (Morphism attrs parent)
+         -> Attrs attrs (Morphism attrs parent)
        )
     -> Object attrs parent
 

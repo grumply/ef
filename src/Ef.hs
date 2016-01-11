@@ -39,7 +39,7 @@ import Ef.Lang.Scoped.Log       as Base
 type Ef
     = '[ Manageable
        , Exitable
-       , Gettable
+       , Getter
        , Settable
        , Fiberable
        , Switchable
@@ -56,7 +56,7 @@ type Ef
 type Main
     = '[ Managing
        , Exiting
-       , Getting
+       , Get
        , Setting
        , Fibering
        , Switching

@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
@@ -9,62 +10,50 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE IncoherentInstances #-}
-module Ef.Core.Pattern where
+module Ef.Core.Narrative where
 
 
-
-import Ef.Core.Pattern.Symbols
+import Ef.Core.Type.Nat
+import Ef.Core.Narrative.Lexeme
 
 import Control.Applicative
 import Control.Exception (Exception(..),SomeException)
+import Control.Exception.Base (PatternMatchFail(..))
 import Control.Monad
 
 
 
-data MonadFailString
+data Sentence lexicon environment result
   where
 
-    MonadFailString
-        :: String
-        -> MonadFailString
-  deriving Show
-
-
-
-instance Exception MonadFailString
-
-
-
-data Pattern scope parent result
-  where
-
-    Send
-        :: Symbol scope intermediate
+    Say
+        :: Word lexicon intermediate
         -> (    intermediate
-             -> Pattern scope parent result
+             -> Sentence lexicon environment result
            )
-        -> Pattern scope parent result
+        -> Sentence lexicon environment result
 
     Super
-        :: parent (Pattern scope parent result)
-        -> Pattern scope parent result
+        :: environment (Sentence lexicon environment result)
+        -> Sentence lexicon environment result
 
     Pure
         :: result
-        -> Pattern scope parent result
+        -> Sentence lexicon environment result
 
+    -- for convenience
     Fail
         :: SomeException
-        -> Pattern scope parent result
+        -> Sentence lexicon environment result
 
 
 
 rearrange
     :: ( Functor parent
-       , As (Symbol scope) (Symbol scope')
+       , As (Lexemes scope) (Lexemes scope')
        )
-    => Pattern scope parent a
-    -> Pattern scope' parent a
+    => Sentence scope parent a
+    -> Sentence scope' parent a
 
 rearrange (Fail e) =
     Fail e
@@ -75,29 +64,29 @@ rearrange (Pure r) =
 rearrange (Super m) =
     Super (fmap rearrange m)
 
-rearrange (Send symbol k) =
-    Send (conv symbol) (rearrange . k)
+rearrange (Say symbol k) =
+    Say (conv symbol) (rearrange . k)
 
 
 
-upcast
+upembed
     :: ( Functor parent
-       , Cast scopeSmall scopeLarge
+       , Embed scopeSmall scopeLarge
        )
-    => Pattern scopeSmall parent result
-    -> Pattern scopeLarge parent result
+    => Sentence scopeSmall parent result
+    -> Sentence scopeLarge parent result
 
-upcast (Fail e) =
+upembed (Fail e) =
     Fail e
 
-upcast (Pure result) =
+upembed (Pure result) =
     Pure result
 
-upcast (Super p) =
-    Super (fmap upcast p)
+upembed (Super p) =
+    Super (fmap upembed p)
 
-upcast (Send symbol k) =
-    Send (cast symbol) (upcast . k)
+upembed (Say symbol k) =
+    Say (embed symbol) (upembed . k)
 
 
 
@@ -120,17 +109,17 @@ instance x `As` x
 
 
 
-instance (Symbol '[]) `As` (Symbol '[])
+instance (Lexemes '[]) `As` (Lexemes '[])
 
 
 
 instance ( Allows x ys
-         , (Symbol xs) `As` (Symbol ys)
+         , (Lexemes xs) `As` (Lexemes ys)
          )
-    => (Symbol (x ': xs)) `As` (Symbol ys)
+    => (Lexemes (x ': xs)) `As` (Lexemes ys)
   where
 
-    conv (Symbol sa) =
+    conv (Lexeme sa) =
         inj sa
 
     conv (Further ss) =
@@ -158,7 +147,7 @@ instance Functor m
 
 
 instance Functor parent
-    => Lift parent (Pattern scope parent)
+    => Lift parent (Sentence scope parent)
   where
 
     lift =
@@ -167,7 +156,7 @@ instance Functor parent
 
 
 instance Lift newParent parent
-    => Lift newParent (Pattern scope parent)
+    => Lift newParent (Sentence scope parent)
   where
 
     lift =
@@ -178,7 +167,7 @@ instance Lift newParent parent
 lift_
     :: Functor parent
     => parent result
-    -> Pattern scope parent result
+    -> Sentence scope parent result
 
 lift_ m =
     Super (fmap Pure m)
@@ -188,25 +177,31 @@ lift_ m =
 super
     :: Functor parent
     => parent result
-    -> Pattern scope parent result
+    -> Sentence scope parent result
 
 super =
     lift_
 
 
 
-self
-    :: Is symbol scope parent
-    => symbol result
-    -> Pattern scope parent result
+say
+    :: Can lexeme lexicon environment
+    => lexeme result
+    -> Sentence lexicon environment result
 
-self symbol =
-    Send (inj symbol) return
+say symbol =
+    Say (inj symbol) return
 
+
+
+type Method method scope parent result =
+    (Monad parent
+    , Allows' method scope (IndexOf method scope))
+    => Sentence scope parent result
 
 
 instance Functor parent
-    => Functor (Pattern scope parent)
+    => Functor (Sentence scope parent)
   where
 
     fmap =
@@ -215,7 +210,7 @@ instance Functor parent
 
 
 instance Monad parent
-    => Applicative (Pattern scope parent)
+    => Applicative (Sentence scope parent)
   where
 
     pure =
@@ -234,7 +229,7 @@ instance Monad parent
 
 
 instance Monad parent
-    => Monad (Pattern scope parent)
+    => Monad (Sentence scope parent)
   where
 
 #ifdef TRANSFORMERS_SAFE
@@ -253,7 +248,7 @@ instance Monad parent
 
 
     fail =
-        Fail . toException . MonadFailString
+        Fail . toException . PatternMatchFailure
 
 
 
@@ -261,8 +256,8 @@ instance Monad parent
 _fmap
     :: Functor parent
     => (a -> b)
-    -> Pattern scope parent a
-    -> Pattern scope parent b
+    -> Sentence scope parent a
+    -> Sentence scope parent b
 
 _fmap f =
     go
@@ -277,8 +272,8 @@ _fmap f =
     go (Super m) =
         Super (fmap go m)
 
-    go (Send symbol k) =
-        Send symbol (go . k)
+    go (Say symbol k) =
+        Say symbol (go . k)
 
 
 
@@ -290,10 +285,10 @@ _fmap f =
                 Fail e
     ;
 
-    "_fmap f (Send symbol k)"
+    "_fmap f (Say symbol k)"
         forall symbol k f.
-            _fmap f (Send symbol k) =
-                Send symbol (_fmap f . k)
+            _fmap f (Say symbol k) =
+                Say symbol (_fmap f . k)
     ;
 
     "_fmap f (Super m)"
@@ -320,9 +315,9 @@ _fmap f =
 {-# NOINLINE _bind #-}
 _bind
     :: Functor parent
-    => Pattern scope parent intermediate
-    -> (intermediate -> Pattern scope parent result)
-    -> Pattern scope parent result
+    => Sentence scope parent intermediate
+    -> (intermediate -> Sentence scope parent result)
+    -> Sentence scope parent result
 
 p0 `_bind` f =
     go p0
@@ -331,8 +326,8 @@ p0 `_bind` f =
     go (Fail e) =
         Fail e
 
-    go (Send symbol k) =
-        Send symbol (go . k)
+    go (Say symbol k) =
+        Say symbol (go . k)
 
     go (Pure res) =
         f res
@@ -350,10 +345,10 @@ p0 `_bind` f =
                 Fail e
     ;
 
-    "_bind (Send symbol k) f"
+    "_bind (Say symbol k) f"
         forall symbol k f .
-            _bind (Send symbol k) f =
-                Send symbol (flip _bind f . k)
+            _bind (Say symbol k) f =
+                Say symbol (flip _bind f . k)
     ;
 
     "_bind (Super m) f"
@@ -378,7 +373,7 @@ p0 `_bind` f =
 
 
 instance MonadPlus parent
-    => Alternative (Pattern scope parent)
+    => Alternative (Sentence scope parent)
   where
 
     empty =
@@ -392,7 +387,7 @@ instance MonadPlus parent
 
 
 instance MonadPlus parent
-    => MonadPlus (Pattern scope parent)
+    => MonadPlus (Sentence scope parent)
   where
 
     mzero =
@@ -407,9 +402,9 @@ instance MonadPlus parent
 
 _mplus
     :: MonadPlus parent
-    => Pattern scope parent result
-    -> Pattern scope parent result
-    -> Pattern scope parent result
+    => Sentence scope parent result
+    -> Sentence scope parent result
+    -> Sentence scope parent result
 
 _mplus p0 p1 =
     go p0
@@ -418,8 +413,8 @@ _mplus p0 p1 =
     go (Super m) =
         Super (fmap go m)
 
-    go (Send symbol k) =
-        Send symbol (go . k)
+    go (Say symbol k) =
+        Say symbol (go . k)
 
     go (Fail _) =
         p1
@@ -432,7 +427,7 @@ _mplus p0 p1 =
 instance ( Monad parent
          , Monoid result
          )
-    => Monoid (Pattern scope parent result)
+    => Monoid (Sentence scope parent result)
   where
 
     mempty =
@@ -449,9 +444,9 @@ _mappend
     :: ( Monad parent
        , Monoid result
        )
-    => Pattern scope parent result
-    -> Pattern scope parent result
-    -> Pattern scope parent result
+    => Sentence scope parent result
+    -> Sentence scope parent result
+    -> Sentence scope parent result
 
 _mappend p0 p1 =
     go p0
@@ -466,13 +461,13 @@ _mappend p0 p1 =
     go (Super m) =
         Super (fmap go m)
 
-    go (Send symbol k) =
-        Send symbol (go . k)
+    go (Say symbol k) =
+        Say symbol (go . k)
 
 
 
 
--- | cutoffSteps limits the number of Step constructors in a 'Pattern'. To limit
+-- | cutoffSteps limits the number of Step constructors in a 'Sentence'. To limit
 -- the number of (Step constructors + M constructors), use 'cutoff'.
 --
 -- >>> import Ef.Core
@@ -512,8 +507,8 @@ _mappend p0 p1 =
 cutoffSteps
     :: Monad parent
     => Integer
-    -> Pattern scope parent result
-    -> Pattern scope parent (Maybe result)
+    -> Sentence scope parent result
+    -> Sentence scope parent (Maybe result)
 
 cutoffSteps _ (Fail e) =
     Fail e
@@ -532,21 +527,21 @@ cutoffSteps stepsRemaining (Super m) =
     in
       Super (fmap newCutoff m)
 
-cutoffSteps stepsRemaining (Send symbol k) =
+cutoffSteps stepsRemaining (Say symbol k) =
     let
       newCutoff =
           cutoffSteps (stepsRemaining - 1)
 
     in
-      Send symbol (newCutoff . k)
+      Say symbol (newCutoff . k)
 
 
 
 cutoff
     :: Monad parent
     => Integer
-    -> Pattern scope parent result
-    -> Pattern scope parent (Maybe result)
+    -> Sentence scope parent result
+    -> Sentence scope parent (Maybe result)
 
 cutoff _ (Fail e) =
     Fail e
@@ -565,10 +560,10 @@ cutoff stepsRemaining (Super m) =
     in
       Super (fmap newCutoff m)
 
-cutoff stepsRemaining (Send symbol k) =
+cutoff stepsRemaining (Say symbol k) =
     let
       newCutoff =
           cutoff (stepsRemaining - 1)
 
     in
-      Send symbol (newCutoff . k)
+      Say symbol (newCutoff . k)

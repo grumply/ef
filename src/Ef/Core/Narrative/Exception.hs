@@ -1,7 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Ef.Core.Pattern.Exception
+module Ef.Core.Sentence.Exception
     ( throw
     , catch
     , handle
@@ -23,7 +23,7 @@ module Ef.Core.Pattern.Exception
 
 
 
-import Ef.Core.Pattern
+import Ef.Core.Sentence
 
 import Control.Exception
     ( Exception(..)
@@ -35,7 +35,7 @@ import Control.Exception
 throw
     :: Exception e
     => e
-    -> Pattern scope parent a
+    -> Sentence scope parent a
 
 throw e =
     Fail (toException e)
@@ -46,9 +46,9 @@ catch
     :: ( Functor parent
        , Exception e
        )
-    => Pattern scope parent a
-    -> (e -> Pattern scope parent a)
-    -> Pattern scope parent a
+    => Sentence scope parent a
+    -> (e -> Sentence scope parent a)
+    -> Sentence scope parent a
 
 catch plan handler =
     rewrite plan
@@ -78,9 +78,9 @@ handle
     :: ( Functor parent
        , Exception e
        )
-    => (e -> Pattern scope parent a)
-    -> Pattern scope parent a
-    -> Pattern scope parent a
+    => (e -> Sentence scope parent a)
+    -> Sentence scope parent a
+    -> Sentence scope parent a
 
 handle = flip catch
 
@@ -91,9 +91,9 @@ catchJust
        , Exception e
        )
     => (e -> Maybe b)
-    -> Pattern scope parent a
-    -> (b -> Pattern scope parent a)
-    -> Pattern scope parent a
+    -> Sentence scope parent a
+    -> (b -> Sentence scope parent a)
+    -> Sentence scope parent a
 
 catchJust p a handler =
     catch a handler'
@@ -114,9 +114,9 @@ handleJust
        , Exception e
        )
     => (e -> Maybe b)
-    -> (b -> Pattern scope parent a)
-    -> Pattern scope parent a
-    -> Pattern scope parent a
+    -> (b -> Sentence scope parent a)
+    -> Sentence scope parent a
+    -> Sentence scope parent a
 
 handleJust p =
     flip (catchJust p)
@@ -129,8 +129,8 @@ mapException
        , Exception e'
        )
     => (e -> e')
-    -> Pattern scope parent a
-    -> Pattern scope parent a
+    -> Sentence scope parent a
+    -> Sentence scope parent a
 
 mapException f p =
     let
@@ -146,8 +146,8 @@ try
     :: ( Monad parent
        , Exception e
        )
-    => Pattern scope parent a
-    -> Pattern scope parent (Either e a)
+    => Sentence scope parent a
+    -> Sentence scope parent (Either e a)
 
 try p =
     let
@@ -171,8 +171,8 @@ tryJust
     => (    e
          -> Maybe b
        )
-    -> Pattern scope parent a
-    -> Pattern scope parent (Either b a)
+    -> Sentence scope parent a
+    -> Sentence scope parent (Either b a)
 
 tryJust analyze p =
     do
@@ -201,9 +201,9 @@ tryJust analyze p =
 
 onException
     :: Monad parent
-    => Pattern scope parent a
-    -> Pattern scope parent b
-    -> Pattern scope parent a
+    => Sentence scope parent a
+    -> Sentence scope parent b
+    -> Sentence scope parent a
 
 onException p sequel =
     let
@@ -219,9 +219,9 @@ onException p sequel =
 
 finally
     :: Monad parent
-    => Pattern scope parent a
-    -> Pattern scope parent b
-    -> Pattern scope parent a
+    => Sentence scope parent a
+    -> Sentence scope parent b
+    -> Sentence scope parent a
 
 finally p sequel =
     do
@@ -234,10 +234,10 @@ finally p sequel =
 bracket
     :: forall scope parent a b c.
        Monad parent
-    => Pattern scope parent a
-    -> (a -> Pattern scope parent b)
-    -> (a -> Pattern scope parent c)
-    -> Pattern scope parent c
+    => Sentence scope parent a
+    -> (a -> Sentence scope parent b)
+    -> (a -> Sentence scope parent c)
+    -> Sentence scope parent c
 
 bracket acquire cleanup p =
     do
@@ -260,10 +260,10 @@ bracket acquire cleanup p =
 
 bracket_
     :: Monad parent
-    => Pattern scope parent a
-    -> Pattern scope parent b
-    -> Pattern scope parent c
-    -> Pattern scope parent c
+    => Sentence scope parent a
+    -> Sentence scope parent b
+    -> Sentence scope parent c
+    -> Sentence scope parent c
 
 bracket_ acquire after computation =
     bracket
@@ -275,10 +275,10 @@ bracket_ acquire after computation =
 
 bracketOnError
     :: Monad parent
-    => Pattern scope parent a
-    -> (a -> Pattern scope parent b)
-    -> (a -> Pattern scope parent c)
-    -> Pattern scope parent c
+    => Sentence scope parent a
+    -> (a -> Sentence scope parent b)
+    -> (a -> Sentence scope parent c)
+    -> Sentence scope parent c
 
 bracketOnError acquire cleanup p =
     do
@@ -300,7 +300,7 @@ data Handler scope parent a
     Handler
         :: Exception e
         => (    e
-             -> Pattern scope parent a
+             -> Sentence scope parent a
            )
         -> Handler scope parent a
 
@@ -317,9 +317,9 @@ instance Functor parent
 
 catches
     :: Functor parent
-    => Pattern scope parent a
+    => Sentence scope parent a
     -> [Handler scope parent a]
-    -> Pattern scope parent a
+    -> Sentence scope parent a
 
 catches p handlers =
     p `catch` catchesHandler handlers
@@ -328,8 +328,8 @@ catches p handlers =
 handles
     :: Functor parent
     => [Handler scope parent a]
-    -> Pattern scope parent a
-    -> Pattern scope parent a
+    -> Sentence scope parent a
+    -> Sentence scope parent a
 handles =
     flip catches
 
@@ -337,7 +337,7 @@ handles =
 catchesHandler
     :: [Handler scope parent a]
     -> SomeException
-    -> Pattern scope parent a
+    -> Sentence scope parent a
 
 catchesHandler handlers e =
     let

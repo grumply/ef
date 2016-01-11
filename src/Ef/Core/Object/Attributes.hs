@@ -18,6 +18,7 @@ import Ef.Core.Type.Nat
 
 
 import Data.Binary
+import Data.Typeable
 import Unsafe.Coerce
 
 
@@ -85,6 +86,39 @@ instance ( Functor attr
             (fmap f attr)
             (fmap f attrs)
 
+
+
+instance {-# OVERLAPPING #-} Show (Attrs '[] methods)
+    where
+
+        show _ = ""
+
+
+
+instance {-# OVERLAPS #-} 
+         ( attrs ~ (attr ': attrs')
+         , Typeable (attr ())
+         , Show (attr method)
+         , Show (Attrs attrs' method)
+         )
+         => Show (Attrs attrs method)
+    where
+
+        show (Attr attr attrs) =
+            let
+                attrType =
+                    typeOf (undefined :: attr ())
+
+                attrString =
+                    reverse . (" :" ++) . drop 3 . reverse . show $ attrType
+            in
+               case attrs of
+                 
+                   Empty -> 
+                       attrString ++ show attr
+                       
+                   _ ->
+                       attrString ++ show attr ++ ", " ++ show attrs
 
 
 class Admits (attr :: * -> *) (attrs :: [* -> *])
