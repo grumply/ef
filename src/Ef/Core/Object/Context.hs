@@ -9,7 +9,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-module Ef.Core.Object.Attributes where
+module Ef.Core.Object.Context where
 
 
 
@@ -23,21 +23,21 @@ import Unsafe.Coerce
 
 
 
-data Attrs (attrs :: [* -> *]) x
+data Context (attrs :: [* -> *]) x
   where
 
     Empty
-        :: Attrs '[] x
+        :: Context '[] x
 
-    Attr
+    Context
         :: Denies attr attrs
         => attr x
-        -> Attrs attrs x
-        -> Attrs (attr ': attrs) x
+        -> Context attrs x
+        -> Context (attr ': attrs) x
 
 
 
-instance Binary (Attrs '[] x)
+instance Binary (Context '[] x)
   where
 
     get =
@@ -50,24 +50,24 @@ instance Binary (Attrs '[] x)
 
 
 
-instance ( Binary (Attrs attrs x)
+instance ( Binary (Context attrs x)
          , Denies attr attrs
          , Binary (attr x)
          )
-    => Binary (Attrs (attr ': attrs) x)
+    => Binary (Context (attr ': attrs) x)
   where
 
     get =
-        Attr <$> get <*> get
+        Context <$> get <*> get
 
 
 
-    put (Attr x as) =
+    put (Context x as) =
         put x >> put as
 
 
 
-instance Functor (Attrs '[])
+instance Functor (Context '[])
   where
 
     fmap _ _ =
@@ -76,19 +76,19 @@ instance Functor (Attrs '[])
 
 
 instance ( Functor attr
-         , Functor (Attrs attrs)
+         , Functor (Context attrs)
          )
-    => Functor (Attrs (attr ': attrs))
+    => Functor (Context (attr ': attrs))
   where
 
-    fmap f (Attr attr attrs) =
-        Attr
+    fmap f (Context attr attrs) =
+        Context
             (fmap f attr)
             (fmap f attrs)
 
 
 
-instance {-# OVERLAPPING #-} Show (Attrs '[] methods)
+instance {-# OVERLAPPING #-} Show (Context '[] methods)
     where
 
         show _ = ""
@@ -99,12 +99,12 @@ instance {-# OVERLAPS #-}
          ( attrs ~ (attr ': attrs')
          , Typeable (attr ())
          , Show (attr method)
-         , Show (Attrs attrs' method)
+         , Show (Context attrs' method)
          )
-         => Show (Attrs attrs method)
+         => Show (Context attrs method)
     where
 
-        show (Attr attr attrs) =
+        show (Context attr attrs) =
             let
                 attrType =
                     typeOf (undefined :: attr ())
@@ -125,12 +125,15 @@ class Admits (attr :: * -> *) (attrs :: [* -> *])
   where
 
     push
-        :: attr x -> Attrs attrs x -> Attrs attrs x
+        :: attr x
+        -> Context attrs x
+        -> Context attrs x
 
 
 
     pull
-        :: Attrs attrs x -> attr x
+        :: Context attrs x
+        -> attr x
 
 
 
@@ -165,8 +168,8 @@ stretch
        , Admits' attr attrs index
        )
     => (forall z. attr z -> attr z)
-    -> Attrs attrs x
-    -> Attrs attrs x
+    -> Context attrs x
+    -> Context attrs x
 stretch f attrs =
     let
       attr =
@@ -183,14 +186,14 @@ class Admits' (attr :: * -> *) (attrs :: [* -> *]) (n :: Nat)
     push'
         :: Index n
         -> attr x
-        -> Attrs attrs x
-        -> Attrs attrs x
+        -> Context attrs x
+        -> Context attrs x
 
 
 
     pull'
         :: Index n
-        -> Attrs attrs x
+        -> Context attrs x
         -> attr x
 
 
@@ -199,12 +202,12 @@ instance attrs ~ (attr ': xs)
     => Admits' attr attrs 'Z
   where
 
-    push' _ attr (Attr _ attrs) =
-        Attr attr attrs
+    push' _ attr (Context _ attrs) =
+        Context attr attrs
 
 
 
-    pull' _ (Attr attr _) =
+    pull' _ (Context attr _) =
         attr
 
 
@@ -215,17 +218,17 @@ instance ( index ~ IndexOf attr attrs
     => Admits' attr (attr' ': attrs) ('S n)
   where
 
-    push' _ attr (Attr attr' attrs) =
+    push' _ attr (Context attr' attrs) =
         let
           index =
               Index :: Index (IndexOf attr attrs)
 
         in
-          Attr attr' (push' index attr attrs)
+          Context attr' (push' index attr attrs)
 
 
 
-    pull' _ (Attr _ attrs) =
+    pull' _ (Context _ attrs) =
         let
           index =
               Index :: Index (IndexOf attr attrs)
@@ -234,32 +237,32 @@ instance ( index ~ IndexOf attr attrs
           pull' index attrs
 
 
-
-class AdmitsSubset (small :: [* -> *]) (large :: [* -> *])
+-- Is this actually useful since the morphisms require certain types?
+class Extend (small :: [* -> *]) (large :: [* -> *])
   where
 
-    pushSubset
-        :: Attrs small x
-        -> Attrs large x
-        -> Attrs large x
+    extend
+        :: Context small x
+        -> Context large x
+        -> Context large x
 
 
 
-    pullSubset
-        :: Attrs large x
-        -> Attrs small x
+    implements
+        :: Context large x
+        -> Context small x
 
 
 
-instance AdmitsSubset '[] largeAttrs
+instance Extend '[] largeContext
   where
 
-    pushSubset _ large =
+    extend _ large =
         large
 
 
 
-    pullSubset _ =
+    implements _ =
         Empty
 
 
@@ -267,15 +270,15 @@ instance AdmitsSubset '[] largeAttrs
 instance ( Denies attr small
          , index ~ IndexOf attr large
          , Admits' attr large index
-         , AdmitsSubset small large
+         , Extend small large
          )
-    => AdmitsSubset (attr ': small) large
+    => Extend (attr ': small) large
   where
 
-    pushSubset (Attr attr small) large=
-        pushSubset small(push attr large)
+    extend (Context attr small) large =
+        extend small (push attr large)
 
 
 
-    pullSubset large =
-        Attr (pull large) (pullSubset large)
+    implements large =
+        Context (pull large) (implements large)

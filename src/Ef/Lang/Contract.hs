@@ -54,40 +54,40 @@ instance Exception Breaches
 
 
 
-data Consideration variables result scope parent
+data Consideration lexicon environment variables result
   where
 
     Precondition
-        :: Pattern scope parent ()
-        -> Consideration variables result scope parent
+        :: Narrative lexicon environment ()
+        -> Consideration lexicon environment variables result
 
     Postcondition
         :: (    result
-             -> Pattern scope parent ()
+             -> Narrative lexicon environment ()
            )
-        -> Consideration variables result scope parent
+        -> Consideration lexicon environment variables result
 
     Invariant
-        :: Pattern scope parent ()
-        -> Consideration variables result scope parent
+        :: Narrative lexicon environment ()
+        -> Consideration lexicon environment variables result
 
 
 
 
-data Contract variables result scope parent
+data Contract lexicon environment variables result
   where
 
     Contract
-        :: [Consideration variables result scope parent]
-        -> Pattern scope parent result
-        -> Contract variables result scope parent
+        :: [Consideration lexicon environment variables result]
+        -> Narrative lexicon environment result
+        -> Contract lexicon environment variables result
 
 
 
 consider
-    :: Monad parent
-    => [Pattern scope parent ()]
-    -> Pattern scope parent [SomeException]
+    :: Monad environment
+    => [Narrative lexicon environment ()]
+    -> Narrative lexicon environment [SomeException]
 
 consider considerations =
     do
@@ -101,11 +101,11 @@ consider considerations =
 
 
 runWithInvariants
-    :: Monad parent
+    :: Monad environment
     => MethodName
-    -> [Pattern scope parent ()]
-    -> Pattern scope parent result
-    -> Pattern scope parent result
+    -> [Narrative lexicon environment ()]
+    -> Narrative lexicon environment result
+    -> Narrative lexicon environment result
 
 runWithInvariants methodName invariants method =
     let
@@ -121,8 +121,8 @@ runWithInvariants methodName invariants method =
       test (Super m) =
           Super (fmap test m)
 
-      test (Send symbol k) =
-          Send symbol $ \result ->
+      test (Say symbol k) =
+          Say symbol $ \result ->
               do
                 results <- invariant
                 let
@@ -140,11 +140,11 @@ runWithInvariants methodName invariants method =
 
 
 contract
-    :: forall variables result scope parent.
-       Monad parent
+    :: forall variables result lexicon environment.
+       Monad environment
     => MethodName
-    -> Contract variables result scope parent
-    -> Pattern scope parent result
+    -> Contract lexicon environment variables result
+    -> Narrative lexicon environment result
 
 contract methodName (Contract considerations method) =
 #ifdef CONTRACTS

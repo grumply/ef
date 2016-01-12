@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -18,21 +19,20 @@ data Setting k
   where
 
     Set
-        :: Object attrs parent
+        :: Object attrs environment
         -> k
         -> Setting k
 
 
 
 become
-    :: ( (Attrs attrs) `Witnessing` (Symbol scope)
-       , Is Setting scope parent
+    :: ( (Attrs attrs) `Inflection` (Lexeme lexicon)
        )
-    => Object attrs parent
-    -> Pattern scope parent ()
+    => Object attrs environment
+    -> Method Setting lexicon environment ()
 
-become newSelf =
-    self (Set newSelf ())
+become newSay =
+    say (Set newSay ())
 
 
 
@@ -40,15 +40,17 @@ data Settable k
   where
 
     Setter
-        :: (   Object attrs parent
+        :: (   Object attrs environment
             -> k
            )
         -> Settable k
 
 
 
-instance Uses Settable attrs parent
-    => Binary (Attribute Settable attrs parent)
+instance ( Admits' Settable attrs (IndexOf Settable attrs)
+         , Monad environment
+         )
+    => Binary (Attribute Settable attrs environment)
   where
 
     get =
@@ -61,10 +63,10 @@ instance Uses Settable attrs parent
 
 
 
-instance Witnessing Settable Setting
+instance Inflection Settable Setting
   where
 
-    witness use (Setter ok) (Set o k) =
+    inflect use (Setter ok) (Set o k) =
         let
           obj =
               unsafeCoerce o
@@ -75,8 +77,7 @@ instance Witnessing Settable Setting
 
 
 setter
-    :: Uses Settable attrs parent
-    => Attribute Settable attrs parent
+    :: Uses Settable attrs environment
 
 setter =
     Setter (const . pure)

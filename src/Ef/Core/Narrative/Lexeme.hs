@@ -33,31 +33,31 @@ data Lexeme lexicon a
 
 
 
-class Embed small large
+class Grow small large
   where
 
-    embed
+    grow
         :: Lexeme small a
         -> Lexeme large a
 
 
 
-instance Embed '[] '[]
+instance Grow '[] '[]
 
 
 
 instance ( Subset small large
          , small ~ (lexeme ': lexemes)
          , Allows lexeme large
-         , Embed lexemes large
+         , Grow lexemes large
          )
-    => Embed small large
+    => Grow small large
   where
 
-    embed (Further more) =
-        embed more
+    grow (Further more) =
+        grow more
 
-    embed (Lexeme sa) =
+    grow (Lexeme sa) =
         inj sa
 
 
@@ -184,31 +184,3 @@ instance ( Denies lexeme lexemes'
 
     prj' _ (Further _) =
         Nothing
-
-
-
-type Can lexeme lexemes parent =
-    ( Monad parent
-    , Allows' lexeme lexemes (IndexOf lexeme lexemes)
-    )
-
-
-
-type (lexeme :< lexemes) parent =
-    Can lexeme lexemes parent
-
-
-
--- class AllowsSubset (lexemes' :: [* -> *]) (lexemes :: [* -> *])
-
-
-
--- instance AllowsSubset '[] lexemes
-
-
-
--- instance ( index ~ IndexOf lexeme lexemes
---          , Allows' lexeme lexemes index
---          , AllowsSubset lexemes' lexemes
---          )
---   => AllowsSubset (lexeme ': lexemes') lexemes

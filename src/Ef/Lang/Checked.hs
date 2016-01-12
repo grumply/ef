@@ -23,7 +23,7 @@ module Ef.Lang.Checked
 
 
 import Ef.Core
-import qualified Ef.Core.Pattern.Exception as Except
+import qualified Ef.Core.Narrative.Exception as Except
 
 import Control.Exception (SomeException(..),Exception(..),assert)
 import Data.Binary
@@ -78,8 +78,8 @@ data Exceptable k
 
 
 
-instance Uses Exceptable attrs parent
-    => Binary (Attribute Exceptable attrs parent)
+instance Uses Exceptable attrs environment
+    => Binary (Attribute Exceptable attrs environment)
   where
 
     get =
@@ -92,32 +92,34 @@ instance Uses Exceptable attrs parent
 
 
 
-instance Exceptable `Witnessing` Excepting
+instance Exceptable `Inflection` Excepting
   where
 
-    witness use (Exceptable k) (Throw e k') =
+    inflect use (Exceptable k) (Throw e k') =
         use (k e) k'
 
 
 
 throwChecked
     :: ( Exception e
-       , Is Excepting scope parent
-       ) => e -> (Throws e => Pattern scope parent a)
+       , Monad environment
+       , Allows' Excepting lexicon (IndexOf Excepting lexicon)
+       ) => e -> (Throws e => Narrative lexicon environment a)
 
 throwChecked e =
-    self (Throw (toException e) undefined)
+    say (Throw (toException e) undefined)
 
 
 
 catchChecked
-    :: forall e scope parent result.
+    :: forall e lexicon environment result.
        ( Exception e
-       , Is Excepting scope parent
+       , Monad environment
+       , Allows' Excepting lexicon (IndexOf Excepting lexicon)
        )
-    => (Throws e => Pattern scope parent result)
-    -> (e -> Pattern scope parent result)
-    -> Pattern scope parent result
+    => (Throws e => Narrative lexicon environment result)
+    -> (e -> Narrative lexicon environment result)
+    -> Narrative lexicon environment result
 
 catchChecked act =
     let
@@ -146,12 +148,13 @@ catchChecked act =
 
 
 tryChecked
-    :: forall e scope parent result.
-       ( Is Excepting scope parent
+    :: forall e lexicon environment result.
+       ( Allows' Excepting lexicon (IndexOf Excepting lexicon)
+       , Monad environment
        , Exception e
        )
-    => (Throws e => Pattern scope parent result)
-    -> Pattern scope parent (Either e result)
+    => (Throws e => Narrative lexicon environment result)
+    -> Narrative lexicon environment (Either e result)
 
 tryChecked a =
     catchChecked (Right <$> a) (return . Left)
@@ -172,13 +175,14 @@ excepter =
 
 
 mapChecked
-    :: ( Is Excepting scope parent
+    :: ( Allows' Excepting lexicon (IndexOf Excepting lexicon)
+       , Monad environment
        , Exception e
        , Exception e'
        )
     => (e -> e')
-    -> (Throws e => Pattern scope parent a)
-    -> (Throws e' => Pattern scope parent a)
+    -> (Throws e => Narrative lexicon environment a)
+    -> (Throws e' => Narrative lexicon environment a)
 
 mapChecked f p =
     catchChecked p (throwChecked . f)

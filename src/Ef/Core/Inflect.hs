@@ -11,8 +11,8 @@ module Ef.Core.Inflect where
 
 
 
-import Ef.Core.Object.Attributes
-import Ef.Core.Pattern.Symbols
+import Ef.Core.Object.Context
+import Ef.Core.Narrative.Lexeme
 
 
 
@@ -46,18 +46,18 @@ instance Inflection ((,) a) ((->) a)
 
 
 
-instance Inflection (Attrs '[]) (Symbol '[])
+instance Inflection (Context '[]) (Lexeme '[])
 
 
 
-instance ( Inflection attr symbol
-         , Inflection (Attrs attrs) (Symbol symbols)
+instance ( Inflection context lexeme
+         , Inflection (Context contexts) (Lexeme lexicon)
          )
-    => Inflection (Attrs (attr ': attrs)) (Symbol (symbol ': symbols))
+    => Inflection (Context (context ': contexts)) (Lexeme (lexeme ': lexicon))
   where
 
-    inflect use (Attr attr _) (Symbol symbol) =
-        inflect use attr symbol
+    inflect use (Context context _) (Lexeme lexeme) =
+        inflect use context lexeme
 
-    inflect use (Attr _ attrs) (Further symbols) =
-        inflect use attrs symbols
+    inflect use (Context _ contexts) (Further lexicon) =
+        inflect use contexts lexicon

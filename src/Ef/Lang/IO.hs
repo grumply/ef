@@ -19,9 +19,9 @@ import qualified Control.Exception as Exc
 
 
 unsafe
-    :: Lift IO parent
+    :: Lift IO environment
     => IO result
-    -> Pattern scope parent result
+    -> Narrative lexicon environment result
 
 unsafe =
     lift
@@ -29,9 +29,9 @@ unsafe =
 
 
 masked_
-    :: Lift IO parent
+    :: Lift IO environment
     => IO result
-    -> Pattern scope parent result
+    -> Narrative lexicon environment result
 
 masked_ =
     lift . Exc.mask_
@@ -39,11 +39,11 @@ masked_ =
 
 
 masked
-    :: Lift IO parent
+    :: Lift IO environment
     => (   (forall (a :: *). IO a -> IO a)
          -> IO result
        )
-    -> Pattern scope parent result
+    -> Narrative lexicon environment result
 
 masked =
     lift . Exc.mask
@@ -51,11 +51,11 @@ masked =
 
 
 io
-    :: ( Monad parent
-       , Lift IO parent
+    :: ( Monad environment
+       , Lift IO environment
        )
     => IO result
-    -> Pattern scope parent result
+    -> Narrative lexicon environment result
 
 io ioa =
     do

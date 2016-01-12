@@ -47,10 +47,11 @@ data Variable st k
         -> Variable st k
 
 
-instance ( Uses (Variable st) attrs parent
+instance ( Admits' (Variable st) attrs (IndexOf (Variable st) attrs)
+         , Monad environment
          , Binary.Binary st
          )
-    => Binary.Binary (Attribute (Variable st) attrs parent)
+    => Binary.Binary (Attribute (Variable st) attrs environment)
   where
 
     get =
@@ -63,84 +64,77 @@ instance ( Uses (Variable st) attrs parent
 
 
 
-instance (Variable st) `Witnessing` (Varying st)
+instance (Variable st) `Inflection` (Varying st)
   where
 
-    witness use (Variable st k) (Modify stst stk) =
+    inflect use (Variable st k) (Modify stst stk) =
         let
           st' =
               stst st
 
         in
-          witness use (st,k st') stk
+          inflect use (st,k st') stk
 
 
 
 
 get
-    :: Is (Varying st) scope parent
-    => Pattern scope parent st
+    :: Method (Varying st) lexicon environment st
 
 get =
-    self (Modify id id)
+    say (Modify id id)
 
 
 
 gets
-    :: Is (Varying st) scope parent
-    => (st -> result)
-    -> Pattern scope parent result
+    :: (st -> result)
+    -> Method (Varying st) lexicon environment result
 
 gets f =
-    self (Modify id f)
+    say (Modify id f)
 
 
 
 put
-    :: Is (Varying st) scope parent
-    => st
-    -> Pattern scope parent ()
+    :: st
+    -> Method (Varying st) lexicon environment ()
 
 put st =
-    self (Modify (const st) (const ()))
+    say (Modify (const st) (const ()))
 
 
 
 puts
-    :: Is (Varying st) scope parent
-    => (a -> st)
+    :: (a -> st)
     -> a
-    -> Pattern scope parent ()
+    -> Method (Varying st) lexicon environment ()
 
 puts f a =
-    self (Modify (const (f a)) (const ()))
+    say (Modify (const (f a)) (const ()))
 
 
 
 swap
-    :: Is (Varying st) scope parent
-    => st
-    -> Pattern scope parent st
+    :: st
+    -> Method (Varying st) lexicon environment st
 
 swap st =
-    self (Modify (const st) id)
+    say (Modify (const st) id)
 
 
 
 modify
-    :: Is (Varying st) scope parent
-    => (st -> st)
-    -> Pattern scope parent ()
+    :: (st -> st)
+    -> Method (Varying st) lexicon environment ()
 
 modify f =
-    self (Modify f (const ()))
+    say (Modify f (const ()))
 
 
 
 modify'
-    :: Is (Varying st) scope parent
-    => (st -> st)
-    -> Pattern scope parent ()
+    :: (st -> st)
+    -> Method (Varying st) lexicon environment ()
 
 modify' f =
     do
@@ -150,9 +144,8 @@ modify' f =
 
 
 store
-    :: Uses (Variable st) scope parent
-    => st
-    -> Attribute (Variable st) scope parent
+    :: st
+    -> Uses (Variable st) lexicon environment
 
 store startSt =
     Variable startSt $ \newSt fs -> pure $ fs .=

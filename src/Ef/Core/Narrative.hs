@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE CPP #-}
@@ -23,43 +24,43 @@ import Control.Monad
 
 
 
-data Sentence lexicon environment result
+data Narrative lexicon environment result
   where
 
     Say
-        :: Word lexicon intermediate
+        :: Lexeme lexicon intermediate
         -> (    intermediate
-             -> Sentence lexicon environment result
+             -> Narrative lexicon environment result
            )
-        -> Sentence lexicon environment result
+        -> Narrative lexicon environment result
 
     Super
-        :: environment (Sentence lexicon environment result)
-        -> Sentence lexicon environment result
+        :: environment (Narrative lexicon environment result)
+        -> Narrative lexicon environment result
 
-    Pure
+    Return
         :: result
-        -> Sentence lexicon environment result
+        -> Narrative lexicon environment result
 
     -- for convenience
     Fail
         :: SomeException
-        -> Sentence lexicon environment result
+        -> Narrative lexicon environment result
 
 
 
 rearrange
-    :: ( Functor parent
-       , As (Lexemes scope) (Lexemes scope')
+    :: ( Functor environment
+       , As (Lexeme lexicon) (Lexeme lexicon')
        )
-    => Sentence scope parent a
-    -> Sentence scope' parent a
+    => Narrative lexicon environment a
+    -> Narrative lexicon' environment a
 
 rearrange (Fail e) =
     Fail e
 
-rearrange (Pure r) =
-    Pure r
+rearrange (Return r) =
+    Return r
 
 rearrange (Super m) =
     Super (fmap rearrange m)
@@ -70,23 +71,23 @@ rearrange (Say symbol k) =
 
 
 upembed
-    :: ( Functor parent
-       , Embed scopeSmall scopeLarge
+    :: ( Functor environment
+       , Grow lexiconSmall lexiconLarge
        )
-    => Sentence scopeSmall parent result
-    -> Sentence scopeLarge parent result
+    => Narrative lexiconSmall environment result
+    -> Narrative lexiconLarge environment result
 
 upembed (Fail e) =
     Fail e
 
-upembed (Pure result) =
-    Pure result
+upembed (Return result) =
+    Return result
 
 upembed (Super p) =
     Super (fmap upembed p)
 
 upembed (Say symbol k) =
-    Say (embed symbol) (upembed . k)
+    Say (grow symbol) (upembed . k)
 
 
 
@@ -109,14 +110,14 @@ instance x `As` x
 
 
 
-instance (Lexemes '[]) `As` (Lexemes '[])
+instance (Lexeme '[]) `As` (Lexeme '[])
 
 
 
 instance ( Allows x ys
-         , (Lexemes xs) `As` (Lexemes ys)
+         , (Lexeme xs) `As` (Lexeme ys)
          )
-    => (Lexemes (x ': xs)) `As` (Lexemes ys)
+    => (Lexeme (x ': xs)) `As` (Lexeme ys)
   where
 
     conv (Lexeme sa) =
@@ -146,8 +147,8 @@ instance Functor m
 
 
 
-instance Functor parent
-    => Lift parent (Sentence scope parent)
+instance Functor environment
+    => Lift environment (Narrative lexicon environment)
   where
 
     lift =
@@ -155,8 +156,8 @@ instance Functor parent
 
 
 
-instance Lift newParent parent
-    => Lift newParent (Sentence scope parent)
+instance Lift newEnvironment environment
+    => Lift newEnvironment (Narrative lexicon environment)
   where
 
     lift =
@@ -165,19 +166,19 @@ instance Lift newParent parent
 
 
 lift_
-    :: Functor parent
-    => parent result
-    -> Sentence scope parent result
+    :: Functor environment
+    => environment result
+    -> Narrative lexicon environment result
 
 lift_ m =
-    Super (fmap Pure m)
+    Super (fmap Return m)
 
 
 
 super
-    :: Functor parent
-    => parent result
-    -> Sentence scope parent result
+    :: Functor environment
+    => environment result
+    -> Narrative lexicon environment result
 
 super =
     lift_
@@ -185,23 +186,25 @@ super =
 
 
 say
-    :: Can lexeme lexicon environment
-    => lexeme result
-    -> Sentence lexicon environment result
+    :: lexeme result
+    -> Say lexeme lexicon environment result
 
 say symbol =
     Say (inj symbol) return
 
 
+type Can lexeme lexemes environment =
+      ( Allows' lexeme lexemes (IndexOf lexeme lexemes)
+      , Monad environment
+      )
 
-type Method method scope parent result =
-    (Monad parent
-    , Allows' method scope (IndexOf method scope))
-    => Sentence scope parent result
+type Say lexeme lexicon environment result =
+    Can lexeme lexicon environment
+    => Narrative lexicon environment result
 
 
-instance Functor parent
-    => Functor (Sentence scope parent)
+instance Functor environment
+    => Functor (Narrative lexicon environment)
   where
 
     fmap =
@@ -209,8 +212,8 @@ instance Functor parent
 
 
 
-instance Monad parent
-    => Applicative (Sentence scope parent)
+instance Monad environment
+    => Applicative (Narrative lexicon environment)
   where
 
     pure =
@@ -228,16 +231,16 @@ instance Monad parent
 
 
 
-instance Monad parent
-    => Monad (Sentence scope parent)
+instance Monad environment
+    => Monad (Narrative lexicon environment)
   where
 
 #ifdef TRANSFORMERS_SAFE
     return =
-        Super . return . Pure
+        Super . return . Return
 #else
     return =
-        Pure
+        Return
 #endif
 
 
@@ -248,16 +251,16 @@ instance Monad parent
 
 
     fail =
-        Fail . toException . PatternMatchFailure
+        Fail . toException . PatternMatchFail
 
 
 
 {-# NOINLINE _fmap #-}
 _fmap
-    :: Functor parent
+    :: Functor environment
     => (a -> b)
-    -> Sentence scope parent a
-    -> Sentence scope parent b
+    -> Narrative lexicon environment a
+    -> Narrative lexicon environment b
 
 _fmap f =
     go
@@ -266,8 +269,8 @@ _fmap f =
     go (Fail e) =
         Fail e
 
-    go (Pure a) =
-        Pure (f a)
+    go (Return a) =
+        Return (f a)
 
     go (Super m) =
         Super (fmap go m)
@@ -302,10 +305,10 @@ _fmap f =
                   Super (fmap continue m)
     ;
 
-    "_fmap f (Pure result)"
+    "_fmap f (Return result)"
         forall f result.
-            _fmap f (Pure result) =
-                Pure (f result)
+            _fmap f (Return result) =
+                Return (f result)
     ;
 
   #-}
@@ -314,10 +317,10 @@ _fmap f =
 
 {-# NOINLINE _bind #-}
 _bind
-    :: Functor parent
-    => Sentence scope parent intermediate
-    -> (intermediate -> Sentence scope parent result)
-    -> Sentence scope parent result
+    :: Functor environment
+    => Narrative lexicon environment intermediate
+    -> (intermediate -> Narrative lexicon environment result)
+    -> Narrative lexicon environment result
 
 p0 `_bind` f =
     go p0
@@ -329,7 +332,7 @@ p0 `_bind` f =
     go (Say symbol k) =
         Say symbol (go . k)
 
-    go (Pure res) =
+    go (Return res) =
         f res
 
     go (Super m) =
@@ -362,9 +365,9 @@ p0 `_bind` f =
                   Super (fmap continue m)
     ;
 
-    "_bind (Pure result) f"
+    "_bind (Return result) f"
         forall result f .
-            _bind (Pure result) f =
+            _bind (Return result) f =
                 f result
     ;
 
@@ -372,8 +375,8 @@ p0 `_bind` f =
 
 
 
-instance MonadPlus parent
-    => Alternative (Sentence scope parent)
+instance MonadPlus environment
+    => Alternative (Narrative lexicon environment)
   where
 
     empty =
@@ -386,8 +389,8 @@ instance MonadPlus parent
 
 
 
-instance MonadPlus parent
-    => MonadPlus (Sentence scope parent)
+instance MonadPlus environment
+    => MonadPlus (Narrative lexicon environment)
   where
 
     mzero =
@@ -401,10 +404,10 @@ instance MonadPlus parent
 
 
 _mplus
-    :: MonadPlus parent
-    => Sentence scope parent result
-    -> Sentence scope parent result
-    -> Sentence scope parent result
+    :: MonadPlus environment
+    => Narrative lexicon environment result
+    -> Narrative lexicon environment result
+    -> Narrative lexicon environment result
 
 _mplus p0 p1 =
     go p0
@@ -424,10 +427,10 @@ _mplus p0 p1 =
 
 
 
-instance ( Monad parent
+instance ( Monad environment
          , Monoid result
          )
-    => Monoid (Sentence scope parent result)
+    => Monoid (Narrative lexicon environment result)
   where
 
     mempty =
@@ -441,12 +444,12 @@ instance ( Monad parent
 
 
 _mappend
-    :: ( Monad parent
+    :: ( Monad environment
        , Monoid result
        )
-    => Sentence scope parent result
-    -> Sentence scope parent result
-    -> Sentence scope parent result
+    => Narrative lexicon environment result
+    -> Narrative lexicon environment result
+    -> Narrative lexicon environment result
 
 _mappend p0 p1 =
     go p0
@@ -455,7 +458,7 @@ _mappend p0 p1 =
     go (Fail e) =
         Fail e
 
-    go (Pure result) =
+    go (Return result) =
         fmap (mappend result) p1
 
     go (Super m) =
@@ -467,7 +470,7 @@ _mappend p0 p1 =
 
 
 
--- | cutoffSteps limits the number of Step constructors in a 'Sentence'. To limit
+-- | cutoffSteps limits the number of Step constructors in a 'Narrative'. To limit
 -- the number of (Step constructors + M constructors), use 'cutoff'.
 --
 -- >>> import Ef.Core
@@ -505,10 +508,10 @@ _mappend p0 p1 =
 
 
 cutoffSteps
-    :: Monad parent
+    :: Monad environment
     => Integer
-    -> Sentence scope parent result
-    -> Sentence scope parent (Maybe result)
+    -> Narrative lexicon environment result
+    -> Narrative lexicon environment (Maybe result)
 
 cutoffSteps _ (Fail e) =
     Fail e
@@ -516,8 +519,8 @@ cutoffSteps _ (Fail e) =
 cutoffSteps ((<= 0) -> True) _ =
     return Nothing
 
-cutoffSteps _ (Pure result) =
-    Pure (Just result)
+cutoffSteps _ (Return result) =
+    Return (Just result)
 
 cutoffSteps stepsRemaining (Super m) =
     let
@@ -538,10 +541,10 @@ cutoffSteps stepsRemaining (Say symbol k) =
 
 
 cutoff
-    :: Monad parent
+    :: Monad environment
     => Integer
-    -> Sentence scope parent result
-    -> Sentence scope parent (Maybe result)
+    -> Narrative lexicon environment result
+    -> Narrative lexicon environment (Maybe result)
 
 cutoff _ (Fail e) =
     Fail e
@@ -549,8 +552,8 @@ cutoff _ (Fail e) =
 cutoff ((<= 0) -> True) _ =
     return Nothing
 
-cutoff _ (Pure result) =
-    Pure (Just result)
+cutoff _ (Return result) =
+    Return (Just result)
 
 cutoff stepsRemaining (Super m) =
     let

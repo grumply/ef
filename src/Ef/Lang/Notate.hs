@@ -33,12 +33,11 @@ data Noting r k
 
 
 note
-    :: Is (Noting w) scope parent
-    => w
-    -> Pattern scope parent ()
+    :: w
+    -> Method (Noting w) lexicon environment ()
 
 note w =
-    self (Noting w ())
+    say (Noting w ())
 
 
 
@@ -54,9 +53,10 @@ data Notatable r k
 
 instance ( Binary r
          , Monoid r
-         , Uses (Notatable r) attrs parent
+         , Admits' (Notatable r) attrs (IndexOf (Notatable r) attrs)
+         , Monad environment
          )
-    => Binary (Attribute (Notatable r) attrs parent)
+    => Binary (Attribute (Notatable r) attrs environment)
   where
 
     get =
@@ -73,10 +73,12 @@ instance ( Binary r
 
 
 notator
-    :: Uses (Notatable w) attrs parent
+    :: ( Admits' (Notatable w) attrs (IndexOf (Notatable w) attrs)
+       , Monad environment
+       )
     => w
     -> (w -> w -> w)
-    -> Attribute (Notatable w) attrs parent
+    -> Attribute (Notatable w) attrs environment
 
 notator w0 f =
     Notatable w0 $ \w' fs ->
@@ -91,26 +93,29 @@ notator w0 f =
 
 writer
     :: ( Monoid w
-       , Uses (Notatable w) attrs parent
+       , Admits' (Notatable w) attrs (IndexOf (Notatable w) attrs)
+       , Monad environment
        )
-    => Attribute (Notatable w) attrs parent
+    => Attribute (Notatable w) attrs environment
 
 writer =
     notator mempty (<>)
 
 
 
-instance Witnessing (Notatable r) (Noting r)
+instance Inflection (Notatable r) (Noting r)
   where
 
-    witness use (Notatable _ rk) (Noting r k) =
-        witness use rk (r,k)
+    inflect use (Notatable _ rk) (Noting r k) =
+        inflect use rk (r,k)
 
 
 
 noted
-    :: Uses (Notatable w) attrs parent
-    => Object attrs parent -> w
+    :: ( Admits' (Notatable w) attrs (IndexOf (Notatable w) attrs)
+       , Monad environment
+       )
+    => Object attrs environment -> w
 
 noted fs =
     let

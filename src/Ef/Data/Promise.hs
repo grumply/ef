@@ -43,10 +43,10 @@ newPromiseIO =
 
 
 newPromise
-    :: ( Monad parent
-       , Lift IO parent
+    :: ( Monad environment
+       , Lift IO environment
        )
-    => Pattern scope parent (Promise result)
+    => Narrative lexicon environment (Promise result)
 
 newPromise =
     io newPromiseIO
@@ -54,11 +54,11 @@ newPromise =
 
 
 demand
-    :: ( Monad parent
-       , Lift IO parent
+    :: ( Monad environment
+       , Lift IO environment
        )
     => Promise result
-    -> Pattern scope parent result
+    -> Narrative lexicon environment result
 
 demand =
     io . demandIO
@@ -75,12 +75,12 @@ demandIO =
 
 
 fulfill
-    :: ( Monad parent
-       , Lift IO parent
+    :: ( Monad environment
+       , Lift IO environment
        )
     => Promise result
     -> result
-    -> Pattern scope parent Bool
+    -> Narrative lexicon environment Bool
 
 fulfill =
     (io .) . fulfillIO

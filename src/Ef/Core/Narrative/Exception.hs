@@ -1,7 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Ef.Core.Sentence.Exception
+module Ef.Core.Narrative.Exception
     ( throw
     , catch
     , handle
@@ -23,7 +23,7 @@ module Ef.Core.Sentence.Exception
 
 
 
-import Ef.Core.Sentence
+import Ef.Core.Narrative
 
 import Control.Exception
     ( Exception(..)
@@ -35,7 +35,7 @@ import Control.Exception
 throw
     :: Exception e
     => e
-    -> Sentence scope parent a
+    -> Narrative lexicon environment a
 
 throw e =
     Fail (toException e)
@@ -43,24 +43,24 @@ throw e =
 
 
 catch
-    :: ( Functor parent
+    :: ( Functor environment
        , Exception e
        )
-    => Sentence scope parent a
-    -> (e -> Sentence scope parent a)
-    -> Sentence scope parent a
+    => Narrative lexicon environment a
+    -> (e -> Narrative lexicon environment a)
+    -> Narrative lexicon environment a
 
 catch plan handler =
     rewrite plan
   where
-    rewrite (Pure r) =
-        Pure r
+    rewrite (Return r) =
+        Return r
 
     rewrite (Super m) =
         Super (fmap rewrite m)
 
-    rewrite (Send sym bp) =
-        Send sym (rewrite . bp)
+    rewrite (Say sym bp) =
+        Say sym (rewrite . bp)
 
 
     rewrite (Fail se) =
@@ -75,25 +75,25 @@ catch plan handler =
 
 
 handle
-    :: ( Functor parent
+    :: ( Functor environment
        , Exception e
        )
-    => (e -> Sentence scope parent a)
-    -> Sentence scope parent a
-    -> Sentence scope parent a
+    => (e -> Narrative lexicon environment a)
+    -> Narrative lexicon environment a
+    -> Narrative lexicon environment a
 
 handle = flip catch
 
 
 
 catchJust
-    :: ( Functor parent
+    :: ( Functor environment
        , Exception e
        )
     => (e -> Maybe b)
-    -> Sentence scope parent a
-    -> (b -> Sentence scope parent a)
-    -> Sentence scope parent a
+    -> Narrative lexicon environment a
+    -> (b -> Narrative lexicon environment a)
+    -> Narrative lexicon environment a
 
 catchJust p a handler =
     catch a handler'
@@ -110,13 +110,13 @@ catchJust p a handler =
 
 
 handleJust
-    :: ( Functor parent
+    :: ( Functor environment
        , Exception e
        )
     => (e -> Maybe b)
-    -> (b -> Sentence scope parent a)
-    -> Sentence scope parent a
-    -> Sentence scope parent a
+    -> (b -> Narrative lexicon environment a)
+    -> Narrative lexicon environment a
+    -> Narrative lexicon environment a
 
 handleJust p =
     flip (catchJust p)
@@ -124,13 +124,13 @@ handleJust p =
 
 
 mapException
-    :: ( Functor parent
+    :: ( Functor environment
        , Exception e
        , Exception e'
        )
     => (e -> e')
-    -> Sentence scope parent a
-    -> Sentence scope parent a
+    -> Narrative lexicon environment a
+    -> Narrative lexicon environment a
 
 mapException f p =
     let
@@ -143,11 +143,11 @@ mapException f p =
 
 
 try
-    :: ( Monad parent
+    :: ( Monad environment
        , Exception e
        )
-    => Sentence scope parent a
-    -> Sentence scope parent (Either e a)
+    => Narrative lexicon environment a
+    -> Narrative lexicon environment (Either e a)
 
 try p =
     let
@@ -166,13 +166,13 @@ try p =
 
 tryJust
     :: ( Exception e
-       , Monad parent
+       , Monad environment
        )
     => (    e
          -> Maybe b
        )
-    -> Sentence scope parent a
-    -> Sentence scope parent (Either b a)
+    -> Narrative lexicon environment a
+    -> Narrative lexicon environment (Either b a)
 
 tryJust analyze p =
     do
@@ -200,10 +200,10 @@ tryJust analyze p =
 
 
 onException
-    :: Monad parent
-    => Sentence scope parent a
-    -> Sentence scope parent b
-    -> Sentence scope parent a
+    :: Monad environment
+    => Narrative lexicon environment a
+    -> Narrative lexicon environment b
+    -> Narrative lexicon environment a
 
 onException p sequel =
     let
@@ -218,10 +218,10 @@ onException p sequel =
 
 
 finally
-    :: Monad parent
-    => Sentence scope parent a
-    -> Sentence scope parent b
-    -> Sentence scope parent a
+    :: Monad environment
+    => Narrative lexicon environment a
+    -> Narrative lexicon environment b
+    -> Narrative lexicon environment a
 
 finally p sequel =
     do
@@ -232,12 +232,12 @@ finally p sequel =
 
 
 bracket
-    :: forall scope parent a b c.
-       Monad parent
-    => Sentence scope parent a
-    -> (a -> Sentence scope parent b)
-    -> (a -> Sentence scope parent c)
-    -> Sentence scope parent c
+    :: forall lexicon environment a b c.
+       Monad environment
+    => Narrative lexicon environment a
+    -> (a -> Narrative lexicon environment b)
+    -> (a -> Narrative lexicon environment c)
+    -> Narrative lexicon environment c
 
 bracket acquire cleanup p =
     do
@@ -259,11 +259,11 @@ bracket acquire cleanup p =
 
 
 bracket_
-    :: Monad parent
-    => Sentence scope parent a
-    -> Sentence scope parent b
-    -> Sentence scope parent c
-    -> Sentence scope parent c
+    :: Monad environment
+    => Narrative lexicon environment a
+    -> Narrative lexicon environment b
+    -> Narrative lexicon environment c
+    -> Narrative lexicon environment c
 
 bracket_ acquire after computation =
     bracket
@@ -274,11 +274,11 @@ bracket_ acquire after computation =
 
 
 bracketOnError
-    :: Monad parent
-    => Sentence scope parent a
-    -> (a -> Sentence scope parent b)
-    -> (a -> Sentence scope parent c)
-    -> Sentence scope parent c
+    :: Monad environment
+    => Narrative lexicon environment a
+    -> (a -> Narrative lexicon environment b)
+    -> (a -> Narrative lexicon environment c)
+    -> Narrative lexicon environment c
 
 bracketOnError acquire cleanup p =
     do
@@ -294,20 +294,20 @@ bracketOnError acquire cleanup p =
 
 
 
-data Handler scope parent a
+data Handler lexicon environment a
   where
 
     Handler
         :: Exception e
         => (    e
-             -> Sentence scope parent a
+             -> Narrative lexicon environment a
            )
-        -> Handler scope parent a
+        -> Handler lexicon environment a
 
 
 
-instance Functor parent
-    => Functor (Handler scope parent)
+instance Functor environment
+    => Functor (Handler lexicon environment)
   where
 
     fmap f (Handler h) =
@@ -316,28 +316,28 @@ instance Functor parent
 
 
 catches
-    :: Functor parent
-    => Sentence scope parent a
-    -> [Handler scope parent a]
-    -> Sentence scope parent a
+    :: Functor environment
+    => Narrative lexicon environment a
+    -> [Handler lexicon environment a]
+    -> Narrative lexicon environment a
 
 catches p handlers =
     p `catch` catchesHandler handlers
 
 
 handles
-    :: Functor parent
-    => [Handler scope parent a]
-    -> Sentence scope parent a
-    -> Sentence scope parent a
+    :: Functor environment
+    => [Handler lexicon environment a]
+    -> Narrative lexicon environment a
+    -> Narrative lexicon environment a
 handles =
     flip catches
 
 
 catchesHandler
-    :: [Handler scope parent a]
+    :: [Handler lexicon environment a]
     -> SomeException
-    -> Sentence scope parent a
+    -> Narrative lexicon environment a
 
 catchesHandler handlers e =
     let

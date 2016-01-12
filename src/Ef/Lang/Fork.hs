@@ -22,22 +22,22 @@ import Control.Monad
 
 
 
-newtype ThreadRef attrs parent result =
-    ThreadRef (ThreadId,Promise (Object attrs parent,Either SomeException result))
+newtype ThreadRef attrs environment result =
+    ThreadRef (ThreadId,Promise (Object attrs environment,Either SomeException result))
 
 
 
 forkWith
-    :: forall scope scope' attrs parent parent' result.
-       ( (Attrs attrs) `Witnessing` (Symbol scope)
-       , Lift IO parent'
-       , Monad parent'
-       , Monad parent
+    :: forall lexicon lexicon' attrs environment environment' result.
+       ( (Attrs attrs) `Inflection` (Lexeme lexicon)
+       , Lift IO environment'
+       , Monad environment'
+       , Monad environment
        )
-    => Object attrs parent
-    -> Pattern scope parent result
-    -> (forall x. parent x -> IO x)
-    -> Pattern scope' parent' (ThreadRef attrs parent result)
+    => Object attrs environment
+    -> Narrative lexicon environment result
+    -> (forall x. environment x -> IO x)
+    -> Narrative lexicon' environment' (ThreadRef attrs environment result)
 
 forkWith comp plan embedInIO =
     do
@@ -56,16 +56,16 @@ forkWith comp plan embedInIO =
 
 
 forkOSWith
-    :: forall scope scope' attrs parent parent' result.
-       ( (Attrs attrs) `Witnessing` (Symbol scope)
-       , Lift IO parent'
-       , Monad parent'
-       , Monad parent
+    :: forall lexicon lexicon' attrs environment environment' result.
+       ( (Attrs attrs) `Inflection` (Lexeme lexicon)
+       , Lift IO environment'
+       , Monad environment'
+       , Monad environment
        )
-    => Object attrs parent
-    -> Pattern scope parent result
-    -> (forall x. parent x -> IO x)
-    -> Pattern scope' parent' (ThreadRef attrs parent result)
+    => Object attrs environment
+    -> Narrative lexicon environment result
+    -> (forall x. environment x -> IO x)
+    -> Narrative lexicon' environment' (ThreadRef attrs environment result)
 
 forkOSWith comp plan embedInIO =
     do
@@ -84,17 +84,17 @@ forkOSWith comp plan embedInIO =
 
 
 forkOnWith
-    :: forall scope scope' attrs parent parent' result.
-       ( (Attrs attrs) `Witnessing` (Symbol scope)
-       , Lift IO parent'
-       , Monad parent'
-       , Monad parent
+    :: forall lexicon lexicon' attrs environment environment' result.
+       ( (Attrs attrs) `Inflection` (Lexeme lexicon)
+       , Lift IO environment'
+       , Monad environment'
+       , Monad environment
        )
     => Int
-    -> Object attrs parent
-    -> Pattern scope parent result
-    -> (forall x. parent x -> IO x)
-    -> Pattern scope' parent' (ThreadRef attrs parent result)
+    -> Object attrs environment
+    -> Narrative lexicon environment result
+    -> (forall x. environment x -> IO x)
+    -> Narrative lexicon' environment' (ThreadRef attrs environment result)
 
 forkOnWith n comp plan embedInIO =
     do

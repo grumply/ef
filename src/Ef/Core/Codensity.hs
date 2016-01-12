@@ -6,7 +6,7 @@ module Ef.Core.Codensity where
 
 
 
-import Ef.Core.Pattern
+import Ef.Core.Narrative
 
 
 import Control.Applicative
@@ -63,20 +63,20 @@ import Control.Monad
 -- of that result to create a wrapped sequence of computational steps.
 -- The wrapping enables the compiler to see that the intermediate results
 -- cannot be inspected - modulo 'unsafeCoerce'. Some (all?) Free monad
--- encodings are amenable to a Codensity representation and Pattern is a
+-- encodings are amenable to a Codensity representation and Narrative is a
 -- Free monad representation.
-newtype Codensity scope parent result =
+newtype Codensity lexicon environment result =
 
     Codensity
         { runCodensity
               :: forall b.
-                 (result -> Pattern scope parent b)
-              -> Pattern scope parent b
+                 (result -> Narrative lexicon environment b)
+              -> Narrative lexicon environment b
         }
 
 
 
-instance Functor (Codensity scope parent)
+instance Functor (Codensity lexicon environment)
   where
 
     -- fmap a function, f, over a Codensity computation by unwrapping the
@@ -92,7 +92,7 @@ instance Functor (Codensity scope parent)
 
 
 
-instance Applicative (Codensity scope parent)
+instance Applicative (Codensity lexicon environment)
   where
 
     -- lift a value, x, into a Codensity computation by applying a
@@ -112,7 +112,7 @@ instance Applicative (Codensity scope parent)
 
 
 
-instance Monad (Codensity scope parent)
+instance Monad (Codensity lexicon environment)
   where
 
     return =
@@ -122,11 +122,11 @@ instance Monad (Codensity scope parent)
 
     (>>=)
         :: forall firstResult secondResult.
-           Codensity scope parent firstResult
+           Codensity lexicon environment firstResult
         -> (    firstResult
-             -> Codensity scope parent secondResult
+             -> Codensity lexicon environment secondResult
            )
-        -> Codensity scope parent secondResult
+        -> Codensity lexicon environment secondResult
 
     one >>= twoFrom =
         Codensity composed
@@ -136,9 +136,9 @@ instance Monad (Codensity scope parent)
         composed
             :: forall thirdResult.
                (    secondResult
-                 -> Pattern scope parent thirdResult
+                 -> Narrative lexicon environment thirdResult
                )
-            -> Pattern scope parent thirdResult
+            -> Narrative lexicon environment thirdResult
 
         composed threeFrom =
             runCodensity one (two threeFrom)
@@ -149,20 +149,20 @@ instance Monad (Codensity scope parent)
             --     2. a continuation of the second result
             two
                 :: (    secondResult
-                     -> Pattern scope parent thirdResult
+                     -> Narrative lexicon environment thirdResult
                    )
                 -> firstResult
-                -> Pattern scope parent thirdResult
+                -> Narrative lexicon environment thirdResult
 
             two threeFrom firstResult =
                 runCodensity (twoFrom firstResult) threeFrom
 
 
 
-instance ( Alternative parent
-         , MonadPlus parent
+instance ( Alternative environment
+         , MonadPlus environment
          )
-    => Alternative (Codensity scope parent)
+    => Alternative (Codensity lexicon environment)
   where
 
     empty =
@@ -176,8 +176,8 @@ instance ( Alternative parent
 
 
 
-instance MonadPlus parent
-    => MonadPlus (Codensity scope parent)
+instance MonadPlus environment
+    => MonadPlus (Codensity lexicon environment)
   where
 
     mzero =
@@ -192,9 +192,9 @@ instance MonadPlus parent
 
 
 toCodensity
-    :: Monad parent
-    => Pattern scope parent result
-    -> Codensity scope parent result
+    :: Monad environment
+    => Narrative lexicon environment result
+    -> Codensity lexicon environment result
 
 toCodensity f =
     Codensity (f >>=)
@@ -202,9 +202,9 @@ toCodensity f =
 
 
 fromCodensity
-    :: Monad parent
-    => Codensity scope parent result
-    -> Pattern scope parent result
+    :: Monad environment
+    => Codensity lexicon environment result
+    -> Narrative lexicon environment result
 
 fromCodensity a =
     runCodensity a return

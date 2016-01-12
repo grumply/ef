@@ -23,8 +23,8 @@ data ITEing k
   where
 
     ITE
-        :: (IORef (Pattern scope parent result))
-        -> (IORef (Pattern scope parent result))
+        :: (IORef (Narrative lexicon environment result))
+        -> (IORef (Narrative lexicon environment result))
         -> k
         -> ITEing k
 
@@ -39,8 +39,10 @@ data ITEable k
 
 
 
-instance Uses ITEable attrs parent
-    => Binary (Attribute ITEable attrs parent)
+instance ( Admits' ITEable attrs (IndexOf ITEable attrs)
+         , Monad environment
+         )
+    => Binary (Attribute ITEable attrs environment)
   where
 
     get =
@@ -53,11 +55,13 @@ instance Uses ITEable attrs parent
 
 
 ifThenElse
-    :: Is ITEing scope parent
+    :: ( Allows' ITEing lexicon (IndexOf ITEing lexicon)
+       , Monad environment
+       )
     => Bool
-    -> Pattern scope parent result
-    -> Pattern scope parent result
-    -> Pattern scope parent result
+    -> Narrative lexicon environment result
+    -> Narrative lexicon environment result
+    -> Narrative lexicon environment result
 
 ifThenElse i t e =
     let
@@ -77,7 +81,7 @@ ifThenElse i t e =
                   unsafePerformIO (readIORef e')
 
       conditional =
-          self (ITE t' e' continue)
+          say (ITE t' e' continue)
 
     in
       join conditional
@@ -85,16 +89,15 @@ ifThenElse i t e =
 
 
 ifThenElser
-    :: Uses ITEable scope parent
-    => Attribute ITEable scope parent
+    :: Implementation ITEable lexicon environment
 
 ifThenElser =
     ITEable return
 
 
 
-instance ITEable `Witnessing` ITEing
+instance ITEable `Inflection` ITEing
   where
 
-    witness use (ITEable k) (ITE _ _ k') =
+    inflect use (ITEable k) (ITE _ _ k') =
         use k k'
