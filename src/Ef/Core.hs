@@ -8,7 +8,6 @@ module Ef.Core
     ( module Core
     , delta
     , delta'
-    , deltaGrow
     , (#)
     , Exception(..)
     , SomeException
@@ -21,7 +20,7 @@ import Ef.Core.Object as Core hiding (_fmap)
 import Ef.Core.Object.Context as Core
 
 import Ef.Core.Narrative as Core hiding (_fmap)
-import Ef.Core.Narrative.Lexeme as Core
+import Ef.Core.Narrative.Lexicon as Core
 import Ef.Core.Narrative.Exception as Core
 
 import Ef.Core.Inflect as Core
@@ -34,13 +33,30 @@ import Unsafe.Coerce
 
 
 
-(#)
-    :: ( Inflection (Context contexts) (Lexeme lexicon)
+-- | Pair an Object with a Narrative. This is the equivalent of OOP's
+-- 'send a message to an object' or 'invoke a method'. 
+delta
+    :: ( Inflection (Context contexts) (Lexicon lexicon)
        , Monad environment
        )
-    => environment (Object environment contexts)
+    => Object contexts environment
     -> Narrative lexicon environment result
-    -> environment (Object environment contexts)
+    -> environment (Object contexts environment,result)
+delta =
+    _delta
+
+
+
+infixl 5 #
+-- | Like 'delta' without a return value that permits a chaining syntax.
+--  resultObj <- pure obj # method1 # method2 # method3
+(#)
+    :: ( Inflection (Context contexts) (Lexicon lexicon)
+       , Monad environment
+       )
+    => environment (Object contexts environment)
+    -> Narrative lexicon environment result
+    -> environment (Object contexts environment)
 (#) mobj p =
     do
       obj <- mobj
@@ -49,52 +65,28 @@ import Unsafe.Coerce
 
 
 
+-- | Don't use this; rerrange your constructor.
 delta'
-    :: ( Inflection (Context contexts) (Lexeme lexicon')
-       , As (Lexeme lexicon) (Lexeme lexicon')
+    :: ( Inflection (Context contexts) (Lexicon lexicon')
+       , Grow (Lexicon lexicon) (Lexicon lexicon')
        , Monad environment
        )
-    => Object environment contexts
+    => Object contexts environment
     -> Narrative lexicon environment result
-    -> environment (Object environment contexts,result)
+    -> environment (Object contexts environment,result)
 delta' o =
-    _delta o . rearrange
-
-
-
-deltaGrow
-    :: ( Inflection (Context contexts) (Lexeme large)
-       , Grow small large
-       , Monad environment
-       )
-    => Object environment contexts
-    -> Narrative small environment result
-    -> environment (Object environment contexts,result)
-deltaGrow o =
-    _delta o . upembed
-
-
-
-delta
-    :: ( Inflection (Context contexts) (Lexeme lexicon)
-       , Monad environment
-       )
-    => Object environment contexts
-    -> Narrative lexicon environment result
-    -> environment (Object environment contexts,result)
-delta =
-    _delta
+    _delta o . grow
 
 
 
 {-# NOINLINE _delta #-}
 _delta
-    :: ( Inflection (Context contexts) (Lexeme lexicon)
+    :: ( Inflection (Context contexts) (Lexicon lexicon)
        , Monad environment
        )
-    => Object environment contexts
+    => Object contexts environment
     -> Narrative lexicon environment result
-    -> environment (Object environment contexts,result)
+    -> environment (Object contexts environment,result)
 _delta object =
     go
   where
@@ -114,7 +106,7 @@ _delta object =
 
         in
             do
-                object' <- interpret object method
+                object' <- method object
                 _delta object' (k b)
 
 {-# RULES
@@ -149,7 +141,7 @@ _delta object =
 
                 in
                     do
-                        object' <- interpret obj method
+                        object' <- method obj
                         _delta object' (k b)
 
   #-}

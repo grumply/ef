@@ -121,7 +121,7 @@ instance {-# OVERLAPS #-}
                        attrString ++ show attr ++ ", " ++ show attrs
 
 
-class Admits (attr :: * -> *) (attrs :: [* -> *])
+class Does (attr :: * -> *) (attrs :: [* -> *])
   where
 
     push
@@ -138,9 +138,9 @@ class Admits (attr :: * -> *) (attrs :: [* -> *])
 
 
 instance ( index ~ IndexOf attr attrs
-         , Admits' attr attrs index
+         , Does' attr attrs index
          )
-    => Admits attr attrs
+    => Does attr attrs
   where
 
     push attr =
@@ -165,7 +165,7 @@ instance ( index ~ IndexOf attr attrs
 
 stretch
     :: ( index ~ IndexOf attr attrs
-       , Admits' attr attrs index
+       , Does' attr attrs index
        )
     => (forall z. attr z -> attr z)
     -> Context attrs x
@@ -180,7 +180,7 @@ stretch f attrs =
 
 
 
-class Admits' (attr :: * -> *) (attrs :: [* -> *]) (n :: Nat)
+class Does' (attr :: * -> *) (attrs :: [* -> *]) (n :: Nat)
   where
 
     push'
@@ -199,7 +199,7 @@ class Admits' (attr :: * -> *) (attrs :: [* -> *]) (n :: Nat)
 
 
 instance attrs ~ (attr ': xs)
-    => Admits' attr attrs 'Z
+    => Does' attr attrs 'Z
   where
 
     push' _ attr (Context _ attrs) =
@@ -213,9 +213,9 @@ instance attrs ~ (attr ': xs)
 
 
 instance ( index ~ IndexOf attr attrs
-         , Admits' attr attrs index
+         , Does' attr attrs index
          )
-    => Admits' attr (attr' ': attrs) ('S n)
+    => Does' attr (attr' ': attrs) ('S n)
   where
 
     push' _ attr (Context attr' attrs) =
@@ -269,7 +269,7 @@ instance Extend '[] largeContext
 
 instance ( Denies attr small
          , index ~ IndexOf attr large
-         , Admits' attr large index
+         , Does' attr large index
          , Extend small large
          )
     => Extend (attr ': small) large

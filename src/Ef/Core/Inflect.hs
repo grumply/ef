@@ -12,11 +12,12 @@ module Ef.Core.Inflect where
 
 
 import Ef.Core.Object.Context
-import Ef.Core.Narrative.Lexeme
+import Ef.Core.Narrative.Lexicon
 
 
 
--- Inflect a pairing between f and g with a specific use case
+-- An inflection that links f and g; a Day convolution. This is the 'why' for
+-- Narrative's 'what' and Object's 'how'; axiomatics.
 class Inflection f g
     | f -> g
     , g -> f
@@ -46,14 +47,14 @@ instance Inflection ((,) a) ((->) a)
 
 
 
-instance Inflection (Context '[]) (Lexeme '[])
+instance Inflection (Context '[]) (Lexicon '[])
 
 
 
 instance ( Inflection context lexeme
-         , Inflection (Context contexts) (Lexeme lexicon)
+         , Inflection (Context contexts) (Lexicon lexicon)
          )
-    => Inflection (Context (context ': contexts)) (Lexeme (lexeme ': lexicon))
+    => Inflection (Context (context ': contexts)) (Lexicon (lexeme ': lexicon))
   where
 
     inflect use (Context context _) (Lexeme lexeme) =

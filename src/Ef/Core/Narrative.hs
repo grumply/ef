@@ -11,11 +11,22 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE IncoherentInstances #-}
-module Ef.Core.Narrative where
+module Ef.Core.Narrative
+     ( Narrative(..)
+     , say
+     , super
+     , grow
+     , rearrangeLexicon
+     , Lift(..)
+     , Can
+     , Grow(..)
+     , cutoff
+     , cutoffSteps
+     ) where
 
 
 import Ef.Core.Type.Nat
-import Ef.Core.Narrative.Lexeme
+import Ef.Core.Narrative.Lexicon
 
 import Control.Applicative
 import Control.Exception (Exception(..),SomeException)
@@ -28,7 +39,7 @@ data Narrative lexicon environment result
   where
 
     Say
-        :: Lexeme lexicon intermediate
+        :: Lexicon lexicon intermediate
         -> (    intermediate
              -> Narrative lexicon environment result
            )
@@ -42,89 +53,42 @@ data Narrative lexicon environment result
         :: result
         -> Narrative lexicon environment result
 
-    -- for convenience
     Fail
         :: SomeException
         -> Narrative lexicon environment result
 
 
 
-rearrange
-    :: ( Functor environment
-       , As (Lexeme lexicon) (Lexeme lexicon')
-       )
-    => Narrative lexicon environment a
-    -> Narrative lexicon' environment a
-
-rearrange (Fail e) =
-    Fail e
-
-rearrange (Return r) =
-    Return r
-
-rearrange (Super m) =
-    Super (fmap rearrange m)
-
-rearrange (Say symbol k) =
-    Say (conv symbol) (rearrange . k)
-
-
-
-upembed
-    :: ( Functor environment
-       , Grow lexiconSmall lexiconLarge
-       )
-    => Narrative lexiconSmall environment result
-    -> Narrative lexiconLarge environment result
-
-upembed (Fail e) =
-    Fail e
-
-upembed (Return result) =
-    Return result
-
-upembed (Super p) =
-    Super (fmap upembed p)
-
-upembed (Say symbol k) =
-    Say (grow symbol) (upembed . k)
-
-
-
--- | As is an internal convenience utility used to reorder
---   a set of symbols.
-class x `As` y
-  where
-
-    conv
-        :: x a
-        -> y a
-
-
-
-instance x `As` x
-  where
-
-    conv =
-        id
-
-
-
-instance (Lexeme '[]) `As` (Lexeme '[])
-
-
-
-instance ( Allows x ys
-         , (Lexeme xs) `As` (Lexeme ys)
+instance ( Grow (Lexicon small) (Lexicon large)
+         , Functor environment
          )
-    => (Lexeme (x ': xs)) `As` (Lexeme ys)
-  where
+    => Grow (Narrative small environment) (Narrative large environment)
+    where
 
-    conv (Lexeme sa) =
-        inj sa
+        grow (Fail e) =
+            Fail e
 
-    conv (Further ss) =
-        conv ss
+        grow (Return result) =
+            Return result
+
+        grow (Super sup) =
+            Super (fmap grow sup)
+
+        grow (Say symbol k) =
+            Say (grow symbol) (grow . k)
+
+
+
+-- | don't use this, just rewrite your Object constructors for consistency
+rearrangeLexicon
+    :: ( Grow (Lexicon small) (Lexicon large)
+       , Functor environment
+       )
+    => Narrative small environment result
+    -> Narrative large environment result
+
+rearrangeLexicon =
+    grow
 
 
 
@@ -132,9 +96,7 @@ class Functor m'
     => Lift m m'
   where
 
-    lift
-        :: m a
-        -> m' a
+    lift :: m a -> m' a
 
 
 
@@ -152,7 +114,7 @@ instance Functor environment
   where
 
     lift =
-        lift_
+        super
 
 
 
@@ -161,17 +123,7 @@ instance Lift newEnvironment environment
   where
 
     lift =
-        lift_ . lift
-
-
-
-lift_
-    :: Functor environment
-    => environment result
-    -> Narrative lexicon environment result
-
-lift_ m =
-    Super (fmap Return m)
+        super . lift
 
 
 
@@ -180,8 +132,8 @@ super
     => environment result
     -> Narrative lexicon environment result
 
-super =
-    lift_
+super m =
+    Super (fmap Return m)
 
 
 
@@ -193,14 +145,13 @@ say symbol =
     Say (inj symbol) return
 
 
-type Can lexeme lexemes environment =
-      ( Allows' lexeme lexemes (IndexOf lexeme lexemes)
-      , Monad environment
-      )
 
 type Say lexeme lexicon environment result =
-    Can lexeme lexicon environment
+    ( Can lexeme lexicon
+    , Monad environment
+    )
     => Narrative lexicon environment result
+
 
 
 instance Functor environment
@@ -394,7 +345,7 @@ instance MonadPlus environment
   where
 
     mzero =
-        lift_ mzero
+        super mzero
 
 
 

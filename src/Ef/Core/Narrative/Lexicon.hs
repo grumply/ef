@@ -9,7 +9,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-module Ef.Core.Narrative.Lexeme where
+module Ef.Core.Narrative.Lexicon where
 
 
 
@@ -18,18 +18,18 @@ import Ef.Core.Type.Nat
 
 
 
-data Lexeme lexicon a
+data Lexicon lexicon a
   where
 
     Lexeme
         :: Denies lexeme rest
         => lexeme a
-        -> Lexeme (lexeme ': rest) a
+        -> Lexicon (lexeme ': rest) a
 
     Further
         :: Denies lexeme rest
-        => Lexeme rest a
-        -> Lexeme (lexeme ': rest) a
+        => Lexicon rest a
+        -> Lexicon (lexeme ': rest) a
 
 
 
@@ -37,21 +37,21 @@ class Grow small large
   where
 
     grow
-        :: Lexeme small a
-        -> Lexeme large a
+        :: small a
+        -> large a
 
 
 
-instance Grow '[] '[]
+instance Grow (Lexicon '[]) (Lexicon '[])
 
 
 
 instance ( Subset small large
          , small ~ (lexeme ': lexemes)
-         , Allows lexeme large
-         , Grow lexemes large
+         , Can lexeme large
+         , Grow (Lexicon lexemes) (Lexicon large)
          )
-    => Grow small large
+    => Grow (Lexicon small) (Lexicon large)
   where
 
     grow (Further more) =
@@ -62,15 +62,15 @@ instance ( Subset small large
 
 
 
-instance Functor (Lexeme '[])
+instance Functor (Lexicon '[])
 
 
 
 instance ( Functor lexeme
-         , Functor (Lexeme lexemes')
+         , Functor (Lexicon lexemes')
          , lexemes ~ (lexeme ': lexemes')
          )
-    => Functor (Lexeme lexemes)
+    => Functor (Lexicon lexemes)
   where
 
     fmap f (Lexeme lexeme) =
@@ -81,25 +81,25 @@ instance ( Functor lexeme
 
 
 
-class Allows lexeme lexemes
+class Can lexeme lexemes
   where
 
     inj
         :: lexeme a
-        -> Lexeme lexemes a
+        -> Lexicon lexemes a
 
 
 
     prj
-        :: Lexeme lexemes a
+        :: Lexicon lexemes a
         -> Maybe (lexeme a)
 
 
 
 instance ( index ~ IndexOf lexeme lexemes
-         , Allows' lexeme lexemes index
+         , Can' lexeme lexemes index
          )
-    => Allows lexeme lexemes
+    => Can lexeme lexemes
   where
 
     inj lexeme =
@@ -122,17 +122,17 @@ instance ( index ~ IndexOf lexeme lexemes
 
 
 
-class Allows' lexeme lexemes (n :: Nat)
+class Can' lexeme lexemes (n :: Nat)
   where
 
     inj'
         :: Index n
         -> lexeme a
-        -> Lexeme lexemes a
+        -> Lexicon lexemes a
 
     prj'
         :: Index n
-        -> Lexeme lexemes a
+        -> Lexicon lexemes a
         -> Maybe (lexeme a)
 
 
@@ -140,9 +140,9 @@ class Allows' lexeme lexemes (n :: Nat)
 instance ( Denies lexeme' lexemes'
          , lexemes ~ (lexeme' ': lexemes')
          , index ~ IndexOf lexeme lexemes'
-         , Allows' lexeme lexemes' index
+         , Can' lexeme lexemes' index
          )
-    => Allows' lexeme lexemes ('S n)
+    => Can' lexeme lexemes ('S n)
   where
 
     inj' _ lexeme =
@@ -171,7 +171,7 @@ instance ( Denies lexeme' lexemes'
 instance ( Denies lexeme lexemes'
          , lexemes ~ (lexeme ': lexemes')
          )
-    => Allows' lexeme lexemes 'Z
+    => Can' lexeme lexemes 'Z
   where
 
     inj' _ =

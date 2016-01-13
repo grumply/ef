@@ -27,19 +27,20 @@ library
                        Ef.Core
                        Ef.Core.Codensity
                        Ef.Core.Object
-                       Ef.Core.Object.Attributes
-                       Ef.Core.Pattern
-                       Ef.Core.Pattern.Exception
-                       Ef.Core.Pattern.Symbols
+                       Ef.Core.Object.Context
+                       Ef.Core.Narrative
+                       Ef.Core.Narrative.Exception
+                       Ef.Core.Narrative.Lexicon
                        Ef.Core.Type.Nat
                        Ef.Core.Type.Set
                        Ef.Core.Witness
                        Ef.Data.Promise
+                       Ef.Lang.Checked.Lexicon
+                       Ef.Lang.Checked.Lexemes
                        Ef.Lang.Notate
                        Ef.Lang.Vary
                        Ef.Lang.View
                        Ef.Lang.Contract
-                       Ef.Lang.Checked
                        Ef.Lang.Fork
                        Ef.Lang.IO
                        Ef.Lang.Get
