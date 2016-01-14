@@ -1,38 +1,32 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE GADTs #-}
 module Ef.Lang.Get.Lexicon where
 
-import Ef.Core
 
 
-data GET k
+import Ef.Core.Narrative
+import Ef.Core.Object
+
+
+data Lexicon k
   where
 
     Reset
         :: k
-        -> Get k
+        -> Lexicon k
 
     Reify
         :: k
-        -> Get k
+        -> Lexicon k
 
     Get
         :: (    Object gs m
              -> k
            )
-        -> Get k
+        -> Lexicon k
 
 
 
-introspect
-    :: Witnessing (Attrs attrs) (Symbol scope)
-    => Method Get scope parent (Object attrs parent)
-
-introspect =
-    do
-        -- note the need to Reset; this should help the GC avoid a space leak.
-        self (Reify ())
-        slf <- self (Get id)
-        self (Reset ())
-        return slf
-        
-{-# INLINE introspect #-}
+type Gets lexicon environment =
+    Knows Lexicon lexicon environment

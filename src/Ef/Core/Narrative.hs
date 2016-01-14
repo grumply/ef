@@ -13,12 +13,13 @@
 {-# LANGUAGE IncoherentInstances #-}
 module Ef.Core.Narrative
      ( Narrative(..)
+     , Say
      , say
      , super
      , grow
      , rearrangeLexicon
      , Lift(..)
-     , Can
+     , Knows
      , Grow(..)
      , cutoff
      , cutoffSteps
@@ -147,10 +148,15 @@ say symbol =
 
 
 type Say lexeme lexicon environment result =
-    ( Can lexeme lexicon
+    Knows lexeme lexicon environment
+    => Narrative lexicon environment result
+
+
+
+type Knows lexeme lexicon environment =
+    ( Can' lexeme lexicon (IndexOf lexeme lexicon)
     , Monad environment
     )
-    => Narrative lexicon environment result
 
 
 

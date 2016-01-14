@@ -15,6 +15,7 @@ module Ef.Core.Object
     ( Morphism
     , Use
     , Does(..)
+    , Has(..)
     , Extend(..)
     , stretch
     , Context(..)
@@ -47,10 +48,15 @@ type Morphism contexts environment =
 
 
 type Use context contexts environment =
-    ( Does context contexts
-    , Monad environment
-    ) 
+    Has context contexts environment
     => context (Morphism contexts environment)
+
+
+
+type Has context contexts environment =
+    ( Does' context contexts (IndexOf context contexts)
+    , Monad environment
+    )
 
 
 
@@ -117,7 +123,9 @@ infixr 6 *:*
 
 
 view
-    :: Does context contexts
+    :: ( Does' context contexts (IndexOf context contexts)
+       , Monad environment
+       )
     => Object contexts environment
     -> context (Morphism contexts environment)
 
@@ -129,7 +137,7 @@ view =
 infixl 5 .=
 
 (.=)
-    :: ( Does context contexts
+    :: ( Does' context contexts (IndexOf context contexts)
        , Monad environment
        )
     => Object contexts environment

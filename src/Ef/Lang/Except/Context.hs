@@ -14,9 +14,7 @@ import Data.Binary
 
 
 
-instance ( Does Attribute contexts
-         , Monad environment
-         )
+instance Has Attribute contexts environment
     => Binary (Attribute (Morphism contexts environment))
   where
 
@@ -40,3 +38,5 @@ excepter =
 
     in
       Except (error . uncaught)
+
+{-# INLINE excepter #-}

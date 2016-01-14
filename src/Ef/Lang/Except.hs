@@ -27,3 +27,4 @@ instance Inflection Attribute Lexicon
 
     inflect use (Except k) (Throw e k') =
         use (k e) k'
+

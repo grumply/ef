@@ -1,35 +1,26 @@
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE AutoDeriveTypeable #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 module Ef.Lang.Get
-    ( Attr.get
-    , Lex.introspect
-    , Lex.Get
-    )
-    where
+    ( module Ef.Lang.Get.Lexemes
+    ) where
 
 
+import Ef.Core.Inflect
 
-import Ef.Core
-
-import qualified Ef.Lang.Get.Attribute as Attr
-import qualified Ef.Lang.Get.Lexicon as Lex
+import Ef.Lang.Get.Lexemes
+import Ef.Lang.Get.Context
 
 import Unsafe.Coerce
 
 
-instance Witnessing Attr.Getter Lex.Get
+instance Inflection Attribute Lexicon
   where
 
-    witness use (Getter _ _ k) (Reify k') =
+    inflect use (Getter _ _ k) (Reify k') =
         use k k'
 
-    witness use (Getter (o,k) _ _) (Get ok) =
+    inflect use (Getter (o,k) _ _) (Get ok) =
         use k (ok (unsafeCoerce o))
 
-    witness use (Getter _ k _) (Reset k') =
+    inflect use (Getter _ k _) (Reset k') =
         use k k'
 

@@ -1,59 +1,31 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-module Ef.Lang.Get.Attribute where
+module Ef.Lang.Get.Attribute
+    ( Attribute(..)
+    , Gets
+    ) where
 
 
-import Ef.Core
 
-import qualified Data.Binary as B
+import Ef.Core.Object
 
 
-data Getter k
+
+data Attribute k
   where
 
     Getter
         :: (Object attrs parent,k)
         -> k
         -> k
-        -> Getter k
+        -> Attribute k
 
 
 
-instance ( Uses Getter attrs parent
-         , B.Binary (Object attrs parent)
-         )
-    => B.Binary (Attribute Getter attrs parent)
-  where
+type Gets contexts environment =
+    Has Attribute contexts environment
 
-    get =
-        return (getter :: Attribute Getter attrs parent)
-
-
-    put _ =
-        pure ()
-
-getter
-    :: Implementation Getter attrs parent
-
-getter =
-    Getter (undefined,reifier) resetter pure
-  where
-
-    resetter fs =
-        case view fs of
-          
-            Getter (_,reifies) reset gets -> 
-                pure $ fs .=
-                    Getter (undefined,reifies) reset gets
-
-    reifier fs =
-        case view fs of
-
-            Getter (_,reifies) reset gets ->
-                pure $ fs .=
-                     Getter (fs,reifies) reset gets
-
-
-{-# INLINE getter #-}

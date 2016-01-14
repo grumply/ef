@@ -1,7 +1,10 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE GADTs #-}
-module Ef.Lang.Except.Attribute where
+module Ef.Lang.Except.Attribute
+    ( Attribute(..)
+    , Excepts
+    ) where
 
 
 
@@ -23,6 +26,4 @@ data Attribute k
 
 
 type Excepts contexts environment =
-    ( Does Attribute contexts
-    , Monad environment
-    )
+    Has Attribute contexts environment

@@ -9,7 +9,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-module Ef.Core.Object.Context where
+module Ef.Core.Object.Context
+    ( Context(..)
+    , Does'(..)
+    , Does(..)
+    , stretch
+    , Extend(..)
+    ) where
 
 
 
