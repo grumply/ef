@@ -12,8 +12,8 @@ import Ef.Lang.Note.Context
 
 
 
-instance Inflection (Attribute r) (Lexicon r)
+instance Inflection (Notes r) (Note r)
   where
 
-    inflect use (Noter _ rk) (Note r k) =
+    inflect use (Notes _ rk) (Note r k) =
         inflect use rk (r,k)

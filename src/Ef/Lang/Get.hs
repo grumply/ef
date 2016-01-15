@@ -12,15 +12,15 @@ import Ef.Lang.Get.Context
 import Unsafe.Coerce
 
 
-instance Inflection Attribute Lexicon
+instance Inflection Gets Get
   where
 
-    inflect use (Getter _ _ k) (Reify k') =
+    inflect use (Gets _ _ k) (Reify k') =
         use k k'
 
-    inflect use (Getter (o,k) _ _) (Get ok) =
+    inflect use (Gets (o,k) _ _) (Get ok) =
         use k (ok (unsafeCoerce o))
 
-    inflect use (Getter _ k _) (Reset k') =
+    inflect use (Gets _ k _) (Reset k') =
         use k k'
 

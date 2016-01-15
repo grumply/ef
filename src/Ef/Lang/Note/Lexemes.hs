@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 module Ef.Lang.Note.Lexemes
-    ( Lexicon(..)
+    ( Note(..)
     , note
     ) where
 
@@ -14,7 +14,7 @@ import Ef.Lang.Note.Lexicon
 
 note
     :: w
-    -> Say (Lexicon w) lexicon environment ()
+    -> Say (Note w) lexicon environment ()
 
 note w =
     say (Note w ())

@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 module Ef.Lang.Except.Context
-    ( Attribute(..)
+    ( Excepts(..)
     , excepter
     ) where
 
@@ -14,8 +14,8 @@ import Data.Binary
 
 
 
-instance Has Attribute contexts environment
-    => Binary (Attribute (Morphism contexts environment))
+instance Has Excepts contexts environment
+    => Binary (Excepts (Morphism contexts environment))
   where
 
     get =
@@ -29,7 +29,7 @@ instance Has Attribute contexts environment
 
 
 excepter
-    :: Use Attribute contexts environment
+    :: Use Excepts contexts environment
 
 excepter =
     let
@@ -37,6 +37,6 @@ excepter =
           "Impossible uncaught checked exception: " ++ (show err)
 
     in
-      Except (error . uncaught)
+      Excepts (error . uncaught)
 
 {-# INLINE excepter #-}

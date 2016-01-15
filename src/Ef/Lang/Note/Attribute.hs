@@ -1,9 +1,6 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE GADTs #-}
 module Ef.Lang.Note.Attribute
-    ( Attribute(..)
-    , Notes
+    ( Notes(..)
     ) where
 
 
@@ -12,15 +9,10 @@ import Ef.Core.Object
 
 
 
-data Attribute r k
+data Notes r k
     where
 
-        Noter
+        Notes
             :: r
             -> (r -> k)
-            -> Attribute r k
-
-
-
-type Notes r contexts environment =
-    Has (Attribute r) contexts environment
+            -> Notes r k

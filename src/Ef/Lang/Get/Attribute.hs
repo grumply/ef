@@ -1,12 +1,6 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 module Ef.Lang.Get.Attribute
-    ( Attribute(..)
-    , Gets
+    ( Gets(..)
     ) where
 
 
@@ -15,17 +9,11 @@ import Ef.Core.Object
 
 
 
-data Attribute k
+data Gets k
   where
 
-    Getter
+    Gets
         :: (Object attrs parent,k)
         -> k
         -> k
-        -> Attribute k
-
-
-
-type Gets contexts environment =
-    Has Attribute contexts environment
-
+        -> Gets k

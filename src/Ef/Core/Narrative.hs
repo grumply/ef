@@ -19,6 +19,7 @@ module Ef.Core.Narrative
      , grow
      , rearrangeLexicon
      , Lift(..)
+     , Can(..)
      , Knows
      , Grow(..)
      , cutoff

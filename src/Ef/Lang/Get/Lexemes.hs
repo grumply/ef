@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Ef.Lang.Get.Lexemes
-    ( Lexicon(..)
+    ( Get(..)
     , introspect
     ) where
 
@@ -14,7 +14,7 @@ import Ef.Lang.Get.Lexicon
 
 
 introspect
-    :: Say Lexicon lexicon environment (Object contexts environment)
+    :: Say Get lexicon environment (Object contexts environment)
 
 introspect =
     do

@@ -1,9 +1,6 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE GADTs #-}
 module Ef.Lang.Except.Attribute
-    ( Attribute(..)
-    , Excepts
+    ( Excepts(..)
     ) where
 
 
@@ -14,16 +11,13 @@ import Control.Exception (SomeException(..))
 
 
 
-data Attribute k
+data Excepts k
   where
 
-    Except
+    Excepts
         :: (    SomeException
              -> k
            )
-        -> Attribute k
+        -> Excepts k
 
 
-
-type Excepts contexts environment =
-    Has Attribute contexts environment

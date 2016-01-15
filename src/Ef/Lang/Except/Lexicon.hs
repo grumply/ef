@@ -1,9 +1,6 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE GADTs #-}
 module Ef.Lang.Except.Lexicon
-    ( Lexicon(..)
-    , Excepts
+    ( Except(..)
     ) where
 
 
@@ -14,17 +11,10 @@ import Control.Exception (SomeException(..))
 
 
 
-data Lexicon k
+data Except k
   where
 
     Throw
         :: SomeException
         -> k
-        -> Lexicon k
-
-
-
-type Excepts lexicon environment =
-    ( Can Lexicon lexicon
-    , Monad environment
-    )
+        -> Except k

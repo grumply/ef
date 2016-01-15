@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
@@ -13,6 +14,11 @@ module Ef.Core.Inflect where
 
 import Ef.Core.Object.Context
 import Ef.Core.Narrative.Lexicon
+
+
+
+type Inflections contexts lexicon =
+    Inflection (Context contexts) (Lexicon lexicon)
 
 
 

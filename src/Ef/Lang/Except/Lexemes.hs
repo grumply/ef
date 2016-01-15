@@ -4,7 +4,7 @@
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE RankNTypes #-}
 module Ef.Lang.Except.Lexemes
-     ( Lexicon(..)
+     ( Except(..)
      , Throws
      , throwChecked
      , catchChecked
@@ -51,7 +51,7 @@ newtype Wrap e a =
 
 
 throwChecked
-    :: ( Excepts lexicon environment
+    :: ( Knows Except lexicon environment
        , Exception e
        )
     => e
@@ -69,7 +69,7 @@ throwChecked e =
 
 catchChecked
     :: forall e lexicon environment result.
-       ( Excepts lexicon environment
+       ( Knows Except lexicon environment
        , Exception e
        )
     => (Throws e => Narrative lexicon environment result)
@@ -103,7 +103,7 @@ catchChecked act =
 
 
 tryChecked
-    :: ( Excepts lexicon environment
+    :: ( Knows Except lexicon environment
        , Exception e
        )
     => (Throws e => Narrative lexicon environment result)
@@ -115,7 +115,7 @@ tryChecked a =
 
 
 mapChecked
-    :: ( Excepts lexicon environment
+    :: ( Knows Except lexicon environment
        , Exception e
        , Exception e'
        )

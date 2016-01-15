@@ -2,8 +2,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Ef.Lang.Get.Context
-    ( Attribute(..)
-    , getter
+    ( Gets(..)
+    , gets
     ) where
 
 
@@ -15,14 +15,14 @@ import qualified Data.Binary as B
 
 
 
-instance ( Gets contexts environment
+instance ( Has Gets contexts environment
          , B.Binary (Object contexts environment)
          )
-    => B.Binary (Attribute (Morphism contexts environment))
+    => B.Binary (Gets (Morphism contexts environment))
   where
 
     get =
-        pure getter
+        pure gets
 
 
     put _ =
@@ -30,25 +30,25 @@ instance ( Gets contexts environment
 
 
 
-getter
-    :: Use Attribute contexts environment
+gets
+    :: Use Gets contexts environment
 
-getter =
-    Getter (undefined,reifier) resetter pure
+gets =
+    Gets (undefined,reifier) resetter pure
   where
 
     resetter fs =
         case view fs of
 
-            Getter (_,reifies) reset gets ->
+            Gets (_,reifies) reset gets ->
                 pure $ fs .=
-                    Getter (undefined,reifies) reset gets
+                    Gets (undefined,reifies) reset gets
 
     reifier fs =
         case view fs of
 
-            Getter _ reset gets ->
+            Gets _ reset gets ->
                 pure $ fs .=
-                     Getter (fs,reifier) reset gets
+                     Gets (fs,reifier) reset gets
 
-{-# INLINE getter #-}
+{-# INLINE gets #-}

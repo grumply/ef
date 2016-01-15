@@ -1,7 +1,7 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE GADTs #-}
-module Ef.Lang.Get.Lexicon where
+module Ef.Lang.Get.Lexicon
+    ( Get(..)
+    ) where
 
 
 
@@ -9,24 +9,19 @@ import Ef.Core.Narrative
 import Ef.Core.Object
 
 
-data Lexicon k
-  where
+data Get k
+    where
 
-    Reset
-        :: k
-        -> Lexicon k
+        Reset
+            :: k
+            -> Get k
 
-    Reify
-        :: k
-        -> Lexicon k
+        Reify
+            :: k
+            -> Get k
 
-    Get
-        :: (    Object gs m
-             -> k
-           )
-        -> Lexicon k
-
-
-
-type Gets lexicon environment =
-    Knows Lexicon lexicon environment
+        Get
+             :: (    Object gs m
+                  -> k
+                )
+             -> Get k

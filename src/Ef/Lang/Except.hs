@@ -22,9 +22,9 @@ import Ef.Lang.Except.Context
 
 
 
-instance Inflection Attribute Lexicon
-  where
+instance Inflection Excepts Except
+    where
 
-    inflect use (Except k) (Throw e k') =
-        use (k e) k'
+        inflect use (Excepts k) (Throw e k') =
+            use (k e) k'
 
