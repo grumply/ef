@@ -112,8 +112,8 @@ runWithInvariants methodName invariants method =
       invariant =
           sequence (map try invariants)
 
-      test (Pure r) =
-          Pure r
+      test (Return r) =
+          Return r
 
       test (Fail e) =
           Fail e

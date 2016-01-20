@@ -23,41 +23,69 @@ Flag TRANSFORMERS_SAFE
 
                      
 library
-  exposed-modules:     Ef
-                       Ef.Core
-                       Ef.Core.Codensity
-                       Ef.Core.Object
-                       Ef.Core.Object.Context
-                       Ef.Core.Narrative
-                       Ef.Core.Narrative.Exception
-                       Ef.Core.Narrative.Lexicon
-                       Ef.Core.Type.Nat
-                       Ef.Core.Type.Set
-                       Ef.Core.Witness
-                       Ef.Data.Promise
-                       Ef.Lang.Checked.Lexicon
-                       Ef.Lang.Checked.Lexemes
-                       Ef.Lang.Notate
-                       Ef.Lang.Vary
-                       Ef.Lang.View
-                       Ef.Lang.Contract
-                       Ef.Lang.Fork
-                       Ef.Lang.IO
-                       Ef.Lang.Get
-                       Ef.Lang.Set
-                       Ef.Lang.IfThenElse
-                       Ef.Lang.Scoped.Exit
-                       Ef.Lang.Scoped.Generate
-                       Ef.Lang.Scoped.Guard
-                       Ef.Lang.Scoped.Log
-                       Ef.Lang.Scoped.Manage
-                       Ef.Lang.Scoped.Notate
-                       Ef.Lang.Scoped.Or
-                       Ef.Lang.Scoped.React
-                       Ef.Lang.Scoped.Fiber
-                       Ef.Lang.Scoped.Try
-                       Ef.Lang.Scoped.Vary
-                       Ef.Lang.Scoped.Switch
+  exposed-modules:
+                       -- Ef
+                  Ef.Core
+                  Ef.Core.Codensity
+                  Ef.Core.Object
+                  Ef.Core.Object.Context
+                  Ef.Core.Narrative
+                  Ef.Core.Narrative.Exception
+                  Ef.Core.Narrative.Lexicon
+                  Ef.Core.Type.Nat
+                  Ef.Core.Type.Set
+                  Ef.Core.Inflect
+
+                  Ef.Data.Promise
+
+                  Ef.Lang.Except
+                  Ef.Lang.Except.Lexicon
+                  Ef.Lang.Except.Lexemes
+                  Ef.Lang.Except.Attribute
+                  Ef.Lang.Except.Context
+
+                  Ef.Lang.Note
+                  Ef.Lang.Note.Attribute
+                  Ef.Lang.Note.Context
+                  Ef.Lang.Note.Lexicon
+                  Ef.Lang.Note.Lexemes
+
+                  Ef.Lang.State
+                  Ef.Lang.State.Attribute
+                  Ef.Lang.State.Context
+                  Ef.Lang.State.Lexicon
+                  Ef.Lang.State.Lexemes
+
+                  Ef.Lang.View
+                  Ef.Lang.View.Attribute
+                  Ef.Lang.View.Context
+                  Ef.Lang.View.Lexicon
+                  Ef.Lang.View.Lexemes
+
+                  Ef.Lang.Contract
+                 
+                  Ef.Lang.Fork
+
+                  Ef.Lang.IO
+
+                  Ef.Lang.Get
+                  Ef.Lang.Get.Attribute
+                  Ef.Lang.Get.Context
+                  Ef.Lang.Get.Lexicon
+                  Ef.Lang.Get.Lexemes
+
+                  Ef.Lang.Set
+                  Ef.Lang.Set.Attribute
+                  Ef.Lang.Set.Context
+                  Ef.Lang.Set.Lexicon
+                  Ef.Lang.Set.Lexemes
+                       -- Ef.Lang.IfThenElse
+                       -- Ef.Lang.Scoped.Generate
+                       -- Ef.Lang.Scoped.Guard
+                       -- Ef.Lang.Scoped.Manage
+                       -- Ef.Lang.Scoped.React
+                       -- Ef.Lang.Scoped.Fiber
+                       -- Ef.Lang.Scoped.Switch
 
   -- other-modules:       
   -- other-extensions:    

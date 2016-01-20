@@ -22,22 +22,22 @@ import Control.Monad
 
 
 
-newtype ThreadRef attrs environment result =
-    ThreadRef (ThreadId,Promise (Object attrs environment,Either SomeException result))
+newtype ThreadRef contexts environment result =
+    ThreadRef (ThreadId,Promise (Object contexts environment,Either SomeException result))
 
 
 
 forkWith
-    :: forall lexicon lexicon' attrs environment environment' result.
-       ( (Attrs attrs) `Inflection` (Lexeme lexicon)
+    :: forall lexicon lexicon' contexts environment environment' result.
+       ( Inflections contexts lexicon
        , Lift IO environment'
        , Monad environment'
        , Monad environment
        )
-    => Object attrs environment
+    => Object contexts environment
     -> Narrative lexicon environment result
     -> (forall x. environment x -> IO x)
-    -> Narrative lexicon' environment' (ThreadRef attrs environment result)
+    -> Narrative lexicon' environment' (ThreadRef contexts environment result)
 
 forkWith comp plan embedInIO =
     do
@@ -56,16 +56,16 @@ forkWith comp plan embedInIO =
 
 
 forkOSWith
-    :: forall lexicon lexicon' attrs environment environment' result.
-       ( (Attrs attrs) `Inflection` (Lexeme lexicon)
+    :: forall lexicon lexicon' contexts environment environment' result.
+       ( Inflections contexts lexicon
        , Lift IO environment'
        , Monad environment'
        , Monad environment
        )
-    => Object attrs environment
+    => Object contexts environment
     -> Narrative lexicon environment result
     -> (forall x. environment x -> IO x)
-    -> Narrative lexicon' environment' (ThreadRef attrs environment result)
+    -> Narrative lexicon' environment' (ThreadRef contexts environment result)
 
 forkOSWith comp plan embedInIO =
     do
@@ -84,17 +84,17 @@ forkOSWith comp plan embedInIO =
 
 
 forkOnWith
-    :: forall lexicon lexicon' attrs environment environment' result.
-       ( (Attrs attrs) `Inflection` (Lexeme lexicon)
+    :: forall lexicon lexicon' contexts environment environment' result.
+       ( Inflections contexts lexicon
        , Lift IO environment'
        , Monad environment'
        , Monad environment
        )
     => Int
-    -> Object attrs environment
+    -> Object contexts environment
     -> Narrative lexicon environment result
     -> (forall x. environment x -> IO x)
-    -> Narrative lexicon' environment' (ThreadRef attrs environment result)
+    -> Narrative lexicon' environment' (ThreadRef contexts environment result)
 
 forkOnWith n comp plan embedInIO =
     do

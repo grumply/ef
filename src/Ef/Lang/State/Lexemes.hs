@@ -1,8 +1,8 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
-module Ef.Lang.Vary.Lexemes
-    ( Vary(..)
+module Ef.Lang.State.Lexemes
+    ( State(..)
     , get
     , gets
     , put
@@ -15,12 +15,12 @@ module Ef.Lang.Vary.Lexemes
 
 
 import Ef.Core.Narrative
-import Ef.Lang.Vary.Lexicon
+import Ef.Lang.State.Lexicon
 
 
 
 get
-    :: Say (Vary st) lexicon environment st
+    :: Say (State st) lexicon environment st
 
 get =
     say (Modify id id)
@@ -29,7 +29,7 @@ get =
 
 gets
     :: (st -> result)
-    -> Say (Vary st) lexicon environment result
+    -> Say (State st) lexicon environment result
 
 gets f =
     say (Modify id f)
@@ -38,7 +38,7 @@ gets f =
 
 put
     :: st
-    -> Say (Vary st) lexicon environment ()
+    -> Say (State st) lexicon environment ()
 
 put st =
     say (Modify (const st) (const ()))
@@ -48,7 +48,7 @@ put st =
 puts
     :: (a -> st)
     -> a
-    -> Say (Vary st) lexicon environment ()
+    -> Say (State st) lexicon environment ()
 
 puts f a =
     say (Modify (const (f a)) (const ()))
@@ -57,7 +57,7 @@ puts f a =
 
 swap
     :: st
-    -> Say (Vary st) lexicon environment st
+    -> Say (State st) lexicon environment st
 
 swap st =
     say (Modify (const st) id)
@@ -66,7 +66,7 @@ swap st =
 
 modify
     :: (st -> st)
-    -> Say (Vary st) lexicon environment ()
+    -> Say (State st) lexicon environment ()
 
 modify f =
     say (Modify f (const ()))
@@ -75,7 +75,7 @@ modify f =
 
 modify'
     :: (st -> st)
-    -> Say (Vary st) lexicon environment ()
+    -> Say (State st) lexicon environment ()
 
 modify' f =
     do

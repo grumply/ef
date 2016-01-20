@@ -27,29 +27,29 @@ type Inflections contexts lexicon =
 class Inflection f g
     | f -> g
     , g -> f
-  where
+    where
 
-    inflect
-        :: (a -> b -> r)
-        -> f a
-        -> g b
-        -> r
+        inflect
+            :: (a -> b -> r)
+            -> f a
+            -> g b
+            -> r
 
 
 
 instance Inflection ((->) a) ((,) a)
-  where
+    where
 
-    inflect use f g =
-        uncurry (use . f) g
+        inflect use f g =
+            uncurry (use . f) g
 
 
 
 instance Inflection ((,) a) ((->) a)
-  where
+    where
 
-    inflect use ~(l,r) g =
-        use r (g l)
+        inflect use ~(l,r) g =
+            use r (g l)
 
 
 
@@ -61,10 +61,10 @@ instance ( Inflection context lexeme
          , Inflection (Context contexts) (Lexicon lexicon)
          )
     => Inflection (Context (context ': contexts)) (Lexicon (lexeme ': lexicon))
-  where
+    where
 
-    inflect use (Context context _) (Lexeme lexeme) =
-        inflect use context lexeme
+        inflect use (Context context _) (Lexeme lexeme) =
+            inflect use context lexeme
 
-    inflect use (Context _ contexts) (Further lexicon) =
-        inflect use contexts lexicon
+        inflect use (Context _ contexts) (Further lexicon) =
+            inflect use contexts lexicon

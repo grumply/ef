@@ -9,7 +9,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
-module Ef.Lang.Checked
+module Ef.Lang.Except
     ( module Ef.Lang.Except.Lexemes
     ) where
 
