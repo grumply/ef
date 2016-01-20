@@ -1,18 +1,8 @@
--- | An embedding of Gabriel Gonzalez's Pipes library with 
--- slight modifications for nesting and scoping and minor renaming.
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ExistentialQuantification #-}
-module Ef.Lang.Scoped.Switch
-    ( Switchable
-    , switcher
-    , Switching
-    , switch
+{-# LANGUAGE RankNTypes #-}
+module Ef.Lang.Knot.Lexemes
+    ( Knots(..)
+    , linearize
 
     , Producer
     , Producer'
@@ -33,10 +23,10 @@ module Ef.Lang.Scoped.Switch
     , Server'
     , server
 
-    , Switched(..)
+    , Knotted(..)
     , Effect
     , Effect'
-    , switched
+    , knotted
 
     , X
 
@@ -73,94 +63,29 @@ module Ef.Lang.Scoped.Switch
 
 
 
-import Ef.Core
+import Ef.Core.Narrative
+
+import Ef.Lang.Knot.Lexicon
 
 import Control.Applicative
 import Control.Monad
-import Data.Binary
 import Unsafe.Coerce
 
 
-
-data Switching k
-  where
-
-    FreshScope
-        :: (Int -> k)
-        -> Switching k
-
-    Request
-        :: Int
-        -> a'
-        -> (a  -> Pattern scope parent r)
-        -> Switching k
-
-    Respond
-        :: Int
-        -> b
-        -> (b' -> Pattern scope parent r)
-        -> Switching k
-
-
-
-data Switchable k
-  where
-
-    Switchable
-        :: Int
-        -> k
-        -> Switchable k
-
-
-
-instance Uses Switchable attrs parent
-    => Binary (Attribute Switchable attrs parent)
-  where
-
-    get =
-        return switcher
-
-
-
-    put _ =
-        pure ()
-
-
-
 freshScope
-    :: Is Switching scope parent
-    => Pattern scope parent Int
+    :: Say Knots lexicon environment Int
 
 freshScope =
-    self (FreshScope id)
-
-
-
-switcher
-    :: Uses Switchable attrs parent
-    => Attribute Switchable attrs parent
-
-switcher =
-    Switchable 0 $ \fs ->
-        let
-          Switchable n k =
-              view fs
-
-          n' =
-              succ n
-
-        in
-          n' `seq` pure $ fs .=
-              Switchable n' k
+    say (FreshScope id)
 
 
 
 getScope
-    :: Is Switching scope parent
-    => Pattern scope parent a
-    -> parent Int
+    :: Knows Knots lexicon environment
+    => Narrative lexicon environment a
+    -> environment Int
 
-getScope (Send symbol _) =
+getScope (Say symbol _) =
     case prj symbol of
 
         Just x ->
@@ -174,51 +99,42 @@ getScope (Send symbol _) =
 
 
 
-instance Witnessing Switchable Switching
-  where
+linearize
+    :: Effect lexicon environment r
+    -> Say Knots lexicon environment r
 
-    witness p (Switchable i k) (FreshScope ik) =
-        p k (ik i)
-
-
-
-switch
-    :: Is Switching scope parent
-    => Effect scope parent r
-    -> Pattern scope parent r
-
-switch e =
+linearize e =
     do
-      scope <- freshScope
-      rewrite scope $
-          runSwitched e
-              (\a' apl -> self (Request scope a' apl))
-              (\b b'p -> self (Respond scope b b'p))
+      lexicon <- freshScope
+      rewrite lexicon $
+          runKnotted e
+              (\a' apl -> say (Request lexicon a' apl))
+              (\b b'p -> say (Respond lexicon b b'p))
 
 
 
-rewrite rewriteScope = go
+rewrite rewriteLexicon = go
   where
 
     go (Fail e) =
         Fail e
 
-    go (Pure r) =
-        Pure r
+    go (Return r) =
+        Return r
 
     go (Super m) =
         Super (fmap go m)
 
-    go (Send symbol k) =
+    go (Say symbol k) =
         let
-          check currentScope scoped =
-              if currentScope == rewriteScope then
-                  scoped
+          check currentLexicon lexicond =
+              if currentLexicon == rewriteLexicon then
+                  lexicond
               else
                   ignore
 
           ignore =
-              Send symbol (go . k)
+              Say symbol (go . k)
 
         in
           case prj symbol of
@@ -226,38 +142,38 @@ rewrite rewriteScope = go
               Just x  ->
                   case x of
 
-                      Request currentScope a' _ ->
-                          check currentScope $
+                      Request currentLexicon a' _ ->
+                          check currentLexicon $
                               closed (unsafeCoerce a')
 
-                      Respond currentScope b _ ->
-                          check currentScope $
+                      Respond currentLexicon b _ ->
+                          check currentLexicon $
                               closed (unsafeCoerce b)
 
-              Nothing -> Send symbol (go . k)
+              Nothing -> Say symbol (go . k)
 
 
 
 instance Functor m
-    => Functor (Switched fs a' a b' b m)
+    => Functor (Knotted fs a' a b' b m)
   where
 
-    fmap f (Switched w) =
-        Switched $ \up dn -> fmap f (w up dn)
+    fmap f (Knotted w) =
+        Knotted $ \up dn -> fmap f (w up dn)
 
 
 
 instance Monad m
-    => Applicative (Switched fs a' a b' b m)
+    => Applicative (Knotted fs a' a b' b m)
   where
 
     pure a =
-        Switched $ \_ _ -> pure a
+        Knotted $ \_ _ -> pure a
 
 
 
     wf <*> wx =
-        Switched $ \up dn -> rewriteAp up dn (runSwitched wf up dn)
+        Knotted $ \up dn -> rewriteAp up dn (runKnotted wf up dn)
       where
 
         rewriteAp up dn =
@@ -270,11 +186,11 @@ instance Monad m
             go (Super m) =
                 Super (fmap go m)
 
-            go (Send sym k) =
-                Send sym (go . k)
+            go (Say sym k) =
+                Say sym (go . k)
 
-            go (Pure f) =
-                fmap f (runSwitched wx (unsafeCoerce up)
+            go (Return f) =
+                fmap f (runKnotted wx (unsafeCoerce up)
                                     (unsafeCoerce dn)
                        )
 
@@ -285,7 +201,7 @@ instance Monad m
 
 
 instance Monad m
-    => Monad (Switched fs a' a b' b m)
+    => Monad (Knotted fs a' a b' b m)
   where
 
     return =
@@ -294,24 +210,24 @@ instance Monad m
 
 
     r >>= rs =
-        Switched $ \up dn ->
+        Knotted $ \up dn ->
             do
-              v <- runSwitched r (unsafeCoerce up) (unsafeCoerce dn)
-              runSwitched (rs v) up dn
+              v <- runKnotted r (unsafeCoerce up) (unsafeCoerce dn)
+              runKnotted (rs v) up dn
 
 
 
 instance ( Monad m
          , Monoid r
-         ) => Monoid (Switched fs a' a b' b m r)
+         ) => Monoid (Knotted fs a' a b' b m r)
   where
 
     mempty =
         pure mempty
 
     mappend w1 w2 =
-        Switched $ \up dn ->
-            rewriteMappend up dn (runSwitched w1 up dn)
+        Knotted $ \up dn ->
+            rewriteMappend up dn (runKnotted w1 up dn)
       where
 
         rewriteMappend up dn = go
@@ -323,13 +239,13 @@ instance ( Monad m
             go (Super m) =
                 Super (fmap go m)
 
-            go (Send sym bp) =
-                Send sym (go . bp)
+            go (Say sym bp) =
+                Say sym (go . bp)
 
-            go (Pure result) =
+            go (Return result) =
                 let
                   routine =
-                      runSwitched w2 (unsafeCoerce up) (unsafeCoerce dn)
+                      runKnotted w2 (unsafeCoerce up) (unsafeCoerce dn)
 
                 in
                   fmap (mappend result) routine
@@ -337,7 +253,7 @@ instance ( Monad m
 
 
 instance MonadPlus m
-    => Alternative (Switched fs a' a b' b m)
+    => Alternative (Knotted fs a' a b' b m)
   where
 
     empty =
@@ -351,17 +267,17 @@ instance MonadPlus m
 
 
 instance MonadPlus m
-    => MonadPlus (Switched fs a' a b' b m)
+    => MonadPlus (Knotted fs a' a b' b m)
   where
 
     mzero =
-        Switched $ \_ _ -> lift_ mzero
+        Knotted $ \_ _ -> super mzero
 
     mplus w0 w1 =
-        Switched $ \up dn ->
+        Knotted $ \up dn ->
             let
               routine =
-                  runSwitched w0 (unsafeCoerce up) (unsafeCoerce dn)
+                  runKnotted w0 (unsafeCoerce up) (unsafeCoerce dn)
             in
               rewriteMplus up dn routine
       where
@@ -371,16 +287,16 @@ instance MonadPlus m
             go (Fail err) =
                 Fail err
 
-            go (Pure r) =
-                Pure r
+            go (Return r) =
+                Return r
 
-            go (Send sym bp) =
-                Send sym (go . bp)
+            go (Say sym bp) =
+                Say sym (go . bp)
 
             go (Super m) =
               let
                 routine =
-                    runSwitched w1 (unsafeCoerce up) (unsafeCoerce dn)
+                    runKnotted w1 (unsafeCoerce up) (unsafeCoerce dn)
 
               in
                 Super (fmap go m `mplus` return routine)
@@ -401,214 +317,214 @@ closed (X x) =
 
 
 type Effect fs m r =
-    Switched fs X () () X m r
+    Knotted fs X () () X m r
 
 
 
 type Producer b fs m r =
-    Switched fs X () () b m r
+    Knotted fs X () () b m r
 
 
 
 producer
     :: forall fs m b r.
-       Is Switching fs m
+       Knows Knots fs m
     => (    (    b
-              -> Pattern fs m ()
+              -> Narrative fs m ()
             )
-         -> Pattern fs m r
+         -> Narrative fs m r
        )
     -> Producer' b fs m r
 
 producer f =
-    Switched $ \_ dn ->
+    Knotted $ \_ dn ->
         do
           let
-            scopedDown =
+            lexicondDown =
                 dn (unsafeCoerce ()) (unsafeCoerce ())
 
-            respond scope b =
-                self (Respond scope b Pure)
+            respond lexicon b =
+                say (Respond lexicon b Return)
 
-          i <- lift (getScope scopedDown)
+          i <- lift (getScope lexicondDown)
           f (respond i)
 
 
 
 type Consumer a fs m r =
-    Switched fs () a () X m r
+    Knotted fs () a () X m r
 
 
 
 consumer
     :: forall fs m a r.
-       Is Switching fs m
-    => (    Pattern fs m a
-         -> Pattern fs m r
+       Knows Knots fs m
+    => (    Narrative fs m a
+         -> Narrative fs m r
        )
     -> Consumer' a fs m r
 
 consumer f =
-    Switched $ \up _ ->
+    Knotted $ \up _ ->
         do
           let
-            scopedUp =
+            lexicondUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
-            request scope =
-                self (Request scope () Pure)
+            request lexicon =
+                say (Request lexicon () Return)
 
-          i <- lift (getScope scopedUp)
+          i <- lift (getScope lexicondUp)
           f (request i)
 
 
 
-type Line a b fs m r = Switched fs () a () b m r
+type Line a b fs m r = Knotted fs () a () b m r
 
 
 
 line
     :: forall fs m a b x r.
-       Is Switching fs m
-    => (    Pattern fs m a
+       Knows Knots fs m
+    => (    Narrative fs m a
          -> (    b
-              -> Pattern fs m x
+              -> Narrative fs m x
             )
-         -> Pattern fs m r
+         -> Narrative fs m r
        )
     -> Line a b fs m r
 
 line f =
-    Switched $ \up _ ->
+    Knotted $ \up _ ->
         do
           let
-            scopedUp =
+            lexicondUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
-          i <- lift (getScope scopedUp)
+          i <- lift (getScope lexicondUp)
           let
             request =
-                self (Request i () Pure)
+                say (Request i () Return)
 
             respond b =
-                self (Respond i b Pure)
+                say (Respond i b Return)
 
           f request respond
 
 
 
 type Client a' a fs m r =
-    Switched fs a' a () X m r
+    Knotted fs a' a () X m r
 
 
 
 client
     :: forall fs m a' a r.
-       Is Switching fs m
+       Knows Knots fs m
     => (    (    a'
-              -> Pattern fs m a
+              -> Narrative fs m a
             )
-         -> Pattern fs m r
+         -> Narrative fs m r
        )
     -> Client' a' a fs m r
 
 client f =
-    Switched $ \up _ ->
+    Knotted $ \up _ ->
         do
           let
-            scopedUp =
+            lexicondUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
-          i <- lift (getScope scopedUp)
+          i <- lift (getScope lexicondUp)
           let
             request a =
-                self (Request i a Pure)
+                say (Request i a Return)
 
           f request
 
 
 
 type Server b' b fs m r =
-    Switched fs X () b' b m r
+    Knotted fs X () b' b m r
 
 
 
 server
     :: forall fs m b' b r.
-       Is Switching fs m
+       Knows Knots fs m
     => (    (    b
-              -> Pattern fs m b'
+              -> Narrative fs m b'
             )
-         -> Pattern fs m r
+         -> Narrative fs m r
        )
     -> Server' b' b fs m r
 
 server f =
-    Switched $ \_ dn ->
+    Knotted $ \_ dn ->
         do
          let
-           scopedDown =
+           lexicondDown =
                dn (unsafeCoerce ()) (unsafeCoerce ())
 
-         i <- lift (getScope scopedDown)
+         i <- lift (getScope lexicondDown)
          let
            respond b' =
-               self (Respond i b' Pure)
+               say (Respond i b' Return)
 
          f respond
 
 
 
-newtype Switched fs a' a b' b m r =
-    Switched
+newtype Knotted fs a' a b' b m r =
+    Knotted
         {
-          runSwitched
+          runKnotted
               :: (forall x.
                       a'
                    -> (    a
-                        -> Pattern fs m x
+                        -> Narrative fs m x
                       )
-                   -> Pattern fs m x
+                   -> Narrative fs m x
                  )
               -> (forall x.
                       b
                    -> (    b'
-                        -> Pattern fs m x
+                        -> Narrative fs m x
                       )
-                   -> Pattern fs m x
+                   -> Narrative fs m x
                  )
-             -> Pattern fs m r
+             -> Narrative fs m r
         }
 
 
 
-switched
+knotted
     :: forall fs a a' b b' m r.
-       Is Switching fs m
+       Knows Knots fs m
     => (    (    a
-              -> Pattern fs m a'
+              -> Narrative fs m a'
             )
          -> (    b'
-              -> Pattern fs m b
+              -> Narrative fs m b
             )
-         -> Pattern fs m r
+         -> Narrative fs m r
        )
-    -> Switched fs a' a b' b m r
+    -> Knotted fs a' a b' b m r
 
-switched f =
-    Switched $ \up _ ->
+knotted f =
+    Knotted $ \up _ ->
         do
           let
-            scopedUp =
+            lexicondUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
-          i <- lift (getScope scopedUp)
+          i <- lift (getScope lexicondUp)
           let
             request a =
-                self (Request i a Pure)
+                say (Request i a Return)
 
             respond b' =
-                self (Respond i b' Pure)
+                say (Respond i b' Return)
 
           f request respond
 
@@ -616,31 +532,31 @@ switched f =
 
 type Effect' fs m r =
     forall x' x y' y.
-    Switched fs x' x y' y m r
+    Knotted fs x' x y' y m r
 
 
 
 type Producer' b fs m r =
     forall x' x.
-    Switched fs x' x () b m r
+    Knotted fs x' x () b m r
 
 
 
 type Consumer' a fs m r =
     forall y' y.
-    Switched fs () a y' y m r
+    Knotted fs () a y' y m r
 
 
 
 type Server' b' b fs m r =
     forall x' x.
-    Switched fs x' x b' b m r
+    Knotted fs x' x b' b m r
 
 
 
 type Client' a' a fs m r =
     forall y' y.
-    Switched fs a' a y' y m r
+    Knotted fs a' a y' y m r
 
 
 
@@ -648,7 +564,7 @@ type Client' a' a fs m r =
 -- Respond; substitute yields with a function
 
 cat
-    :: Is Switching fs m
+    :: Knows Knots fs m
     => Line a a fs m r
 
 cat =
@@ -660,52 +576,52 @@ cat =
 infixl 3 //>
 (//>)
     :: forall fs x' x b' b c' c m a'.
-       Is Switching fs m
-    => Switched fs x' x b' b m a'
+       Knows Knots fs m
+    => Knotted fs x' x b' b m a'
     -> (    b
-         -> Switched fs x' x c' c m b'
+         -> Knotted fs x' x c' c m b'
        )
-    -> Switched fs x' x c' c m a'
+    -> Knotted fs x' x c' c m a'
 
 p0 //> fb =
-    Switched $ \up dn ->
+    Knotted $ \up dn ->
         do
           let
-            scopedUp =
+            lexicondUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
-          i <- lift (getScope scopedUp)
+          i <- lift (getScope lexicondUp)
           let
             routine =
-                runSwitched p0 up (unsafeCoerce dn)
+                runKnotted p0 up (unsafeCoerce dn)
 
           substituteResponds fb i up dn routine
 
 
 
-substituteResponds fb rewriteScope up dn =
+substituteResponds fb rewriteLexicon up dn =
     go
   where
 
     go (Fail err) =
         Fail err
 
-    go (Pure r) =
-        Pure r
+    go (Return r) =
+        Return r
 
     go (Super m) =
         Super (fmap go m)
 
-    go (Send sym bp) =
+    go (Say sym bp) =
         let
-          check currentScope scoped =
-              if currentScope == rewriteScope then
-                  scoped
+          check currentLexicon lexicond =
+              if currentLexicon == rewriteLexicon then
+                  lexicond
               else
                   ignore
 
           ignore =
-              Send sym (go . bp)
+              Say sym (go . bp)
 
         in
           case prj sym of
@@ -713,12 +629,12 @@ substituteResponds fb rewriteScope up dn =
               Just x ->
                   case x of
 
-                      Respond currentScope b _ ->
-                          check currentScope $
+                      Respond currentLexicon b _ ->
+                          check currentLexicon $
                               do
                                 let
                                   routine =
-                                      runSwitched (fb (unsafeCoerce b))
+                                      runKnotted (fb (unsafeCoerce b))
                                                (unsafeCoerce up)
                                                (unsafeCoerce dn)
 
@@ -738,12 +654,12 @@ substituteResponds fb rewriteScope up dn =
 
 
 for
-    :: Is Switching fs m
-    => Switched fs x' x b' b m a'
+    :: Knows Knots fs m
+    => Knotted fs x' x b' b m a'
     -> (    b
-         -> Switched fs x' x c' c m b'
+         -> Knotted fs x' x c' c m b'
        )
-    -> Switched fs x' x c' c m a'
+    -> Knotted fs x' x c' c m a'
 
 for =
     (//>)
@@ -752,12 +668,12 @@ for =
 
 infixr 3 <\\
 (<\\)
-    :: Is Switching fs m
+    :: Knows Knots fs m
     => (    b
-         -> Switched fs x' x c' c m b'
+         -> Knotted fs x' x c' c m b'
        )
-    -> Switched fs x' x b' b m a'
-    -> Switched fs x' x c' c m a'
+    -> Knotted fs x' x b' b m a'
+    -> Knotted fs x' x c' c m a'
 
 f <\\ p =
     p //> f
@@ -766,15 +682,15 @@ f <\\ p =
 
 infixl 4 \<\
 (\<\)
-    :: Is Switching fs m
+    :: Knows Knots fs m
     => (    b
-         -> Switched fs x' x c' c m b'
+         -> Knotted fs x' x c' c m b'
        )
     -> (    a
-         -> Switched fs x' x b' b m a'
+         -> Knotted fs x' x b' b m a'
        )
     -> a
-    -> Switched fs x' x c' c m a'
+    -> Knotted fs x' x c' c m a'
 
 p1 \<\ p2 = p2 />/ p1
 
@@ -782,15 +698,15 @@ p1 \<\ p2 = p2 />/ p1
 
 infixr 4 ~>
 (~>)
-    :: Is Switching fs m
+    :: Knows Knots fs m
     => (    a
-         -> Switched fs x' x b' b m a'
+         -> Knotted fs x' x b' b m a'
        )
     -> (    b
-         -> Switched fs x' x c' c m b'
+         -> Knotted fs x' x c' c m b'
        )
     -> a
-    -> Switched fs x' x c' c m a'
+    -> Knotted fs x' x c' c m a'
 
 (~>) =
     (/>/)
@@ -799,15 +715,15 @@ infixr 4 ~>
 
 infixl 4 <~
 (<~)
-    :: Is Switching fs m
+    :: Knows Knots fs m
     => (    b
-         -> Switched fs x' x c' c m b'
+         -> Knotted fs x' x c' c m b'
        )
     -> (    a
-         -> Switched fs x' x b' b m a'
+         -> Knotted fs x' x b' b m a'
        )
     -> a
-    -> Switched fs x' x c' c m a'
+    -> Knotted fs x' x c' c m a'
 
 g <~ f =
     f ~> g
@@ -816,15 +732,15 @@ g <~ f =
 
 infixr 4 />/
 (/>/)
-    :: Is Switching fs m
+    :: Knows Knots fs m
     => (    a
-         -> Switched fs x' x b' b m a'
+         -> Knotted fs x' x b' b m a'
        )
     -> (    b
-         -> Switched fs x' x c' c m b'
+         -> Knotted fs x' x c' c m b'
        )
     -> a
-    -> Switched fs x' x c' c m a'
+    -> Knotted fs x' x c' c m a'
 
 (fa />/ fb) a =
     fa a //> fb
@@ -838,49 +754,49 @@ infixr 4 />/
 infixr 4 >\\
 (>\\)
     :: forall fs y' y a' a b' b m c.
-       Is Switching fs m
+       Knows Knots fs m
     => (    b'
-         -> Switched fs a' a y' y m b
+         -> Knotted fs a' a y' y m b
        )
-    -> Switched fs b' b y' y m c
-    -> Switched fs a' a y' y m c
+    -> Knotted fs b' b y' y m c
+    -> Knotted fs a' a y' y m c
 
 fb' >\\ p0 =
-    Switched $ \up dn ->
+    Knotted $ \up dn ->
         do
           let
-            scopedUp =
+            lexicondUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
-          i <- lift (getScope scopedUp)
+          i <- lift (getScope lexicondUp)
           let
             routine =
-                runSwitched p0 (unsafeCoerce up) dn
+                runKnotted p0 (unsafeCoerce up) dn
 
           substituteRequests fb' i up dn routine
 
-substituteRequests fb' rewriteScope up dn p1 = go p1
+substituteRequests fb' rewriteLexicon up dn p1 = go p1
   where
 
     go (Fail err) =
         Fail err
 
-    go (Pure r) =
-        Pure r
+    go (Return r) =
+        Return r
 
     go (Super m) =
         Super (fmap go m)
 
-    go (Send sym bp) =
+    go (Say sym bp) =
         let
-          check currentScope scoped =
-              if currentScope == rewriteScope then
-                  scoped
+          check currentLexicon lexicond =
+              if currentLexicon == rewriteLexicon then
+                  lexicond
               else
                   ignore
 
           ignore =
-              Send sym (go . bp)
+              Say sym (go . bp)
 
         in
           case prj sym of
@@ -888,12 +804,12 @@ substituteRequests fb' rewriteScope up dn p1 = go p1
               Just x ->
                   case x of
 
-                      Request currentScope b' _ ->
-                          check currentScope $
+                      Request currentLexicon b' _ ->
+                          check currentLexicon $
                               do
                                 let
                                   routine =
-                                      runSwitched (fb' (unsafeCoerce b'))
+                                      runKnotted (fb' (unsafeCoerce b'))
                                                (unsafeCoerce up)
                                                (unsafeCoerce dn)
 
@@ -914,15 +830,15 @@ substituteRequests fb' rewriteScope up dn p1 = go p1
 
 infixr 5 /</
 (/</)
-    :: Is Switching fs m
+    :: Knows Knots fs m
     => (    c'
-         -> Switched fs b' b x' x m c
+         -> Knotted fs b' b x' x m c
        )
     -> (    b'
-         -> Switched fs a' a x' x m b
+         -> Knotted fs a' a x' x m b
        )
     -> c'
-    -> Switched fs a' a x' x m c
+    -> Knotted fs a' a x' x m c
 
 p1 /</ p2 =
     p2 \>\ p1
@@ -931,10 +847,10 @@ p1 /</ p2 =
 
 infixr 5 >~
 (>~)
-    :: Is Switching fs m
-    => Switched fs a' a y' y m b
-    -> Switched fs () b y' y m c
-    -> Switched fs a' a y' y m c
+    :: Knows Knots fs m
+    => Knotted fs a' a y' y m b
+    -> Knotted fs () b y' y m c
+    -> Knotted fs a' a y' y m c
 
 p1 >~ p2 =
     (\() -> p1) >\\ p2
@@ -943,10 +859,10 @@ p1 >~ p2 =
 
 infixl 5 ~<
 (~<)
-    :: Is Switching fs m
-    => Switched fs () b y' y m c
-    -> Switched fs a' a y' y m b
-    -> Switched fs a' a y' y m c
+    :: Knows Knots fs m
+    => Knotted fs () b y' y m c
+    -> Knotted fs a' a y' y m b
+    -> Knotted fs a' a y' y m c
 
 p2 ~< p1 =
     p1 >~ p2
@@ -955,15 +871,15 @@ p2 ~< p1 =
 
 infixl 5 \>\
 (\>\)
-    :: Is Switching fs m
+    :: Knows Knots fs m
     => (    b'
-         -> Switched fs a' a y' y m b
+         -> Knotted fs a' a y' y m b
        )
     -> (    c'
-         -> Switched fs b' b y' y m c
+         -> Knotted fs b' b y' y m c
        )
     -> c'
-    -> Switched fs a' a y' y m c
+    -> Knotted fs a' a y' y m c
 
 (fb' \>\ fc') c' =
     fb' >\\ fc' c'
@@ -973,12 +889,12 @@ infixl 5 \>\
 infixl 4 \\<
 (\\<)
     :: forall fs y' y a' a b' b m c.
-       Is Switching fs m
-    => Switched fs b' b y' y m c
+       Knows Knots fs m
+    => Knotted fs b' b y' y m c
     -> (    b'
-         -> Switched fs a' a y' y m b
+         -> Knotted fs a' a y' y m b
        )
-    -> Switched fs a' a y' y m c
+    -> Knotted fs a' a y' y m c
 p \\< f =
     f >\\ p
 
@@ -990,31 +906,31 @@ p \\< f =
 
 infixl 7 >>~
 (>>~)
-    :: forall fs a' a b' b c' c m r. Is Switching fs m
-    => Switched fs a' a b' b m r
+    :: forall fs a' a b' b c' c m r. Knows Knots fs m
+    => Knotted fs a' a b' b m r
     -> (    b
-         -> Switched fs b' b c' c m r
+         -> Knotted fs b' b c' c m r
        )
-    -> Switched fs a' a c' c m r
+    -> Knotted fs a' a c' c m r
 p0 >>~ fb0 =
-    Switched $ \up dn ->
+    Knotted $ \up dn ->
         do
           let
-            scopedUp =
+            lexicondUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
-          i <- lift (getScope scopedUp)
+          i <- lift (getScope lexicondUp)
           pushRewrite i up dn fb0 p0
 
 
 
-pushRewrite rewriteScope up dn fb0 p0 =
+pushRewrite rewriteLexicon up dn fb0 p0 =
     let
       upstream =
-          runSwitched p0 (unsafeCoerce up) (unsafeCoerce dn)
+          runKnotted p0 (unsafeCoerce up) (unsafeCoerce dn)
 
       downstream b =
-          runSwitched (fb0 b) (unsafeCoerce up) (unsafeCoerce dn)
+          runKnotted (fb0 b) (unsafeCoerce up) (unsafeCoerce dn)
 
     in
       goLeft downstream upstream
@@ -1023,8 +939,8 @@ pushRewrite rewriteScope up dn fb0 p0 =
     goLeft fb = goLeft'
       where
 
-        goLeft' (Pure r) =
-            Pure r
+        goLeft' (Return r) =
+            Return r
 
         goLeft' (Fail err) =
             Fail err
@@ -1032,16 +948,16 @@ pushRewrite rewriteScope up dn fb0 p0 =
         goLeft' (Super m) =
             Super (fmap goLeft' m)
 
-        goLeft' (Send sym bp) =
+        goLeft' (Say sym bp) =
             let
-              check currentScope scoped =
-                  if currentScope == rewriteScope then
-                      scoped
+              check currentLexicon lexicond =
+                  if currentLexicon == rewriteLexicon then
+                      lexicond
                   else
                       ignore
 
               ignore =
-                  Send sym (goLeft' . bp)
+                  Say sym (goLeft' . bp)
 
             in
               case prj sym of
@@ -1049,8 +965,8 @@ pushRewrite rewriteScope up dn fb0 p0 =
                 Just x ->
                     case x of
 
-                        Respond currentScope b _ ->
-                            check currentScope $
+                        Respond currentLexicon b _ ->
+                            check currentLexicon $
                                 goRight (unsafeCoerce bp)
                                         (fb (unsafeCoerce b))
 
@@ -1068,27 +984,27 @@ pushRewrite rewriteScope up dn fb0 p0 =
         goRight' (Super m) =
             Super (fmap goRight' m)
 
-        goRight' (Pure r) =
-            Pure r
+        goRight' (Return r) =
+            Return r
 
-        goRight' (Send sym bp) =
+        goRight' (Say sym bp) =
             let
-              check currentScope scoped =
-                  if currentScope == rewriteScope then
-                      scoped
+              check currentLexicon lexicond =
+                  if currentLexicon == rewriteLexicon then
+                      lexicond
                   else
                       ignore
 
               ignore =
-                  Send sym (goRight' . bp)
+                  Say sym (goRight' . bp)
             in
               case prj sym of
 
                   Just x  ->
                       case x of
 
-                          Request currentScope b' _ ->
-                              check currentScope $
+                          Request currentLexicon b' _ ->
+                              check currentLexicon $
                                   goLeft (unsafeCoerce bp)
                                          (b'p (unsafeCoerce b'))
 
@@ -1103,15 +1019,15 @@ pushRewrite rewriteScope up dn fb0 p0 =
 
 infixl 8 <~<
 (<~<)
-    :: Is Switching fs m
+    :: Knows Knots fs m
     => (    b
-         -> Switched fs b' b c' c m r
+         -> Knotted fs b' b c' c m r
        )
     -> (    a
-         -> Switched fs a' a b' b m r
+         -> Knotted fs a' a b' b m r
        )
     -> a
-    -> Switched fs a' a c' c m r
+    -> Knotted fs a' a c' c m r
 
 p1 <~< p2 =
     p2 >~> p1
@@ -1120,15 +1036,15 @@ p1 <~< p2 =
 
 infixr 8 >~>
 (>~>)
-    :: Is Switching fs m
+    :: Knows Knots fs m
     => (    _a
-          -> Switched fs a' a b' b m r
+          -> Knotted fs a' a b' b m r
        )
     -> (    b
-         -> Switched fs b' b c' c m r
+         -> Knotted fs b' b c' c m r
        )
     -> _a
-    -> Switched fs a' a c' c m r
+    -> Knotted fs a' a c' c m r
 
 (fa >~> fb) a =
     fa a >>~ fb
@@ -1137,12 +1053,12 @@ infixr 8 >~>
 
 infixr 7 ~<<
 (~<<)
-    :: Is Switching fs m
+    :: Knows Knots fs m
     => (    b
-         -> Switched fs b' b c' c m r
+         -> Knotted fs b' b c' c m r
        )
-    -> Switched fs a' a b' b m r
-    -> Switched fs a' a c' c m r
+    -> Knotted fs a' a b' b m r
+    -> Knotted fs a' a c' c m r
 
 k ~<< p =
     p >>~ k
@@ -1154,27 +1070,27 @@ k ~<< p =
 
 
 infixr 6 +>>
-(+>>) :: forall fs m a' a b' b c' c r. Is Switching fs m
-      => (b' -> Switched fs a' a b' b m r)
-      ->        Switched fs b' b c' c m r
-      ->        Switched fs a' a c' c m r
+(+>>) :: forall fs m a' a b' b c' c r. Knows Knots fs m
+      => (b' -> Knotted fs a' a b' b m r)
+      ->        Knotted fs b' b c' c m r
+      ->        Knotted fs a' a c' c m r
 fb' +>> p0 =
-    Switched $ \up dn ->
+    Knotted $ \up dn ->
         do
           let
-            scopedUp =
+            lexicondUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
-          i <- lift (getScope scopedUp)
+          i <- lift (getScope lexicondUp)
           pullRewrite i up dn fb' p0
 
-pullRewrite rewriteScope up dn fb' p =
+pullRewrite rewriteLexicon up dn fb' p =
     let
       upstream b' =
-          runSwitched (fb' b') (unsafeCoerce up) (unsafeCoerce dn)
+          runKnotted (fb' b') (unsafeCoerce up) (unsafeCoerce dn)
 
       downstream =
-          runSwitched p (unsafeCoerce up) (unsafeCoerce dn)
+          runKnotted p (unsafeCoerce up) (unsafeCoerce dn)
 
     in
       goRight upstream downstream
@@ -1190,27 +1106,27 @@ pullRewrite rewriteScope up dn fb' p =
         goRight' (Super m) =
             Super (fmap goRight' m)
 
-        goRight' (Pure r) =
-            Pure r
+        goRight' (Return r) =
+            Return r
 
-        goRight' (Send sym bp) =
+        goRight' (Say sym bp) =
             let
-              check currentScope scoped =
-                  if currentScope == rewriteScope then
-                      scoped
+              check currentLexicon lexicond =
+                  if currentLexicon == rewriteLexicon then
+                      lexicond
                   else
                       ignore
 
               ignore =
-                  Send sym (goRight' . bp)
+                  Say sym (goRight' . bp)
             in
               case prj sym of
 
                   Just x ->
                       case x of
 
-                          Request currentScope b' _ ->
-                              check currentScope $
+                          Request currentLexicon b' _ ->
+                              check currentLexicon $
                                   goLeft (unsafeCoerce bp)
                                          (fb'' (unsafeCoerce b'))
 
@@ -1229,19 +1145,19 @@ pullRewrite rewriteScope up dn fb' p =
         goLeft' (Super m) =
             Super (fmap goLeft' m)
 
-        goLeft' (Pure r) =
-            Pure r
+        goLeft' (Return r) =
+            Return r
 
-        goLeft' (Send sym bp') =
+        goLeft' (Say sym bp') =
             let
-              check currentScope scoped =
-                  if currentScope == rewriteScope then
-                      scoped
+              check currentLexicon lexicond =
+                  if currentLexicon == rewriteLexicon then
+                      lexicond
                   else
                       ignore
 
               ignore =
-                  Send sym (goLeft' . bp')
+                  Say sym (goLeft' . bp')
 
             in
               case prj sym of
@@ -1249,8 +1165,8 @@ pullRewrite rewriteScope up dn fb' p =
                   Just x ->
                       case x of
 
-                          Respond currentScope b _ ->
-                              check currentScope $
+                          Respond currentLexicon b _ ->
+                              check currentLexicon $
                                   goRight (unsafeCoerce bp')
                                           (bp (unsafeCoerce b))
 
@@ -1265,10 +1181,10 @@ pullRewrite rewriteScope up dn fb' p =
 
 infixl 7 >->
 (>->)
-    :: Is Switching fs m
-    => Switched fs a' a () b m r
-    -> Switched fs () b c' c m r
-    -> Switched fs a' a c' c m r
+    :: Knows Knots fs m
+    => Knotted fs a' a () b m r
+    -> Knotted fs () b c' c m r
+    -> Knotted fs a' a c' c m r
 
 p1 >-> p2 =
     (\() -> p1) +>> p2
@@ -1276,10 +1192,10 @@ p1 >-> p2 =
 
 infixr 7 <-<
 (<-<)
-    :: Is Switching fs m
-    => Switched fs () b c' c m r
-    -> Switched fs a' a () b m r
-    -> Switched fs a' a c' c m r
+    :: Knows Knots fs m
+    => Knotted fs () b c' c m r
+    -> Knotted fs a' a () b m r
+    -> Knotted fs a' a c' c m r
 
 p2 <-< p1 =
     p1 >-> p2
@@ -1288,15 +1204,15 @@ p2 <-< p1 =
 
 infixr 7 <+<
 (<+<)
-    :: Is Switching fs m
+    :: Knows Knots fs m
     => (    c'
-         -> Switched fs b' b c' c m r
+         -> Knotted fs b' b c' c m r
        )
     -> (    b'
-         -> Switched fs a' a b' b m r
+         -> Knotted fs a' a b' b m r
        )
     -> c'
-    -> Switched fs a' a c' c m r
+    -> Knotted fs a' a c' c m r
 
 p1 <+< p2 =
     p2 >+> p1
@@ -1305,15 +1221,15 @@ p1 <+< p2 =
 
 infixl 7 >+>
 (>+>)
-    :: Is Switching fs m
+    :: Knows Knots fs m
     => (    b'
-         -> Switched fs a' a b' b m r
+         -> Knotted fs a' a b' b m r
        )
     -> (    _c'
-         -> Switched fs b' b c' c m r
+         -> Knotted fs b' b c' c m r
        )
     -> _c'
-    -> Switched fs a' a c' c m r
+    -> Knotted fs a' a c' c m r
 
 (fb' >+> fc') c' =
     fb' +>> fc' c'
@@ -1322,12 +1238,12 @@ infixl 7 >+>
 
 infixl 6 <<+
 (<<+)
-    :: forall fs m a' a b' b c' c r. Is Switching fs m
-    => Switched fs b' b c' c m r
+    :: forall fs m a' a b' b c' c r. Knows Knots fs m
+    => Knotted fs b' b c' c m r
     -> (    b'
-         -> Switched fs a' a b' b m r
+         -> Knotted fs a' a b' b m r
        )
-    -> Switched fs a' a c' c m r
+    -> Knotted fs a' a c' c m r
 
 p <<+ fb =
     fb +>> p
@@ -1352,18 +1268,19 @@ p <<+ fb =
 
   #-}
 
-{-# INLINE freshScope #-}
-{-# INLINE switcher #-}
-{-# INLINE getScope #-}
-{-# INLINE switch #-}
+
+
+{-# INLINE linearize #-}
 {-# INLINE closed #-}
 {-# INLINE producer #-}
 {-# INLINE consumer #-}
 {-# INLINE line #-}
 {-# INLINE client #-}
 {-# INLINE server #-}
-{-# INLINE switched #-}
+{-# INLINE knotted #-}
 
+{-# INLINE freshScope #-}
+{-# INLINE getScope #-}
 {-# INLINE rewrite #-}
 {-# INLINE substituteResponds #-}
 {-# INLINE substituteRequests #-}

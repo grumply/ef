@@ -2,7 +2,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
-module Ef.Lang.Scoped.Reflect where
+module Ef.Lang.Reflect where
 
 
 
@@ -13,28 +13,28 @@ import Ef.Lang.Set
 
 
 
-data Reflection scope attrs parent =
+data Reflection lexicon contexts environment =
     Reflection
         {
           project
-              :: Pattern scope parent (Object attrs parent)
+              :: Narrative lexicon environment (Object contexts environment)
 
         , inject
-              :: Object attrs parent
-              -> Pattern scope parent ()
+              :: Object contexts environment
+              -> Narrative lexicon environment ()
         }
 
 
 
 withReflection
-    :: ( Is Getting scope parent
-       , Is Setting scope parent
-       , (Attrs attrs) `Witnessing` (Symbol scope)
+    :: ( Knows Get lexicon environment
+       , Knows Set lexicon environment
+       , Inflections contexts lexicon
        )
-    => (    Reflection scope attrs parent
-         -> Pattern scope parent result
+    => (    Reflection lexicon contexts environment
+         -> Narrative lexicon environment result
        )
-    -> Pattern scope parent result
+    -> Narrative lexicon environment result
 
 withReflection f =
     f Reflection
