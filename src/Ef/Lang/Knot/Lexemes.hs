@@ -561,7 +561,7 @@ type Client' a' a fs m r =
 
 
 --------------------------------------------------------------------------------
--- Respond; substitute yields with a function
+-- Respond; substitute yields
 
 cat
     :: Knows Knots fs m
@@ -748,7 +748,7 @@ infixr 4 />/
 
 
 --------------------------------------------------------------------------------
--- Request; substitute awaits with a function
+-- Request; substitute awaits
 
 
 infixr 4 >\\
