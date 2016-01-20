@@ -16,7 +16,6 @@ module Ef.Core.Narrative
      , Say
      , say
      , super
-     , grow
      , rearrangeLexicon
      , Lift(..)
      , Can(..)

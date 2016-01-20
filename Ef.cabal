@@ -49,7 +49,7 @@ library
 
                   Ef.Lang.IO
 
-                  Ef.Lang.Reflect
+                  Ef.Context.Reflect
 
                   Ef.Lang.Except
                   Ef.Lang.Except.Lexicon
@@ -57,41 +57,44 @@ library
                   Ef.Lang.Except.Attribute
                   Ef.Lang.Except.Context
 
-                  Ef.Lang.Note
-                  Ef.Lang.Note.Attribute
-                  Ef.Lang.Note.Context
-                  Ef.Lang.Note.Lexicon
-                  Ef.Lang.Note.Lexemes
+                  Ef.Context.Note
+                  Ef.Context.Note.Attribute
+                  Ef.Context.Note.Context
+                  Ef.Context.Note.Lexicon
+                  Ef.Context.Note.Lexemes
 
-                  Ef.Lang.State
-                  Ef.Lang.State.Attribute
-                  Ef.Lang.State.Context
-                  Ef.Lang.State.Lexicon
-                  Ef.Lang.State.Lexemes
+                  Ef.Context.State
+                  Ef.Context.State.Attribute
+                  Ef.Context.State.Context
+                  Ef.Context.State.Lexicon
+                  Ef.Context.State.Lexemes
 
-                  Ef.Lang.View
-                  Ef.Lang.View.Attribute
-                  Ef.Lang.View.Context
-                  Ef.Lang.View.Lexicon
-                  Ef.Lang.View.Lexemes
+                  Ef.Context.View
+                  Ef.Context.View.Attribute
+                  Ef.Context.View.Context
+                  Ef.Context.View.Lexicon
+                  Ef.Context.View.Lexemes
 
-                  Ef.Lang.Get
-                  Ef.Lang.Get.Attribute
-                  Ef.Lang.Get.Context
-                  Ef.Lang.Get.Lexicon
-                  Ef.Lang.Get.Lexemes
+                  Ef.Context.Get
+                  Ef.Context.Get.Attribute
+                  Ef.Context.Get.Context
+                  Ef.Context.Get.Lexicon
+                  Ef.Context.Get.Lexemes
 
-                  Ef.Lang.Set
-                  Ef.Lang.Set.Attribute
-                  Ef.Lang.Set.Context
-                  Ef.Lang.Set.Lexicon
-                  Ef.Lang.Set.Lexemes
+                  Ef.Context.Set
+                  Ef.Context.Set.Attribute
+                  Ef.Context.Set.Context
+                  Ef.Context.Set.Lexicon
+                  Ef.Context.Set.Lexemes
 
                   Ef.Lang.Knot
                   Ef.Lang.Knot.Attribute
                   Ef.Lang.Knot.Context
                   Ef.Lang.Knot.Lexicon
                   Ef.Lang.Knot.Lexemes
+                  Ef.Lang.Generate
+                  -- Ef.Lang.Variable
+                  
                        -- Ef.Lang.IfThenElse
                        -- Ef.Lang.Scoped.Generate
                        -- Ef.Lang.Scoped.Guard
