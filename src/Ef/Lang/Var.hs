@@ -9,7 +9,7 @@ module Ef.Lang.Var
     , var''
 
     , Eagerness(..)
-    , Modify(..)
+    , Action(..)
     , stateful
     ) where
 
@@ -18,10 +18,10 @@ module Ef.Lang.Var
 import Ef.Core.Narrative
 import Ef.Lang.Knot
 
-import Control.Monad
-import Unsafe.Coerce
-
 import Control.DeepSeq
+import Control.Monad
+
+
 
 data Eagerness
     where
@@ -36,13 +36,13 @@ data Eagerness
 
 
 
-data Modify
+data Action state
     where
 
-        Modify
+        Action
             :: Eagerness
             -> (state -> state)
-            -> Modify
+            -> Action state
 
 data Var var lexicon environment =
     Var
@@ -80,33 +80,32 @@ data Var var lexicon environment =
 stateful
     :: Knows Knots lexicon environment
     => (Var state lexicon environment -> Narrative lexicon environment result)
-    -> Knotted Modify state () X lexicon environment result
+    -> Knotted (Action state) state () X lexicon environment result
 
 stateful computation =
     let
-
         stateInterface up =
             Var
                 {
                   modify =
                       \mod ->
                           do
-                              _ <- up (Modify Lazy mod)
+                              _ <- up (Action Lazy mod)
                               return ()
 
                 , modify' =
                       \mod ->
                           do
-                              _ <- up (Modify Strict mod)
+                              _ <- up (Action Strict mod)
                               return ()
 
                 , get =
-                      up (Modify Lazy id)
+                      up (Action Lazy id)
 
                 , gets =
                       \view ->
                           do
-                              current <- up (Modify Lazy id)
+                              current <- up (Action Lazy id)
                               return (view current)
 
                 , put =
@@ -116,7 +115,7 @@ stateful computation =
 
                           in
                               do
-                                  up (Modify Lazy update)
+                                  up (Action Lazy update)
                                   return ()
 
                 , puts =
@@ -126,7 +125,7 @@ stateful computation =
 
                           in
                               do
-                                  _ <- up (Modify Lazy new)
+                                  _ <- up (Action Lazy new)
                                   return ()
 
                 }
@@ -154,10 +153,10 @@ var initial computation =
                     handle
                     where
 
-                        handle current (Modify strictness mod) =
+                        handle current (Action strictness mod) =
                             do
                                 let
-                                    new = (unsafeCoerce mod) current
+                                    new = mod current
 
                                     force = new `seq` return ()
 
@@ -186,10 +185,10 @@ var' initial computation =
                     handle
                     where
 
-                        handle !current (Modify _ mod) =
+                        handle !current (Action _ mod) =
                             do
                                 let
-                                    new = (unsafeCoerce mod) current
+                                    new = mod current
 
                                 next <- respond new
                                 handle new next
@@ -217,10 +216,10 @@ var'' initial computation =
                     handle
                     where
 
-                        handle current (Modify _ mod) =
+                        handle current (Action _ mod) =
                             do
                                 let
-                                    new = (unsafeCoerce mod) current
+                                    new = mod current
 
                                 next <- new `deepseq` respond new
                                 handle new next
