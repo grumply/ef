@@ -6,9 +6,9 @@
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
-module Main
-    ( Variable
-    , state
+module Ef.Lang.Var
+    ( Var
+    , var
     ) where
 
 
@@ -16,10 +16,6 @@ module Main
 import Ef.Core.Narrative
 import Ef.Lang.IO
 import Ef.Lang.Knot
-
-import Ef.Core
-import Ef.Core.Object
-import Ef.Lang.Knot.Context
 
 import Control.Monad
 import Unsafe.Coerce
@@ -47,8 +43,8 @@ data Modify
             -> (state -> state)
             -> Modify
 
-data Variable var lexicon environment =
-    Variable
+data Var var lexicon environment =
+    Var
         {
           modify
               :: (var -> var)
@@ -80,19 +76,19 @@ data Variable var lexicon environment =
 
 
 
-state
+var
     :: Knows Knots lexicon environment
     => state
-    -> (    Variable state lexicon environment
+    -> (    Var state lexicon environment
          -> Narrative lexicon environment a
        )
     -> Narrative lexicon environment a
 
-state initial stateful =
+var initial stateful =
         linearize (serve +>> consume)
 
     where
- 
+
         serve firstRequest =
             knotted $ \_ dn ->
                 withRespond dn initial firstRequest
@@ -112,13 +108,12 @@ state initial stateful =
                                 when (strictness == Strict) force
                                 next <- respond new
                                 handle new next
-                            
 
         consume =
             let
 
                 stateInterface up =
-                    Variable
+                    Var
                         {
                           modify =
                               \mod ->

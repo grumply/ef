@@ -93,7 +93,7 @@ library
                   Ef.Lang.Knot.Lexicon
                   Ef.Lang.Knot.Lexemes
                   Ef.Lang.Generate
-                  -- Ef.Lang.Variable
+                  Ef.Lang.Var
                   
                        -- Ef.Lang.IfThenElse
                        -- Ef.Lang.Scoped.Generate
