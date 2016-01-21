@@ -1,11 +1,6 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE ImplicitParams #-}
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
 module Ef.Lang.Var
     ( Var
     , var
