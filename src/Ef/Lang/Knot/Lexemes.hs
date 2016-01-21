@@ -17,11 +17,11 @@ module Ef.Lang.Knot.Lexemes
 
     , Client
     , Client'
-    , client
+    -- , client
 
     , Server
     , Server'
-    , server
+    -- , server
 
     , Knotted(..)
     , Effect
@@ -154,8 +154,8 @@ rewrite rewriteLexicon = go
 
 
 
-instance Functor m
-    => Functor (Knotted fs a' a b' b m)
+instance Functor environment
+    => Functor (Knotted a' a b' b lexicon environment)
   where
 
     fmap f (Knotted w) =
@@ -163,8 +163,8 @@ instance Functor m
 
 
 
-instance Monad m
-    => Applicative (Knotted fs a' a b' b m)
+instance Monad environment
+    => Applicative (Knotted a' a b' b lexicon environment)
   where
 
     pure a =
@@ -200,8 +200,8 @@ instance Monad m
 
 
 
-instance Monad m
-    => Monad (Knotted fs a' a b' b m)
+instance Monad environment
+    => Monad (Knotted a' a b' b lexicon environment)
   where
 
     return =
@@ -217,9 +217,9 @@ instance Monad m
 
 
 
-instance ( Monad m
+instance ( Monad environment
          , Monoid r
-         ) => Monoid (Knotted fs a' a b' b m r)
+         ) => Monoid (Knotted a' a b' b lexicon environment r)
   where
 
     mempty =
@@ -252,8 +252,8 @@ instance ( Monad m
 
 
 
-instance MonadPlus m
-    => Alternative (Knotted fs a' a b' b m)
+instance MonadPlus environment
+    => Alternative (Knotted a' a b' b lexicon environment)
   where
 
     empty =
@@ -266,8 +266,8 @@ instance MonadPlus m
 
 
 
-instance MonadPlus m
-    => MonadPlus (Knotted fs a' a b' b m)
+instance MonadPlus environment
+    => MonadPlus (Knotted a' a b' b lexicon environment)
   where
 
     mzero =
@@ -293,13 +293,13 @@ instance MonadPlus m
             go (Say sym bp) =
                 Say sym (go . bp)
 
-            go (Super m) =
+            go (Super sup) =
               let
                 routine =
                     runKnotted w1 (unsafeCoerce up) (unsafeCoerce dn)
 
               in
-                Super (fmap go m `mplus` return routine)
+                Super (fmap go sup `mplus` return routine)
 
 
 
@@ -308,33 +308,28 @@ newtype X = X X
 
 
 closed
-    :: X
-    -> a
+    :: X -> a
 
 closed (X x) =
     closed x
 
 
 
-type Effect fs m r =
-    Knotted fs X () () X m r
+type Effect lexicon environment r =
+    Knotted X () () X lexicon environment r
 
 
 
-type Producer b fs m r =
-    Knotted fs X () () b m r
+type Producer b lexicon environment r =
+    Knotted X () () b lexicon environment r
 
 
 
 producer
-    :: forall fs m b r.
-       Knows Knots fs m
-    => (    (    b
-              -> Narrative fs m ()
-            )
-         -> Narrative fs m r
-       )
-    -> Producer' b fs m r
+    :: forall lexicon environment b r.
+       Knows Knots lexicon environment
+    => ((b -> Narrative lexicon environment ()) -> Narrative lexicon environment r)
+    -> Producer' b lexicon environment r
 
 producer f =
     Knotted $ \_ dn ->
@@ -351,20 +346,18 @@ producer f =
 
 
 
-type Consumer a fs m r =
-    Knotted fs () a () X m r
+type Consumer a lexicon environment r =
+    Knotted () a () X lexicon environment r
 
 
 
 consumer
-    :: forall fs m a r.
-       Knows Knots fs m
-    => (    Narrative fs m a
-         -> Narrative fs m r
-       )
-    -> Consumer' a fs m r
+    :: forall lexicon environment a r.
+       Knows Knots lexicon environment
+    => (Narrative lexicon environment a -> Narrative lexicon environment r)
+    -> Consumer' a lexicon environment r
 
-consumer f =
+consumer f = 
     Knotted $ \up _ ->
         do
           let
@@ -379,20 +372,15 @@ consumer f =
 
 
 
-type Line a b fs m r = Knotted fs () a () b m r
+type Line a b lexicon environment r = Knotted () a () b lexicon environment r
 
 
 
 line
-    :: forall fs m a b x r.
-       Knows Knots fs m
-    => (    Narrative fs m a
-         -> (    b
-              -> Narrative fs m x
-            )
-         -> Narrative fs m r
-       )
-    -> Line a b fs m r
+    :: forall lexicon environment a b r.
+       Knows Knots lexicon environment
+    => (Narrative lexicon environment a -> (b -> Narrative lexicon environment ()) -> Narrative lexicon environment r)
+    -> Line a b lexicon environment r
 
 line f =
     Knotted $ \up _ ->
@@ -413,112 +401,41 @@ line f =
 
 
 
-type Client a' a fs m r =
-    Knotted fs a' a () X m r
+type Client a' a lexicon environment r =
+    Knotted a' a () X lexicon environment r
 
 
 
-client
-    :: forall fs m a' a r.
-       Knows Knots fs m
-    => (    (    a'
-              -> Narrative fs m a
-            )
-         -> Narrative fs m r
-       )
-    -> Client' a' a fs m r
-
-client f =
-    Knotted $ \up _ ->
-        do
-          let
-            lexicondUp =
-                up (unsafeCoerce ()) (unsafeCoerce ())
-
-          i <- lift (getScope lexicondUp)
-          let
-            request a =
-                say (Request i a Return)
-
-          f request
+type Server b' b lexicon environment r =
+    Knotted X () b' b lexicon environment r
 
 
 
-type Server b' b fs m r =
-    Knotted fs X () b' b m r
-
-
-
-server
-    :: forall fs m b' b r.
-       Knows Knots fs m
-    => (    (    b
-              -> Narrative fs m b'
-            )
-         -> Narrative fs m r
-       )
-    -> Server' b' b fs m r
-
-server f =
-    Knotted $ \_ dn ->
-        do
-         let
-           lexicondDown =
-               dn (unsafeCoerce ()) (unsafeCoerce ())
-
-         i <- lift (getScope lexicondDown)
-         let
-           respond b' =
-               say (Respond i b' Return)
-
-         f respond
-
-
-
-newtype Knotted fs a' a b' b m r =
+newtype Knotted a' a b' b lexicon environment r =
     Knotted
         {
           runKnotted
-              :: (forall x.
-                      a'
-                   -> (    a
-                        -> Narrative fs m x
-                      )
-                   -> Narrative fs m x
-                 )
-              -> (forall x.
-                      b
-                   -> (    b'
-                        -> Narrative fs m x
-                      )
-                   -> Narrative fs m x
-                 )
-             -> Narrative fs m r
+              :: (forall x. a' -> (a -> Narrative lexicon environment x) -> Narrative lexicon environment x)
+              -> (forall x. b -> (b' -> Narrative lexicon environment x) -> Narrative lexicon environment x)
+             -> Narrative lexicon environment r
         }
 
 
 
 knotted
-    :: forall fs a a' b b' m r.
-       Knows Knots fs m
-    => (    (    a
-              -> Narrative fs m a'
-            )
-         -> (    b'
-              -> Narrative fs m b
-            )
-         -> Narrative fs m r
-       )
-    -> Knotted fs a' a b' b m r
+    :: forall lexicon a a' b b' environment r.
+       Knows Knots lexicon environment
+    => ((a' -> Narrative lexicon environment a) -> (b -> Narrative lexicon environment b') -> Narrative lexicon environment r)
+    -> Knotted a' a b' b lexicon environment r
 
 knotted f =
     Knotted $ \up _ ->
         do
           let
-            lexicondUp =
+            scopedUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
-          i <- lift (getScope lexicondUp)
+          i <- lift (getScope scopedUp)
           let
             request a =
                 say (Request i a Return)
@@ -530,33 +447,33 @@ knotted f =
 
 
 
-type Effect' fs m r =
+type Effect' lexicon environment r =
     forall x' x y' y.
-    Knotted fs x' x y' y m r
+    Knotted x' x y' y lexicon environment r
 
 
 
-type Producer' b fs m r =
+type Producer' b lexicon environment r =
     forall x' x.
-    Knotted fs x' x () b m r
+    Knotted x' x () b lexicon environment r
 
 
 
-type Consumer' a fs m r =
+type Consumer' a lexicon environment r =
     forall y' y.
-    Knotted fs () a y' y m r
+    Knotted () a y' y lexicon environment r
 
 
 
-type Server' b' b fs m r =
+type Server' b' b lexicon environment r =
     forall x' x.
-    Knotted fs x' x b' b m r
+    Knotted x' x b' b lexicon environment r
 
 
 
-type Client' a' a fs m r =
+type Client' a' a lexicon environment r =
     forall y' y.
-    Knotted fs a' a y' y m r
+    Knotted a' a y' y lexicon environment r
 
 
 
@@ -564,8 +481,8 @@ type Client' a' a fs m r =
 -- Respond; substitute yields
 
 cat
-    :: Knows Knots fs m
-    => Line a a fs m r
+    :: Knows Knots lexicon environment
+    => Line a a lexicon environment r
 
 cat =
     line $ \awt yld ->
@@ -575,13 +492,11 @@ cat =
 
 infixl 3 //>
 (//>)
-    :: forall fs x' x b' b c' c m a'.
-       Knows Knots fs m
-    => Knotted fs x' x b' b m a'
-    -> (    b
-         -> Knotted fs x' x c' c m b'
-       )
-    -> Knotted fs x' x c' c m a'
+    :: forall lexicon x' x b' b c' c environment a'.
+       Knows Knots lexicon environment
+    => Knotted x' x b' b lexicon environment a'
+    -> (b -> Knotted x' x c' c lexicon environment b')
+    -> Knotted x' x c' c lexicon environment a'
 
 p0 //> fb =
     Knotted $ \up dn ->
@@ -654,12 +569,10 @@ substituteResponds fb rewriteLexicon up dn =
 
 
 for
-    :: Knows Knots fs m
-    => Knotted fs x' x b' b m a'
-    -> (    b
-         -> Knotted fs x' x c' c m b'
-       )
-    -> Knotted fs x' x c' c m a'
+    :: Knows Knots lexicon environment
+    => Knotted x' x b' b lexicon environment a'
+    -> (b -> Knotted x' x c' c lexicon environment b')
+    -> Knotted x' x c' c lexicon environment a'
 
 for =
     (//>)
@@ -668,12 +581,10 @@ for =
 
 infixr 3 <\\
 (<\\)
-    :: Knows Knots fs m
-    => (    b
-         -> Knotted fs x' x c' c m b'
-       )
-    -> Knotted fs x' x b' b m a'
-    -> Knotted fs x' x c' c m a'
+    :: Knows Knots lexicon environment
+    => (b -> Knotted x' x c' c lexicon environment b')
+    -> Knotted x' x b' b lexicon environment a'
+    -> Knotted x' x c' c lexicon environment a'
 
 f <\\ p =
     p //> f
@@ -682,15 +593,11 @@ f <\\ p =
 
 infixl 4 \<\
 (\<\)
-    :: Knows Knots fs m
-    => (    b
-         -> Knotted fs x' x c' c m b'
-       )
-    -> (    a
-         -> Knotted fs x' x b' b m a'
-       )
+    :: Knows Knots lexicon environment
+    => (b -> Knotted x' x c' c lexicon environment b')
+    -> (a -> Knotted x' x b' b lexicon environment a')
     -> a
-    -> Knotted fs x' x c' c m a'
+    -> Knotted x' x c' c lexicon environment a'
 
 p1 \<\ p2 = p2 />/ p1
 
@@ -698,15 +605,11 @@ p1 \<\ p2 = p2 />/ p1
 
 infixr 4 ~>
 (~>)
-    :: Knows Knots fs m
-    => (    a
-         -> Knotted fs x' x b' b m a'
-       )
-    -> (    b
-         -> Knotted fs x' x c' c m b'
-       )
+    :: Knows Knots lexicon environment
+    => (a -> Knotted x' x b' b lexicon environment a')
+    -> (b -> Knotted x' x c' c lexicon environment b')
     -> a
-    -> Knotted fs x' x c' c m a'
+    -> Knotted x' x c' c lexicon environment a'
 
 (~>) =
     (/>/)
@@ -715,15 +618,11 @@ infixr 4 ~>
 
 infixl 4 <~
 (<~)
-    :: Knows Knots fs m
-    => (    b
-         -> Knotted fs x' x c' c m b'
-       )
-    -> (    a
-         -> Knotted fs x' x b' b m a'
-       )
+    :: Knows Knots lexicon environment
+    => (b -> Knotted x' x c' c lexicon environment b')
+    -> (a -> Knotted x' x b' b lexicon environment a')
     -> a
-    -> Knotted fs x' x c' c m a'
+    -> Knotted x' x c' c lexicon environment a'
 
 g <~ f =
     f ~> g
@@ -732,15 +631,11 @@ g <~ f =
 
 infixr 4 />/
 (/>/)
-    :: Knows Knots fs m
-    => (    a
-         -> Knotted fs x' x b' b m a'
-       )
-    -> (    b
-         -> Knotted fs x' x c' c m b'
-       )
+    :: Knows Knots lexicon environment
+    => (a -> Knotted x' x b' b lexicon environment a')
+    -> (b -> Knotted x' x c' c lexicon environment b')
     -> a
-    -> Knotted fs x' x c' c m a'
+    -> Knotted x' x c' c lexicon environment a'
 
 (fa />/ fb) a =
     fa a //> fb
@@ -753,13 +648,11 @@ infixr 4 />/
 
 infixr 4 >\\
 (>\\)
-    :: forall fs y' y a' a b' b m c.
-       Knows Knots fs m
-    => (    b'
-         -> Knotted fs a' a y' y m b
-       )
-    -> Knotted fs b' b y' y m c
-    -> Knotted fs a' a y' y m c
+    :: forall lexicon y' y a' a b' b environment c.
+       Knows Knots lexicon environment
+    => (b' -> Knotted a' a y' y lexicon environment b)
+    -> Knotted b' b y' y lexicon environment c
+    -> Knotted a' a y' y lexicon environment c
 
 fb' >\\ p0 =
     Knotted $ \up dn ->
@@ -830,15 +723,11 @@ substituteRequests fb' rewriteLexicon up dn p1 = go p1
 
 infixr 5 /</
 (/</)
-    :: Knows Knots fs m
-    => (    c'
-         -> Knotted fs b' b x' x m c
-       )
-    -> (    b'
-         -> Knotted fs a' a x' x m b
-       )
+    :: Knows Knots lexicon environment
+    => (c' -> Knotted b' b x' x lexicon environment c)
+    -> (b' -> Knotted a' a x' x lexicon environment b)
     -> c'
-    -> Knotted fs a' a x' x m c
+    -> Knotted a' a x' x lexicon environment c
 
 p1 /</ p2 =
     p2 \>\ p1
@@ -847,10 +736,10 @@ p1 /</ p2 =
 
 infixr 5 >~
 (>~)
-    :: Knows Knots fs m
-    => Knotted fs a' a y' y m b
-    -> Knotted fs () b y' y m c
-    -> Knotted fs a' a y' y m c
+    :: Knows Knots lexicon environment
+    => Knotted a' a y' y lexicon environment b
+    -> Knotted () b y' y lexicon environment c
+    -> Knotted a' a y' y lexicon environment c
 
 p1 >~ p2 =
     (\() -> p1) >\\ p2
@@ -859,10 +748,10 @@ p1 >~ p2 =
 
 infixl 5 ~<
 (~<)
-    :: Knows Knots fs m
-    => Knotted fs () b y' y m c
-    -> Knotted fs a' a y' y m b
-    -> Knotted fs a' a y' y m c
+    :: Knows Knots lexicon environment
+    => Knotted () b y' y lexicon environment c
+    -> Knotted a' a y' y lexicon environment b
+    -> Knotted a' a y' y lexicon environment c
 
 p2 ~< p1 =
     p1 >~ p2
@@ -871,15 +760,11 @@ p2 ~< p1 =
 
 infixl 5 \>\
 (\>\)
-    :: Knows Knots fs m
-    => (    b'
-         -> Knotted fs a' a y' y m b
-       )
-    -> (    c'
-         -> Knotted fs b' b y' y m c
-       )
+    :: Knows Knots lexicon environment
+    => (b' -> Knotted a' a y' y lexicon environment b)
+    -> (c' -> Knotted b' b y' y lexicon environment c)
     -> c'
-    -> Knotted fs a' a y' y m c
+    -> Knotted a' a y' y lexicon environment c
 
 (fb' \>\ fc') c' =
     fb' >\\ fc' c'
@@ -888,13 +773,11 @@ infixl 5 \>\
 
 infixl 4 \\<
 (\\<)
-    :: forall fs y' y a' a b' b m c.
-       Knows Knots fs m
-    => Knotted fs b' b y' y m c
-    -> (    b'
-         -> Knotted fs a' a y' y m b
-       )
-    -> Knotted fs a' a y' y m c
+    :: forall lexicon y' y a' a b' b environment c.
+       Knows Knots lexicon environment
+    => Knotted b' b y' y lexicon environment c
+    -> (b' -> Knotted a' a y' y lexicon environment b)
+    -> Knotted a' a y' y lexicon environment c
 p \\< f =
     f >\\ p
 
@@ -906,12 +789,10 @@ p \\< f =
 
 infixl 7 >>~
 (>>~)
-    :: forall fs a' a b' b c' c m r. Knows Knots fs m
-    => Knotted fs a' a b' b m r
-    -> (    b
-         -> Knotted fs b' b c' c m r
-       )
-    -> Knotted fs a' a c' c m r
+    :: forall lexicon a' a b' b c' c environment r. Knows Knots lexicon environment
+    => Knotted a' a b' b lexicon environment r
+    -> (b -> Knotted b' b c' c lexicon environment r)
+    -> Knotted a' a c' c lexicon environment r
 p0 >>~ fb0 =
     Knotted $ \up dn ->
         do
@@ -1019,15 +900,11 @@ pushRewrite rewriteLexicon up dn fb0 p0 =
 
 infixl 8 <~<
 (<~<)
-    :: Knows Knots fs m
-    => (    b
-         -> Knotted fs b' b c' c m r
-       )
-    -> (    a
-         -> Knotted fs a' a b' b m r
-       )
+    :: Knows Knots lexicon environment
+    => (b -> Knotted b' b c' c lexicon environment r)
+    -> (a -> Knotted a' a b' b lexicon environment r)
     -> a
-    -> Knotted fs a' a c' c m r
+    -> Knotted a' a c' c lexicon environment r
 
 p1 <~< p2 =
     p2 >~> p1
@@ -1036,15 +913,11 @@ p1 <~< p2 =
 
 infixr 8 >~>
 (>~>)
-    :: Knows Knots fs m
-    => (    _a
-          -> Knotted fs a' a b' b m r
-       )
-    -> (    b
-         -> Knotted fs b' b c' c m r
-       )
+    :: Knows Knots lexicon environment
+    => (_a -> Knotted a' a b' b lexicon environment r)
+    -> (b -> Knotted b' b c' c lexicon environment r)
     -> _a
-    -> Knotted fs a' a c' c m r
+    -> Knotted a' a c' c lexicon environment r
 
 (fa >~> fb) a =
     fa a >>~ fb
@@ -1053,12 +926,10 @@ infixr 8 >~>
 
 infixr 7 ~<<
 (~<<)
-    :: Knows Knots fs m
-    => (    b
-         -> Knotted fs b' b c' c m r
-       )
-    -> Knotted fs a' a b' b m r
-    -> Knotted fs a' a c' c m r
+    :: Knows Knots lexicon environment
+    => (b -> Knotted b' b c' c lexicon environment r)
+    -> Knotted a' a b' b lexicon environment r
+    -> Knotted a' a c' c lexicon environment r
 
 k ~<< p =
     p >>~ k
@@ -1070,10 +941,10 @@ k ~<< p =
 
 
 infixr 6 +>>
-(+>>) :: forall fs m a' a b' b c' c r. Knows Knots fs m
-      => (b' -> Knotted fs a' a b' b m r)
-      ->        Knotted fs b' b c' c m r
-      ->        Knotted fs a' a c' c m r
+(+>>) :: forall lexicon environment a' a b' b c' c r. Knows Knots lexicon environment
+      => (b' -> Knotted a' a b' b lexicon environment r)
+      ->        Knotted b' b c' c lexicon environment r
+      ->        Knotted a' a c' c lexicon environment r
 fb' +>> p0 =
     Knotted $ \up dn ->
         do
@@ -1181,10 +1052,10 @@ pullRewrite rewriteLexicon up dn fb' p =
 
 infixl 7 >->
 (>->)
-    :: Knows Knots fs m
-    => Knotted fs a' a () b m r
-    -> Knotted fs () b c' c m r
-    -> Knotted fs a' a c' c m r
+    :: Knows Knots lexicon environment
+    => Knotted a' a () b lexicon environment r
+    -> Knotted () b c' c lexicon environment r
+    -> Knotted a' a c' c lexicon environment r
 
 p1 >-> p2 =
     (\() -> p1) +>> p2
@@ -1192,10 +1063,10 @@ p1 >-> p2 =
 
 infixr 7 <-<
 (<-<)
-    :: Knows Knots fs m
-    => Knotted fs () b c' c m r
-    -> Knotted fs a' a () b m r
-    -> Knotted fs a' a c' c m r
+    :: Knows Knots lexicon environment
+    => Knotted () b c' c lexicon environment r
+    -> Knotted a' a () b lexicon environment r
+    -> Knotted a' a c' c lexicon environment r
 
 p2 <-< p1 =
     p1 >-> p2
@@ -1204,15 +1075,11 @@ p2 <-< p1 =
 
 infixr 7 <+<
 (<+<)
-    :: Knows Knots fs m
-    => (    c'
-         -> Knotted fs b' b c' c m r
-       )
-    -> (    b'
-         -> Knotted fs a' a b' b m r
-       )
+    :: Knows Knots lexicon environment
+    => (c' -> Knotted b' b c' c lexicon environment r)
+    -> (b' -> Knotted a' a b' b lexicon environment r)
     -> c'
-    -> Knotted fs a' a c' c m r
+    -> Knotted a' a c' c lexicon environment r
 
 p1 <+< p2 =
     p2 >+> p1
@@ -1221,15 +1088,11 @@ p1 <+< p2 =
 
 infixl 7 >+>
 (>+>)
-    :: Knows Knots fs m
-    => (    b'
-         -> Knotted fs a' a b' b m r
-       )
-    -> (    _c'
-         -> Knotted fs b' b c' c m r
-       )
+    :: Knows Knots lexicon environment
+    => (b' -> Knotted a' a b' b lexicon environment r)
+    -> (_c' -> Knotted b' b c' c lexicon environment r)
     -> _c'
-    -> Knotted fs a' a c' c m r
+    -> Knotted a' a c' c lexicon environment r
 
 (fb' >+> fc') c' =
     fb' +>> fc' c'
@@ -1238,12 +1101,10 @@ infixl 7 >+>
 
 infixl 6 <<+
 (<<+)
-    :: forall fs m a' a b' b c' c r. Knows Knots fs m
-    => Knotted fs b' b c' c m r
-    -> (    b'
-         -> Knotted fs a' a b' b m r
-       )
-    -> Knotted fs a' a c' c m r
+    :: forall lexicon environment a' a b' b c' c r. Knows Knots lexicon environment
+    => Knotted b' b c' c lexicon environment r
+    -> (b' -> Knotted a' a b' b lexicon environment r)
+    -> Knotted a' a c' c lexicon environment r
 
 p <<+ fb =
     fb +>> p
@@ -1275,8 +1136,8 @@ p <<+ fb =
 {-# INLINE producer #-}
 {-# INLINE consumer #-}
 {-# INLINE line #-}
-{-# INLINE client #-}
-{-# INLINE server #-}
+-- {-# INLINE client #-}
+-- {-# INLINE server #-}
 {-# INLINE knotted #-}
 
 {-# INLINE freshScope #-}

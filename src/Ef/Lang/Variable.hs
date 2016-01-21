@@ -1,9 +1,11 @@
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Ef.Lang.Variable
+module Main
     ( Variable(..)
+    , main
     ) where
 
 
@@ -12,8 +14,11 @@ import Ef.Core.Narrative
 import Ef.Lang.IO
 import Ef.Lang.Knot
 
+import Ef.Core
+import Ef.Core.Object
+import Ef.Lang.Knot.Context
+
 import Control.Monad
-import Data.IORef
 import Unsafe.Coerce
 
 
@@ -56,7 +61,7 @@ data Variable var lexicon environment =
         , gets
               :: forall a.
                  (var -> a)
-              -> Narrative lexicon environment var
+              -> Narrative lexicon environment a
 
         , put
               :: var
@@ -68,18 +73,12 @@ data Variable var lexicon environment =
               -> a
               -> Narrative lexicon environment ()
 
-        , swap
-              :: var
-              -> Narrative lexicon environment var
         }
 
 
 
 state
-    :: forall lexicon environment state a.
-       ( Knows Knots lexicon environment
-       , Lift IO environment
-       )
+    :: Knows Knots lexicon environment
     => state
     -> (    Variable state lexicon environment
          -> Narrative lexicon environment a
@@ -87,39 +86,33 @@ state
     -> Narrative lexicon environment a
 
 state initial stateful =
-        do
-            ref <- io (newIORef initial)
-            linearize $
-                (serve ref) +>> consume
+        linearize (serve +>> consume)
 
     where
-
-        serve ref = go
+ 
+        serve firstRequest =
+            knotted $ \_ dn ->
+                withRespond dn initial firstRequest
             where
 
-                go =
-                    knotted $ \_ dn ->
-                        do
-                            current <- io $
-                                do
-                                    current <- readIORef ref
-                                    let
-                                        new =
-                                            unsafeCoerce mod current
+                withRespond respond =
+                    handle
+                    where
 
-                                        force =
-                                            new `seq` return ()
+                        handle current (Modify strictness mod) =
+                            do
+                                let
+                                    new = (unsafeCoerce mod) current
 
-                                    when (strictness == Strict) force
-                                    writeIORef ref new
-                                    return new
-                            dn 
+                                    force = new `seq` return ()
+
+                                when (strictness == Strict) force
+                                next <- respond new
+                                handle new next
+                            
 
         consume =
             let
-                stateInterface
-                    :: (Modify -> Narrative lexicon environment state)
-                    -> Variable state lexicon environment
 
                 stateInterface up =
                     Variable
@@ -130,8 +123,69 @@ state initial stateful =
                                       _ <- up (Modify Lazy mod)
                                       return ()
 
-                             
+                        , modify' =
+                              \mod ->
+                                  do
+                                      _ <- up (Modify Strict mod)
+                                      return ()
+
+                        , get =
+                              up (Modify Lazy id)
+
+                        , gets =
+                              \view ->
+                                  do
+                                      current <- up (Modify Lazy id)
+                                      return (view current)
+
+                        , put =
+                              \new ->
+                                  let
+                                      update =
+                                          const new
+
+                                  in
+                                      do
+                                          up (Modify Lazy update)
+                                          return ()
+
+                        , puts =
+                              \view big ->
+                                  let
+                                      new =
+                                          const (view big)
+
+                                  in
+                                      do
+                                          _ <- up (Modify Lazy new)
+                                          return ()
+
                         }
 
             in
                 knotted $ \up _ -> stateful (stateInterface up)
+
+
+
+main :: IO ()
+main = do
+    let
+        obj = Object $ knots *:* Empty
+
+    delta obj $ state (0 :: Int) $ \var -> start var
+    return ()
+    where
+
+        start Variable {..} =
+            go (10000000 :: Int)
+            where
+
+                go 0 =
+                    do
+                        now <- get
+                        io (print now)
+
+                go n =
+                    do
+                        modify' (+1)
+                        go (n - 1)

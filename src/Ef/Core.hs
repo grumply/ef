@@ -36,7 +36,7 @@ import Unsafe.Coerce
 -- | Pair an Object with a Narrative. This is the equivalent of OOP's
 -- 'send a message to an object' or 'invoke a method'. 
 delta
-    :: ( Inflection (Context contexts) (Lexicon lexicon)
+    :: ( Inflections contexts lexicon
        , Monad environment
        )
     => Object contexts environment
@@ -51,7 +51,7 @@ infixl 5 #
 -- | Like 'delta' without a return value that permits a chaining syntax.
 --  resultObj <- pure obj # method1 # method2 # method3
 (#)
-    :: ( Inflection (Context contexts) (Lexicon lexicon)
+    :: ( Inflections contexts lexicon
        , Monad environment
        )
     => environment (Object contexts environment)
@@ -67,7 +67,7 @@ infixl 5 #
 
 -- | Don't use this; rerrange your constructor.
 delta'
-    :: ( Inflection (Context contexts) (Lexicon lexicon')
+    :: ( Inflections contexts lexicon'
        , Grow (Lexicon lexicon) (Lexicon lexicon')
        , Monad environment
        )
@@ -79,9 +79,9 @@ delta' o =
 
 
 
-{-# NOINLINE _delta #-}
+{-# INLINE _delta #-}
 _delta
-    :: ( Inflection (Context contexts) (Lexicon lexicon)
+    :: ( Inflections contexts lexicon
        , Monad environment
        )
     => Object contexts environment
@@ -145,3 +145,6 @@ _delta object =
                         _delta object' (k b)
 
   #-}
+
+
+{-# INLINE delta #-}
