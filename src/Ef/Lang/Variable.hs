@@ -3,9 +3,12 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 module Main
-    ( Variable(..)
-    , main
+    ( Variable
+    , state
     ) where
 
 
@@ -164,28 +167,3 @@ state initial stateful =
 
             in
                 knotted $ \up _ -> stateful (stateInterface up)
-
-
-
-main :: IO ()
-main = do
-    let
-        obj = Object $ knots *:* Empty
-
-    delta obj $ state (0 :: Int) $ \var -> start var
-    return ()
-    where
-
-        start Variable {..} =
-            go (10000000 :: Int)
-            where
-
-                go 0 =
-                    do
-                        now <- get
-                        io (print now)
-
-                go n =
-                    do
-                        modify' (+1)
-                        go (n - 1)
