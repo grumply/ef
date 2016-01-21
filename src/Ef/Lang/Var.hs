@@ -1,21 +1,27 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE BangPatterns #-}
 module Ef.Lang.Var
-    ( Var
+    ( Var(..)
     , var
+    , var'
+    , var''
+
+    , Eagerness(..)
+    , Modify(..)
+    , stateful
     ) where
 
 
 
 import Ef.Core.Narrative
-import Ef.Lang.IO
 import Ef.Lang.Knot
 
 import Control.Monad
 import Unsafe.Coerce
 
-
+import Control.DeepSeq
 
 data Eagerness
     where
@@ -71,17 +77,72 @@ data Var var lexicon environment =
 
 
 
+stateful
+    :: Knows Knots lexicon environment
+    => (Var state lexicon environment -> Narrative lexicon environment result)
+    -> Knotted Modify state () X lexicon environment result
+
+stateful computation =
+    let
+
+        stateInterface up =
+            Var
+                {
+                  modify =
+                      \mod ->
+                          do
+                              _ <- up (Modify Lazy mod)
+                              return ()
+
+                , modify' =
+                      \mod ->
+                          do
+                              _ <- up (Modify Strict mod)
+                              return ()
+
+                , get =
+                      up (Modify Lazy id)
+
+                , gets =
+                      \view ->
+                          do
+                              current <- up (Modify Lazy id)
+                              return (view current)
+
+                , put =
+                      \new ->
+                          let
+                              update = const new
+
+                          in
+                              do
+                                  up (Modify Lazy update)
+                                  return ()
+
+                , puts =
+                      \view big ->
+                          let
+                              new = const (view big)
+
+                          in
+                              do
+                                  _ <- up (Modify Lazy new)
+                                  return ()
+
+                }
+
+    in
+        knotted $ \up _ -> computation (stateInterface up)
+
+
 var
     :: Knows Knots lexicon environment
     => state
-    -> (    Var state lexicon environment
-         -> Narrative lexicon environment a
-       )
-    -> Narrative lexicon environment a
+    -> (Var state lexicon environment -> Narrative lexicon environment result)
+    -> Narrative lexicon environment result
 
-var initial stateful =
-        linearize (serve +>> consume)
-
+var initial computation =
+    linearize (serve +>> stateful computation)
     where
 
         serve firstRequest =
@@ -104,56 +165,62 @@ var initial stateful =
                                 next <- respond new
                                 handle new next
 
-        consume =
-            let
 
-                stateInterface up =
-                    Var
-                        {
-                          modify =
-                              \mod ->
-                                  do
-                                      _ <- up (Modify Lazy mod)
-                                      return ()
 
-                        , modify' =
-                              \mod ->
-                                  do
-                                      _ <- up (Modify Strict mod)
-                                      return ()
+var'
+    :: Knows Knots lexicon environment
+    => state
+    -> (Var state lexicon environment -> Narrative lexicon environment result)
+    -> Narrative lexicon environment result
 
-                        , get =
-                              up (Modify Lazy id)
+var' initial computation =
+    linearize (serve +>> stateful computation)
+    where
 
-                        , gets =
-                              \view ->
-                                  do
-                                      current <- up (Modify Lazy id)
-                                      return (view current)
+        serve firstRequest =
+            knotted $ \_ dn ->
+                withRespond dn initial firstRequest
+            where
 
-                        , put =
-                              \new ->
-                                  let
-                                      update =
-                                          const new
+                withRespond respond =
+                    handle
+                    where
 
-                                  in
-                                      do
-                                          up (Modify Lazy update)
-                                          return ()
+                        handle !current (Modify _ mod) =
+                            do
+                                let
+                                    new = (unsafeCoerce mod) current
 
-                        , puts =
-                              \view big ->
-                                  let
-                                      new =
-                                          const (view big)
+                                next <- respond new
+                                handle new next
 
-                                  in
-                                      do
-                                          _ <- up (Modify Lazy new)
-                                          return ()
 
-                        }
 
-            in
-                knotted $ \up _ -> stateful (stateInterface up)
+var''
+    :: ( Knows Knots lexicon environment
+       , NFData state
+       )
+    => state
+    -> (Var state lexicon environment -> Narrative lexicon environment result)
+    -> Narrative lexicon environment result
+
+var'' initial computation =
+    linearize (serve +>> stateful computation)
+    where
+
+        serve firstRequest =
+            knotted $ \_ dn ->
+                withRespond dn initial firstRequest
+            where
+
+                withRespond respond =
+                    handle
+                    where
+
+                        handle current (Modify _ mod) =
+                            do
+                                let
+                                    new = (unsafeCoerce mod) current
+
+                                next <- new `deepseq` respond new
+                                handle new next
