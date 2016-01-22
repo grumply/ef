@@ -8,7 +8,9 @@ module Ef.Core
     ( module Core
     , delta
     , delta'
+    , ($.)
     , (#)
+    , (#.)
     , Exception(..)
     , SomeException
     ) where
@@ -16,10 +18,10 @@ module Ef.Core
 import Ef.Core.Type.Set as Core
 import Ef.Core.Type.Nat as Core
 
-import Ef.Core.Object as Core hiding (_fmap)
+import Ef.Core.Object as Core
 import Ef.Core.Object.Context as Core
 
-import Ef.Core.Narrative as Core hiding (_fmap)
+import Ef.Core.Narrative as Core
 import Ef.Core.Narrative.Lexicon as Core
 import Ef.Core.Narrative.Exception as Core
 
@@ -33,8 +35,10 @@ import Unsafe.Coerce
 
 
 
--- | Pair an Object with a Narrative. This is the equivalent of OOP's
--- 'send a message to an object' or 'invoke a method'. 
+-- | Send a narrative to an object for invocation; returns a new, modified object
+-- and a result.
+--
+-- >    (resultObj,result) <- delta obj narrative
 delta
     :: ( Inflections contexts lexicon
        , Monad environment
@@ -47,9 +51,27 @@ delta =
 
 
 
+infix 5 $.
+-- | Synonym for 'delta'. Send a narrative to an object.
+--
+-- >    (resultObj,result) <- obj $. narrative
+($.)
+    :: ( Inflections contexts lexicon
+       , Monad environment
+       )
+    => Object contexts environment
+    -> Narrative lexicon environment result
+    -> environment (Object contexts environment,result)
+    
+($.) = delta
+
+
+
 infixl 5 #
--- | Like 'delta' without a return value that permits a chaining syntax.
---  resultObj <- pure obj # method1 # method2 # method3
+-- | Like 'delta' for objects in an environment, but without a return value.
+-- Permits a chaining syntax:
+--
+-- >    resultObj <- pure obj # method1 # method2 # method3
 (#)
     :: ( Inflections contexts lexicon
        , Monad environment
@@ -57,15 +79,30 @@ infixl 5 #
     => environment (Object contexts environment)
     -> Narrative lexicon environment result
     -> environment (Object contexts environment)
-(#) mobj p =
-    do
-      obj <- mobj
-      (obj',_) <- delta obj p
-      return obj'
+(#) obj passage = fmap fst (obj #. passage)
 
 
 
--- | Don't use this; rerrange your constructor.
+-- | Like 'delta' for objects in an environment. Like '#', but can be used to end
+-- a chain of method calls, for example:
+--
+-- >    (resultObj,result) <- pure obj # method1 # method2 #. method3
+(#.)
+    :: ( Inflections contexts lexicon
+       , Monad environment
+       )
+    => environment (Object contexts environment)
+    -> Narrative lexicon environment result
+    -> environment (Object contexts environment,result)
+
+(#.) obj passage = obj >>= ($. passage)
+
+
+
+-- | Like 'delta' for pairing a narrative with an object that permits more capabilities
+-- than those prescribed by the narrative.
+--
+-- >    (resultObj,result) <- delta' obj smallNarrative
 delta'
     :: ( Inflections contexts lexicon'
        , Grow (Lexicon lexicon) (Lexicon lexicon')

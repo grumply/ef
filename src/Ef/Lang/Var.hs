@@ -39,7 +39,7 @@ data Eagerness
 data Action state
     where
 
-        Action
+        Modify
             :: Eagerness
             -> (state -> state)
             -> Action state
@@ -90,22 +90,22 @@ stateful computation =
                   modify =
                       \mod ->
                           do
-                              _ <- up (Action Lazy mod)
+                              _ <- up (Modify Lazy mod)
                               return ()
 
                 , modify' =
                       \mod ->
                           do
-                              _ <- up (Action Strict mod)
+                              _ <- up (Modify Strict mod)
                               return ()
 
                 , get =
-                      up (Action Lazy id)
+                      up (Modify Lazy id)
 
                 , gets =
                       \view ->
                           do
-                              current <- up (Action Lazy id)
+                              current <- up (Modify Lazy id)
                               return (view current)
 
                 , put =
@@ -115,7 +115,7 @@ stateful computation =
 
                           in
                               do
-                                  up (Action Lazy update)
+                                  up (Modify Lazy update)
                                   return ()
 
                 , puts =
@@ -125,7 +125,7 @@ stateful computation =
 
                           in
                               do
-                                  _ <- up (Action Lazy new)
+                                  _ <- up (Modify Lazy new)
                                   return ()
 
                 }
@@ -153,7 +153,7 @@ var initial computation =
                     handle
                     where
 
-                        handle current (Action strictness mod) =
+                        handle current (Modify strictness mod) =
                             do
                                 let
                                     new = mod current
@@ -185,7 +185,7 @@ var' initial computation =
                     handle
                     where
 
-                        handle !current (Action _ mod) =
+                        handle !current (Modify _ mod) =
                             do
                                 let
                                     new = mod current
@@ -216,10 +216,16 @@ var'' initial computation =
                     handle
                     where
 
-                        handle current (Action _ mod) =
+                        handle current (Modify _ mod) =
                             do
                                 let
                                     new = mod current
 
                                 next <- new `deepseq` respond new
                                 handle new next
+
+
+
+{-# INLINE var #-}
+{-# INLINE var' #-}
+{-# INLINE var'' #-}
