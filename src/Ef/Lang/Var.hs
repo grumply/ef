@@ -6,7 +6,6 @@ module Ef.Lang.Var
     ( Var(..)
     , var
     , var'
-    , var''
 
     , Eagerness(..)
     , Action(..)
@@ -18,7 +17,6 @@ module Ef.Lang.Var
 import Ef.Core.Narrative
 import Ef.Lang.Knot
 
-import Control.DeepSeq
 import Control.Monad
 
 
@@ -195,37 +193,5 @@ var' initial computation =
 
 
 
-var''
-    :: ( Knows Knots lexicon environment
-       , NFData state
-       )
-    => state
-    -> (Var state lexicon environment -> Narrative lexicon environment result)
-    -> Narrative lexicon environment result
-
-var'' initial computation =
-    linearize (serve +>> stateful computation)
-    where
-
-        serve firstRequest =
-            knotted $ \_ dn ->
-                withRespond dn initial firstRequest
-            where
-
-                withRespond respond =
-                    handle
-                    where
-
-                        handle current (Modify _ mod) =
-                            do
-                                let
-                                    new = mod current
-
-                                next <- new `deepseq` respond new
-                                handle new next
-
-
-
 {-# INLINE var #-}
 {-# INLINE var' #-}
-{-# INLINE var'' #-}

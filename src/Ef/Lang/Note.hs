@@ -15,7 +15,6 @@ module Ef.Lang.Note
 import Ef.Core.Narrative
 import Ef.Lang.Knot
 
-import Control.DeepSeq
 import Control.Monad
 
 import Data.Monoid
@@ -215,21 +214,3 @@ notate computation =
 
 {-# INLINE notated #-}
 {-# INLINE notate #-}
-
-main :: IO ()
-main = do
-    let
-        obj = Object $ knots *:* Empty
-
-    delta obj $
-        do
-            (result,notes) <- notate $ \Book{..} ->
-                do
-                    write "Message 1\n"
-                    _ <- edit (const []) $
-                        do
-                            write "Message 2\n"
-                            return ()
-                    return ()
-            io $ print notes
-    return ()

@@ -33,7 +33,7 @@ data Behavior event lexicon environment
     where
 
         Behavior
-            :: (event -> Narrative lexicon environment ())
+            :: (Event lexicon environment -> event -> Narrative lexicon environment ())
             -> Behavior event lexicon environment
 
 
@@ -43,7 +43,7 @@ dispatch
     => event
     -> Events lexicon environment
     -> Narrative lexicon environment ()
-    
+
 dispatch event =
     go
     where
@@ -55,23 +55,23 @@ dispatch event =
 
         go (Culture behaviors es) =
             case cast behaviors :: Maybe [Behavior event lexicon environment] of
-              
+
                 Just bs ->
                     run bs
-        
+
                 Nothing ->
                     go es
 
         run [] =
             return ()
-            
+
         run (Behavior b:bs) =
             do
                 b event
                 run bs
 
 
-main = 
+main =
     let
         chb1 ch = io (putStr [ch])
         chb2 ch = io (putStrLn [ch])
@@ -86,7 +86,7 @@ main =
         events = Culture c1 (Culture c2 Vacuous)
 
         obj = Object Empty
-        
+
     in
         do
             obj $.
