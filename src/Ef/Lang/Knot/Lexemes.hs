@@ -127,9 +127,9 @@ rewrite rewriteLexicon = go
 
     go (Say symbol k) =
         let
-          check currentLexicon lexicond =
-              if currentLexicon == rewriteLexicon then
-                  lexicond
+          check currentScope scoped =
+              if currentScope == rewriteLexicon then
+                  scoped
               else
                   ignore
 
@@ -142,12 +142,12 @@ rewrite rewriteLexicon = go
               Just x  ->
                   case x of
 
-                      Request currentLexicon a' _ ->
-                          check currentLexicon $
+                      Request currentScope a' _ ->
+                          check currentScope $
                               closed (unsafeCoerce a')
 
-                      Respond currentLexicon b _ ->
-                          check currentLexicon $
+                      Respond currentScope b _ ->
+                          check currentScope $
                               closed (unsafeCoerce b)
 
               Nothing -> Say symbol (go . k)
@@ -335,13 +335,13 @@ producer f =
     Knotted $ \_ dn ->
         do
           let
-            lexicondDown =
+            scopedDown =
                 dn (unsafeCoerce ()) (unsafeCoerce ())
 
             respond lexicon b =
                 say (Respond lexicon b Return)
 
-          i <- lift (getScope lexicondDown)
+          i <- lift (getScope scopedDown)
           f (respond i)
 
 
@@ -361,13 +361,13 @@ consumer f =
     Knotted $ \up _ ->
         do
           let
-            lexicondUp =
+            scopedUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
             request lexicon =
                 say (Request lexicon () Return)
 
-          i <- lift (getScope lexicondUp)
+          i <- lift (getScope scopedUp)
           f (request i)
 
 
@@ -386,10 +386,10 @@ line f =
     Knotted $ \up _ ->
         do
           let
-            lexicondUp =
+            scopedUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
-          i <- lift (getScope lexicondUp)
+          i <- lift (getScope scopedUp)
           let
             request =
                 say (Request i () Return)
@@ -502,10 +502,10 @@ p0 //> fb =
     Knotted $ \up dn ->
         do
           let
-            lexicondUp =
+            scopedUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
-          i <- lift (getScope lexicondUp)
+          i <- lift (getScope scopedUp)
           let
             routine =
                 runKnotted p0 up (unsafeCoerce dn)
@@ -529,9 +529,9 @@ substituteResponds fb rewriteLexicon up dn =
 
     go (Say sym bp) =
         let
-          check currentLexicon lexicond =
-              if currentLexicon == rewriteLexicon then
-                  lexicond
+          check currentScope scoped =
+              if currentScope == rewriteLexicon then
+                  scoped
               else
                   ignore
 
@@ -544,8 +544,8 @@ substituteResponds fb rewriteLexicon up dn =
               Just x ->
                   case x of
 
-                      Respond currentLexicon b _ ->
-                          check currentLexicon $
+                      Respond currentScope b _ ->
+                          check currentScope $
                               do
                                 let
                                   routine =
@@ -658,10 +658,10 @@ fb' >\\ p0 =
     Knotted $ \up dn ->
         do
           let
-            lexicondUp =
+            scopedUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
-          i <- lift (getScope lexicondUp)
+          i <- lift (getScope scopedUp)
           let
             routine =
                 runKnotted p0 (unsafeCoerce up) dn
@@ -682,9 +682,9 @@ substituteRequests fb' rewriteLexicon up dn p1 = go p1
 
     go (Say sym bp) =
         let
-          check currentLexicon lexicond =
-              if currentLexicon == rewriteLexicon then
-                  lexicond
+          check currentScope scoped =
+              if currentScope == rewriteLexicon then
+                  scoped
               else
                   ignore
 
@@ -697,8 +697,8 @@ substituteRequests fb' rewriteLexicon up dn p1 = go p1
               Just x ->
                   case x of
 
-                      Request currentLexicon b' _ ->
-                          check currentLexicon $
+                      Request currentScope b' _ ->
+                          check currentScope $
                               do
                                 let
                                   routine =
@@ -797,10 +797,10 @@ p0 >>~ fb0 =
     Knotted $ \up dn ->
         do
           let
-            lexicondUp =
+            scopedUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
-          i <- lift (getScope lexicondUp)
+          i <- lift (getScope scopedUp)
           pushRewrite i up dn fb0 p0
 
 
@@ -831,9 +831,9 @@ pushRewrite rewriteLexicon up dn fb0 p0 =
 
         goLeft' (Say sym bp) =
             let
-              check currentLexicon lexicond =
-                  if currentLexicon == rewriteLexicon then
-                      lexicond
+              check currentScope scoped =
+                  if currentScope == rewriteLexicon then
+                      scoped
                   else
                       ignore
 
@@ -846,8 +846,8 @@ pushRewrite rewriteLexicon up dn fb0 p0 =
                 Just x ->
                     case x of
 
-                        Respond currentLexicon b _ ->
-                            check currentLexicon $
+                        Respond currentScope b _ ->
+                            check currentScope $
                                 goRight (unsafeCoerce bp)
                                         (fb (unsafeCoerce b))
 
@@ -870,9 +870,9 @@ pushRewrite rewriteLexicon up dn fb0 p0 =
 
         goRight' (Say sym bp) =
             let
-              check currentLexicon lexicond =
-                  if currentLexicon == rewriteLexicon then
-                      lexicond
+              check currentScope scoped =
+                  if currentScope == rewriteLexicon then
+                      scoped
                   else
                       ignore
 
@@ -884,8 +884,8 @@ pushRewrite rewriteLexicon up dn fb0 p0 =
                   Just x  ->
                       case x of
 
-                          Request currentLexicon b' _ ->
-                              check currentLexicon $
+                          Request currentScope b' _ ->
+                              check currentScope $
                                   goLeft (unsafeCoerce bp)
                                          (b'p (unsafeCoerce b'))
 
@@ -949,10 +949,10 @@ fb' +>> p0 =
     Knotted $ \up dn ->
         do
           let
-            lexicondUp =
+            scopedUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
-          i <- lift (getScope lexicondUp)
+          i <- lift (getScope scopedUp)
           pullRewrite i up dn fb' p0
 
 pullRewrite rewriteLexicon up dn fb' p =
@@ -982,9 +982,9 @@ pullRewrite rewriteLexicon up dn fb' p =
 
         goRight' (Say sym bp) =
             let
-              check currentLexicon lexicond =
-                  if currentLexicon == rewriteLexicon then
-                      lexicond
+              check currentScope scoped =
+                  if currentScope == rewriteLexicon then
+                      scoped
                   else
                       ignore
 
@@ -996,8 +996,8 @@ pullRewrite rewriteLexicon up dn fb' p =
                   Just x ->
                       case x of
 
-                          Request currentLexicon b' _ ->
-                              check currentLexicon $
+                          Request currentScope b' _ ->
+                              check currentScope $
                                   goLeft (unsafeCoerce bp)
                                          (fb'' (unsafeCoerce b'))
 
@@ -1021,9 +1021,9 @@ pullRewrite rewriteLexicon up dn fb' p =
 
         goLeft' (Say sym bp') =
             let
-              check currentLexicon lexicond =
-                  if currentLexicon == rewriteLexicon then
-                      lexicond
+              check currentScope scoped =
+                  if currentScope == rewriteLexicon then
+                      scoped
                   else
                       ignore
 
@@ -1036,8 +1036,8 @@ pullRewrite rewriteLexicon up dn fb' p =
                   Just x ->
                       case x of
 
-                          Respond currentLexicon b _ ->
-                              check currentLexicon $
+                          Respond currentScope b _ ->
+                              check currentScope $
                                   goRight (unsafeCoerce bp')
                                           (bp (unsafeCoerce b))
 
