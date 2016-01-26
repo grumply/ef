@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 module Ef.Lang.Var
     ( Var(..)
     , var
@@ -15,9 +16,14 @@ module Ef.Lang.Var
 
 
 import Ef.Core.Narrative
-import Ef.Lang.Knot
+import Ef.Lang.Knot.Global
 
 import Control.Monad
+
+
+import Ef.Core
+import Ef.Lang.IO
+import Ef.Lang.Knot.Context
 
 
 
@@ -195,3 +201,38 @@ var' initial computation =
 
 {-# INLINE var #-}
 {-# INLINE var' #-}
+
+
+main = do
+    let
+        obj = Object $ knots *:* Empty
+
+        upstream dn' =
+            knotted $ \_ dn -> do
+                super (print "Before upstream.dn")
+                cont <- dn ()
+                super (print "Before upstream.cont")
+                () <- cont "cont"
+                super (print "After upstream.cont")
+
+        middle () =
+            knotted $ \up dn -> do
+                super (print "Before middle.up")
+                () <- up dn
+                super (print "After middle.up")
+                forever $ up dn
+
+
+        downstream =
+            knotted $ \up _ -> do
+                super (print "Before downstream.up")
+                str <- up ()
+                super (print str)
+                super (print "After downstream.up")
+                
+                
+    
+    delta obj $
+        linearize $
+            upstream +>> middle +>> downstream
+    return ()
