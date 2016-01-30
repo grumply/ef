@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
@@ -13,12 +14,14 @@ import Ef.Core
 import Ef.Core.Narrative
 import Ef.Lang.Knot
 import Ef.Lang.IO
-
+import Ef.Lang.Exit
 import Control.Monad
 import Data.IORef
 import Unsafe.Coerce
 import System.IO.Unsafe
 
+
+import Ef.Lang.Knot.Context
 
 data Reactor lexicon environment event =
     Reactor
@@ -40,7 +43,7 @@ data Signal lexicon environment event
         Signal
             :: !(IORef event)
             -> !(IORef [event -> Narrative lexicon environment ()])
-            -> Signal lexicon environment event 
+            -> Signal lexicon environment event
 
 
 
@@ -117,7 +120,7 @@ mapSignal_ triggerMethod f (Signal current0 behaviors0) =
         !initial =
             f $ unsafePerformIO $ readIORef current0
 
-        !current = 
+        !current =
             unsafePerformIO $ newIORef initial
 
         !behaviors =
@@ -227,6 +230,12 @@ data Event lexicon environment =
               -> (Reactor lexicon environment event -> event -> Narrative lexicon environment ())
               -> Narrative lexicon environment ()
 
+        , behavior' 
+              :: forall event.
+                 Signal lexicon environment event
+              -> (Reactor lexicon environment event -> event -> Narrative lexicon environment ())
+              -> Narrative lexicon environment ()
+
         , merge
               :: forall event.
                  Signal lexicon environment event
@@ -253,9 +262,13 @@ data Action lexicon environment
     where
 
         Trigger
-            :: Signal lexicon environment event
+            :: (Action lexicon environment -> Narrative lexicon environment (Narrative lexicon environment ()))
+            -> Signal lexicon environment event
             -> event
             -> Action lexicon environment
+
+        Continue
+            :: Action lexicon environment
 
         Become
             :: (event -> Narrative lexicon environment ())
@@ -276,12 +289,16 @@ event
 
 event loop =
     let
+        ev
+            :: (Action lexicon environment -> Narrative lexicon environment (Narrative lexicon environment ()))
+            -> Event lexicon environment
+
         ev up =
             Event
                 {
                   trigger =
                       \signal event ->
-                          up (Trigger signal event)
+                          join $ up (Trigger up signal event)
 
                 , behavior =
                       \signal b ->
@@ -295,24 +312,46 @@ event loop =
 
                                       , die =
                                             join $ up Die
-                                            
+                                                
+
                                       }
 
                           in
                               behavior_ signal (b reactor)
-                              
 
+                , behavior' =
+                      \signal@(Signal currentRef _) b ->
+                          let
+                              reactor =
+                                  Reactor
+                                      {
+                                        become =
+                                            \newBehavior ->
+                                                join $ up (Become newBehavior)
+
+                                      , die =
+                                            join $ up Die
+                                            
+                                      }
+                          in
+                              do
+                                  let
+                                      current =
+                                          unsafePerformIO $ readIORef currentRef
+                                  behavior_ signal (b reactor)
+                                  b reactor current
+                                  
                 , merge =
                       \signall signalr ->
-                          merge_ (\signal event -> join $ up (Trigger signal event)) signall signalr
+                          merge_ (\signal event -> join $ up (Trigger up signal event)) signall signalr
 
                 , mapSignal =
                       \f signal ->
-                          mapSignal_ (\signal event -> join $ up (Trigger signal event)) f signal
+                          mapSignal_ (\signal event -> join $ up (Trigger up signal event)) f signal
 
                 , filterSignal =
                       \predicate initial ->
-                          filterSignal_ (\signal event -> join $ up (Trigger signal event)) predicate initial
+                          filterSignal_ (\signal event -> join $ up (Trigger up signal event)) predicate initial
 
                 }
 
@@ -326,12 +365,118 @@ event loop =
                     withRespond dn initialRequest
                 where
 
+                    withRespond
+                        :: (Narrative lexicon environment () -> Narrative lexicon environment (Action lexicon environment))
+                        -> Action lexicon environment
+                        -> Narrative lexicon environment a
+
                     withRespond respond =
-                        go
+                        eventLoop
                         where
 
-                            go req =
+                            eventLoop
+                                :: Action lexicon environment
+                                -> Narrative lexicon environment a
+
+                            eventLoop req =
                                 case req of
 
-                                    Trigger signal event ->
-                                        undefined
+                                    Trigger up (Signal currentRef behaviorsRef) event ->
+                                        do
+                                            let
+                                                !behaviors =
+                                                    unsafePerformIO $ readIORef behaviorsRef
+
+                                                !current =
+                                                    unsafePerformIO $ writeIORef currentRef event
+
+                                            newBehaviors <- behaviors `seq` current `seq` runBehaviors up event behaviors
+                                            let
+                                                writeNewBehaviors =
+                                                    unsafePerformIO $ writeIORef behaviorsRef newBehaviors
+
+                                            newRequest <- writeNewBehaviors `seq` respond (return ())
+                                            eventLoop newRequest
+
+                            runBehaviors
+                                :: forall event.
+                                   (Action lexicon environment -> Narrative lexicon environment (Narrative lexicon environment ()))
+                                -> event
+                                -> [event -> Narrative lexicon environment ()]
+                                -> Narrative lexicon environment [event -> Narrative lexicon environment ()]
+
+                            runBehaviors up event =
+                                withAcc []
+                                where
+
+                                    withAcc acc [] =
+                                         return (reverse acc)
+
+                                    withAcc acc (behavior0:behaviors) =
+                                         do
+                                             newRequest <- respond (behavior0 event >> join (up Continue))
+                                             withBehavior behavior0 True newRequest
+                                         where
+
+                                             withBehavior behavior alive request =
+                                                 case request of
+
+                                                     Trigger up' (Signal currentRef behaviorsRef) event' ->
+                                                         do
+                                                             let
+                                                                 !behaviors' =
+                                                                     unsafePerformIO $ readIORef behaviorsRef
+
+                                                                 !current =
+                                                                     unsafePerformIO $ writeIORef currentRef event'
+
+                                                             newBehaviors <- behaviors' `seq` current `seq` runBehaviors up' event' behaviors'
+                                                             let
+                                                                 writeNewBehaviors =
+                                                                     unsafePerformIO $ writeIORef behaviorsRef newBehaviors
+
+                                                             newRequest <- writeNewBehaviors `seq` respond (return ())
+                                                             withBehavior behavior alive newRequest
+
+                                                     Become f ->
+                                                         do
+                                                             newRequest <- respond (return ())
+                                                             withBehavior (unsafeCoerce f) alive newRequest
+
+                                                     Die ->
+                                                         do
+                                                             newRequest <- respond (return ())
+                                                             withBehavior behavior False newRequest
+
+                                                     Continue ->
+                                                         if alive then
+                                                             withAcc (behavior:acc) behaviors
+                                                         else
+                                                             withAcc acc behaviors
+
+
+
+main =
+    do
+        let
+            obj = Object $ knots *:* Empty
+
+        (_,result) <- delta obj $
+            do
+                event $ \Event{..} ->
+                    do
+                        let
+                            sig0 = construct (0 :: Int)
+                            sig1 = mapSignal (+1) sig0
+
+                        behavior' sig1 (\Reactor{..} e -> if e == 2 then become (const die) else io (print e))
+                        trigger sig0 0
+                        trigger sig0 1
+                        trigger sig0 5
+                        trigger sig0 5
+                        return "Done"
+        print result
+
+
+
+{-# INLINE event #-}
