@@ -16,7 +16,7 @@ module Ef.Lang.Var
 
 
 import Ef.Core.Narrative
-import Ef.Lang.Knot.Global
+import Ef.Lang.Knot
 
 import Control.Monad
 
