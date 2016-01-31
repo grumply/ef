@@ -38,77 +38,20 @@ main =
             obj = Object $ (before ghci) *:* Empty
         delta obj $
             do
-                sendGHCi "\r"
+                sendGHCi "x <- return 3"
+                sendGHCi "y <- return 2"
+                sendGHCi "return 1"
                 currentBindings
         return ()
 
 
 
 type Stream =
-    MVar (Maybe String)
+    MVar (Maybe Char)
 
 
 
-streamTo stream =
-    go
-    where
-
-        go [] =
-            putMVar stream Nothing
-
-        go (x:xs) =
-            do
-                putMVar stream (Just x)
-                go xs
-
-
-drain
-    :: Int
-    -> MVar (Maybe String)
-    -> IO (Either String String)
 drain delay stream =
-    do
-        first <- takeMVar stream
-        case first of
-
-            Nothing ->
-                return (Left "")
-
-            Just line ->
-                do
-                    more <- slowDrain delay stream
-                    case more of
-
-                        Left closedResult ->
-                            do
-                                print "drain.Left"
-                                return $ Left $ unlines (line:closedResult)
-
-                        Right moreLines ->
-                            do
-                                print "drain.Right"
-                                return $ Right $ unlines (line:moreLines)
-
-
-
-tryDrain delay stream =
-    do
-        result <- slowDrain 1000000 stream
-        case result of
-
-            Left closedResult ->
-                do
-                    print "tryDrain.Left"
-                    return $ Left $ unlines closedResult
-
-            Right moreLines ->
-                do
-                    print "tryDrain.Right"
-                    return $ Right $ unlines moreLines
-
-
-
-slowDrain delay stream =
     do
         result <- newIORef []
         continuousDrain result
@@ -155,14 +98,13 @@ data GHCi =
 
 createGHCi wd =
      do
-         (Just ghci_in,Just ghci_out_,Just ghci_err_,ghci_process) <-
-             createProcess
-                (proc "ghci" ["-fobject-code"])
-                    { cwd = Just wd
-                    , std_in = CreatePipe
-                    , std_out = CreatePipe
-                    , std_err = CreatePipe
-                    }
+         (ghci_in,ghci_out_,ghci_err_,ghci_process) <-
+             runInteractiveProcess
+                "ghci"
+                ["-fobject-code"]
+                (Just ".")
+                Nothing
+         hSetBuffering ghci_in LineBuffering
          ghci_out <- streamify ghci_out_
          ghci_err <- streamify ghci_err_
          return GHCi{..}
@@ -170,11 +112,25 @@ createGHCi wd =
 
          streamify handle =
              do
-                 contents <- lines <$> hGetContents handle
                  stream <- newEmptyMVar
-                 forkIO (streamTo stream contents)
+                 forkIO (filler stream)
                  return stream
+             where
 
+                 filler stream =
+                     go
+                     where
+
+                         go =
+                             do
+                                 eof <- hIsEOF handle
+                                 if eof then
+                                     putMVar stream Nothing
+                                 else
+                                     do
+                                         char <- hGetChar handle
+                                         putMVar stream (Just char)
+                                         go
 
 
 data Before k =
@@ -216,7 +172,7 @@ before GHCi{..} =
         send str =
             do
                 hPutStrLn ghci_in str
-                (,) <$> drain 1000000 ghci_out <*> tryDrain 1000000 ghci_err
+                (,) <$> drain 100000 ghci_out <*> drain 100000 ghci_err
 
 
 
@@ -277,5 +233,5 @@ sendGHCi str =
 
 currentBindings =
     do
-        (bindings,_) <- sendGHCi ":show bindings"
-        io (print bindings)
+        result <- sendGHCi ":show bindings"
+        io (print result)
