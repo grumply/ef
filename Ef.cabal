@@ -112,13 +112,28 @@ library
   hs-source-dirs:      src
   default-language:    Haskell2010
 
--- executable runtime
---     build-depends:  base >=4.8 && <4.9
---                   , binary >= 0.7.6.1
---                   , bytestring >= 0.10.6
---                   , random >= 1.1
---                   , sdl2
---                   , sdl2-ttf
---     hs-source-dirs: src
---     main-is: Ef/Runtime.hs
---     default-language: Haskell2010
+executable runtime
+    build-depends: OpenGL
+                 , base >=4.8 && <4.9
+                 , binary >= 0.7.6.1
+                 , bytestring >= 0.10.6
+                 , directory >= 1.2.2.0
+                 , plugins
+                 , process
+                 , random >= 1.1
+                 , sdl2
+                 , template-haskell
+    other-modules: Ef.Core
+                 , Ef.Core.Inflect
+                 , Ef.Core.Narrative
+                 , Ef.Core.Narrative.Exception
+                 , Ef.Core.Narrative.Lexicon
+                 , Ef.Core.Object
+                 , Ef.Core.Object.Context
+                 , Ef.Core.Type.Nat
+                 , Ef.Core.Type.Set
+                 , Ef.Lang.IO
+                 , Ef.Runtime.Before
+    hs-source-dirs: src
+    main-is: Ef/Runtime.hs
+    default-language: Haskell2010
