@@ -15,6 +15,9 @@ module Ef.Core.Narrative.Exception
     , bracket
     , bracket_
     , bracketOnError
+      
+    , SomeException(..)
+    , Exception(..)
 
     , Handler(..)
     , catches
