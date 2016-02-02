@@ -34,6 +34,7 @@ import Control.Exception (Exception(..),SomeException)
 import Control.Exception.Base (PatternMatchFail(..))
 import Control.Monad
 
+import GHC.Exts (Constraint)
 
 
 data Narrative lexicon environment result
@@ -153,10 +154,29 @@ type Say lexeme lexicon environment result =
 
 
 
+type Says lexemes lexicon environment result =
+    KnowsAll lexemes lexicon environment
+    => Narrative lexicon environment result
+
+
+
 type Knows lexeme lexicon environment =
     ( Can' lexeme lexicon (IndexOf lexeme lexicon)
     , Monad environment
     )
+
+
+type family KnowsAll (lexemes :: [* -> *]) lexicon environment :: Constraint where
+
+    KnowsAll (lexeme ': '[]) lexicon environment =
+        ( Can' lexeme lexicon (IndexOf lexeme lexicon)
+        , Monad environment
+        )
+
+    KnowsAll (lexeme ': lexemes) lexicon environment =
+        ( Can' lexeme lexicon (IndexOf lexeme lexicon)
+        , KnowsAll lexemes lexicon environment
+        )
 
 
 

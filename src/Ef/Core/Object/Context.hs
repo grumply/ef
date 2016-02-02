@@ -43,6 +43,34 @@ data Context (attrs :: [* -> *]) x
 
 
 
+instance Eq (Context '[] x) where
+    _ == _ = True
+
+
+
+instance (Eq (context x),Eq (Context contexts x))
+        => Eq (Context (context ': contexts) x)
+    where
+
+        (Context attr0 contexts0) == (Context attr1 contexts1) =
+            attr0 == attr1 && contexts0 == contexts1
+
+
+
+instance Ord (Context '[] x) where
+    _ <= _ = True
+
+
+
+instance (Ord (context x),Ord (Context contexts x))
+        => Ord (Context (context ': contexts) x)
+    where
+
+        (Context attr0 contexts0) <= (Context attr1 contexts1) =
+            attr0 <= attr1 && contexts0 <= contexts1
+
+
+
 instance Binary (Context '[] x)
   where
 

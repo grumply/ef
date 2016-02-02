@@ -1,3 +1,4 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RankNTypes #-}
@@ -11,6 +12,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ConstraintKinds #-}
 module Ef.Core.Object
     ( Morphism
     , Use
@@ -22,6 +24,13 @@ module Ef.Core.Object
     , Object(..)
     , (*:*)
     , view
+    , view2
+    , view3
+    , view4
+    , view5
+    , view6
+    , view7
+    , view8
     , (.=)
     ) where
 
@@ -36,6 +45,7 @@ import Data.Binary
 import Data.Typeable
 import Data.Typeable.Internal
 import GHC.Generics
+import GHC.Exts (Constraint)
 
 import qualified Data.ByteString.Lazy as BSL
 
@@ -53,10 +63,38 @@ type Use context contexts environment =
 
 
 
+type Uses context contexts contexts' environment =
+    HasAll contexts contexts' environment
+    => context (Morphism contexts environment)
+
+
+
 type Has context contexts environment =
     ( Does' context contexts (IndexOf context contexts)
     , Monad environment
     )
+
+
+
+type family HasAll (attributes :: [* -> *]) contexts environment :: Constraint where
+
+    HasAll (attribute ': '[]) contexts environment =
+        ( Has attribute contexts environment
+        , Monad environment
+        )
+
+    HasAll (attribute ': attributes) contexts environment =
+        ( Does' attribute contexts (IndexOf attribute contexts)
+        , HasAll attributes contexts environment
+        )
+
+type family DoesAll (attributes :: [* -> *]) contexts :: Constraint where
+
+    DoesAll (attribute ': '[]) contexts =
+        (Does attribute contexts)
+
+    DoesAll (attribute ': attributes) contexts =
+        (Does attribute contexts,DoesAll attributes contexts)
 
 
 
@@ -67,6 +105,22 @@ newtype Object contexts environment =
                 :: Context contexts (Morphism contexts environment) 
           }
 
+
+
+instance (Eq (Context contexts (Morphism contexts environment)))
+        => Eq (Object contexts environment)
+    where
+
+        (Object o1) == (Object o2) =
+            o1 == o2
+
+
+instance (Ord (Context contexts (Morphism contexts environment)))
+        => Ord (Object contexts environment)
+     where
+
+         (Object o1) <= (Object o2) =
+             o1 <= o2
 
 
 -- Orphans
@@ -123,14 +177,112 @@ infixr 6 *:*
 
 
 view
-    :: ( Does' context contexts (IndexOf context contexts)
-       , Monad environment
-       )
+    :: Does context contexts
     => Object contexts environment
     -> context (Morphism contexts environment)
 
 view =
     pull . deconstruct
+
+
+
+view2
+    :: DoesAll '[context1,context2] contexts
+    => Object contexts environment
+    -> ( context1 (Morphism contexts environment)
+       , context2 (Morphism contexts environment)
+       )
+view2 obj =
+    (view obj,view obj)
+
+
+
+view3
+    :: DoesAll '[context1,context2,context3] contexts
+    => Object contexts environment
+    -> ( context1 (Morphism contexts environment)
+       , context2 (Morphism contexts environment)
+       , context3 (Morphism contexts environment)
+       )
+view3 obj =
+    (view obj,view obj,view obj)
+
+
+
+
+view4
+    :: DoesAll '[context1,context2,context3,context4] contexts
+    => Object contexts environment
+    -> ( context1 (Morphism contexts environment)
+       , context2 (Morphism contexts environment)
+       , context3 (Morphism contexts environment)
+       , context4 (Morphism contexts environment)
+       )
+view4 obj =
+    (view obj,view obj,view obj,view obj)
+
+
+
+
+view5
+    :: DoesAll '[context1,context2,context3,context4,context5] contexts
+    => Object contexts environment
+    -> ( context1 (Morphism contexts environment)
+       , context2 (Morphism contexts environment)
+       , context3 (Morphism contexts environment)
+       , context4 (Morphism contexts environment)
+       , context5 (Morphism contexts environment)
+       )
+view5 obj =
+    (view obj,view obj,view obj,view obj,view obj)
+
+
+
+view6
+    :: DoesAll '[context1,context2,context3,context4,context5,context6] contexts
+    => Object contexts environment
+    -> ( context1 (Morphism contexts environment)
+       , context2 (Morphism contexts environment)
+       , context3 (Morphism contexts environment)
+       , context4 (Morphism contexts environment)
+       , context5 (Morphism contexts environment)
+       , context6 (Morphism contexts environment)
+       )
+view6 obj =
+    (view obj,view obj,view obj,view obj,view obj,view obj)
+
+
+
+view7
+    :: DoesAll '[context1,context2,context3,context4,context5,context6,context7] contexts
+    => Object contexts environment
+    -> ( context1 (Morphism contexts environment)
+       , context2 (Morphism contexts environment)
+       , context3 (Morphism contexts environment)
+       , context4 (Morphism contexts environment)
+       , context5 (Morphism contexts environment)
+       , context6 (Morphism contexts environment)
+       , context7 (Morphism contexts environment)
+       )
+view7 obj =
+    (view obj,view obj,view obj,view obj,view obj,view obj,view obj)
+
+
+
+view8
+    :: DoesAll '[context1,context2,context3,context4,context5,context6,context7,context8] contexts
+    => Object contexts environment
+    -> ( context1 (Morphism contexts environment)
+       , context2 (Morphism contexts environment)
+       , context3 (Morphism contexts environment)
+       , context4 (Morphism contexts environment)
+       , context5 (Morphism contexts environment)
+       , context6 (Morphism contexts environment)
+       , context7 (Morphism contexts environment)
+       , context8 (Morphism contexts environment)
+       )
+view8 obj =
+    (view obj,view obj,view obj,view obj,view obj,view obj,view obj,view obj)
 
 
 

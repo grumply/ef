@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RankNTypes #-}
@@ -16,6 +17,7 @@ module Ef.Core.Narrative.Lexicon where
 import Ef.Core.Type.Set
 import Ef.Core.Type.Nat
 
+import GHC.Exts (Constraint)
 
 
 data Lexicon lexicon a
@@ -78,6 +80,18 @@ instance ( Functor lexeme
 
     fmap f (Further lexemes') =
         Further (fmap f lexemes')
+
+
+
+type family Capable (lexemes :: [* -> *]) lexicon :: Constraint where
+
+    Capable (lexeme ': '[]) lexicon =
+        (Can lexeme lexicon)
+
+    Capable (lexeme ': lexemes) lexicon =
+        ( Can lexeme lexicon
+        , Capable lexemes lexicon
+        )
 
 
 
