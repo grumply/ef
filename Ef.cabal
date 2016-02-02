@@ -118,9 +118,8 @@ executable runtime
                  , binary >= 0.7.6.1
                  , bytestring >= 0.10.6
                  , directory >= 1.2.2.0
-                 , plugins
-                 , process
                  , random >= 1.1
+                 , ghc
                  , sdl2
                  , template-haskell
     other-modules: Ef.Core

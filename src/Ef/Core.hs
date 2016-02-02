@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE BangPatterns #-}
 {-# OPTIONS_GHC -fno-warn-missing-methods #-}
 module Ef.Core
     ( module Core
@@ -34,6 +35,7 @@ import Debug.Trace
 import Unsafe.Coerce
 
 
+import GHC.Exts
 
 -- | Send a narrative to an object for invocation; returns a new, modified object
 -- and a result.
@@ -51,7 +53,7 @@ delta =
 
 
 
-infix 5 $.
+infixr 5 $.
 -- | Synonym for 'delta'. Send a narrative to an object.
 --
 -- >    (resultObj,result) <- obj $. narrative
@@ -127,24 +129,27 @@ _delta
 _delta object =
     go
   where
-    go (Fail e) =
-        Exception.throw e
 
-    go (Super m) =
-        m >>= go
+      go (Say symbol k) =
+          let
+              !(method,b) =
+                  inflect (,) (deconstruct object) symbol
 
-    go (Return result) =
-        pure (object,result)
+          in
+              do
+                  !object' <- method object
+                  _delta object' (k b)
 
-    go (Say symbol k) =
-        let
-            (method,b) =
-                inflect (,) (deconstruct object) symbol
+      go (Fail e) =
+          Exception.throw e
 
-        in
-            do
-                object' <- method object
-                _delta object' (k b)
+      go (Super m) =
+          m >>= go
+
+      go (Return result) =
+          pure (object,result)
+
+
 
 {-# RULES
 

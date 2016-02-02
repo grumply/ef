@@ -9,6 +9,6 @@ data Stateful st k
     where
 
         State
-            :: st
+            :: !st
             -> (st -> k)
             -> Stateful st k

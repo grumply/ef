@@ -78,9 +78,7 @@ modify'
     -> Say (State st) lexicon environment ()
 
 modify' f =
-    do
-      st <- get
-      put $! f st
+    say (Modify (\x -> let x' = f x in x' `seq` x') (const ()))
 
 
 

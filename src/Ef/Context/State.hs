@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 module Ef.Context.State
     ( module Ef.Context.State.Lexemes
@@ -15,10 +16,16 @@ import Ef.Context.State.Context
 instance Inflection (Stateful st) (State st)
   where
 
-    inflect use (State st k) (Modify stst stk) =
+    inflect use (State st stk) (Modify stst stk') =
         let
           st' =
               stst st
+              
+          k =
+              stk st'
+
+          k' =
+              stk' st
 
         in
-          inflect use (st,k st') stk
+          use k k'

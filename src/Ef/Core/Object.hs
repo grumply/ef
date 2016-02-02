@@ -105,7 +105,7 @@ instance Show (Context contexts (Morphism contexts environment))
     where
 
         show (Object contexts) =
-            "Object { " ++ show contexts ++ " }"
+            "{ " ++ show contexts ++ " }"
 
 
 
