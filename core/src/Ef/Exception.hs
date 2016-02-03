@@ -1,7 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Ef.Core.Narrative.Exception
+module Ef.Exception
     ( throw
     , catch
     , handle
@@ -26,7 +26,7 @@ module Ef.Core.Narrative.Exception
 
 
 
-import Ef.Core.Narrative
+import Ef.Narrative
 
 import Control.Exception
     ( Exception(..)
@@ -38,7 +38,7 @@ import Control.Exception
 throw
     :: Exception e
     => e
-    -> Narrative lexicon environment a
+    -> Narrative self super a
 
 throw e =
     Fail (toException e)
@@ -46,12 +46,12 @@ throw e =
 
 
 catch
-    :: ( Functor environment
+    :: ( Functor super
        , Exception e
        )
-    => Narrative lexicon environment a
-    -> (e -> Narrative lexicon environment a)
-    -> Narrative lexicon environment a
+    => Narrative self super a
+    -> (e -> Narrative self super a)
+    -> Narrative self super a
 
 catch plan handler =
     rewrite plan
@@ -78,25 +78,25 @@ catch plan handler =
 
 
 handle
-    :: ( Functor environment
+    :: ( Functor super
        , Exception e
        )
-    => (e -> Narrative lexicon environment a)
-    -> Narrative lexicon environment a
-    -> Narrative lexicon environment a
+    => (e -> Narrative self super a)
+    -> Narrative self super a
+    -> Narrative self super a
 
 handle = flip catch
 
 
 
 catchJust
-    :: ( Functor environment
+    :: ( Functor super
        , Exception e
        )
     => (e -> Maybe b)
-    -> Narrative lexicon environment a
-    -> (b -> Narrative lexicon environment a)
-    -> Narrative lexicon environment a
+    -> Narrative self super a
+    -> (b -> Narrative self super a)
+    -> Narrative self super a
 
 catchJust p a handler =
     catch a handler'
@@ -113,13 +113,13 @@ catchJust p a handler =
 
 
 handleJust
-    :: ( Functor environment
+    :: ( Functor super
        , Exception e
        )
     => (e -> Maybe b)
-    -> (b -> Narrative lexicon environment a)
-    -> Narrative lexicon environment a
-    -> Narrative lexicon environment a
+    -> (b -> Narrative self super a)
+    -> Narrative self super a
+    -> Narrative self super a
 
 handleJust p =
     flip (catchJust p)
@@ -127,13 +127,13 @@ handleJust p =
 
 
 mapException
-    :: ( Functor environment
+    :: ( Functor super
        , Exception e
        , Exception e'
        )
     => (e -> e')
-    -> Narrative lexicon environment a
-    -> Narrative lexicon environment a
+    -> Narrative self super a
+    -> Narrative self super a
 
 mapException f p =
     let
@@ -146,11 +146,11 @@ mapException f p =
 
 
 try
-    :: ( Monad environment
+    :: ( Monad super
        , Exception e
        )
-    => Narrative lexicon environment a
-    -> Narrative lexicon environment (Either e a)
+    => Narrative self super a
+    -> Narrative self super (Either e a)
 
 try p =
     let
@@ -169,13 +169,13 @@ try p =
 
 tryJust
     :: ( Exception e
-       , Monad environment
+       , Monad super
        )
     => (    e
          -> Maybe b
        )
-    -> Narrative lexicon environment a
-    -> Narrative lexicon environment (Either b a)
+    -> Narrative self super a
+    -> Narrative self super (Either b a)
 
 tryJust analyze p =
     do
@@ -203,10 +203,10 @@ tryJust analyze p =
 
 
 onException
-    :: Monad environment
-    => Narrative lexicon environment a
-    -> Narrative lexicon environment b
-    -> Narrative lexicon environment a
+    :: Monad super
+    => Narrative self super a
+    -> Narrative self super b
+    -> Narrative self super a
 
 onException p sequel =
     let
@@ -221,10 +221,10 @@ onException p sequel =
 
 
 finally
-    :: Monad environment
-    => Narrative lexicon environment a
-    -> Narrative lexicon environment b
-    -> Narrative lexicon environment a
+    :: Monad super
+    => Narrative self super a
+    -> Narrative self super b
+    -> Narrative self super a
 
 finally p sequel =
     do
@@ -235,12 +235,12 @@ finally p sequel =
 
 
 bracket
-    :: forall lexicon environment a b c.
-       Monad environment
-    => Narrative lexicon environment a
-    -> (a -> Narrative lexicon environment b)
-    -> (a -> Narrative lexicon environment c)
-    -> Narrative lexicon environment c
+    :: forall self super a b c.
+       Monad super
+    => Narrative self super a
+    -> (a -> Narrative self super b)
+    -> (a -> Narrative self super c)
+    -> Narrative self super c
 
 bracket acquire cleanup p =
     do
@@ -262,11 +262,11 @@ bracket acquire cleanup p =
 
 
 bracket_
-    :: Monad environment
-    => Narrative lexicon environment a
-    -> Narrative lexicon environment b
-    -> Narrative lexicon environment c
-    -> Narrative lexicon environment c
+    :: Monad super
+    => Narrative self super a
+    -> Narrative self super b
+    -> Narrative self super c
+    -> Narrative self super c
 
 bracket_ acquire after computation =
     bracket
@@ -277,11 +277,11 @@ bracket_ acquire after computation =
 
 
 bracketOnError
-    :: Monad environment
-    => Narrative lexicon environment a
-    -> (a -> Narrative lexicon environment b)
-    -> (a -> Narrative lexicon environment c)
-    -> Narrative lexicon environment c
+    :: Monad super
+    => Narrative self super a
+    -> (a -> Narrative self super b)
+    -> (a -> Narrative self super c)
+    -> Narrative self super c
 
 bracketOnError acquire cleanup p =
     do
@@ -297,20 +297,20 @@ bracketOnError acquire cleanup p =
 
 
 
-data Handler lexicon environment a
+data Handler self super a
   where
 
     Handler
         :: Exception e
         => (    e
-             -> Narrative lexicon environment a
+             -> Narrative self super a
            )
-        -> Handler lexicon environment a
+        -> Handler self super a
 
 
 
-instance Functor environment
-    => Functor (Handler lexicon environment)
+instance Functor super
+    => Functor (Handler self super)
   where
 
     fmap f (Handler h) =
@@ -319,28 +319,28 @@ instance Functor environment
 
 
 catches
-    :: Functor environment
-    => Narrative lexicon environment a
-    -> [Handler lexicon environment a]
-    -> Narrative lexicon environment a
+    :: Functor super
+    => Narrative self super a
+    -> [Handler self super a]
+    -> Narrative self super a
 
 catches p handlers =
     p `catch` catchesHandler handlers
 
 
 handles
-    :: Functor environment
-    => [Handler lexicon environment a]
-    -> Narrative lexicon environment a
-    -> Narrative lexicon environment a
+    :: Functor super
+    => [Handler self super a]
+    -> Narrative self super a
+    -> Narrative self super a
 handles =
     flip catches
 
 
 catchesHandler
-    :: [Handler lexicon environment a]
+    :: [Handler self super a]
     -> SomeException
-    -> Narrative lexicon environment a
+    -> Narrative self super a
 
 catchesHandler handlers e =
     let

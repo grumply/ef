@@ -5,32 +5,27 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE BangPatterns #-}
 {-# OPTIONS_GHC -fno-warn-missing-methods #-}
-module Ef.Core
+module Ef
     ( module Core
     , delta
     , delta'
     , ($.)
     , (#)
     , (#.)
-    , Exception(..)
-    , SomeException
     ) where
 
-import Ef.Core.Type.Set as Core
-import Ef.Core.Type.Nat as Core
+import Ef.Set as Core
+import Ef.Nat as Core
 
-import Ef.Core.Object as Core
-import Ef.Core.Object.Context as Core
+import Ef.Object as Core
+import Ef.Methods as Core
 
-import Ef.Core.Narrative as Core
-import Ef.Core.Narrative.Lexicon as Core
-import Ef.Core.Narrative.Exception as Core
+import Ef.Narrative as Core
+import Ef.Messages as Core
+import Ef.Exception as Core
 
-import Ef.Core.Inflect as Core
+import Ef.Ma as Core
 
-import Control.Exception (Exception(..),SomeException)
-import qualified Control.Exception as Exception
-import Data.Typeable (Typeable,typeOf)
 import Debug.Trace
 import Unsafe.Coerce
 
@@ -42,12 +37,12 @@ import GHC.Exts
 --
 -- >    (resultObj,result) <- delta obj narrative
 delta
-    :: ( Inflections contexts lexicon
-       , Monad environment
+    :: ( (Methods methods) `Ma` (Messages messages)
+       , Monad supertype
        )
-    => Object contexts environment
-    -> Narrative lexicon environment result
-    -> environment (Object contexts environment,result)
+    => Object methods supertype
+    -> Narrative messages supertype result
+    -> supertype (Object methods supertype,result)
 delta =
     _delta
 
@@ -58,44 +53,44 @@ infixr 5 $.
 --
 -- >    (resultObj,result) <- obj $. narrative
 ($.)
-    :: ( Inflections contexts lexicon
-       , Monad environment
+    :: ( (Methods methods) `Ma` (Messages messages)
+       , Monad supertype
        )
-    => Object contexts environment
-    -> Narrative lexicon environment result
-    -> environment (Object contexts environment,result)
+    => Object methods supertype
+    -> Narrative messages supertype result
+    -> supertype (Object methods supertype,result)
     
 ($.) = delta
 
 
 
 infixl 5 #
--- | Like 'delta' for objects in an environment, but without a return value.
+-- | Like 'delta' for objects in an supertype, but without a return value.
 -- Permits a chaining syntax:
 --
 -- >    resultObj <- pure obj # method1 # method2 # method3
 (#)
-    :: ( Inflections contexts lexicon
-       , Monad environment
+    :: ( (Methods methods) `Ma` (Messages messages)
+       , Monad supertype
        )
-    => environment (Object contexts environment)
-    -> Narrative lexicon environment result
-    -> environment (Object contexts environment)
+    => supertype (Object methods supertype)
+    -> Narrative messages supertype result
+    -> supertype (Object methods supertype)
 (#) obj passage = fmap fst (obj #. passage)
 
 
 
--- | Like 'delta' for objects in an environment. Like '#', but can be used to end
+-- | Like 'delta' for objects in an supertype. Like '#', but can be used to end
 -- a chain of method calls, for example:
 --
 -- >    (resultObj,result) <- pure obj # method1 # method2 #. method3
 (#.)
-    :: ( Inflections contexts lexicon
-       , Monad environment
+    :: ( (Methods methods) `Ma` (Messages messages)
+       , Monad supertype
        )
-    => environment (Object contexts environment)
-    -> Narrative lexicon environment result
-    -> environment (Object contexts environment,result)
+    => supertype (Object methods supertype)
+    -> Narrative messages supertype result
+    -> supertype (Object methods supertype,result)
 
 (#.) obj passage = obj >>= ($. passage)
 
@@ -106,13 +101,13 @@ infixl 5 #
 --
 -- >    (resultObj,result) <- delta' obj smallNarrative
 delta'
-    :: ( Inflections contexts lexicon'
-       , Grow (Lexicon lexicon) (Lexicon lexicon')
-       , Monad environment
+    :: ( (Methods methods) `Ma` (Messages messages')
+       , Grow (Messages messages) (Messages messages')
+       , Monad supertype
        )
-    => Object contexts environment
-    -> Narrative lexicon environment result
-    -> environment (Object contexts environment,result)
+    => Object methods supertype
+    -> Narrative messages supertype result
+    -> supertype (Object methods supertype,result)
 delta' o =
     _delta o . grow
 
@@ -120,12 +115,12 @@ delta' o =
 
 {-# INLINE _delta #-}
 _delta
-    :: ( Inflections contexts lexicon
-       , Monad environment
+    :: ( (Methods methods) `Ma` (Messages messages)
+       , Monad supertype
        )
-    => Object contexts environment
-    -> Narrative lexicon environment result
-    -> environment (Object contexts environment,result)
+    => Object methods supertype
+    -> Narrative messages supertype result
+    -> supertype (Object methods supertype,result)
 _delta object =
     go
   where

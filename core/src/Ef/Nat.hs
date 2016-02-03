@@ -5,7 +5,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE KindSignatures #-}
-module Ef.Core.Type.Nat where
+module Ef.Nat where
 
 
 
@@ -28,11 +28,11 @@ data Index (n :: Nat)
 
 
 
-type family IndexOf (x :: k) (xs :: [k]) :: Nat
+type family Offset (x :: k) (xs :: [k]) :: Nat
   where
 
-    IndexOf x (x ': xs) =
+    Offset x (x ': xs) =
         'Z
 
-    IndexOf x (any ': xs) =
-        'S (IndexOf x xs)
+    Offset x (any ': xs) =
+        'S (Offset x xs)
