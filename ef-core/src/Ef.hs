@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -29,6 +30,7 @@ import Ef.Ma as Core
 import Debug.Trace
 import Unsafe.Coerce
 
+import qualified Control.Exception as Exception
 
 import GHC.Exts
 
@@ -102,14 +104,14 @@ infixl 5 #
 -- >    (resultObj,result) <- delta' obj smallNarrative
 delta'
     :: ( (Methods methods) `Ma` (Messages messages')
-       , Grow (Messages messages) (Messages messages')
+       , Upcast (Messages messages) (Messages messages')
        , Monad supertype
        )
     => Object methods supertype
     -> Narrative messages supertype result
     -> supertype (Object methods supertype,result)
 delta' o =
-    _delta o . grow
+    _delta o . upcast
 
 
 
@@ -128,7 +130,7 @@ _delta object =
       go (Say symbol k) =
           let
               !(method,b) =
-                  inflect (,) (deconstruct object) symbol
+                  ma (,) (deconstruct object) symbol
 
           in
               do
@@ -174,7 +176,7 @@ _delta object =
             _delta obj (Say symbol k) =
                 let
                     (method,b) =
-                        inflect (,) (deconstruct obj) symbol
+                        ma (,) (deconstruct obj) symbol
 
                 in
                     do

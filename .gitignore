@@ -1,3 +1,4 @@
 dist/
-.arcconfig
-
+ef-core/dist/
+ef-base/dist/
+before/dist/
