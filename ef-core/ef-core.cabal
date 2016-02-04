@@ -1,6 +1,6 @@
 
 name:                ef-core
-version:             1.0.0.0
+version:             1.0.0.1
 synopsis:            
 -- description:         
 homepage:            ef-lang.org
@@ -30,6 +30,8 @@ library
                   Ef.Messages
                   Ef.Ma
                   Ef.Object
+                  Ef.Exception
+                  Ef.Codensity
 
   -- other-modules:       
   -- other-extensions:    

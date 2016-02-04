@@ -1,18 +1,3 @@
-{-# LANGUAGE GADTs #-}
-module Ef.Context.Note.Lexicon
-    ( Note(..)
-    ) where
+module Ef.Base.Note.Lexicon where
 
-
-
-import Ef.Core.Narrative
-
-
-
-data Note r k
-  where
-
-    Note
-        :: r
-        -> k
-        -> Note r k
+data Note r k = Note r k

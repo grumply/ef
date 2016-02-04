@@ -2,11 +2,11 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Ef.Core.Codensity where
+module Ef.Codensity where
 
 
 
-import Ef.Core.Narrative
+import Ef.Narrative
 
 
 import Control.Applicative
@@ -65,18 +65,18 @@ import Control.Monad
 -- cannot be inspected - modulo 'unsafeCoerce'. Some (all?) Free monad
 -- encodings are amenable to a Codensity representation and Narrative is a
 -- Free monad representation.
-newtype Codensity lexicon environment result =
+newtype Codensity messages super result =
 
     Codensity
         { runCodensity
               :: forall b.
-                 (result -> Narrative lexicon environment b)
-              -> Narrative lexicon environment b
+                 (result -> Narrative messages super b)
+              -> Narrative messages super b
         }
 
 
 
-instance Functor (Codensity lexicon environment)
+instance Functor (Codensity messages super)
   where
 
     -- fmap a function, f, over a Codensity computation by unwrapping the
@@ -92,7 +92,7 @@ instance Functor (Codensity lexicon environment)
 
 
 
-instance Applicative (Codensity lexicon environment)
+instance Applicative (Codensity messages super)
   where
 
     -- lift a value, x, into a Codensity computation by applying a
@@ -112,7 +112,7 @@ instance Applicative (Codensity lexicon environment)
 
 
 
-instance Monad (Codensity lexicon environment)
+instance Monad (Codensity messages super)
   where
 
     return =
@@ -122,11 +122,11 @@ instance Monad (Codensity lexicon environment)
 
     (>>=)
         :: forall firstResult secondResult.
-           Codensity lexicon environment firstResult
+           Codensity messages super firstResult
         -> (    firstResult
-             -> Codensity lexicon environment secondResult
+             -> Codensity messages super secondResult
            )
-        -> Codensity lexicon environment secondResult
+        -> Codensity messages super secondResult
 
     one >>= twoFrom =
         Codensity composed
@@ -136,9 +136,9 @@ instance Monad (Codensity lexicon environment)
         composed
             :: forall thirdResult.
                (    secondResult
-                 -> Narrative lexicon environment thirdResult
+                 -> Narrative messages super thirdResult
                )
-            -> Narrative lexicon environment thirdResult
+            -> Narrative messages super thirdResult
 
         composed threeFrom =
             runCodensity one (two threeFrom)
@@ -149,20 +149,20 @@ instance Monad (Codensity lexicon environment)
             --     2. a continuation of the second result
             two
                 :: (    secondResult
-                     -> Narrative lexicon environment thirdResult
+                     -> Narrative messages super thirdResult
                    )
                 -> firstResult
-                -> Narrative lexicon environment thirdResult
+                -> Narrative messages super thirdResult
 
             two threeFrom firstResult =
                 runCodensity (twoFrom firstResult) threeFrom
 
 
 
-instance ( Alternative environment
-         , MonadPlus environment
+instance ( Alternative super
+         , MonadPlus super
          )
-    => Alternative (Codensity lexicon environment)
+    => Alternative (Codensity messages super)
   where
 
     empty =
@@ -176,8 +176,8 @@ instance ( Alternative environment
 
 
 
-instance MonadPlus environment
-    => MonadPlus (Codensity lexicon environment)
+instance MonadPlus super
+    => MonadPlus (Codensity messages super)
   where
 
     mzero =
@@ -192,9 +192,9 @@ instance MonadPlus environment
 
 
 toCodensity
-    :: Monad environment
-    => Narrative lexicon environment result
-    -> Codensity lexicon environment result
+    :: Monad super
+    => Narrative messages super result
+    -> Codensity messages super result
 
 toCodensity f =
     Codensity (f >>=)
@@ -202,9 +202,9 @@ toCodensity f =
 
 
 fromCodensity
-    :: Monad environment
-    => Codensity lexicon environment result
-    -> Narrative lexicon environment result
+    :: Monad super
+    => Codensity messages super result
+    -> Narrative messages super result
 
 fromCodensity a =
     runCodensity a return

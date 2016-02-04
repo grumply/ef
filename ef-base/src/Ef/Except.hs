@@ -9,22 +9,22 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
-module Ef.Lang.Except
-    ( module Ef.Lang.Except.Lexemes
+module Ef.Except
+    ( module Ef.Except.Lexemes
     ) where
 
 
 
-import Ef.Core.Inflect
+import Ef.Ma
 
-import Ef.Lang.Except.Lexemes
-import Ef.Lang.Except.Context
+import Ef.Except.Lexemes
+import Ef.Except.Context
 
 
 
-instance Inflection Excepts Except
+instance Ma Excepts Except
     where
 
-        inflect use (Excepts k) (Throw e k') =
+        ma use (Excepts k) (Throw e k') =
             use (k e) k'
 

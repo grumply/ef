@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
-module Ef.Lang.Contract
+module Ef.Contract
     ( contract
     , Consideration(..)
     , Breaches(..)
@@ -11,7 +11,7 @@ module Ef.Lang.Contract
 
 
 
-import Ef.Core
+import Ef
 
 import Control.Exception
     ( Exception(..)
