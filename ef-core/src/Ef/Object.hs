@@ -37,7 +37,7 @@ import Ef.Methods
 
 import GHC.Exts (Constraint)
 
-
+import Ef.Nat
 
 type Method method methods supertype =
     method (Implementation methods supertype)
@@ -53,7 +53,7 @@ type family Subclass (methods :: [* -> *]) methods' :: Constraint where
         (Has method methods')
 
     Subclass (method ': methods) methods' =
-        (Has method methods' ,methods `Subclass` methods')
+        (Has method methods',methods `Subclass` methods')
 
 
 
@@ -137,8 +137,7 @@ infixr 6 *:*
     -> Methods methods a
     -> Methods (method ': methods) a
 
-(*:*) method methods =
-    Method method methods
+(*:*) = Methodethods
 
 
 -- Class-based approach to multi-view was not viable since

@@ -13,12 +13,6 @@ category:            Development, Language
 build-type:          Simple
 -- extra-source-files:  
 cabal-version:       >=1.10
-
-Flag TRANSFORMERS_SAFE
-  Description: Use a version of the Pattern monad instance that adds an extra step, but adheres to the transformer law that: `lift . return = return`
-  Default: False
-  Manual: True
-
                      
 library
   exposed-modules:

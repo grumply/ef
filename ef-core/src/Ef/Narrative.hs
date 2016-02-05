@@ -1,16 +1,15 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE IncoherentInstances #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 module Ef.Narrative
      ( Narrative(..)
      , Subtype
@@ -18,13 +17,14 @@ module Ef.Narrative
      , Invokes
      , self
      , super
+     , transform
      , Lift(..)
      , Can(..)
      , Upcast(..)
      ) where
 
 
-import Ef.Nat
+
 import Ef.Messages
 
 import Control.Applicative
@@ -83,8 +83,8 @@ instance ( Upcast (Messages small) (Messages large)
         upcast (Super sup) =
             Super (fmap upcast sup)
 
-        upcast (Say symbol k) =
-            Say (upcast symbol) (upcast . k)
+        upcast (Say message k) =
+            Say (upcast message) (upcast . k)
 
 
 
@@ -150,8 +150,8 @@ self
     :: message result
     -> Invoke message self super result
 
-self symbol =
-    Say (inj symbol) return
+self message =
+    Say (inj message) return
 
 
 
@@ -214,20 +214,8 @@ instance Monad super
 instance Monad super
     => Monad (Narrative self super)
   where
-
--- I believe this TRANSFORMER_SAFE approach is safe up to inspection
--- Meaning any code that inspects the contents of a Super constructor
--- could break the monad transformer law that (lift . return = return)
--- This needs extensive testing and experimentation and I'm not yet sure
--- where to begin. Issue #9 references this.
-
-#ifdef TRANSFORMERS_SAFE
-    return =
-        Super . return . Return
-#else
     return =
         Return
-#endif
 
 
 
@@ -261,8 +249,8 @@ _fmap f =
     go (Super m) =
         Super (fmap go m)
 
-    go (Say symbol k) =
-        Say symbol (go . k)
+    go (Say message k) =
+        Say message (go . k)
 
 
 
@@ -274,10 +262,10 @@ _fmap f =
                 Fail e
     ;
 
-    "_fmap f (Say symbol k)"
-        forall symbol k f.
-            _fmap f (Say symbol k) =
-                Say symbol (_fmap f . k)
+    "_fmap f (Say message k)"
+        forall message k f.
+            _fmap f (Say message k) =
+                Say message (_fmap f . k)
     ;
 
     "_fmap f (Super m)"
@@ -315,8 +303,8 @@ p0 `_bind` f =
     go (Fail e) =
         Fail e
 
-    go (Say symbol k) =
-        Say symbol (go . k)
+    go (Say message k) =
+        Say message (go . k)
 
     go (Return res) =
         f res
@@ -334,10 +322,10 @@ p0 `_bind` f =
                 Fail e
     ;
 
-    "_bind (Say symbol k) f"
-        forall symbol k f .
-            _bind (Say symbol k) f =
-                Say symbol (flip _bind f . k)
+    "_bind (Say message k) f"
+        forall message k f .
+            _bind (Say message k) f =
+                Say message (flip _bind f . k)
     ;
 
     "_bind (Super m) f"
@@ -402,8 +390,8 @@ _mplus p0 p1 =
     go (Super m) =
         Super (fmap go m)
 
-    go (Say symbol k) =
-        Say symbol (go . k)
+    go (Say message k) =
+        Say message (go . k)
 
     go (Fail _) =
         p1
@@ -450,9 +438,94 @@ _mappend p0 p1 =
     go (Super m) =
         Super (fmap go m)
 
-    go (Say symbol k) =
-        Say symbol (go . k)
+    go (Say message k) =
+        Say message (go . k)
 
+
+
+-- This approach to transformations tries to maintain that
+--     lift (x >>= y) = lift x >>= (lift . y)
+-- as well as
+--     throw e >> _ = throw e
+{-# INLINE transform #-}
+transform
+    :: Functor super
+    => (forall x. Messages self x -> (x -> Narrative self super result) -> Narrative self super result)
+    -> Narrative self super result
+    -> Narrative self super result
+
+transform f = transform_ (Transform f)
+
+
+
+{-# NOINLINE transform_ #-}
+transform_
+    :: Functor super
+    => Transform self super result
+    -> Narrative self super result
+    -> Narrative self super result
+
+transform_ (Transform t) =
+    go
+    where
+
+        go (Say message k) =
+           t message k
+
+        go (Super sup) =
+            Super (fmap go sup)
+
+        go (Fail e) =
+            Fail e
+
+        go (Return r) =
+            Return r
+
+
+
+{-# INLINE applyTransform #-}
+applyTransform
+    :: Transform self super result
+    -> Messages self x
+    -> (x -> Narrative self super result)
+    -> Narrative self super result
+
+applyTransform (Transform t) = t
+
+data Transform (self :: [* -> *]) (super :: * -> *) (result :: *)
+    where
+
+        Transform
+            :: (forall x. Messages self x -> (x -> Narrative self super result) -> Narrative self super result)
+            -> Transform self super result
+
+{-# RULES
+
+    "transform_ t (Fail e) == Fail e"
+        forall t e.
+            transform_ t (Fail e) =
+                Fail e
+    ;
+
+    "transform_ t (Super sup) == Super (fmap (transform_ t) sup)"
+        forall t sup.
+            transform_ t (Super sup) =
+                Super (fmap (transform_ t) sup)
+    ;
+
+    "transform_ t (Return r) == Return r"
+        forall t r.
+            transform_ t (Return r) =
+                Return r
+     ;
+
+    "transform_ t (Say message k)"
+        forall t message k.
+            transform_ t (Say message k) =
+                applyTransform t message k
+    ;
+
+  #-}
 
 
 -- Let's move these to an external package; they are narrative transformations for which
@@ -519,13 +592,13 @@ _mappend p0 p1 =
 --     in
 --       Super (fmap newCutoff m)
 
--- cutoffSteps stepsRemaining (Say symbol k) =
+-- cutoffSteps stepsRemaining (Say message k) =
 --     let
 --       newCutoff =
 --           cutoffSteps (stepsRemaining - 1)
 
 --     in
---       Say symbol (newCutoff . k)
+--       Say message (newCutoff . k)
 
 
 
@@ -552,10 +625,10 @@ _mappend p0 p1 =
 --     in
 --       Super (fmap newCutoff m)
 
--- cutoff stepsRemaining (Say symbol k) =
+-- cutoff stepsRemaining (Say message k) =
 --     let
 --       newCutoff =
 --           cutoff (stepsRemaining - 1)
 
 --     in
---       Say symbol (newCutoff . k)
+--       Say message (newCutoff . k)

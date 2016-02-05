@@ -12,8 +12,8 @@ module Main where
 
 
 import Ef
-
-
+import Ef.Knot
+import Ef.Knot.Methods
 
 main =
     let
@@ -27,8 +27,8 @@ main =
         main_weave
         -- main_standard
 
-        -- int
-        integer
+        int
+        -- integer
 
 
 
@@ -105,12 +105,17 @@ main_weave
     => Test n
 
 main_weave =
-    Test (main' . weave . contained)
+    Test (main' . contained)
   where
-
+    main' program = do
+      _ <- (Object $ knots *:* Empty) $. linearize program
+      return ()
+      
     contained start =
-        producer (produce start) >-> consumer consume
-
+        let p = knotted $ \_ dn -> produce start dn
+            c = knotted $ \up _ -> consume (up ())
+        in p >-> c
+    
     produce start yield =
         go start
       where
