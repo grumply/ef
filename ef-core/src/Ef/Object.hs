@@ -137,7 +137,7 @@ infixr 6 *:*
     -> Methods methods a
     -> Methods (method ': methods) a
 
-(*:*) = Methodethods
+(*:*) = Method
 
 
 -- Class-based approach to multi-view was not viable since
