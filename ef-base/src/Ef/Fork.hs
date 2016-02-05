@@ -2,7 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
-module Ef.Lang.Fork
+module Ef.Fork
     ( forkWith
     , forkOSWith
     , forkOnWith
@@ -10,9 +10,9 @@ module Ef.Lang.Fork
 
 
 
-import Ef.Core
-import Ef.Lang.IO
-import Ef.Data.Promise
+import Ef
+import Ef.IO
+import Data.Promise
 
 import qualified Control.Concurrent
 import Control.Concurrent (ThreadId)
@@ -22,90 +22,66 @@ import Control.Monad
 
 
 
-newtype ThreadRef contexts environment result =
-    ThreadRef (ThreadId,Promise (Object contexts environment,Either SomeException result))
-
+newtype ThreadRef methods super result =
+    ThreadRef (ThreadId,Promise (Object methods super,Either SomeException result))
 
 
 forkWith
-    :: forall lexicon lexicon' contexts environment environment' result.
-       ( Inflections contexts lexicon
-       , Lift IO environment'
-       , Monad environment'
-       , Monad environment
+    :: ( (Methods methods) `Ma` (Messages messages)
+       , Lift IO super'
+       , Monad super'
+       , Monad super
        )
-    => Object contexts environment
-    -> Narrative lexicon environment result
-    -> (forall x. environment x -> IO x)
-    -> Narrative lexicon' environment' (ThreadRef contexts environment result)
+    => Object methods super
+    -> Narrative messages super result
+    -> (forall x. super x -> IO x)
+    -> Narrative messages' super' (ThreadRef methods super result)
 
-forkWith comp plan embedInIO =
-    do
-      p <- io newPromiseIO
-      let
-        thread =
-            embedInIO $ delta comp (try plan)
-
-      tid <- masked $ \restore -> Control.Concurrent.forkIO $
-                 do
-                   ea <- restore thread
-                   void (fulfillIO p ea)
-
-      return $ ThreadRef (tid,p)
-
+forkWith comp plan embedInIO = do
+    p <- io newPromiseIO
+    let thread = embedInIO $ delta comp (try plan)
+    tid <- masked $ \restore -> Control.Concurrent.forkIO $ do
+               ea <- restore thread
+               void (fulfillIO p ea)
+    return $ ThreadRef (tid,p)
 
 
 forkOSWith
-    :: forall lexicon lexicon' contexts environment environment' result.
-       ( Inflections contexts lexicon
-       , Lift IO environment'
-       , Monad environment'
-       , Monad environment
+    :: ( (Methods methods) `Ma` (Messages messages)
+       , Lift IO super'
+       , Monad super'
+       , Monad super
        )
-    => Object contexts environment
-    -> Narrative lexicon environment result
-    -> (forall x. environment x -> IO x)
-    -> Narrative lexicon' environment' (ThreadRef contexts environment result)
-
-forkOSWith comp plan embedInIO =
-    do
-      p <- io newPromiseIO
-      let
-        thread =
-            embedInIO $ delta comp (try plan)
-
-      tid <- masked $ \restore -> Control.Concurrent.forkOS $
-                 do
-                   ea <- restore thread
-                   void (fulfillIO p ea)
-
-      return $ ThreadRef (tid,p)
-
+    => Object methods super
+    -> Narrative messages super result
+    -> (forall x. super x -> IO x)
+    -> Narrative messages' super' (ThreadRef methods super result)
+    
+forkOSWith comp plan embedInIO = do
+    p <- io newPromiseIO
+    let thread = embedInIO $ delta comp (try plan)
+    tid <- masked $ \restore -> Control.Concurrent.forkOS $ do
+               ea <- restore thread
+               void (fulfillIO p ea)
+    return $ ThreadRef (tid,p)
 
 
 forkOnWith
-    :: forall lexicon lexicon' contexts environment environment' result.
-       ( Inflections contexts lexicon
-       , Lift IO environment'
-       , Monad environment'
-       , Monad environment
+    :: ( (Methods methods) `Ma` (Messages messages)
+       , Lift IO super'
+       , Monad super'
+       , Monad super
        )
     => Int
-    -> Object contexts environment
-    -> Narrative lexicon environment result
-    -> (forall x. environment x -> IO x)
-    -> Narrative lexicon' environment' (ThreadRef contexts environment result)
+    -> Object methods super
+    -> Narrative messages super result
+    -> (forall x. super x -> IO x)
+    -> Narrative messages' super' (ThreadRef methods super result)
 
-forkOnWith n comp plan embedInIO =
-    do
-      p <- io newPromiseIO
-      let
-        thread =
-            embedInIO $ delta comp (try plan)
-
-      tid <- masked $ \restore -> Control.Concurrent.forkOn n $
-                 do
-                   ea <- restore thread
-                   void (fulfillIO p ea)
-
-      return $ ThreadRef (tid,p)
+forkOnWith n comp plan embedInIO = do
+    p <- io newPromiseIO
+    let thread = embedInIO $ delta comp (try plan)
+    tid <- masked $ \restore -> Control.Concurrent.forkOn n $ do
+               ea <- restore thread
+               void (fulfillIO p ea)
+    return $ ThreadRef (tid,p)

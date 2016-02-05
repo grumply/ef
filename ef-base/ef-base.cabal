@@ -17,9 +17,17 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Ef.Contract, Ef.Except, Ef.Except.Messages, Ef.Except.Methods, Ef.Knot, Ef.Knot.Messages, Ef.Knot.Methods
+  exposed-modules:     Ef.Contract, Ef.Except, Ef.Except.Messages, Ef.Except.Methods, Ef.Knot, Ef.Knot.Messages, Ef.Knot.Methods, Ef.Fork, Data.Promise, Ef.IO, Ef.Guard, Ef.Manage
   -- other-modules:       
   -- other-extensions:
   build-depends:       base >=4.8 && <4.9, ef-core >= 1 && < 1.1, random >= 1.1
   hs-source-dirs:      src
   default-language:    Haskell2010
+
+
+executable knot
+  main-is: Knots.hs
+  other-modules: Ef.Knot, Ef.Knot.Messages, Ef.Knot.Methods
+  hs-source-dirs: src test
+  build-depends: base >= 4.8 && < 4.9, ef-core >= 1 && < 1.1, ef-base >= 0.9 && < 1
+  default-language: Haskell2010
