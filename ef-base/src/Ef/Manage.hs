@@ -7,97 +7,54 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 module Ef.Manage
-    ( Managing
-    , Manageable
-    , manager
-    , manages
-    , Manage
+    ( -- * Scoping construct
+      managed
+      -- * Scoped methods
+    , Managed(..)
+      -- * Resource Token
     , Token
-    , deallocate
-    , allocate
-    , register
-    , unregister
     ) where
 
 import Ef
+
+import qualified Ef.Manage.Methods as Methods
+import Ef.Manage.Messages
+import qualified Ef.Manage.Messages as Messages
 
 import Control.Arrow
 import Data.Either
 import Unsafe.Coerce
 
 
-
-newtype Token a = Token Int
-
-
-data Managing k where
-
-    FreshSelf :: (Int -> k) -> Managing k
-
-    Allocate :: Int -> Narrative self super a
-                    -> (a -> Narrative self super ())
-                    -> ((a,Token a) -> k)
-                    -> Managing k
-
-    Register :: Int -> Token a
-                    -> Narrative self super ()
-                    -> k
-                    -> Managing k
-
-    Unregister :: Int -> Token a -> k -> Managing k
-
-    Deallocate :: Token a -> k -> Managing k
-
-    Finish :: Int -> a -> Managing k
+instance Ma Methods.Manage Messages.Manage where
+    -- needed to let Deallocation cross manager scopes
+    ma use (Methods.Manage _ _ k) (Deallocate _ k') = use k k'
+    ma use (Methods.Manage i k _) (FreshSelf ik) = use k (ik i)
 
 
-data Manageable k where
-
-    Manageable :: Int -> k -> k -> Manageable k
-
-
-manager =
-    Manageable 0 return $ \fs ->
-        let Manageable i non me = view fs
-            i' = succ i
-        in i' `seq` pure $ fs .= Manageable i' non me
-
-
-instance Ma Manageable Managing where
-    -- needs to slip through
-    ma use (Manageable _ _ k) (Deallocate _ k') = use k k'
-    ma use (Manageable i k _) (FreshSelf ik) = use k (ik i)
-
-
-data Manage self super =
-    Manage
-        {
-          allocate
-              :: forall resource.
-                 Narrative self super resource
-              -> (resource -> Narrative self super ())
-              -> Narrative self super (resource,Token resource)
-
-        , deallocate
-              :: forall resource. Token resource -> Narrative self super ()
-
-        , register
-              :: forall resource.
-                 Token resource
-              -> Narrative self super ()
-              -> Narrative self super ()
-
-        , unregister
-              :: forall resource.
-                 Token resource
-              -> Narrative self super ()
-        }
-
-
-manages f = do
+-- | managed creates a scoped construct to interface with
+-- the manager.
+--
+-- Simple Example:
+--
+--    > managed $ \Managed{..} -> do
+--    >     (handle,fileToken) <- allocate (io $ openFile "./file.tmp") hClose
+--    >     result <- withHandle handle something
+--    >     return result -- hClose will happen before the return
+--
+-- Resources are released in LIFO order as expected. Tokens may be registered
+-- with other managers with an action to perform upon manager scope completion.
+-- Tokens may be unregistered to prevent cleanup actions in individual managers.
+-- Tokens may be deallocated which forces registered cleanup actions to be
+-- performed in all managers for which that token is registered in LIFO order
+-- of the nesting scopes.
+managed :: (Can Manage self, Monad super)
+        => (Managed self super -> Narrative self super result)
+        -> Narrative self super result
+managed f = do
     scope <- self (FreshSelf id)
     rewrite scope [] $
-        (f Manage
+        (f Managed
             { allocate   = \create onEnd -> self (Allocate scope create onEnd id)
             , deallocate = \token -> self (Deallocate token ())
             , register   = \token onEnd -> self (Register scope token onEnd ())
@@ -107,7 +64,7 @@ manages f = do
 
 
 rewrite :: forall self super result.
-           (Can Managing self, Monad super)
+           (Can Messages.Manage self, Monad super)
         => Int -> [(Int,Narrative self super ())] -> Narrative self super result -> Narrative self super result
 rewrite rewriteSelf =
     withStore
@@ -153,16 +110,12 @@ rewrite rewriteSelf =
 
                                    Deallocate (Token t) _ ->
                                        let extract = compose . partitionEithers . map match
-                                           compose =
-                                               let amass = foldr (>>) (return ())
-                                               in second amass
+                                           compose = second sequence_
                                            match (storedToken,cleanupAction)
                                              | t == storedToken = Right cleanupAction
                                              | otherwise = Left (storedToken,cleanupAction)
                                            (newStore,cleanup) = extract store
-                                           continue b = do
-                                               cleanup
-                                               k b
+                                           continue b = cleanup >> k b
 
                                        in Say message (withStore newStore . continue)
 
@@ -190,5 +143,4 @@ rewrite rewriteSelf =
 -- | Inlines
 
 {-# INLINE rewrite #-}
-{-# INLINE manager #-}
-{-# INLINE manages #-}
+{-# INLINE managed #-}

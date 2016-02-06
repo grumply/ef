@@ -15,6 +15,7 @@ module Ef.Object
     , Implementation
     , Subclass
     , Has(..)
+    , Use
     , stretch
     , Methods(..)
     , Object(..)
@@ -41,6 +42,11 @@ import Ef.Nat
 
 type Method method methods supertype =
     method (Implementation methods supertype)
+
+type Use method methods super =
+    (Has' method methods (Offset method methods), Monad super)
+    => method (Implementation methods super)
+
 
 type Implementation methods supertype =
     Object methods supertype -> supertype (Object methods supertype)
@@ -140,9 +146,6 @@ infixr 6 *:*
 (*:*) = Method
 
 
--- Class-based approach to multi-view was not viable since
--- type families are not injective; future approaches against
--- ghc-8 may permit view as a general view1/view2/etc...
 
 view
     :: Has method methods
