@@ -1,9 +1,12 @@
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
-module Ef.Lang.Generate
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE DataKinds #-}
+module Ef.Generate
   ( Generator(..)
   , generate
   , each
@@ -13,8 +16,10 @@ module Ef.Lang.Generate
 
 
 
-import Ef.Core.Narrative
-import Ef.Lang.Knot
+import Ef.Narrative
+import Ef.Knot
+import Ef.Messages
+import Ef.Nat
 
 
 import Control.Applicative
@@ -25,16 +30,16 @@ import Unsafe.Coerce
 
 
 
-newtype Generator lexicon environment a =
+newtype Generator self super a =
     Select
         { enumerate
-              :: Knows Knots lexicon environment
-              => Producer a lexicon environment ()
+              :: (Can Knot self, Monad super)
+              => Producer a self super ()
         }
 
 
 
-instance Functor (Generator lexicon environment)
+instance (Monad super, Can Knot self) => Functor (Generator self super)
   where
 
     fmap f (Select p) =
@@ -47,7 +52,7 @@ instance Functor (Generator lexicon environment)
 
 
 
-instance Applicative (Generator lexicon environment)
+instance (Monad super, Can' Knot self (Offset Knot self)) => Applicative (Generator self super)
   where
 
     pure a = Select (producer ($ a))
@@ -72,7 +77,7 @@ instance Applicative (Generator lexicon environment)
 
 
 
-instance Monad (Generator lexicon environment)
+instance Monad (Generator self super)
   where
 
     return a =
@@ -95,7 +100,7 @@ instance Monad (Generator lexicon environment)
 
 
 
-instance Alternative (Generator lexicon environment)
+instance Alternative (Generator self super)
   where
 
     empty =
@@ -119,7 +124,7 @@ instance Alternative (Generator lexicon environment)
 
 
 
-instance MonadPlus (Generator lexicon environment)
+instance MonadPlus (Generator self super)
   where
 
     mzero =
@@ -132,7 +137,7 @@ instance MonadPlus (Generator lexicon environment)
 
 
 
-instance Monoid (Generator lexicon environment a)
+instance Monoid (Generator self super a)
   where
 
     mempty =
@@ -146,9 +151,9 @@ instance Monoid (Generator lexicon environment a)
 
 
 generate
-    :: Knows Knots lexicon environment
-    => Generator lexicon environment a
-    -> Narrative lexicon environment ()
+    :: (Can Knot self, Monad super)
+    => Generator self super a
+    -> Narrative self super ()
 generate l =
     let
       complete =
@@ -162,11 +167,12 @@ generate l =
 
 
 each
-    :: ( Knows Knots lexicon environment
+    :: ( Can Knot self
+       , Monad super
        , F.Foldable f
        )
     => f a
-    -> Producer' a lexicon environment ()
+    -> Producer' a self super ()
 each xs =
     let
       def =
@@ -181,9 +187,9 @@ each xs =
 
 
 discard
-    :: Monad environment
+    :: Monad super
     => t
-    -> Knotted lexicon a' a b' b environment ()
+    -> Knotted self a' a b' b super ()
 discard _ =
     let
       ignore _ _ =
@@ -195,9 +201,9 @@ discard _ =
 
 
 every
-    :: Knows Knots lexicon environment
-    => Generator lexicon environment a
-    -> Producer' a lexicon environment ()
+    :: (Can Knot self, Monad super)
+    => Generator self super a
+    -> Producer' a self super ()
 every it =
     discard >\\ enumerate it
 

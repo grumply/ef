@@ -35,7 +35,7 @@ and, for Integer:
 {-# INLINE main_weave #-}
 main_weave :: (Monad m, Eq n, Num n) => n -> m ()
 main_weave n = do
-    _ <- Object (knots *:* Empty) $. linearize (producer (produce n) >-> consumer consume)
+    _ <- Object (knot *:* Empty) $. linearize (producer (produce n) >-> consumer consume)
     return ()
   where
     produce start yield =
