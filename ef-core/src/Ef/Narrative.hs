@@ -10,6 +10,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE IncoherentInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE Trustworthy #-}
 module Ef.Narrative
      ( Narrative(..)
      , Subtype

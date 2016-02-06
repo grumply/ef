@@ -8,9 +8,9 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 module Ef.Manage
     ( -- * Scoping construct
-      managed
+      manage
       -- * Scoped methods
-    , Managed(..)
+    , Manager(..)
       -- * Resource Token
     , Token
     ) where
@@ -37,7 +37,7 @@ instance Ma Methods.Manage Messages.Manage where
 --
 -- Simple Example:
 --
---    > managed $ \Managed{..} -> do
+--    > managed $ \Manager{..} -> do
 --    >     (handle,fileToken) <- allocate (io $ openFile "./file.tmp") hClose
 --    >     result <- withHandle handle something
 --    >     return result -- hClose will happen before the return
@@ -48,13 +48,13 @@ instance Ma Methods.Manage Messages.Manage where
 -- Tokens may be deallocated which forces registered cleanup actions to be
 -- performed in all managers for which that token is registered in LIFO order
 -- of the nesting scopes.
-managed :: (Can Manage self, Monad super)
-        => (Managed self super -> Narrative self super result)
+manage :: (Can Manage self, Monad super)
+        => (Manager self super -> Narrative self super result)
         -> Narrative self super result
-managed f = do
+manage f = do
     scope <- self (FreshSelf id)
     rewrite scope [] $
-        (f Managed
+        (f Manager
             { allocate   = \create onEnd -> self (Allocate scope create onEnd id)
             , deallocate = \token -> self (Deallocate token ())
             , register   = \token onEnd -> self (Register scope token onEnd ())
@@ -65,7 +65,10 @@ managed f = do
 
 rewrite :: forall self super result.
            (Can Messages.Manage self, Monad super)
-        => Int -> [(Int,Narrative self super ())] -> Narrative self super result -> Narrative self super result
+        => Int
+        -> [(Int,Narrative self super ())]
+        -> Narrative self super result
+        -> Narrative self super result
 rewrite rewriteSelf =
     withStore
     where
@@ -143,4 +146,4 @@ rewrite rewriteSelf =
 -- | Inlines
 
 {-# INLINE rewrite #-}
-{-# INLINE managed #-}
+{-# INLINE manage #-}

@@ -10,6 +10,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE Safe #-}
 module Ef.Object
     ( Method
     , Implementation
@@ -36,8 +37,6 @@ module Ef.Object
 import Ef.Set
 import Ef.Methods
 
-import GHC.Exts (Constraint)
-
 import Ef.Nat
 
 type Method method methods supertype =
@@ -53,7 +52,7 @@ type Implementation methods supertype =
 
 
 
-type family Subclass (methods :: [* -> *]) methods' :: Constraint where
+type family Subclass (methods :: [* -> *]) methods' where
 
     Subclass (method ': '[]) methods' =
         (Has method methods')
@@ -63,7 +62,7 @@ type family Subclass (methods :: [* -> *]) methods' :: Constraint where
 
 
 
-type family Superclass methods methods' :: Constraint where
+type family Superclass methods methods' where
 
     Superclass methods methods' =
         methods' `Subclass` methods

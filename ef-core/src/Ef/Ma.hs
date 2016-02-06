@@ -8,6 +8,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE Safe #-}
 module Ef.Ma where
 
 
@@ -41,8 +42,8 @@ class Ma f g
 instance Ma ((->) a) ((,) a)
     where
 
-        ma use f g =
-            uncurry (use . f) g
+        ma use f =
+            uncurry (use . f)
 
 
 

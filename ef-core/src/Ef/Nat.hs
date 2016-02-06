@@ -4,7 +4,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE Safe #-}
 module Ef.Nat where
 
 

@@ -36,8 +36,8 @@ data Manage k where
 -- | Interface for managing resources. The only way to create a Managed is with
 -- `Ef.Manage.managed`. As with all scoping constructs, never return a `Managed`
 -- from its root scope.
-data Managed self super =
-    Managed
+data Manager self super =
+    Manager
         { -- | allocate a resource with a given cleanup method to be performed
           -- when the managed scope returns or when triggered via
           -- deallocate/unregister.

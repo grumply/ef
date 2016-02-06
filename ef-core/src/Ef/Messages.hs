@@ -10,14 +10,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE Safe #-}
 module Ef.Messages where
 
 
 
 import Ef.Set
 import Ef.Nat
-
-import GHC.Exts (Constraint)
 
 
 data Messages messages a
@@ -83,7 +82,7 @@ instance ( Functor message
 
 
 
-type family Subset (messages :: [* -> *]) messages' :: Constraint where
+type family Subset (messages :: [* -> *]) messages' where
 
     Subset (message ': '[]) messages' =
         (Can message messages')

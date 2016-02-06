@@ -6,6 +6,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE BangPatterns #-}
 {-# OPTIONS_GHC -fno-warn-missing-methods #-}
+{-# LANGUAGE Trustworthy#-}
 module Ef
     ( module Core
     , delta

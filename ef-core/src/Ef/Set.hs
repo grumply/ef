@@ -5,6 +5,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE Safe #-}
 module Ef.Set where
 
 
@@ -16,30 +17,27 @@ type family (:+:) a xs
     a :+: '[] =
         '[a]
 
-    a :+: (a ': xs) =
+    a :+: a ': xs =
         (a ': xs)
 
-    a :+: (x ': xs) =
+    a :+: x ': xs =
         x ': a :+: xs
 
 
-
--- | Synonym for `∪`
-type Union xs ys = xs ∪ ys
-
+type xs ∪ ys = Union xs ys
 
 
 -- | Union two sets-as-lists. Used in a type-level fashion: capabilities are represented
 -- as lists of higher-kinded types whose elements are guaranteed to be unique and this
 -- type family will permit the representation of two sets of capabilities unioned with
 -- deduplication.
-type family (∪) {- emacs: c-x 8 <enter> 222a <enter> -} xs ys
+type family Union xs ys
   where
 
-    '[] ∪ ys =
+    Union '[] ys =
         ys
 
-    (x ': xs) ∪ ys =
+    Union (x ': xs) ys =
         x :+: (xs ∪ ys)
 
 
