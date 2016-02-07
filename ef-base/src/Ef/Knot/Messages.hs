@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -85,7 +86,7 @@ freshScope :: Invoke Knot self super Int
 freshScope = self (FreshScope id)
 
 
-getScope :: Knows Knot self super => Narrative self super a -> super Int
+getScope :: ('[Knot] <: self, Monad super) => Narrative self super a -> super Int
 getScope (Say symbol _) =
     case prj symbol of
         Just x ->
@@ -94,7 +95,7 @@ getScope (Say symbol _) =
                 Respond i _ _ -> return i
 
 
-linearize :: Knows Knot self super
+linearize :: ('[Knot] <: self, Monad super)
           => Effect self super r -> Invoke Knot self super r
 linearize e = do
     scope <- freshScope
@@ -105,7 +106,7 @@ linearize e = do
 
 
 rewrite :: forall self super result.
-           Knows Knot self super
+           ('[Knot] <: self, Monad super)
         => Int -> Narrative self super result -> Narrative self super result
 rewrite rewriteScope = transform go
   where
@@ -231,7 +232,7 @@ type Producer b self super r = Knotted X () () b self super r
 
 producer
     :: forall self super b r.
-       (Subtype '[Knot] self, Monad super)
+       ('[Knot] <: self, Monad super)
     => ((b -> Narrative self super ()) -> Narrative self super r)
     -> Producer' b self super r
 
@@ -255,7 +256,7 @@ type Consumer a self super r = Knotted () a () X self super r
 
 consumer
     :: forall self super a r.
-       (Subtype '[Knot] self, Monad super)
+       ('[Knot] <: self, Monad super)
     => (Narrative self super a -> Narrative self super r)
     -> Consumer' a self super r
 
@@ -279,7 +280,7 @@ type Line a b self super r = Knotted () a () b self super r
 
 line
     :: forall self super a b r.
-       (Subtype '[Knot] self, Monad super)
+       ('[Knot] <: self, Monad super)
     => (Narrative self super a -> (b -> Narrative self super ()) -> Narrative self super r)
     -> Line a b self super r
 
@@ -313,14 +314,14 @@ newtype Knotted a' a b' b self super r =
           runKnotted
               :: (forall x. a' -> (a -> Narrative self super x) -> Narrative self super x)
               -> (forall x. b -> (b' -> Narrative self super x) -> Narrative self super x)
-             -> Narrative self super r
+              -> Narrative self super r
         }
 
 
 
 knotted
     :: forall self a a' b b' super r.
-       (Subtype '[Knot] self, Monad super)
+       ('[Knot] <: self, Monad super)
     => ((a' -> Narrative self super a) -> (b -> Narrative self super b') -> Narrative self super r)
     -> Knotted a' a b' b self super r
 
@@ -346,12 +347,12 @@ type Client' a' a self super r = forall y' y. Knotted a' a y' y self super r
 --------------------------------------------------------------------------------
 -- Respond; substitute yields
 
-cat :: (Subtype '[Knot] self, Monad super) => Line a a self super r
+cat :: ('[Knot] <: self, Monad super) => Line a a self super r
 cat = line $ \awt yld -> forever (awt >>= yld)
 
 
 infixl 3 //>
-(//>) :: Knows Knot self super
+(//>) :: ('[Knot] <: self, Monad super)
       => Knotted x' x b' b self super a'
       -> (b -> Knotted x' x c' c self super b')
       -> Knotted x' x c' c self super a'
@@ -365,7 +366,7 @@ p0 //> fb =
 
 substituteResponds
     :: forall self super x' x c' c b' b a'.
-       Knows Knot self super
+       ('[Knot] <: self, Monad super)
     => (b -> Knotted x' x c' c self super b')
     -> Int
     -> (forall r. x' -> (x -> Narrative self super r) -> Narrative self super r)
@@ -397,7 +398,7 @@ substituteResponds fb rewriteScope up dn =
                _ -> ignore
 
 
-for :: Knows Knot self super
+for :: ('[Knot] <: self, Monad super)
     => Knotted x' x b' b self super a'
     -> (b -> Knotted x' x c' c self super b')
     -> Knotted x' x c' c self super a'
@@ -405,7 +406,7 @@ for = (//>)
 
 
 infixr 3 <\\
-(<\\) :: Knows Knot self super
+(<\\) :: ('[Knot] <: self, Monad super)
       => (b -> Knotted x' x c' c self super b')
       -> Knotted x' x b' b self super a'
       -> Knotted x' x c' c self super a'
@@ -413,7 +414,7 @@ f <\\ p = p //> f
 
 
 infixl 4 \<\
-(\<\) :: Knows Knot self super
+(\<\) :: ('[Knot] <: self, Monad super)
       => (b -> Knotted x' x c' c self super b')
       -> (a -> Knotted x' x b' b self super a')
       -> a
@@ -422,7 +423,7 @@ p1 \<\ p2 = p2 />/ p1
 
 
 infixr 4 ~>
-(~>) :: Knows Knot self super
+(~>) :: ('[Knot] <: self, Monad super)
      => (a -> Knotted x' x b' b self super a')
      -> (b -> Knotted x' x c' c self super b')
      -> a
@@ -431,7 +432,7 @@ infixr 4 ~>
 
 
 infixl 4 <~
-(<~) :: Knows Knot self super
+(<~) :: ('[Knot] <: self, Monad super)
      => (b -> Knotted x' x c' c self super b')
      -> (a -> Knotted x' x b' b self super a')
      -> a
@@ -440,7 +441,7 @@ g <~ f = f ~> g
 
 
 infixr 4 />/
-(/>/) :: Knows Knot self super
+(/>/) :: ('[Knot] <: self, Monad super)
       => (a -> Knotted x' x b' b self super a')
       -> (b -> Knotted x' x c' c self super b')
       -> a
@@ -453,7 +454,7 @@ infixr 4 />/
 
 
 infixr 4 >\\
-(>\\) :: Knows Knot self super
+(>\\) :: ('[Knot] <: self, Monad super)
       => (b' -> Knotted a' a y' y self super b)
       -> Knotted b' b y' y self super c
       -> Knotted a' a y' y self super c
@@ -467,7 +468,7 @@ fb' >\\ p0 =
 
 substituteRequests
     :: forall self super x' x c' c b' b a'.
-       Knows Knot self super
+       ('[Knot] <: self, Monad super)
     => (b -> Knotted x' x c' c self super b')
     -> Int
     -> (forall r. x' -> (x -> Narrative self super r) -> Narrative self super r)
@@ -509,7 +510,7 @@ substituteRequests fb' rewriteScope up dn =
 
 
 infixr 5 /</
-(/</) :: Knows Knot self super
+(/</) :: ('[Knot] <: self, Monad super)
       => (c' -> Knotted b' b x' x self super c)
       -> (b' -> Knotted a' a x' x self super b)
       -> c'
@@ -518,7 +519,7 @@ p1 /</ p2 = p2 \>\ p1
 
 
 infixr 5 >~
-(>~) :: Knows Knot self super
+(>~) :: ('[Knot] <: self, Monad super)
      => Knotted a' a y' y self super b
      -> Knotted () b y' y self super c
      -> Knotted a' a y' y self super c
@@ -526,7 +527,7 @@ p1 >~ p2 = (\() -> p1) >\\ p2
 
 
 infixl 5 ~<
-(~<) :: Knows Knot self super
+(~<) :: ('[Knot] <: self, Monad super)
      => Knotted () b y' y self super c
      -> Knotted a' a y' y self super b
      -> Knotted a' a y' y self super c
@@ -534,7 +535,7 @@ p2 ~< p1 = p1 >~ p2
 
 
 infixl 5 \>\
-(\>\) :: Knows Knot self super
+(\>\) :: ('[Knot] <: self, Monad super)
       => (b' -> Knotted a' a y' y self super b)
       -> (c' -> Knotted b' b y' y self super c)
       -> c'
@@ -543,7 +544,7 @@ infixl 5 \>\
 
 
 infixl 4 \\<
-(\\<) :: Knows Knot self super
+(\\<) :: ('[Knot] <: self, Monad super)
       => Knotted b' b y' y self super c
       -> (b' -> Knotted a' a y' y self super b)
       -> Knotted a' a y' y self super c
@@ -570,7 +571,7 @@ p0 >>~ fb0 =
 
 pushRewrite
     :: forall self super r a' a b' b c' c.
-       Knows Knot self super
+       ('[Knot] <: self, Monad super)
     => Int
     -> (forall x. a' -> (a -> Narrative self super x) -> Narrative self super x)
     -> (forall x. c -> (c' -> Narrative self super x) -> Narrative self super x)
@@ -617,7 +618,7 @@ pushRewrite rewriteScope up dn fb0 p0 =
 
 
 infixl 8 <~<
-(<~<) :: Knows Knot self super
+(<~<) :: ('[Knot] <: self, Monad super)
       => (b -> Knotted b' b c' c self super r)
       -> (a -> Knotted a' a b' b self super r)
       -> a
@@ -626,7 +627,7 @@ p1 <~< p2 = p2 >~> p1
 
 
 infixr 8 >~>
-(>~>) :: Knows Knot self super
+(>~>) :: ('[Knot] <: self, Monad super)
       => (_a -> Knotted a' a b' b self super r)
       -> (b -> Knotted b' b c' c self super r)
       -> _a
@@ -635,7 +636,7 @@ infixr 8 >~>
 
 
 infixr 7 ~<<
-(~<<) :: Knows Knot self super
+(~<<) :: ('[Knot] <: self, Monad super)
       => (b -> Knotted b' b c' c self super r)
       -> Knotted a' a b' b self super r
       -> Knotted a' a c' c self super r
@@ -647,7 +648,7 @@ k ~<< p = p >>~ k
 
 
 infixr 6 +>>
-(+>>) :: Knows Knot self super
+(+>>) :: ('[Knot] <: self, Monad super)
       => (b' -> Knotted a' a b' b self super r)
       ->        Knotted b' b c' c self super r
       ->        Knotted a' a c' c self super r
@@ -660,7 +661,7 @@ fb' +>> p0 =
 
 pullRewrite
     :: forall self super a' a b' b c' c r.
-       Knows Knot self super
+       ('[Knot] <: self, Monad super)
     => Int
     -> (forall x. a' -> (a -> Narrative self super x) -> Narrative self super x)
     -> (forall x. c -> (c' -> Narrative self super x) -> Narrative self super x)
@@ -707,7 +708,7 @@ pullRewrite rewriteScope up dn fb' p =
 
 
 infixl 7 >->
-(>->) :: Knows Knot self super
+(>->) :: ('[Knot] <: self, Monad super)
       => Knotted a' a () b self super r
       -> Knotted () b c' c self super r
       -> Knotted a' a c' c self super r
@@ -715,7 +716,7 @@ p1 >-> p2 = (\() -> p1) +>> p2
 
 
 infixr 7 <-<
-(<-<) :: Knows Knot self super
+(<-<) :: ('[Knot] <: self, Monad super)
       => Knotted () b c' c self super r
       -> Knotted a' a () b self super r
       -> Knotted a' a c' c self super r
@@ -723,7 +724,7 @@ p2 <-< p1 = p1 >-> p2
 
 
 infixr 7 <+<
-(<+<) :: Knows Knot self super
+(<+<) :: ('[Knot] <: self, Monad super)
       => (c' -> Knotted b' b c' c self super r)
       -> (b' -> Knotted a' a b' b self super r)
       -> c'
@@ -732,7 +733,7 @@ p1 <+< p2 = p2 >+> p1
 
 
 infixl 7 >+>
-(>+>) :: Knows Knot self super
+(>+>) :: ('[Knot] <: self, Monad super)
       => (b' -> Knotted a' a b' b self super r)
       -> (_c' -> Knotted b' b c' c self super r)
       -> _c'
@@ -741,7 +742,7 @@ infixl 7 >+>
 
 
 infixl 6 <<+
-(<<+) :: Knows Knot self super
+(<<+) :: ('[Knot] <: self, Monad super)
       => Knotted b' b c' c self super r
       -> (b' -> Knotted a' a b' b self super r)
       -> Knotted a' a c' c self super r

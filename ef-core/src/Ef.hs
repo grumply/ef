@@ -6,7 +6,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE BangPatterns #-}
 {-# OPTIONS_GHC -fno-warn-missing-methods #-}
-{-# LANGUAGE Trustworthy#-}
+{-# LANGUAGE Trustworthy #-}
 module Ef
     ( module Core
     , delta
@@ -16,8 +16,7 @@ module Ef
     , (#.)
     ) where
 
-import Ef.Set as Core
-import Ef.Nat as Core
+import Ef.Type.Set as Core (Union)
 
 import Ef.Object as Core
 import Ef.Methods as Core
@@ -28,12 +27,7 @@ import Ef.Exception as Core
 
 import Ef.Ma as Core
 
-import Debug.Trace
-import Unsafe.Coerce
-
 import qualified Control.Exception as Exception
-
-import GHC.Exts
 
 -- | Send a narrative to an object for invocation; returns a new, modified object
 -- and a result.
@@ -48,7 +42,7 @@ delta
     -> supertype (Object methods supertype,result)
 delta =
     _delta
-
+{-# INLINE delta #-}
 
 
 infixr 5 $.
@@ -187,4 +181,3 @@ _delta object =
   #-}
 
 
-{-# INLINE delta #-}

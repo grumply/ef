@@ -13,10 +13,10 @@
 {-# LANGUAGE Trustworthy #-}
 module Ef.Narrative
      ( Narrative(..)
-     , Subtype
      , Invoke
      , Invokes
      , Knows
+     , (<:)(..)
      , self
      , super
      , transform
@@ -28,7 +28,7 @@ module Ef.Narrative
 
 
 import Ef.Messages
-import Ef.Nat
+import Ef.Type.Nat
 
 import Control.Applicative
 import Control.Exception (Exception(..),SomeException)
@@ -158,7 +158,7 @@ self message =
 
 
 type Knows message self super =
-    ( Subtype '[message] self
+    ( '[message] <:self
     , Monad super
     )
 
@@ -170,21 +170,21 @@ type Invoke message self super result =
 
 
 type Invokes messages self super result =
-    ( Subtype messages self
+    ( messages <: self
     , Monad super
     )
     => Narrative self super result
 
 
 
-type family Subtype (messages :: [* -> *]) messages' :: Constraint where
+type family (<:) (messages :: [* -> *]) messages' :: Constraint where
 
-    Subtype (message ': '[]) messages' =
+    (message ': '[]) <: messages' =
         (Can' message messages' (Offset message messages'))
 
-    Subtype (message ': messages) messages' =
+    (message ': messages) <: messages' =
         ( Can' message messages' (Offset message messages')
-        , Subtype messages messages' 
+        , messages <: messages' 
         )
 
 

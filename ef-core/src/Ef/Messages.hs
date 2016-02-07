@@ -15,8 +15,8 @@ module Ef.Messages where
 
 
 
-import Ef.Set
-import Ef.Nat
+import Ef.Type.Set
+import Ef.Type.Nat
 
 
 data Messages messages a

@@ -1,9 +1,10 @@
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
-module Ef.Lang.Var
+module Ef.Var
     ( Var(..)
     , var
     , var'
@@ -14,77 +15,58 @@ module Ef.Lang.Var
     ) where
 
 
-
-import Ef.Core.Narrative
-import Ef.Lang.Knot
+import Ef.Narrative
+import Ef.Knot
 
 import Control.Monad
 
 
-import Ef.Core
-import Ef.Lang.IO
-import Ef.Lang.Knot.Context
-
-
-
 data Eagerness
-    where
-
-        Strict
-            :: Eagerness
-
-        Lazy
-            :: Eagerness
-
+    = Strict
+    | Lazy
     deriving Eq
 
 
+data Action state = Modify Eagerness (state -> state)
 
-data Action state
-    where
 
-        Modify
-            :: Eagerness
-            -> (state -> state)
-            -> Action state
-
-data Var var lexicon environment =
+data Var var self super =
     Var
         {
           modify
               :: (var -> var)
-              -> Narrative lexicon environment ()
+              -> Narrative self super ()
 
         , modify'
               :: (var -> var)
-              -> Narrative lexicon environment ()
+              -> Narrative self super ()
 
         , get
-              :: Narrative lexicon environment var
+              :: Narrative self super var
 
         , gets
               :: forall a.
                  (var -> a)
-              -> Narrative lexicon environment a
+              -> Narrative self super a
 
         , put
               :: var
-              -> Narrative lexicon environment ()
+              -> Narrative self super ()
 
         , puts
               :: forall a.
                  (a -> var)
               -> a
-              -> Narrative lexicon environment ()
+              -> Narrative self super ()
 
         }
 
 
 
 stateful
-    :: Knows Knots lexicon environment
-    => (Var state lexicon environment -> Narrative lexicon environment result)
-    -> Knotted (Action state) state () X lexicon environment result
+    :: ('[Knot] <: self, Monad super)
+    => (Var state self super -> Narrative self super result)
+    -> Knotted (Action state) state () X self super result
 
 stateful computation =
     let
@@ -139,10 +121,10 @@ stateful computation =
 
 
 var
-    :: Knows Knots lexicon environment
+    :: ('[Knot] <: self, Monad super)
     => state
-    -> (Var state lexicon environment -> Narrative lexicon environment result)
-    -> Narrative lexicon environment result
+    -> (Var state self super -> Narrative self super result)
+    -> Narrative self super result
 
 var initial computation =
     linearize (serve +>> stateful computation)
@@ -171,10 +153,10 @@ var initial computation =
 
 
 var'
-    :: Knows Knots lexicon environment
+    :: ('[Knot] <: self, Monad super)
     => state
-    -> (Var state lexicon environment -> Narrative lexicon environment result)
-    -> Narrative lexicon environment result
+    -> (Var state self super -> Narrative self super result)
+    -> Narrative self super result
 
 var' initial computation =
     linearize (serve +>> stateful computation)
@@ -201,38 +183,3 @@ var' initial computation =
 
 {-# INLINE var #-}
 {-# INLINE var' #-}
-
-
-main = do
-    let
-        obj = Object $ knots *:* Empty
-
-        upstream dn' =
-            knotted $ \_ dn -> do
-                super (print "Before upstream.dn")
-                cont <- dn ()
-                super (print "Before upstream.cont")
-                () <- cont "cont"
-                super (print "After upstream.cont")
-
-        middle () =
-            knotted $ \up dn -> do
-                super (print "Before middle.up")
-                () <- up dn
-                super (print "After middle.up")
-                forever $ up dn
-
-
-        downstream =
-            knotted $ \up _ -> do
-                super (print "Before downstream.up")
-                str <- up ()
-                super (print str)
-                super (print "After downstream.up")
-                
-                
-    
-    delta obj $
-        linearize $
-            upstream +>> middle +>> downstream
-    return ()

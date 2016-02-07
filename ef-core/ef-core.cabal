@@ -18,8 +18,8 @@ library
   exposed-modules:
                   Ef
                   Ef.Narrative
-                  Ef.Set
-                  Ef.Nat 
+                  Ef.Type.Set
+                  Ef.Type.Nat 
                   Ef.Methods
                   Ef.Messages
                   Ef.Ma

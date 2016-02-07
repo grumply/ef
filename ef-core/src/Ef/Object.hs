@@ -34,10 +34,10 @@ module Ef.Object
 
 
 
-import Ef.Set
+import Ef.Type.Set
 import Ef.Methods
 
-import Ef.Nat
+import Ef.Type.Nat
 
 type Method method methods supertype =
     method (Implementation methods supertype)

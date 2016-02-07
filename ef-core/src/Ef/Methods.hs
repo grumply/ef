@@ -19,8 +19,8 @@ module Ef.Methods
 
 
 
-import Ef.Set
-import Ef.Nat
+import Ef.Type.Set
+import Ef.Type.Nat
 
 import Data.Typeable
 

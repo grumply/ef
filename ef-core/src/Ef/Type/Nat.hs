@@ -5,27 +5,16 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE Safe #-}
-module Ef.Nat where
+module Ef.Type.Nat where
 
 
-
-data Nat
-  where
-
-    Z
-        :: Nat
-
-    S
-        :: Nat -> Nat
+data Nat where
+    Z :: Nat
+    S :: Nat -> Nat
 
 
-
-data Index (n :: Nat)
-  where
-
-    Index
-        :: Index n
-
+data Index (n :: Nat) where
+    Index :: Index n
 
 
 type family Offset (x :: k) (xs :: [k]) :: Nat

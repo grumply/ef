@@ -6,7 +6,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE Safe #-}
-module Ef.Set where
+module Ef.Type.Set where
 
 
 -- | De-duplicating append as a type family; `Union` and `∪` uses this.

@@ -1,8 +1,10 @@
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
-module Ef.Lang.Note
+module Ef.Note
     ( Book(..)
     , notate
 
@@ -12,21 +14,14 @@ module Ef.Lang.Note
 
 
 
-import Ef.Core.Narrative
-import Ef.Lang.Knot
+import Ef.Narrative
+import Ef.Knot
 
 import Control.Monad
 
 import Data.Monoid
 
 import Prelude hiding (log)
-
-
-
-import Ef.Core.Object
-import Ef.Lang.Knot.Context
-import Ef.Lang.IO
-import Ef.Core
 
 
 data Action notes
@@ -44,43 +39,43 @@ data Action notes
 
 
 
-data Book notes lexicon environment =
+data Book notes self super =
     Book
         {
           write
               :: notes
-              -> Narrative lexicon environment ()
+              -> Narrative self super ()
 
         , watch
               :: forall result.
-                 Narrative lexicon environment result
-              -> Narrative lexicon environment (result,notes)
+                 Narrative self super result
+              -> Narrative self super (result,notes)
 
         , condense
               :: forall result.
-                 Narrative lexicon environment (result,notes -> notes)
-              -> Narrative lexicon environment result
+                 Narrative self super (result,notes -> notes)
+              -> Narrative self super result
 
         , watches
               :: forall result b.
                  (notes -> b)
-              -> Narrative lexicon environment result
-              -> Narrative lexicon environment (result,b)
+              -> Narrative self super result
+              -> Narrative self super (result,b)
 
         , edit
               :: forall result.
                  (notes -> notes)
-              -> Narrative lexicon environment result
-              -> Narrative lexicon environment result
+              -> Narrative self super result
+              -> Narrative self super result
 
        }
 
 
 
 notated
-    :: Knows Knots lexicon environment
-    => (Book notes lexicon environment -> Narrative lexicon environment result)
-    -> Knotted (Action notes) notes () X lexicon environment (result,notes)
+    :: ('[Knot] <: self, Monad super) 
+    => (Book notes self super -> Narrative self super result)
+    -> Knotted (Action notes) notes () X self super (result,notes)
 
 notated computation =
     let
@@ -149,11 +144,12 @@ notated computation =
 
 
 notate
-    :: ( Knows Knots lexicon environment
+    :: ( '[Knot] <: self
+       , Monad super
        , Monoid notes
        )
-    => (Book notes lexicon environment -> Narrative lexicon environment result)
-    -> Narrative lexicon environment (result,notes)
+    => (Book notes self super -> Narrative self super result)
+    -> Narrative self super (result,notes)
 
 notate computation =
     linearize (serve +>> notated computation)
