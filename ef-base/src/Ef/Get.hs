@@ -1,26 +1,26 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
-module Ef.Context.Get
-    ( module Ef.Context.Get.Lexemes
+module Ef.Get
+    ( module Ef.Get.Messages
     ) where
 
 
-import Ef.Core.Inflect
+import Ef.Ma
 
-import Ef.Context.Get.Lexemes
-import Ef.Context.Get.Context
+import qualified Ef.Get.Methods as Methods
+import Ef.Get.Messages
 
 import Unsafe.Coerce
 
 
-instance Inflection Gets Get
+instance Ma Methods.Get Get
   where
 
-    inflect use (Gets _ _ k) (Reify k') =
+    ma use (Methods.Get _ _ k) (Reify k') =
         use k k'
 
-    inflect use (Gets (o,k) _ _) (Get ok) =
+    ma use (Methods.Get (o,k) _ _) (Get ok) =
         use k (ok (unsafeCoerce o))
 
-    inflect use (Gets _ k _) (Reset k') =
+    ma use (Methods.Get _ k _) (Reset k') =
         use k k'
 

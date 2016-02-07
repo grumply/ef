@@ -2,3 +2,8 @@ dist/
 ef-core/dist/
 ef-base/dist/
 before/dist/
+*.js_*
+TAGS
+*/.stack-work/
+*/stack.yaml
+.DS_Store

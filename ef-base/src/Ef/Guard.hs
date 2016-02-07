@@ -11,7 +11,7 @@ module Ef.Guard
     ( Guarding
     , guards
     , Guardable
-    , guarder
+    , guard
     , Guard(..)
     ) where
 
@@ -38,7 +38,7 @@ data Guard self super = Guard
 data Guardable k = Guardable Int k
 
 
-guarder =
+guard =
     Guardable 0 $ \fs ->
         let Guardable i k = view fs
         in return $ fs .= Guardable (succ i) k
@@ -89,8 +89,8 @@ choosing
 choosing _ [] _ alt =
     alt
 
-choosing self (a:as) bp alt =
-    transform (nestedChoosing self as alt bp) (bp a)
+choosing scope (a:as) bp alt =
+    transform (nestedChoosing scope as alt bp) (bp a)
 
 
 
@@ -127,5 +127,5 @@ nestedChoosing scope choices alt superContinue message childContinue =
            Nothing -> ignore
 
 
-{-# INLINE guarder #-}
+{-# INLINE guard #-}
 {-# INLINE guards #-}

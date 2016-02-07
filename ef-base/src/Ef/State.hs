@@ -1,31 +1,18 @@
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-module Ef.Context.State
-    ( module Ef.Context.State.Lexemes
+module Ef.State
+    ( module Ef.State.Messages
     ) where
 
 
+import Ef.Ma
 
-import Ef.Core.Inflect
-
-import Ef.Context.State.Lexemes
-import Ef.Context.State.Context
-
+import Ef.State.Messages
+import qualified Ef.State.Methods as Methods
 
 
-instance Inflection (Stateful st) (State st)
-  where
-
-    inflect use (State st stk) (Modify stst stk') =
-        let
-          st' =
-              stst st
-              
-          k =
-              stk st'
-
-          k' =
-              stk' st
-
-        in
-          use k k'
+instance Ma (Methods.State st) (State st) where
+    ma use (Methods.State st stk) (Modify stst stk') =
+        let st' = stst st
+            k   = stk st'
+            k'  = stk' st
+        in use k k'

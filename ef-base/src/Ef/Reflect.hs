@@ -1,47 +1,28 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ExistentialQuantification #-}
-module Ef.Context.Reflect where
+module Ef.Reflect where
 
 
+import Ef
 
-import Ef.Core
-
-import Ef.Context.Get
-import Ef.Context.Set
-
+import Ef.Get
+import Ef.Set
 
 
-data Reflection lexicon contexts environment =
+data Reflection self methods super =
     Reflection
-        {
-          project
-              :: Narrative lexicon environment (Object contexts environment)
-
-        , inject
-              :: Object contexts environment
-              -> Narrative lexicon environment ()
+        { project :: Narrative self super (Object methods super)
+        , inject :: Object methods super -> Narrative self super ()
         }
 
 
-
 withReflection
-    :: ( Knows Get lexicon environment
-       , Knows Set lexicon environment
-       , Inflections contexts lexicon
-       )
-    => (    Reflection lexicon contexts environment
-         -> Narrative lexicon environment result
-       )
-    -> Narrative lexicon environment result
+    :: ('[Get,Set] <: self, Monad super, Methods methods `Ma` Messages self)
+    => (Reflection self methods super -> Narrative self super result) -> Narrative self super result
 
 withReflection f =
     f Reflection
-          {
-            project =
-                introspect
-
-          , inject =
-                become
+          { project = introspect
+          , inject = become
           }

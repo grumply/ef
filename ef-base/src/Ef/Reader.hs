@@ -1,28 +1,15 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE PostfixOperators #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ExistentialQuantification #-}
-module Ef.Context.View
-    ( module Ef.Context.View.Lexemes
+module Ef.Reader
+    ( module Ef.Reader.Messages
     ) where
 
 
 
-import Ef.Core.Inflect
+import Ef.Ma
 
-import Ef.Context.View.Lexemes
-import Ef.Context.View.Context
+import Ef.Reader.Messages
+import qualified Ef.Reader.Methods as Methods
 
 
-
-instance Inflection (Views r) (View r)
-  where
-
-    inflect use (Views r k) (View rk) =
-        inflect use (r,k) rk
+instance Ma (Methods.Reader r) (Reader r) where
+    ma use (Methods.Reader r k) (Ask rk) = ma use (r,k) rk

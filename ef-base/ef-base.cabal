@@ -17,7 +17,7 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Ef.Contract, Ef.Except, Ef.Except.Messages, Ef.Except.Methods, Ef.Knot, Ef.Knot.Messages, Ef.Knot.Methods, Ef.Fork, Data.Promise, Ef.IO, Ef.Guard, Ef.Manage, Ef.Manage.Messages, Ef.Manage.Methods, Ef.Fiber, Ef.Fiber.Messages, Ef.Fiber.Methods, Ef.Event, Ef.Generate, Ef.Note, Ef.Var, Ef.Set, Ef.Set.Messages, Ef.Set.Methods
+  exposed-modules:     Ef.Contract, Ef.Except, Ef.Except.Messages, Ef.Except.Methods, Ef.Knot, Ef.Knot.Messages, Ef.Knot.Methods, Ef.Fork, Data.Promise, Ef.IO, Ef.Guard, Ef.Manage, Ef.Manage.Messages, Ef.Manage.Methods, Ef.Fiber, Ef.Fiber.Messages, Ef.Fiber.Methods, Ef.Event, Ef.Generate, Ef.Note, Ef.Var, Ef.Set, Ef.Set.Messages, Ef.Set.Methods, Ef.Get, Ef.Get.Messages, Ef.Get.Methods, Ef.Reflect, Ef.Reader, Ef.Reader.Messages, Ef.Reader.Methods, Ef.State, Ef.State.Methods, Ef.State.Messages, Ef.Writer, Ef.Writer.Methods, Ef.Writer.Messages
   -- other-modules:       
   -- other-extensions:
   build-depends:       base >=4.8 && <4.9, ef-core >= 1 && < 1.1, random >= 1.1

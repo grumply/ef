@@ -1,19 +1,15 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
-module Ef.Context.Note
-    ( module Ef.Context.Note.Lexemes
+module Ef.Writer
+    ( module Ef.Writer.Messages
     ) where
 
 
 
-import Ef.Core.Inflect
+import Ef.Ma
 
-import Ef.Context.Note.Lexemes
-import Ef.Context.Note.Context
+import Ef.Writer.Messages
+import qualified Ef.Writer.Methods as Methods
 
 
-
-instance Inflection (Notes r) (Note r)
-  where
-
-    inflect use (Notes _ rk) (Note r k) =
-        inflect use rk (r,k)
+instance Ma (Methods.Writer r) (Writer r) where
+    ma use (Methods.Writer _ rk) (Tell r k) = ma use rk (r,k)

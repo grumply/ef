@@ -55,10 +55,10 @@ type Implementation methods supertype =
 type family Subclass (methods :: [* -> *]) methods' where
 
     Subclass (method ': '[]) methods' =
-        (Has method methods')
+        (Has' method methods' (Offset method methods'))
 
     Subclass (method ': methods) methods' =
-        (Has method methods',methods `Subclass` methods')
+        (Has' method methods' (Offset method methods'),methods `Subclass` methods')
 
 
 
