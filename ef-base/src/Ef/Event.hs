@@ -280,9 +280,7 @@ data Action self super
 -- @
 event
     :: forall self super a.
-       ( Monad super
-       , Can Knot self
-       )
+       Knows Knot self super
     => (Event self super -> Narrative self super a)
     -> Narrative self super a
 

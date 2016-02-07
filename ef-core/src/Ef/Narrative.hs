@@ -16,6 +16,7 @@ module Ef.Narrative
      , Subtype
      , Invoke
      , Invokes
+     , Knows
      , self
      , super
      , transform
@@ -27,6 +28,7 @@ module Ef.Narrative
 
 
 import Ef.Messages
+import Ef.Nat
 
 import Control.Applicative
 import Control.Exception (Exception(..),SomeException)
@@ -34,7 +36,6 @@ import Control.Exception.Base (PatternMatchFail(..))
 import Control.Monad
 
 import GHC.Exts (Constraint)
-
 
 
 -- | Narrative is a monad for composing method invocations.
@@ -156,10 +157,14 @@ self message =
 
 
 
-type Invoke message self super result =
+type Knows message self super =
     ( Subtype '[message] self
     , Monad super
     )
+
+
+type Invoke message self super result =
+    Knows message self super
     => Narrative self super result
 
 
@@ -175,10 +180,10 @@ type Invokes messages self super result =
 type family Subtype (messages :: [* -> *]) messages' :: Constraint where
 
     Subtype (message ': '[]) messages' =
-        (Can message messages')
+        (Can' message messages' (Offset message messages'))
 
     Subtype (message ': messages) messages' =
-        ( Can message messages'
+        ( Can' message messages' (Offset message messages')
         , Subtype messages messages' 
         )
 

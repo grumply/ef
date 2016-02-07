@@ -107,7 +107,7 @@ instance Ma Methods.Fiber Fiber where
 -- to fibers and fork.
 --
 fiber :: forall self super result.
-          (Monad super,Can Fiber self,Lift IO super)
+          (Knows Fiber self super,Lift IO super)
        => (Threader self super -> Narrative self super result)
        -> Narrative self super result
 fiber f =

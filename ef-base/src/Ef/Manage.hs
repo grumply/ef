@@ -48,7 +48,7 @@ instance Ma Methods.Manage Messages.Manage where
 -- Tokens may be deallocated which forces registered cleanup actions to be
 -- performed in all managers for which that token is registered in LIFO order
 -- of the nesting scopes.
-manage :: (Can Manage self, Monad super)
+manage :: Knows Manage self super
         => (Manager self super -> Narrative self super result)
         -> Narrative self super result
 manage f = do
@@ -64,7 +64,7 @@ manage f = do
 
 
 rewrite :: forall self super result.
-           (Can Messages.Manage self, Monad super)
+           Knows Manage self super
         => Int
         -> [(Int,Narrative self super ())]
         -> Narrative self super result

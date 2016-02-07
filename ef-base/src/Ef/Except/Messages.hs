@@ -36,7 +36,7 @@ newtype Wrap e a =
 -- | throw a checked exception; the exception must be caught via `catchChecked`
 -- before the `Narrative` can be sent to an `Object`.
 throwChecked
-    :: (Can Except self, Monad super, Exception e)
+    :: (Knows Except self super, Exception e)
     => e -> (Throws e => Narrative self super a)
 
 throwChecked e =
@@ -48,7 +48,7 @@ throwChecked e =
 -- on a `Narrative` carrying a (Throws _ =>) context before it may be sent to an `Object`.
 catchChecked
     :: forall e self super result.
-       (Can Except self, Monad super, Exception e)
+       (Knows Except self super, Exception e)
     => (Throws e => Narrative self super result)
     -> (e -> Narrative self super result)
     -> Narrative self super result
@@ -67,7 +67,7 @@ catchChecked act =
 -- | similar to `catchChecked` but doesn't handle the exception and instead
 -- lifts it into an `Either` sum with the `Narratives` expected result.
 tryChecked
-    :: (Can Except self, Monad super, Exception e)
+    :: (Knows Except self super, Exception e)
     => (Throws e => Narrative self super result)
     -> Narrative self super (Either e result)
 
@@ -77,7 +77,7 @@ tryChecked a =
 
 -- | cast a checked exception to another type
 mapChecked
-    :: (Can Except self, Monad super, Exception e, Exception e')
+    :: (Knows Except self super, Exception e, Exception e')
     => (e -> e')
     -> (Throws e => Narrative self super a)
     -> (Throws e' => Narrative self super a)

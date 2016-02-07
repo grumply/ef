@@ -48,7 +48,7 @@ instance Ma Guardable Guarding where
     ma use (Guardable i k) (FreshSelf ik) = use k (ik i)
 
 
-guards :: (Can Guarding self, Monad super)
+guards :: Knows Guarding self super
        => (Guard self super -> Narrative self super result)
        -> Narrative self super (Maybe result)
 guards l = do
@@ -60,7 +60,7 @@ guards l = do
         }
 
 
-rewrite :: (Can Guarding self, Monad super)
+rewrite :: Knows Guarding self super
         => Int
         -> Messages self x
         -> (x -> Narrative self super (Maybe result))
@@ -80,7 +80,7 @@ rewrite scope message k =
 
 
 choosing
-    :: (Can Guarding self, Monad super)
+    :: Knows Guarding self super
     => Int
     -> [a]
     -> (a -> Narrative self super r)
@@ -95,7 +95,7 @@ choosing self (a:as) bp alt =
 
 
 nestedChoosing
-    :: (Can Guarding self, Monad super)
+    :: Knows Guarding self super
     => Int
     -> [a]
     -> Narrative self super result
