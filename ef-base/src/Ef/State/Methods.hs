@@ -9,11 +9,12 @@ module Ef.State.Methods
 
 
 import Ef.Object
-
+import Control.DeepSeq
 
 data State st k =
     State st (st -> k)
-
+instance NFData st => NFData (State st k) where
+    rnf (State st stk) = rnf st `seq` ()
 
 state :: state -> Use (State state) lexicon environment
 state initialState =

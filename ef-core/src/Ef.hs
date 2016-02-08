@@ -11,6 +11,9 @@ module Ef
     ( module Core
     , delta
     , delta'
+    , stream
+    , ($..)
+    , ($>)
     , ($.)
     , (#)
     , (#.)
@@ -27,6 +30,8 @@ import Ef.Exception as Core
 
 import Ef.Ma as Core
 
+import Control.DeepSeq
+
 import qualified Control.Exception as Exception
 
 -- | Send a narrative to an object for invocation; returns a new, modified object
@@ -34,12 +39,12 @@ import qualified Control.Exception as Exception
 --
 -- >    (resultObj,result) <- delta obj narrative
 delta
-    :: ( (Methods methods) `Ma` (Messages messages)
-       , Monad supertype
+    :: ( (Methods methods) `Ma` (Messages self)
+       , Monad super
        )
-    => Object methods supertype
-    -> Narrative messages supertype result
-    -> supertype (Object methods supertype,result)
+    => Object methods super
+    -> Narrative self super result
+    -> super (Object methods super,result)
 delta =
     _delta
 {-# INLINE delta #-}
@@ -50,44 +55,73 @@ infixr 5 $.
 --
 -- >    (resultObj,result) <- obj $. narrative
 ($.)
-    :: ( (Methods methods) `Ma` (Messages messages)
-       , Monad supertype
+    :: ( (Methods methods) `Ma` (Messages self)
+       , Monad super
        )
-    => Object methods supertype
-    -> Narrative messages supertype result
-    -> supertype (Object methods supertype,result)
-    
+    => Object methods super
+    -> Narrative self super result
+    -> super (Object methods super,result)
+   
 ($.) = delta
 
+($..)
+    :: ( (Methods methods) `Ma` (Messages self)
+       , Monad super
+       , NFData (Methods methods (Implementation methods super))
+       )
+    => Object methods super
+    -> Narrative self super result
+    -> super (Object methods super,result)
 
+($..) = delta__
 
+delta__
+    :: ( (Methods methods) `Ma` (Messages self)
+       , Monad super
+       , NFData (Methods methods (Implementation methods super))
+       )
+    => Object methods super
+    -> Narrative self super result
+    -> super (Object methods super,result)
+delta__ obj =
+    go
+    where
+
+        go (Fail e) = Exception.throw e
+        go (Super sup) = do
+            narrative <- sup
+            go narrative
+        go (Return result) = return (obj,result)
+        go (Say message k) = do
+            (obj',v) <- obj $. (Say message Return)
+            obj' `deepseq` delta__ obj' (k v)
 infixl 5 #
--- | Like 'delta' for objects in an supertype, but without a return value.
+-- | Like 'delta' for objects in an super, but without a return value.
 -- Permits a chaining syntax:
 --
 -- >    resultObj <- pure obj # method1 # method2 # method3
 (#)
-    :: ( (Methods methods) `Ma` (Messages messages)
-       , Monad supertype
+    :: ( (Methods methods) `Ma` (Messages self)
+       , Monad super
        )
-    => supertype (Object methods supertype)
-    -> Narrative messages supertype result
-    -> supertype (Object methods supertype)
+    => super (Object methods super)
+    -> Narrative self super result
+    -> super (Object methods super)
 (#) obj passage = fmap fst (obj #. passage)
 
 
 
--- | Like 'delta' for objects in an supertype. Like '#', but can be used to end
+-- | Like 'delta' for objects in an super. Like '#', but can be used to end
 -- a chain of method calls, for example:
 --
 -- >    (resultObj,result) <- pure obj # method1 # method2 #. method3
 (#.)
-    :: ( (Methods methods) `Ma` (Messages messages)
-       , Monad supertype
+    :: ( (Methods methods) `Ma` (Messages self)
+       , Monad super
        )
-    => supertype (Object methods supertype)
-    -> Narrative messages supertype result
-    -> supertype (Object methods supertype,result)
+    => super (Object methods super)
+    -> Narrative self super result
+    -> super (Object methods super,result)
 
 (#.) obj passage = obj >>= ($. passage)
 
@@ -98,31 +132,74 @@ infixl 5 #
 --
 -- >    (resultObj,result) <- delta' obj smallNarrative
 delta'
-    :: ( (Methods methods) `Ma` (Messages messages')
-       , Upcast (Messages messages) (Messages messages')
-       , Monad supertype
+    :: ( (Methods methods) `Ma` (Messages self')
+       , Upcast (Messages self) (Messages self')
+       , Monad super
        )
-    => Object methods supertype
-    -> Narrative messages supertype result
-    -> supertype (Object methods supertype,result)
+    => Object methods super
+    -> Narrative self super result
+    -> super (Object methods super,result)
 delta' o =
     _delta o . upcast
 
 
 
+($>) :: ( (Methods methods) `Ma` (Messages self)
+        , Monad super
+        )
+     => Object methods super
+     -> Narrative self super result
+     -> super ([(Object methods super,Narrative self super result)])
+
+($>) = stream
+
+stream :: ( (Methods methods) `Ma` (Messages self)
+          , Monad super
+          )
+       => Object methods super
+       -> Narrative self super result
+       -> super ([(Object methods super,Narrative self super result)])
+
+stream = __delta
+
+{-# INLINE __delta #-}
+__delta
+    :: ( (Methods methods) `Ma` (Messages self)
+       , Monad super
+       )
+    => Object methods super
+    -> Narrative self super result
+    -> super ([(Object methods super,Narrative self super result)])
+__delta =
+    go []
+    where
+        go acc object (Fail e) = do
+            return $ (object,Fail e):acc
+        go acc object (Super sup) = do
+            narrative <- sup
+            go ((object,Super sup):acc) object narrative
+        go acc object (Return result) = do
+            return $ (object,Return result):acc
+        go acc object (Say symbol k) =
+            let !(method,b) = ma (,) (deconstruct object) symbol
+            in do !object' <- method object
+                  let narrative = k b
+                  go ((object,Say symbol k):acc) object' narrative
+
+
 {-# INLINE _delta #-}
 _delta
-    :: ( (Methods methods) `Ma` (Messages messages)
-       , Monad supertype
+    :: ( (Methods methods) `Ma` (Messages self)
+       , Monad super
        )
-    => Object methods supertype
-    -> Narrative messages supertype result
-    -> supertype (Object methods supertype,result)
+    => Object methods super
+    -> Narrative self super result
+    -> super (Object methods super,result)
 _delta object =
     go
   where
 
-      go (Say symbol k) =
+      go (Say symbol ~k) =
           let
               !(method,b) =
                   ma (,) (deconstruct object) symbol
@@ -138,8 +215,7 @@ _delta object =
       go (Super m) =
           m >>= go
 
-      go (Return result) =
-          pure (object,result)
+      go (Return result) = pure (object,result)
 
 
 

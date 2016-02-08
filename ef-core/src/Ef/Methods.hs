@@ -23,7 +23,7 @@ import Ef.Type.Set
 import Ef.Type.Nat
 
 import Data.Typeable
-
+import Control.DeepSeq
 
 
 -- | Methods are the abstract components of 'Object's. A Methods construction
@@ -44,6 +44,11 @@ data Methods (methods :: [* -> *]) x
         -> Methods methods x
         -> Methods (method ': methods) x
 
+instance NFData (Methods '[] x) where
+    rnf _ = ()
+
+instance (NFData (method x), NFData (Methods methods x))=> NFData (Methods (method ': methods) x) where
+    rnf (Method method methods) = rnf method `seq` rnf methods
 
 
 instance Eq (Methods '[] x) where

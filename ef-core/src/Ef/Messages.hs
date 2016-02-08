@@ -23,13 +23,11 @@ data Messages messages a
   where
 
     Message
-        :: Denies message rest
-        => message a
+        :: message a
         -> Messages (message ': rest) a
 
     Further
-        :: Denies message rest
-        => Messages rest a
+        :: Messages rest a
         -> Messages (message ': rest) a
 
 

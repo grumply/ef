@@ -47,26 +47,17 @@ import GHC.Exts (Constraint)
 -- including DSL-, or language-, oriented design. Examples of various approaches
 -- and their implications can be found in the project documentation (todo).
 data Narrative self super result
-  where
-
-    Say
-        :: Messages self intermediate
-        -> (    intermediate
+    = forall intermediate.
+      Say (Messages self intermediate)
+          (    intermediate
              -> Narrative self super result
-           )
-        -> Narrative self super result
+          )
 
-    Super
-        :: super (Narrative self super result)
-        -> Narrative self super result
+    | Super (super (Narrative self super result))
 
-    Return
-        :: result
-        -> Narrative self super result
+    | Return result
 
-    Fail
-        :: SomeException
-        -> Narrative self super result
+    | Fail SomeException
 
 
 

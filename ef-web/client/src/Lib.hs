@@ -1,5 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE BangPatterns #-}
 module Lib
     ( runClient
     ) where
@@ -20,41 +23,32 @@ import GHCJS.DOM.EventM (on, mouseClientXY)
 
 import Data.Time.Clock
 
-import Ef.Knot
-import Ef.Knot.Methods
+import Ef.State
+import Ef.State.Methods
+
+import qualified Control.Exception as Exception
+import Data.Functor.Identity
+import Data.IORef
+import System.IO.Unsafe
+
+import Data.Function
+
+
+run obj [Return result] = return (obj,result)
+run obj (Fail e:_) = Exception.throw e
+run obj [Super sup] = sup >>= \nar -> run obj $ deconstruct nar
+run obj (Say message _:rest) = do
+    (obj',value) <- delta obj (Say message Return)
+    
 
 runClient :: IO ()
 runClient = do
-    let obj = Object $ knot *:* Empty
-    obj $. do
-        ct <- io getCurrentTime
-        linearize $ produce +>> consumer ct
-    return ()
-    where
-        {-# INLINE produce #-}
-        produce initial = knotted $ \_ dn -> start dn initial
-            where
-                {-# INLINE start #-}
-                start respond = go
-                    where
-                        {-# INLINE go #-}
-                        go () = do
-                            next <- respond ()
-                            go next
-        {-# INLINE consumer #-}
-        consumer started = knotted $ \up _ -> start up
-            where
-                {-# INLINE start #-}
-                start request = go (1000000 :: Int)
-                    where
-                        {-# INLINE go #-}
-                        go 0 = do
-                           ended <- io getCurrentTime
-                           io (print $ show (diffUTCTime ended started))
-                           return ()
-                        go n = do
-                           () <- request ()
-                           go $! n - 1
+    began <- getCurrentTime
+    let (obj',result) = runIdentity $ run (Object $ state (0 :: Int) *:* Empty) $ fix go (1000000 :: Int)
+        go continue n = 
+            if n == 0 then return () else put n >> continue (n - 1)
+    ended <- result `seq` getCurrentTime
+    print (diffUTCTime ended began,result)
 {-
         mv <- io newEmptyMVar
         endMV <- io newEmptyMVar
