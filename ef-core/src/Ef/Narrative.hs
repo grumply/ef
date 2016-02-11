@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE GADTs #-}
@@ -35,7 +36,7 @@ import Control.Exception (Exception(..),SomeException)
 import Control.Exception.Base (PatternMatchFail(..))
 import Control.Monad
 
-import GHC.Exts (Constraint)
+import GHC.Generics
 
 
 -- | Narrative is a monad for composing method invocations.
@@ -58,7 +59,6 @@ data Narrative self super result
     | Return result
 
     | Fail SomeException
-
 
 
 instance ( Upcast (Messages small) (Messages large)
@@ -168,7 +168,7 @@ type Invokes messages self super result =
 
 
 
-type family (<:) (messages :: [* -> *]) messages' :: Constraint where
+type family (<:) (messages :: [* -> *]) messages' where
 
     (message ': '[]) <: messages' =
         (Can' message messages' (Offset message messages'))
@@ -524,108 +524,3 @@ data Transform (self :: [* -> *]) (super :: * -> *) (result :: *)
 
   #-}
 
-
--- Let's move these to an external package; they are narrative transformations for which
--- there shouldn't be default implementations as arbitrary cutoffs can leave objects in
--- invalid states.
-
--- -- | cutoffSteps limits the number of Step constructors in a 'Narrative'. To limit
--- -- the number of (Step constructors + M constructors), use 'cutoff'.
--- --
--- -- >>> import Ef.Core
--- -- >>> import Effect.State
--- -- >>> newtype St = St Int
--- -- >>> :{
--- --  do
--- --    let
--- --      inc (St n) =
--- --          St (n + 1)
--- --
--- --      newStore =
--- --          store (St 0)
--- --
--- --      obj =
--- --          Object (newStore *:* Empty)
--- --
--- --      test =
--- --          replicateM_ 5 (modify inc)
--- --
--- --    result0 <- delta obj (cutoffSteps 3 test)
--- --    let
--- --      (o,_) =
--- --          result0
--- --
--- --    result1 <- delta o get
--- --    let
--- --      (_,St i) =
--- --          result1
--- --
--- --    print i
--- -- :}
--- --3
-
-
-
--- cutoffSteps
---     :: Monad super
---     => Integer
---     -> Narrative self super result
---     -> Narrative self super (Maybe result)
-
--- cutoffSteps _ (Fail e) =
---     Fail e
-
--- cutoffSteps ((<= 0) -> True) _ =
---     return Nothing
-
--- cutoffSteps _ (Return result) =
---     Return (Just result)
-
--- cutoffSteps stepsRemaining (Super m) =
---     let
---       newCutoff =
---           cutoffSteps (stepsRemaining - 1)
-
---     in
---       Super (fmap newCutoff m)
-
--- cutoffSteps stepsRemaining (Say message k) =
---     let
---       newCutoff =
---           cutoffSteps (stepsRemaining - 1)
-
---     in
---       Say message (newCutoff . k)
-
-
-
--- cutoff
---     :: Monad super
---     => Integer
---     -> Narrative self super result
---     -> Narrative self super (Maybe result)
-
--- cutoff _ (Fail e) =
---     Fail e
-
--- cutoff ((<= 0) -> True) _ =
---     return Nothing
-
--- cutoff _ (Return result) =
---     Return (Just result)
-
--- cutoff stepsRemaining (Super m) =
---     let
---       newCutoff =
---           cutoff (stepsRemaining - 1)
-
---     in
---       Super (fmap newCutoff m)
-
--- cutoff stepsRemaining (Say message k) =
---     let
---       newCutoff =
---           cutoff (stepsRemaining - 1)
-
---     in
---       Say message (newCutoff . k)

@@ -14,58 +14,6 @@ import Control.Applicative
 import Control.Monad
 
 
-
---------------------------------------------------------------------------------
--- | Codensity improves asymptotics of repeated left-associated binds by
---   conversion to right-associated binds.
---
--- This example demonstrates a performance improvement over the standard
--- replicateM.
---
--- >>> import Data.Time
--- >>> import System.Timeout
--- >>> :{
---   let
---     time f =
---         do
---           s <- getCurrentTime
---           r <- f
---           e <- r `seq` getCurrentTime
---           return (diffUTCTime e s,r)
---
---     replicateP n =
---         fromCodensity . Control.Monad.replicateM n . toCodensity
---
---   in
---     do
---       let
---         unit =
---             return ()
---
---         test f =
---             run (f 10 unit)
---
---       mResult <- time (run replicateM)
---       pResult <- time (run replicateP)
---       let
---         (conventionalTime,mRes) =
---             mResult
---
---         (codensityTime,pRes) =
---             pResult
---
---       return (conventionalTime - codensityTime > 0)
---
--- :}
---True
-
--- | Codensity hides intermediate results by way of composition. That is,
--- (>>=), for Codesnity, ties the result of a computation into a continuation
--- of that result to create a wrapped sequence of computational steps.
--- The wrapping enables the compiler to see that the intermediate results
--- cannot be inspected - modulo 'unsafeCoerce'. Some (all?) Free monad
--- encodings are amenable to a Codensity representation and Narrative is a
--- Free monad representation.
 newtype Codensity messages super result =
 
     Codensity
@@ -120,7 +68,7 @@ instance Monad (Codensity messages super)
         pure
 
 
-
+    {-# INLINE (>>=) #-}
     (>>=)
         :: forall firstResult secondResult.
            Codensity messages super firstResult
@@ -191,7 +139,7 @@ instance MonadPlus super
             m k `mplus` n k
 
 
-
+{-# INLINE toCodensity #-}
 toCodensity
     :: Monad super
     => Narrative messages super result
@@ -201,7 +149,7 @@ toCodensity f =
     Codensity (f >>=)
 
 
-
+{-# INLINE fromCodensity #-}
 fromCodensity
     :: Monad super
     => Codensity messages super result

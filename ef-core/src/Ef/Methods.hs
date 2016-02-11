@@ -39,8 +39,7 @@ data Methods (methods :: [* -> *]) x
         :: Methods '[] x
 
     Method
-        :: Denies method methods
-        => method x
+        :: method x
         -> Methods methods x
         -> Methods (method ': methods) x
 
