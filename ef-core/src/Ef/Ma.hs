@@ -19,7 +19,7 @@ import Ef.Messages
 
 
 -- | Ma is the duality between having and using; between existence and
--- interaction. Ma is Kay's 'interstital space'. Ma is automatically derivable.
+-- interaction. The name comes specifically from Alan Kay's usage.
 -- Programming is not done in 'ma' - if one wants the style of dynamic
 -- invocation that Kay imagined, one uses the intrinsically dynamic nature of
 -- Narratives (conglomerate messages) since they are dynamically generated

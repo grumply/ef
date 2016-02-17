@@ -39,14 +39,8 @@ import Control.Monad
 import GHC.Generics
 
 
--- | Narrative is a monad for composing method invocations.
--- This is a transition from the standard OOP design to MOP, or message-oriented
--- programming. Development can still be done via the standard object-style
--- dependency-oriented approach, but I believe development by way of a Narrative
--- leads to cleaner, naturally arising, object hierarchies, as well as easy
--- prototyping and testing as well as more dynamic approaches to development,
--- including DSL-, or language-, oriented design. Examples of various approaches
--- and their implications can be found in the project documentation (todo).
+-- | Narrative is a structure used for representing a composition of method invocations
+-- in a vertical inheritance hierarchy. Narrative comes with a free Monad implementation.
 data Narrative self super result
     = forall intermediate.
       Say (Messages self intermediate)
@@ -117,7 +111,6 @@ instance Functor super
 
     lift =
         super
-
 
 
 instance Lift newSuper super

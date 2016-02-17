@@ -24,6 +24,9 @@ library
                      , Ef.Knot
                      , Ef.Knot.Messages
                      , Ef.Knot.Methods
+                     , Ef.Single
+                     , Ef.Knot.Messages.Single
+                     , Ef.Knot.Methods.Single
                      , Ef.Fork
                      , Data.Promise
                      , Ef.IO

@@ -11,6 +11,7 @@ module Ef.Exception
     , mapException
     , try
     , tryJust
+    , tryAny
     , onException
     , finally
     , bracket
@@ -165,6 +166,14 @@ try p =
 
     in
       catch analyze bad
+
+
+tryAny :: ( Monad super
+          )
+       => Narrative self super a
+       -> Narrative self super (Either SomeException a)
+
+tryAny = try
 
 
 

@@ -14,7 +14,7 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Lib, Web
+  exposed-modules:     Event, Queue, Signaled, HTML, Web, Web.Methods, Web.Messages
   build-depends:       base >= 4.7 && < 5
                      , containers
                      , transformers
@@ -31,6 +31,7 @@ executable ef-web-client-exe
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
                      , containers
+                     , transformers
                      , ef-web-client
                      , time >= 1.5 && < 1.7
                      , ef-core >= 1.0 && < 1.1
