@@ -7,16 +7,30 @@
 module HTML
     ( Element(..), Blocking(..), Client(..)
     , SomeEvent(..), Event(..)
-    , html, with, embed, child, listen
+    , React.event, React.Signal
+    , html, with, (>:), child, listen, intercept 
     , (=:), (+#), (-#), (-:)
-    , getScreen, getWindow, getDocument
-    , simple, client
+    , getScreen, getWindow, getDrawer, getDocument
+    , Element.getBody, Element.setBody, Element.appendBody
+    , client, simpleClient
+    , Element.HTML
+    , Element.on
+    , Element.addClass, Element.setClass, Element.setAttr, Element.setText
+    , Element.removeStyle
+    , resizeSignal, scrollSignal
+    , getWindowWidth
+    , element
+    , reactiveDependentFeature
+    , Web.query, Web.write, arrive
+    , module Data.Promise
     ) where
 
 import Ef
 import Ef.IO
 import Ef.Single hiding (Client)
 import Ef.Fiber
+
+import Data.Promise
 
 import qualified Ef.Event as React
 import qualified Ef.Knot.Methods.Single as Method
@@ -36,7 +50,7 @@ import Unsafe.Coerce
 
 data Blocking = Blocking | Nonblocking deriving Eq
 
-simple f = client $ Client (\x -> return (x,())) (const f) go
+simpleClient f = client $ Client (\x -> return (x,())) (const f) go
     where
         go intcptr _ = start
             where
@@ -75,5 +89,4 @@ client Client{..} = do
                    evss <- lift (collect globalBuffer)
                    React.event $ \event ->
                        forM_ evss $ \(ev,s) -> forM_ ev (React.trigger event s)
-
 

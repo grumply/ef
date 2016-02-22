@@ -126,6 +126,12 @@ addClass :: ( Lift IO super
          => element -> cls -> Narrative self super (Promise ())
 addClass element cls = write $ \_ -> rawAddClass element cls
 
+rawSetClass :: ( Ty.ToJSString cls
+               , Ty.IsElement element
+               )
+            => element -> cls -> IO ()
+rawSetClass = Element.setClassName
+
 setClass :: ( Lift IO super
             , Ty.ToJSString cls
             , Ty.IsElement element
@@ -190,3 +196,24 @@ removeStyle :: ( Lift IO super
             => element -> key -> Narrative self super (Promise ())
 removeStyle element k = write $ \_ -> rawRemoveStyle element k
 
+
+foreign import javascript unsafe
+    "$1.textContent=$2;"
+    js_setText :: Ty.JSVal -> Ty.JSString -> IO ()
+
+rawSetText :: ( Ty.ToJSString text
+              , Ty.IsElement element
+              )
+           => element -> text -> IO ()
+rawSetText element text = do
+    e <- Ty.toJSVal element
+    js_setText e (Ty.toJSString text)
+
+setText :: ( Ty.ToJSString text
+           , Ty.IsElement element
+           , Monad super
+           , Lift IO super
+           , '[Web] <: self
+           )
+        => element -> text -> Narrative self super (Promise ())
+setText element text = write $ \_ -> rawSetText element text

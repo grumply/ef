@@ -111,7 +111,7 @@ behavior_
     -> Narrative self super ()
 
 behavior_ (Signal _ behaviors) newBehavior =
-    lift $ modifyIORef behaviors (newBehavior:)
+    lift $ modifyIORef behaviors (++ [newBehavior])
 
 
 

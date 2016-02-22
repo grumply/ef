@@ -13,6 +13,8 @@ import qualified GHCJS.DOM.Window as Window
 import qualified GHCJS.DOM.Screen as Screen
 import qualified GHCJS.DOM.RequestAnimationFrameCallback as RAF
 
+
+
 import Control.Concurrent
 import Data.Either
 import Data.Function
@@ -32,6 +34,7 @@ createWeb = do
     Just scr <- Window.getScreen win
     gb <- newVar (Left [])
     rafs <- newVar $ Left []
+    
     forkIO $ fix $ \startRound -> do
         lrs <- collect rafs
         let (qs0,ws0) = partitionEithers lrs
