@@ -6,6 +6,9 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
 module Main where
 
 import Ef
@@ -13,16 +16,21 @@ import Ef.IO
 import Ef.Event
 import HTML
 import Router
+import Signals
 
 import Ease
 
 import Templating.Simple
 import Templating.Bootstrap
 
+import GHCJS.Types (JSVal)
+import GHCJS.Marshal (ToJSVal(..))
+import qualified GHCJS.Marshal.Pure as Types
 import GHCJS.DOM.Types (MouseEvent)
 import GHCJS.DOM.Event
 import qualified GHCJS.DOM.Element as E
 import qualified GHCJS.DOM.Window as W
+import qualified GHCJS.DOM.History as H
 
 import Control.Applicative
 import Control.Monad
@@ -95,7 +103,7 @@ navbar = do
                     where
                         -- hasn't run yet
                         go False ev = do
-                            undefined
+                            return ()
                         go True ev = do
                             (x,y) <- demand =<< (query $ const $ (,) <$> (W.getScrollY win) <*> (W.getInnerWidth win))
                             with nvbr $ navbarStylesConditional (fromIntegral x) (fromIntegral y)
@@ -136,7 +144,7 @@ navbar = do
 
 
 intro = do
-    (_,scrolls) <- child "header" $ do
+    (_,scrolls) <- child Nothing "header" $ do
         headerStyles
         quote
         scrollPageButton whyef
@@ -144,7 +152,7 @@ intro = do
     where
 
         headerStyles = do
-            i <- url (jpgFile "ef-bg")
+            i <- mkUrl (jpgFile "ef-bg")
             "position"            =: "relative"
             "display"             =: "block"
             "background"          =: i
@@ -231,7 +239,7 @@ scrollPageButton section = do
     (_,scrollFromIntroClicks) <- _div "scroll-down" $ do
         scrollDownAttributes
         (_,(clicks,_)) <-
-            child "a" $ do
+            child Nothing "a" $ do
                 buttonAttributes
                 _i "fa fa-angle-down fa-fw" simple
                 listen E.click
@@ -269,8 +277,7 @@ efDesc = "Ef unifies Object-Oriented, Method-Oriented, API-Oriented, and Message
          \extensive derivation mechanisms."
 
 
-whyefSection = child "section" $ do
-    identity "whyef"
+whyefSection = child (Just "whyef") "section" $ do
     "height" =: "15000px"
     _div "container-fluid" $
         _div "row text-center" $
@@ -278,11 +285,11 @@ whyefSection = child "section" $ do
                 "visibility" =: "visible"
                 header
                 content
-                child "hr" hrStyles
+                child Nothing "hr" hrStyles
     where
 
         header =
-            child "h1" $ do
+            child Nothing "h1" $ do
                 "text-transform" =: "uppercase"
                 smallScreens
                 largeScreens
@@ -296,7 +303,7 @@ whyefSection = child "section" $ do
                     "font-size" =: "3.25rem"
 
         content =
-            child "p" $ do
+            child Nothing "p" $ do
                 "line-height" =: "1.5"
                 smallScreens
                 largeScreens
@@ -349,17 +356,19 @@ easeInOutExpoGoto clicks e overMilli offset = do
         io $ preventDefault ev
         void $ write $ scrollTo e win drawer overMilli easeInOutExpo offset
 
-eflangorg = html "article" $ do
-    attributes
-    navbar
-    scrollFromIntroClicks <- intro
-    (whyefElement,_) <- whyefSection
-    footer
-    easeInOutExpoGoto scrollFromIntroClicks whyefElement 1250 (-50)
-    where
 
+eflangorg = do
+    _ <- child (Just "page-top") "article" $ do
+        attributes
+        navbar
+        scrollFromIntroClicks <- intro
+        (whyefElement,_) <- whyefSection
+        footer
+        easeInOutExpoGoto scrollFromIntroClicks whyefElement 1250 (-50)
+    return ()
+    where
+      
         attributes = do
-            identity "page-top"
             viewStyles
             fontStyles
 
@@ -372,30 +381,55 @@ eflangorg = html "article" $ do
             "font-size"   =: "2rem"
 
 
-site = do
-    (content,_) <- eflangorg
-    appendBody content
-
 
 --------------------------------------------------------------------------------
 -- Entry
 
-main = routed
+pushUrl :: (Lift IO super, Monad super) => H.History -> String -> Narrative self super ()
+pushUrl h url = io $ do
+  dat <- toJSVal url
+  let e = "" :: String
+  H.pushState h dat e url
 
--- main :: IO ()
--- main = client Client{..} where
---     prime root = return (signals *:* assets *:* root,())
---     build _ = do
---         rs <- HTML.resizeSignal
---         ss <- HTML.scrollSignal
---         setResizeSignal rs
---         setScrollSignal ss
---         site
---     drive intrcptr _ = run
---         where
---             run obj = do
---                 (obj',_) <- obj $. intrcptr Blocking
---                 run obj'
+link url nm properties = do
+    let url' = "#" ++ url
+    win <- super getWindow
+    Just h <- io $ W.getHistory win
+    Event{..} <- super $ event return
+    (_,(clicks,_)) <- child Nothing "a" $ do
+        setAttr "href" url'
+        setText nm
+        properties
+        intercept E.click
+    super $ behavior clicks $ \_ _ -> do
+        pushUrl h url'
+        route url'
+
+routeTest = do
+    link "/user" "user" simple
+    link "/user/10" "uid10" simple
+
+router = do
+    sub "user" $ do
+        sub ":uid" $ do
+            Just uid <- "uid"
+            io $ putStrLn uid
+            page Transient "Route Test" routeTest
+        page Permanent "Ef" eflangorg
+    page Transient "Route Test" routeTest
+
+
+main :: IO ()
+main = client Client{..} where
+    prime root = return (assets *:* root,())
+    build _ = do
+        setRouter router
+        
+    drive intrcptr _ = run
+        where
+            run obj = do
+                (obj',_) <- obj $. intrcptr Blocking
+                run obj'
 
 
 --------------------------------------------------------------------------------

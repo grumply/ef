@@ -14,7 +14,7 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Event, Queue, Signaled, HTML, Web, Web.Methods, Web.Messages
+  exposed-modules:     Event, Queue, Signaled, HTML, Web, Web.Methods, Web.Messages, Router, Signals, Document, Element
   build-depends:       base >= 4.7 && < 5
                      , containers
                      , transformers
