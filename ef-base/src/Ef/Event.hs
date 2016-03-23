@@ -5,7 +5,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
-module Ef.Event (trigger_, Reactor(..), Signal, construct, Event(..), event) where
+module Ef.Event (trigger_, Reactor(..), Signal(..), construct, Event(..), event) where
 
 
 import Ef
