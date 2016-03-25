@@ -25,7 +25,23 @@ data Hole
 main :: IO ()
 main = run Config{..}
     where
-        routes = return ()
+        routes = do
+            path "/test1" $ page $ do
+                with "lotus" $ do
+                    deleteChildren
+                    append "p" Nothing $ do
+                        child "a" Nothing $ do
+                            setAttr "href" "#/test2"
+                            setText "test2"
+            path "/test2" $ page $ do
+                with "lotus" $ do
+                    deleteChildren
+                    append "p" Nothing $ do
+                        child "a" Nothing $ do
+                            setAttr "href" "#/test1"
+                            setText "test1"
+            page $
+                with "lotus" $ append "p" Nothing $ setText "Default"
 
         prime base = return (listings *:* obvyus *:* menu *:* base,())
 

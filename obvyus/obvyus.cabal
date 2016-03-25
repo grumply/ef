@@ -17,7 +17,7 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 
-executable ef-lang-site
+executable obvyus
   hs-source-dirs:      src
   main-is:             Main.hs
   other-modules:       Menu, Obvyus, Listing, Listings
