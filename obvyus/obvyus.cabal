@@ -21,7 +21,7 @@ executable obvyus
   hs-source-dirs:      src
   main-is:             Main.hs
   other-modules:       Menu, Obvyus, Listing, Listings
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -DGHCJS_BUSY_YIELD=128 -O2
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -DGHCJS_BUSY_YIELD=128 -O0
   build-depends:       base
                      , containers
                      , transformers

@@ -15,40 +15,59 @@ import Menu
 import Listing
 import Listings
 
+import Data.Promise
+
 import Lily
 import Lily.Examples
 import Control.Monad
 import Prelude hiding (div)
-{-|
-1. Create a menu component that can be reused across pages. 
-2. Create a listings component that can be set to update across page boundaries in the background.
-    a. Should support modifications like rearranging, vote count updates, and replacement
-3. Set up routing to reuse the menu component
--}
+import qualified Data.Map as Map
 
--- data Config self methods super primeResult buildResult = Config
-test i = do
-  (elems,_) <- create "div" Nothing $ do
-      replicateM_ (read i) $
-          child "div" Nothing $ do
-              containerFluid
-              test1
-  with "lotus" $ do
-      nodeAppend elems (return ())
-  return ()
+appendMenu = do
+    menu <- super $ do
+        initialized <- menuInitialized
+        unless initialized initializeMenu
+        menuNode
+    nodeAppend menu (return ())
+
+appendFooter = do
+    return ()
+
+content = create "div" (Just "content") (return ())
 
 main :: IO ()
 main = run Config{..}
     where
         routes = do
-          path "/:count" $ do
-              Just i <- "count"
-              page $ with "lotus" $ replicateM_ (read i) $ child "div" Nothing $ do
-                  containerFluid
-                  test1
-
+            url <- getUrl
+            liftIO' $ print url
+            path "/test" $ do
+                liftIO' $ print "in /test"
+                dispatch $ with "content" $
+                    child "p" Nothing $ setText "test"
+            path "/name/:name" $ do
+                liftIO' $ print "in /name/:name"
+                Just name <- "name"
+                dispatch $ with "content" $ do
+                    deleteChildren
+                    child "p" Nothing $ setText $ "Hello, " ++ name
+            dispatch $ with "content" $ do
+                liftIO' $ print "in default"
+                deleteChildren
+                child "p" Nothing $ setText "Default"
+                
         prime base = return (listings *:* obvyus *:* menu *:* base,())
 
-        build = return
+        build _ = do
+            create_ "div" (Just "lotus") (return ())
+            with "lotus" $ do
+                child "div" Nothing $ do
+                    containerFluid
+                    appendMenu
+                    divider
+                    content
+                    divider
+                    appendFooter
+            addLotus
 
         drive = blockingDriver

@@ -7,13 +7,17 @@
 {-# language ExistentialQuantification #-}
 {-# language ScopedTypeVariables #-}
 {-# language NoMonomorphismRestriction #-}
+{-# language PolyKinds #-}
+{-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 module Menu where
 
 import Ef
 import Ef.Event
 
 import Lotus
+import Lily
 
+import qualified GHCJS.DOM.Element as E
 import qualified GHCJS.DOM.Types as T
 
 import Unsafe.Coerce
@@ -30,29 +34,13 @@ import Unsafe.Coerce
    HTML, Lavender, etc....
 -}
 
-data HomeButton k
-    = HomeButton
-          { _homeNode :: (Node,k)
-          , _setHomeNode :: Node -> k
-          , _homeClicks :: forall self super. (Signal self super T.MouseEvent,k)
-          , _setHomeClicks :: forall self super. Signal self super T.MouseEvent -> k
-          }
-
-data ProvacativeButton k
-    = ProvacativeButton
-          { _provacativeNode :: (Node,k)
-          , _setProvacativeNode :: Node -> k
-          , _provacativeClicks :: forall self super. (Signal self super T.MouseEvent,k)
-          , _setProvacativeClicks :: forall self super. Signal self super T.MouseEvent -> k
-          }
-
-data InterestingButton k
-    = InterestingButton
-          { _interestingNode :: (Node,k)
-          , _setInterestingNode :: Node -> k
-          , _interestingClicks :: forall self super. (Signal self super T.MouseEvent,k)
-          , _setInterestingClicks :: forall self super. Signal self super T.MouseEvent -> k
-          }
+-- data Button btn k
+--     = Button
+--           { _buttonNode :: (Node,k)
+--           , _setButtonNode :: Node -> k
+--           , _buttonClicks :: forall self super. (Signal self super T.MouseEvent,k)
+--           , _setButtonClicks :: forall self super. Signal self super T.MouseEvent -> k
+--           }
 
 data LoginWidget k
     = LoginWidget
@@ -71,28 +59,14 @@ data Menu k
     = Menu
           { _menuNode          :: (Node,k)
           , _setMenuNode       :: Node -> k
-          , _homeButton        :: HomeButton k
-          , _provacativeButton :: ProvacativeButton k
-          , _interestingButton :: InterestingButton k
+          , _menuInitialized   :: (Bool,k)
+          , _setMenuInitialized:: k
           , _loginWidget       :: LoginWidget k
           }
     | MenuNode (Node -> k)
     | SetMenuNode Node k
-
-    | HomeNode (Node -> k)
-    | SetHomeNode Node k
-    | forall self super. HomeClicks (Signal self super T.MouseEvent -> k)
-    | forall self super. SetHomeClicks (Signal self super T.MouseEvent) k
-
-    | ProvacativeNode (Node -> k)
-    | SetProvacativeNode Node k
-    | forall self super. ProvacativeClicks (Signal self super T.MouseEvent -> k)
-    | forall self super. SetProvacativeClicks (Signal self super T.MouseEvent) k
-
-    | InterestingNode (Node -> k)
-    | SetInterestingNode Node k
-    | forall self super. InterestingClicks (Signal self super T.MouseEvent -> k)
-    | forall self super. SetInterestingClicks (Signal self super T.MouseEvent) k
+    | MenuInitialized (Bool -> k)
+    | SetMenuInitialized k
 
     | DisplayingLoggedIn (Bool -> k)
     | DisplayLoggedIn k
@@ -109,45 +83,9 @@ menuNode = self (MenuNode id)
 
 setMenuNode n = self (SetMenuNode n ())
 
+menuInitialized = self (MenuInitialized id)
 
-homeNode = self (HomeNode id)
-
-setHomeNode n = self (SetHomeNode n ())
-
-homeClicks :: (Monad super, '[Menu] <: self)
-           => Narrative self super (Signal self super T.MouseEvent)
-homeClicks = self (HomeClicks id)
-
-setHomeClicks :: (Monad super, '[Menu] <: self)
-              => Signal self super T.MouseEvent -> Narrative self super ()
-setHomeClicks hc = self (SetHomeClicks hc ())
-
-
-provacativeNode = self (ProvacativeNode id)
-
-setProvacativeNode n = self (SetProvacativeNode n ())
-
-provacativeClicks :: (Monad super, '[Menu] <: self)
-                  => Narrative self super (Signal self super T.MouseEvent)
-provacativeClicks = self (ProvacativeClicks id)
-
-setProvacativeClicks :: (Monad super, '[Menu] <: self)
-                     => Signal self super T.MouseEvent -> Narrative self super ()
-setProvacativeClicks pc = self (SetProvacativeClicks pc ())
-
-
-interestingNode = self (InterestingNode id)
-
-setInterestingNode n = self (SetInterestingNode n ())
-
-interestingClicks :: (Monad super, '[Menu] <: self)
-                  => Narrative self super (Signal self super T.MouseEvent)
-interestingClicks = self (InterestingClicks id)
-
-setInterestingClicks :: (Monad super, '[Menu] <: self)
-                     => Signal self super T.MouseEvent -> Narrative self super ()
-setInterestingClicks c = self (SetInterestingClicks c ())
-
+setMenuInitialized = self (SetMenuInitialized ())
 
 displayingLoggedIn = self (DisplayingLoggedIn id)
 
@@ -177,39 +115,10 @@ instance Ma (Menu) (Menu) where
         use (snd _menuNode) (nk $ fst _menuNode)
     ma use Menu{..} (SetMenuNode mn k) =
         use (_setMenuNode mn) k
-
-    ma use Menu{..} (HomeNode nk) =
-        use (snd $ _homeNode _homeButton)
-            (nk $ fst $ _homeNode _homeButton)
-    ma use Menu{..} (SetHomeNode n k) =
-        use (_setHomeNode _homeButton $ n) k
-    ma use Menu{..} (HomeClicks sk) =
-        use (snd $ _homeClicks _homeButton)
-            (sk $ fst $ _homeClicks _homeButton)
-    ma use Menu{..} (SetHomeClicks hc k) =
-        use (_setHomeClicks _homeButton $ hc) k
-
-    ma use Menu{..} (ProvacativeNode nk) =
-        use (snd $ _provacativeNode _provacativeButton)
-            (nk $ fst $ _provacativeNode _provacativeButton)
-    ma use Menu{..} (SetProvacativeNode n k) =
-        use (_setProvacativeNode _provacativeButton $ n) k
-    ma use Menu{..} (ProvacativeClicks sk) =
-        use (snd $ _provacativeClicks _provacativeButton)
-            (sk $ fst $ _provacativeClicks _provacativeButton)
-    ma use Menu{..} (SetProvacativeClicks sc k) =
-        use (_setProvacativeClicks _provacativeButton $ sc) k
-
-    ma use Menu{..} (InterestingNode nk) =
-        use (snd $ _interestingNode _interestingButton)
-            (nk $ fst $ _interestingNode _interestingButton)
-    ma use Menu{..} (SetInterestingNode n k) =
-        use (_setInterestingNode _interestingButton $ n) k
-    ma use Menu{..} (InterestingClicks sk) =
-        use (snd $ _interestingNode _interestingButton)
-            (sk $ fst $ _interestingClicks _interestingButton)
-    ma use Menu{..} (SetInterestingClicks ic k) =
-        use (_setInterestingClicks _interestingButton $ ic) k
+    ma use Menu{..} (MenuInitialized bk) =
+        use (snd _menuInitialized) (bk $ fst _menuInitialized)
+    ma use Menu{..} (SetMenuInitialized k) =
+        use _setMenuInitialized k
 
     ma use Menu{..} (DisplayingLoggedIn bk) =
         use (snd $ _displayingLoggedIn _loginWidget)
@@ -242,45 +151,10 @@ menu = Menu
     , _setMenuNode = \mn fs ->
           let m = view fs
           in return $ fs .= m { _menuNode = (mn,snd $ _menuNode m) }
-
-    , _homeButton = HomeButton
-            { _homeNode = (undefined,return)
-            , _setHomeNode = \hn fs ->
-                    let m = view fs
-                        hb = _homeButton m
-                    in return $ fs .= m { _homeButton = hb { _homeNode = (hn, snd $ _homeNode hb) } }
-            , _homeClicks = (undefined,return)
-            , _setHomeClicks = \hc fs ->
-                    let m = view fs
-                        hb = _homeButton m
-                    in return $ fs .= m { _homeButton = hb { _homeClicks = (unsafeCoerce hc, snd $ _homeClicks hb) } }
-            }
-
-    , _provacativeButton = ProvacativeButton
-            { _provacativeNode = (undefined,return)
-            , _setProvacativeNode = \pn fs ->
-                    let m = view fs
-                        pb = _provacativeButton m
-                    in return $ fs .= m { _provacativeButton = pb { _provacativeNode = (pn, snd $ _provacativeNode pb) } }
-            , _provacativeClicks = (undefined,return)
-            , _setProvacativeClicks = \pc fs ->
-                    let m = view fs
-                        pb = _provacativeButton m
-                    in return $ fs .= m { _provacativeButton = pb { _provacativeClicks = (unsafeCoerce pc, snd $ _provacativeClicks pb) } }
-            }
-
-    , _interestingButton = InterestingButton
-            { _interestingNode = (undefined,return)
-            , _setInterestingNode = \ind fs ->
-                    let m = view fs
-                        ib = _interestingButton m
-                    in return $ fs .= m { _interestingButton = ib { _interestingNode = (ind, snd $ _interestingNode ib) } }
-            , _interestingClicks = (undefined,return)
-            , _setInterestingClicks = \ic fs ->
-                    let m = view fs
-                        ib = _interestingButton m
-                    in return $ fs .= m { _interestingButton = ib { _interestingClicks = (unsafeCoerce ic, snd $ _interestingClicks ib) } }
-            }
+    , _menuInitialized = (False,return)
+    , _setMenuInitialized = \fs ->
+          let m = view fs
+          in return $ fs .= m { _menuInitialized = (True,snd $ _menuInitialized m) }
 
     , _loginWidget = LoginWidget
             { _displayingLoggedIn = (False,return)
@@ -303,3 +177,113 @@ menu = Menu
                     in return $ fs .= m { _loginWidget = lw { _loggedInWidgetNode = (n, snd $ _loggedInWidgetNode lw) } }
             }
     }
+
+noTextDecoration = [style "text-decoration" "none"]
+
+font family weight color size =
+    [ style "font-family" family
+    , style "font-weight" weight
+    , style "color" color
+    , style "font-size" size
+    ]
+
+timesNewRoman weight color size =
+    font "\"Times New Roman\", Serif" weight color size
+
+helveticaNeue weight color size =
+    font "\"Helvetica Neue\",Helvetica,Arial" weight color size
+
+brandLetterStyling =
+    [ style "padding" "2px 5px"
+    , style "background-color" "darkcyan"
+    ]
+
+brandNamePadding =
+    [ style "padding-left" "12px"
+    ]
+
+displayInline =
+    [ style "display" "inline"
+    ]
+
+splitBrandStyles =
+    [ style "top" "4px"
+    , style "position" "relative"
+    ]
+
+navLinkStyles =
+    noTextDecoration ++
+    [ style "margin-right" "5px"
+    , style "font-size" "14px"
+    , style "color" "gray"
+    ]
+
+loginLinkStyles =
+    noTextDecoration ++
+    [ style "margin-top" "14px"
+    ]
+
+dividerStyles =
+    [ style "border" "0"
+    , style "height" "1px"
+    , style "background-image"
+            "linear-gradient(to right,\
+            \  rgba(0,0,0,0),\
+            \  rgba(0,0,0,0.75),\
+            \  rgba(0,0,0,0)\
+            \)"
+    ]
+
+initializeMenu = do
+    with "lotus" $ do
+        (menuRoot,_) <- create "nav" (Just "nav") $ do
+            row
+            (_,_) <- child "div" (Just "hat") $ do
+                col XS Nothing
+                child "a" (Just "brand-letter") $ do
+                    setAttr "href" "#"
+                    addStyles $
+                        noTextDecoration ++
+                        brandLetterStyling ++
+                        timesNewRoman "bold" "white" "15px"
+                    setText "O"
+                child "a" (Just "brand-name") $ do
+                    setAttr "href" "#"
+                    addStyles $ brandNamePadding ++ noTextDecoration ++ displayInline
+                    child "span" Nothing $ do
+                        setText "Obvy"
+                        addStyles $ helveticaNeue "600" "black" "13px"
+                    child "span" Nothing $ do
+                        setText "|"
+                        addStyles $ splitBrandStyles ++ helveticaNeue "200" "rgba(0,0,0,0.5)" "28px"
+                    child "span" Nothing $ do
+                        setText "us"
+                        addStyles $ helveticaNeue "600" "black" "13px"
+                child "span" Nothing $ addStyle "padding" "0px 10px"
+                ahref "Interesting" "/interesting" $ addStyles navLinkStyles
+                ahref "Provacative" "/provacative" $ addStyles navLinkStyles
+            ahref "Login" "/login" $ do
+                end
+                addStyles $
+                    helveticaNeue "600" "gray" "13px" ++
+                    loginLinkStyles
+        super $ setMenuNode menuRoot
+    setMenuInitialized
+
+ahref txt lnk custom = do
+    let hashPath = "#" ++ lnk
+    child "a" Nothing $ do
+        setAttr "href" hashPath
+        setText txt
+        custom
+    return ()
+
+divider = do
+    (dv,_) <- create "div" Nothing $ do
+        row
+        child "div" Nothing (column 1)
+        child "div" Nothing $ do
+            column 10
+            child "hr" Nothing $ addStyles dividerStyles
+        child "div" Nothing (column 1)
+    return dv
