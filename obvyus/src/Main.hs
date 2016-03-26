@@ -33,29 +33,37 @@ appendMenu = do
 appendFooter = do
     return ()
 
-content = create "div" (Just "content") (return ())
+content = create "div" (Just "content") $ do
+    responsive 12 12 10 10
+
+changeMenuHighlights iColor pColor lColor =
+    super $ do
+        with "InterestingLink" $ replaceStyles [style "color" iColor]
+        with "ProvacativeLink" $ replaceStyles [style "color" pColor]
+        with "LoginLink" $ replaceStyles [style "color" lColor]
 
 main :: IO ()
 main = run Config{..}
     where
         routes = do
-            url <- getUrl
-            liftIO' $ print url
-            path "/test" $ do
-                liftIO' $ print "in /test"
-                dispatch $ with "content" $
-                    child "p" Nothing $ setText "test"
-            path "/name/:name" $ do
-                liftIO' $ print "in /name/:name"
-                Just name <- "name"
-                dispatch $ with "content" $ do
-                    deleteChildren
-                    child "p" Nothing $ setText $ "Hello, " ++ name
-            dispatch $ with "content" $ do
-                liftIO' $ print "in default"
+            path "/interesting" $ dispatch $ with "content" $ do
+                changeMenuHighlights "black" "gray" "gray"
                 deleteChildren
-                child "p" Nothing $ setText "Default"
-                
+                child "p" Nothing $ do
+                    setText "interesting page"
+
+            path "/login" $ dispatch $ with "content" $ do
+                changeMenuHighlights "gray" "gray" "black"
+                deleteChildren
+                child "p" Nothing $ do
+                    setText "login form"
+
+            dispatch $ with "content" $ do
+                changeMenuHighlights "gray" "black" "gray"
+                deleteChildren
+                child "p" Nothing $ do
+                    setText "default page; provacative"
+        
         prime base = return (listings *:* obvyus *:* menu *:* base,())
 
         build _ = do
@@ -63,11 +71,16 @@ main = run Config{..}
             with "lotus" $ do
                 child "div" Nothing $ do
                     containerFluid
-                    appendMenu
-                    divider
-                    content
-                    divider
-                    appendFooter
+                    child "div" Nothing $ do
+                        row
+                        child "div" Nothing $ do
+                            center
+                            responsive 12 12 10 10
+                            appendMenu
+                            divider
+                            content
+                            divider
+                            appendFooter
             addLotus
 
         drive = blockingDriver

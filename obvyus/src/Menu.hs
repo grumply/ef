@@ -237,9 +237,7 @@ dividerStyles =
 initializeMenu = do
     with "lotus" $ do
         (menuRoot,_) <- create "nav" (Just "nav") $ do
-            row
             (_,_) <- child "div" (Just "hat") $ do
-                col XS Nothing
                 child "a" (Just "brand-letter") $ do
                     setAttr "href" "#"
                     addStyles $
@@ -272,7 +270,7 @@ initializeMenu = do
 
 ahref txt lnk custom = do
     let hashPath = "#" ++ lnk
-    child "a" Nothing $ do
+    child "a" (Just $ txt ++ "Link") $ do
         setAttr "href" hashPath
         setText txt
         custom
