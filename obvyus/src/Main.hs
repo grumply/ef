@@ -1,6 +1,10 @@
-{-# OPTIONS_GHC -O0 #-}
 {-# language FlexibleContexts #-}
 {-# language RecordWildCards #-}
+{-# language OverloadedStrings #-}
+{-# language NoMonomorphismRestriction #-}
+{-# language DataKinds #-}
+{-# language ScopedTypeVariables #-}
+{-# language TypeOperators #-}
 module Main where
 
 import Ef
@@ -11,6 +15,10 @@ import Menu
 import Listing
 import Listings
 
+import Lily
+import Lily.Examples
+import Control.Monad
+import Prelude hiding (div)
 {-|
 1. Create a menu component that can be reused across pages. 
 2. Create a listings component that can be set to update across page boundaries in the background.
@@ -19,29 +27,25 @@ import Listings
 -}
 
 -- data Config self methods super primeResult buildResult = Config
-
-data Hole
+test i = do
+  (elems,_) <- create "div" Nothing $ do
+      replicateM_ (read i) $
+          child "div" Nothing $ do
+              containerFluid
+              test1
+  with "lotus" $ do
+      nodeAppend elems (return ())
+  return ()
 
 main :: IO ()
 main = run Config{..}
     where
         routes = do
-            path "/test1" $ page $ do
-                with "lotus" $ do
-                    deleteChildren
-                    append "p" Nothing $ do
-                        child "a" Nothing $ do
-                            setAttr "href" "#/test2"
-                            setText "test2"
-            path "/test2" $ page $ do
-                with "lotus" $ do
-                    deleteChildren
-                    append "p" Nothing $ do
-                        child "a" Nothing $ do
-                            setAttr "href" "#/test1"
-                            setText "test1"
-            page $
-                with "lotus" $ append "p" Nothing $ setText "Default"
+          path "/:count" $ do
+              Just i <- "count"
+              page $ with "lotus" $ replicateM_ (read i) $ child "div" Nothing $ do
+                  containerFluid
+                  test1
 
         prime base = return (listings *:* obvyus *:* menu *:* base,())
 
