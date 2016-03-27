@@ -194,34 +194,17 @@ helveticaNeue weight color size =
     font "\"Helvetica Neue\",Helvetica,Arial" weight color size
 
 brandLetterStyling =
-    [ style "padding" "2px 5px"
-    , style "background-color" "darkcyan"
-    ]
-
-brandNamePadding =
-    [ style "padding-left" "12px"
-    ]
-
-displayInline =
-    [ style "display" "inline"
-    ]
-
-splitBrandStyles =
-    [ style "top" "4px"
-    , style "position" "relative"
+    [ style "background-color" "darkcyan"
+    , style "padding" "2px 5px"
+    , style "margin-right" "10px"
     ]
 
 navLinkStyles =
     noTextDecoration ++
-    [ style "margin-right" "5px"
-    , style "font-size" "14px"
+    [ style "font-size" "14px"
     , style "color" "gray"
     ]
 
-loginLinkStyles =
-    noTextDecoration ++
-    [ style "margin-top" "14px"
-    ]
 
 dividerStyles =
     [ style "border" "0"
@@ -237,7 +220,11 @@ dividerStyles =
 initializeMenu = do
     with "lotus" $ do
         (menuRoot,_) <- create "nav" (Just "nav") $ do
-            (_,_) <- child "div" (Just "hat") $ do
+            row
+            child "div" Nothing $ do
+                column 10
+                middle
+                start
                 child "a" (Just "brand-letter") $ do
                     setAttr "href" "#"
                     addStyles $
@@ -247,24 +234,40 @@ initializeMenu = do
                     setText "O"
                 child "a" (Just "brand-name") $ do
                     setAttr "href" "#"
-                    addStyles $ brandNamePadding ++ noTextDecoration ++ displayInline
+                    addStyles $ noTextDecoration ++
+                        [ style "margin-right" "16px"
+                        ]
                     child "span" Nothing $ do
                         setText "Obvy"
                         addStyles $ helveticaNeue "600" "black" "13px"
                     child "span" Nothing $ do
                         setText "|"
-                        addStyles $ splitBrandStyles ++ helveticaNeue "200" "rgba(0,0,0,0.5)" "28px"
+                        addStyles $
+                            helveticaNeue "200" "rgba(0,0,0,0.5)" "28px" ++
+                            [ style "position" "relative"
+                            , style "top" "4px"
+                            ]
                     child "span" Nothing $ do
                         setText "us"
                         addStyles $ helveticaNeue "600" "black" "13px"
-                child "span" Nothing $ addStyle "padding" "0px 10px"
                 ahref "Interesting" "/interesting" $ addStyles navLinkStyles
+                child "span" Nothing $ addStyle "margin" "0 6px"
                 ahref "Provacative" "/provacative" $ addStyles navLinkStyles
-            ahref "Login" "/login" $ do
+            child "div" Nothing $ do
+                column 2
                 end
-                addStyles $
-                    helveticaNeue "600" "gray" "13px" ++
-                    loginLinkStyles
+                child "a" Nothing $ do
+                    setAttr "href" "#/login"
+                    addStyle "margin-right" "-4px"
+                    child "span" Nothing $ do
+                        setAttr "class" "glyphicons glyphicons-log-in"
+                        addStyles
+                            [ style "top" "6px"
+                            , style "position" "relative"
+                            , style "text-decoration" "none"
+                            , style "font-size" "20px"
+                            , style "color" "darkcyan"
+                            ]
         super $ setMenuNode menuRoot
     setMenuInitialized
 
