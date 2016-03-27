@@ -201,7 +201,7 @@ navLinkStyles = do
     noTextDecoration
     "font-size" =: "14px"
     "color" =: "gray"
-
+    
 
 dividerStyles = do
     "border" =: "0"
@@ -244,9 +244,11 @@ brand = a_ $ do
 --------------------------------------------------------------------------------
 
 links = do
-    ahref__ "Interesting" "/interesting" $ style navLinkStyles
+    ahref__ "Interesting" "/interesting" "InterestingLink" $
+        style navLinkStyles
     span_ $ style $ "margin" =: "0 6px"
-    ahref__ "Provacative" "/provacative" $ style navLinkStyles
+    ahref__ "Provacative" "/provacative" "ProvacativeLink" $
+        style navLinkStyles
 
 --------------------------------------------------------------------------------
 
@@ -329,98 +331,3 @@ footer = do
                     "color" =: "gray"
                     "font-size" =: "12px"
                 text "© 2016 S. M. Hickman"
-
-
--- Anonymous element creation | Level 1
-
--- Note the difference between anon_ and nonAnon__. anon_ does not return the
--- created node, only the return value of the content passed to it. nonAnon__
--- on the other hand does return the created node as well as the return value
--- of the content passed to it.
-anon_ :: (Monad super)
-      => String
-      -> Narrative '[Camellia] (Narrative self super) a
-      -> Narrative '[Camellia] (Narrative self super) a
-anon_ x = fmap snd . child x Nothing
-
-div_ = anon_ "div"
-
-span_ = anon_ "span"
-
-nav_ = anon_ "nav"
-
-ul_ = anon_ "ul"
-
-ol_ = anon_ "ol"
-
-li_ = anon_ "li"
-
-p_ = anon_ "p"
-
-a_ = anon_ "a"
-
-hr_ = anon_ "hr"
-
--- Anonymous element creation | Level 2
-
-unorderedList_ listStyles listItems =
-    ul_ $ do
-        listStyles
-        mapM_ li_ listItems
-
-divRow_ content =
-    div_ $ do
-        style row
-        content
-
-column_ n content =
-    div_ $ do
-        column n
-        content
-
-ahref_ txt lnk custom = do
-    let hashPath = "#" ++ lnk
-    a_ $ do
-        setAttr "href" hashPath
-        text txt
-        custom
-
--- Non-Anonymous element creation | Level 1
-
--- Note the difference between nonAnon__ and anon_. anon_ does not return the
--- created node, only the return value of the content passed to it. nonAnon__
--- on the other hand does return the created node as well as the return value
--- of the content passed to it.
-nonAnon__ :: (Monad super)
-          => String
-          -> String
-          -> Narrative '[Camellia] (Narrative self super) a
-          -> Narrative '[Camellia] (Narrative self super) (Node,a)
-nonAnon__ x ident = child x (Just ident)
-
-div__ = nonAnon__ "div"
-
-span__ = nonAnon__ "span"
-
-nav__ = nonAnon__ "nav"
-
-ul__ = nonAnon__ "ul"
-
-ol__ = nonAnon__ "ol"
-
-li__ = nonAnon__ "li"
-
-p__ = nonAnon__ "p"
-
-a__ = nonAnon__ "a"
-
-hr__ = nonAnon__ "hr"
-
--- Non-Anonymous element creation | Level 2
-
-ahref__ txt lnk custom = do
-    let hashPath = "#" ++ lnk
-    a__ (txt ++ "Link") $ do
-        setAttr "href" hashPath
-        text txt
-        custom

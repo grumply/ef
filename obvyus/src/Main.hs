@@ -38,27 +38,30 @@ content = create "div" (Just "content") $ do
 
 changeMenuHighlights iColor pColor =
     super $ do
-        with "InterestingLink" $ style $ "color" =: iColor
-        with "ProvacativeLink" $ style $ "color" =: pColor
+        with "InterestingLink" $ change $ "color" =: iColor
+        with "ProvacativeLink" $ change $ "color" =: pColor
 
 main :: IO ()
 main = run Config{..}
     where
         routes = do
-            path "/interesting" $ dispatch $ with "content" $ do
-                changeMenuHighlights "black" "gray"
-                deleteChildren
-                p_ $ text "interesting page"
+            path "/interesting" $ do
+                dispatch $ with "content" $ do
+                    changeMenuHighlights "black" "gray"
+                    deleteChildren
+                    p_ $ text "interesting page"
 
-            path "/login" $ dispatch $ with "content" $ do
-                changeMenuHighlights "gray" "gray"
-                deleteChildren
-                p_ $ text "login form"
+            path "/login" $ do
+                dispatch $ with "content" $ do
+                    changeMenuHighlights "gray" "gray"
+                    deleteChildren
+                    p_ $ text "login form"
 
-            dispatch $ with "content" $ do
-                changeMenuHighlights "gray" "black"
-                deleteChildren
-                p_ $ text "default page; provacative"
+            dispatch $ do
+                with "content" $ do
+                    changeMenuHighlights "gray" "black"
+                    deleteChildren
+                    p_ $ text "default page; provacative"
 
         prime base = return (listings *:* obvyus *:* mkMenu *:* base,())
 
