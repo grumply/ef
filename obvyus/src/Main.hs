@@ -5,10 +5,12 @@
 {-# language DataKinds #-}
 {-# language ScopedTypeVariables #-}
 {-# language TypeOperators #-}
+{-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 module Main where
 
 import Ef
-import Lotus
+
+import Flowers
 
 import Obvyus
 import Menu
@@ -17,8 +19,6 @@ import Listings
 
 import Data.Promise
 
-import Lily
-import Lily.Examples
 import Control.Monad
 import Prelude hiding (div)
 import qualified Data.Map as Map
@@ -38,8 +38,8 @@ content = create "div" (Just "content") $ do
 
 changeMenuHighlights iColor pColor =
     super $ do
-        with "InterestingLink" $ replaceStyles [style "color" iColor]
-        with "ProvacativeLink" $ replaceStyles [style "color" pColor]
+        with "InterestingLink" $ style $ "color" =: iColor
+        with "ProvacativeLink" $ style $ "color" =: pColor
 
 main :: IO ()
 main = run Config{..}
@@ -48,41 +48,30 @@ main = run Config{..}
             path "/interesting" $ dispatch $ with "content" $ do
                 changeMenuHighlights "black" "gray"
                 deleteChildren
-                child "p" Nothing $ do
-                    setText "interesting page"
-                    child "span" Nothing $ do
-                      setAttr "href" "#/login"
-                      setAttr "class" "glyphicons glyphicons-log-in"
-                      addStyles
-                        [ style "color" "black"
-                        , style "text-decoration" "none"
-                        , style "line-height" "32px"
-                        ]
+                p_ $ text "interesting page"
 
             path "/login" $ dispatch $ with "content" $ do
                 changeMenuHighlights "gray" "gray"
                 deleteChildren
-                child "p" Nothing $ do
-                    setText "login form"
+                p_ $ text "login form"
 
             dispatch $ with "content" $ do
                 changeMenuHighlights "gray" "black"
                 deleteChildren
-                child "p" Nothing $ do
-                    setText "default page; provacative"
-        
-        prime base = return (listings *:* obvyus *:* menu *:* base,())
+                p_ $ text "default page; provacative"
+
+        prime base = return (listings *:* obvyus *:* mkMenu *:* base,())
 
         build _ = do
             create_ "div" (Just "lotus") (return ())
-            with "lotus" $ do
-                child "div" Nothing $ do
-                    containerFluid
+            with "lotus" $
+                div_ $ do
+                    style containerFluid
                     appendMenu
                     divider
                     content
                     divider
                     appendFooter
-            addLotus
+            addNelumbo
 
         drive = blockingDriver

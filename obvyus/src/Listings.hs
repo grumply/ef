@@ -13,8 +13,6 @@ module Listings where
 import Ef
 import Ef.Event
 
-import Lotus
-
 import Listing
 
 import Data.Array

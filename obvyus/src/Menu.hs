@@ -14,13 +14,17 @@ module Menu where
 import Ef
 import Ef.Event
 
-import Lotus
-import Lily
+import Dahlia
 
 import qualified GHCJS.DOM.Element as E
 import qualified GHCJS.DOM.Types as T
 
+import Control.Monad
+import Data.List
+
 import Unsafe.Coerce
+
+import Prelude
 
 {-
    Note the calls to unsafeCoerce in `menu`. These are necessary to fulfill the
@@ -143,10 +147,10 @@ instance Ma (Menu) (Menu) where
     ma use Menu{..} (SetLoggedInWidgetNode n k) =
         use (_setLoggedInWidgetNode _loginWidget $ n) k
 
-menu :: forall self super methods.
+mkMenu :: forall self super methods.
         (Ma (Methods methods) (Messages self), Monad super, '[Menu] <: self, Subclass '[Menu] methods)
      => Menu (Implementation methods super)
-menu = Menu
+mkMenu = Menu
     { _menuNode = (undefined,return)
     , _setMenuNode = \mn fs ->
           let m = view fs
@@ -178,14 +182,9 @@ menu = Menu
             }
     }
 
-noTextDecoration = [style "text-decoration" "none"]
+--------------------------------------------------------------------------------
 
-font family weight color size =
-    [ style "font-family" family
-    , style "font-weight" weight
-    , style "color" color
-    , style "font-size" size
-    ]
+noTextDecoration = "text-decoration" =: "none"
 
 timesNewRoman weight color size =
     font "\"Times New Roman\", Serif" weight color size
@@ -193,98 +192,235 @@ timesNewRoman weight color size =
 helveticaNeue weight color size =
     font "\"Helvetica Neue\",Helvetica,Arial" weight color size
 
-brandLetterStyling =
-    [ style "background-color" "darkcyan"
-    , style "padding" "2px 5px"
-    , style "margin-right" "10px"
-    ]
+brandLetterStyling = do
+    "background-color" =: "darkcyan"
+    "padding" =: "2px 5px"
+    "margin-right" =: "10px"
 
-navLinkStyles =
-    noTextDecoration ++
-    [ style "font-size" "14px"
-    , style "color" "gray"
-    ]
+navLinkStyles = do
+    noTextDecoration
+    "font-size" =: "14px"
+    "color" =: "gray"
 
 
-dividerStyles =
-    [ style "border" "0"
-    , style "height" "1px"
-    , style "background-image"
+dividerStyles = do
+    "border" =: "0"
+    "height" =: "1px"
+    "background-image" =:
             "linear-gradient(to right,\
             \  rgba(0,0,0,0),\
             \  rgba(0,0,0,0.75),\
             \  rgba(0,0,0,0)\
             \)"
-    ]
+
+--------------------------------------------------------------------------------
+
+logo = ahref_ "O" "" $ style $ do
+    noTextDecoration
+    brandLetterStyling
+    timesNewRoman "bold" "white" "15px"
+
+--------------------------------------------------------------------------------
+
+brand = a_ $ do
+    setAttr "href" "#"
+    style $ do
+        noTextDecoration
+        "margin-right" =: "16px"
+    linkText "Obvy"
+    separator
+    linkText "us"
+    where
+        linkText txt = span_ $ do
+            text txt
+            style $ helveticaNeue "600" "black" "13px"
+        separator = span_ $ do
+            text "|"
+            style $ do
+                helveticaNeue "200" "rgba(0,0,0,0.5)" "28px"
+                "position" =: "relative"
+                "top" =: "4px"
+
+--------------------------------------------------------------------------------
+
+links = do
+    ahref__ "Interesting" "/interesting" $ style navLinkStyles
+    span_ $ style $ "margin" =: "0 6px"
+    ahref__ "Provacative" "/provacative" $ style navLinkStyles
+
+--------------------------------------------------------------------------------
+
+loginLink = a_ $ do
+    setAttr "href" "#/login"
+    style $ "margin-right" =: "-4px"
+    span_ $ do
+        setAttr "class" "glyphicons glyphicons-log-in"
+        style loginGlyphStyles
+    where
+
+        loginGlyphStyles = do
+            "top" =: "6px"
+            "position" =: "relative"
+            "text-decoration" =: "none"
+            "font-size" =: "20px"
+            "color" =: "darkcyan"
+
+--------------------------------------------------------------------------------
+
+menu = nav__ "menu" $ do
+    style row
+    hat
+    login
+    where
+
+        hat = column_ 10 $ do
+            style start
+            logo
+            brand
+            links
+
+        login = column_ 2 $ do
+            style end
+            loginLink
+
+--------------------------------------------------------------------------------
 
 initializeMenu = do
     with "lotus" $ do
-        (menuRoot,_) <- create "nav" (Just "nav") $ do
-            row
-            child "div" Nothing $ do
-                column 10
-                middle
-                start
-                child "a" (Just "brand-letter") $ do
-                    setAttr "href" "#"
-                    addStyles $
-                        noTextDecoration ++
-                        brandLetterStyling ++
-                        timesNewRoman "bold" "white" "15px"
-                    setText "O"
-                child "a" (Just "brand-name") $ do
-                    setAttr "href" "#"
-                    addStyles $ noTextDecoration ++
-                        [ style "margin-right" "16px"
-                        ]
-                    child "span" Nothing $ do
-                        setText "Obvy"
-                        addStyles $ helveticaNeue "600" "black" "13px"
-                    child "span" Nothing $ do
-                        setText "|"
-                        addStyles $
-                            helveticaNeue "200" "rgba(0,0,0,0.5)" "28px" ++
-                            [ style "position" "relative"
-                            , style "top" "4px"
-                            ]
-                    child "span" Nothing $ do
-                        setText "us"
-                        addStyles $ helveticaNeue "600" "black" "13px"
-                ahref "Interesting" "/interesting" $ addStyles navLinkStyles
-                child "span" Nothing $ addStyle "margin" "0 6px"
-                ahref "Provacative" "/provacative" $ addStyles navLinkStyles
-            child "div" Nothing $ do
-                column 2
-                end
-                child "a" Nothing $ do
-                    setAttr "href" "#/login"
-                    addStyle "margin-right" "-4px"
-                    child "span" Nothing $ do
-                        setAttr "class" "glyphicons glyphicons-log-in"
-                        addStyles
-                            [ style "top" "6px"
-                            , style "position" "relative"
-                            , style "text-decoration" "none"
-                            , style "font-size" "20px"
-                            , style "color" "darkcyan"
-                            ]
-        super $ setMenuNode menuRoot
+        (mn,_) <- menu
+        super $ setMenuNode mn
     setMenuInitialized
 
-ahref txt lnk custom = do
-    let hashPath = "#" ++ lnk
-    child "a" (Just $ txt ++ "Link") $ do
-        setAttr "href" hashPath
-        setText txt
-        custom
-    return ()
+--------------------------------------------------------------------------------
 
-divider = do
-    (dv,_) <- create "div" Nothing $ do
-        row
-        child "div" Nothing (column 1)
-        child "div" Nothing $ do
-            column 10
-            child "hr" Nothing $ addStyles dividerStyles
-        child "div" Nothing (column 1)
-    return dv
+divider =
+    divRow_ $ do
+        column_ 1 (return ())
+        column_ 10 $ hr_ (style dividerStyles)
+        column_ 1 (return ())
+
+footer = do
+    let footerLinkStyles = do
+            "text-decoration" =: "none"
+            "color" =: "gray"
+            "font-size" =: "12px"
+        footerLink txt lnk = void $ ahref_ txt lnk $ style footerLinkStyles
+        footerSeparatorStyles = do
+            "color" =: "gray"
+            "font-size" =: "12px"
+            "margin" =: "0px 10px"
+        footerSeparator = void $ a_ $ do
+            -- convert this to some non-content element.
+            style footerSeparatorStyles
+            text "|"
+    divRow_ $ do
+        column_ 12 $ do
+            style center
+            unorderedList_ (return ()) $
+                intersperse footerSeparator
+                    [ footerLink "About" "/about"
+                    , footerLink "Contact" "/contact"
+                    , footerLink "Privacy" "/privacy"
+                    ]
+        column_ 12 $ do
+            style center
+            span_ $ do
+                style $ do
+                    "color" =: "gray"
+                    "font-size" =: "12px"
+                text "© 2016 S. M. Hickman"
+
+
+-- Anonymous element creation | Level 1
+
+-- Note the difference between anon_ and nonAnon__. anon_ does not return the
+-- created node, only the return value of the content passed to it. nonAnon__
+-- on the other hand does return the created node as well as the return value
+-- of the content passed to it.
+anon_ :: (Monad super)
+      => String
+      -> Narrative '[Camellia] (Narrative self super) a
+      -> Narrative '[Camellia] (Narrative self super) a
+anon_ x = fmap snd . child x Nothing
+
+div_ = anon_ "div"
+
+span_ = anon_ "span"
+
+nav_ = anon_ "nav"
+
+ul_ = anon_ "ul"
+
+ol_ = anon_ "ol"
+
+li_ = anon_ "li"
+
+p_ = anon_ "p"
+
+a_ = anon_ "a"
+
+hr_ = anon_ "hr"
+
+-- Anonymous element creation | Level 2
+
+unorderedList_ listStyles listItems =
+    ul_ $ do
+        listStyles
+        mapM_ li_ listItems
+
+divRow_ content =
+    div_ $ do
+        style row
+        content
+
+column_ n content =
+    div_ $ do
+        column n
+        content
+
+ahref_ txt lnk custom = do
+    let hashPath = "#" ++ lnk
+    a_ $ do
+        setAttr "href" hashPath
+        text txt
+        custom
+
+-- Non-Anonymous element creation | Level 1
+
+-- Note the difference between nonAnon__ and anon_. anon_ does not return the
+-- created node, only the return value of the content passed to it. nonAnon__
+-- on the other hand does return the created node as well as the return value
+-- of the content passed to it.
+nonAnon__ :: (Monad super)
+          => String
+          -> String
+          -> Narrative '[Camellia] (Narrative self super) a
+          -> Narrative '[Camellia] (Narrative self super) (Node,a)
+nonAnon__ x ident = child x (Just ident)
+
+div__ = nonAnon__ "div"
+
+span__ = nonAnon__ "span"
+
+nav__ = nonAnon__ "nav"
+
+ul__ = nonAnon__ "ul"
+
+ol__ = nonAnon__ "ol"
+
+li__ = nonAnon__ "li"
+
+p__ = nonAnon__ "p"
+
+a__ = nonAnon__ "a"
+
+hr__ = nonAnon__ "hr"
+
+-- Non-Anonymous element creation | Level 2
+
+ahref__ txt lnk custom = do
+    let hashPath = "#" ++ lnk
+    a__ (txt ++ "Link") $ do
+        setAttr "href" hashPath
+        text txt
+        custom

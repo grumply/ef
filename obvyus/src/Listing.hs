@@ -12,7 +12,7 @@ module Listing where
 import Ef
 import Ef.Event
 
-import Lotus
+import Camellia
 
 import qualified GHCJS.DOM.Types as T
 
