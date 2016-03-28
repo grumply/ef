@@ -15,6 +15,7 @@ import Ef
 import Ef.Event
 
 import Dahlia
+import Alyssum
 
 import qualified GHCJS.DOM.Element as E
 import qualified GHCJS.DOM.Types as T
@@ -25,26 +26,6 @@ import Data.List
 import Unsafe.Coerce
 
 import Prelude
-
-{-
-   Note the calls to unsafeCoerce in `menu`. These are necessary to fulfill the
-   `forall self super.` but are considered safe because their use is protected
-   by correct invocations/use. Trying to put the `self` and `super` inside the
-   type of `Menu` will cause a recursive type exception when composing objects
-   that use an implementation of `menu`. It would be acceptable to add `self`
-   and `super` to menu if they referred to a supertype instead of a self type,
-   in which case the ultimate invocation type would be, for instance,
-   `Narrative '[Menu self super] (Narrative self super) x` as can be seen in
-   HTML, Lavender, etc....
--}
-
--- data Button btn k
---     = Button
---           { _buttonNode :: (Node,k)
---           , _setButtonNode :: Node -> k
---           , _buttonClicks :: forall self super. (Signal self super T.MouseEvent,k)
---           , _setButtonClicks :: forall self super. Signal self super T.MouseEvent -> k
---           }
 
 data LoginWidget k
     = LoginWidget
@@ -61,17 +42,8 @@ data LoginWidget k
 
 data Menu k
     = Menu
-          { _menuNode          :: (Node,k)
-          , _setMenuNode       :: Node -> k
-          , _menuInitialized   :: (Bool,k)
-          , _setMenuInitialized:: k
-          , _loginWidget       :: LoginWidget k
+          { _loginWidget       :: LoginWidget k
           }
-    | MenuNode (Node -> k)
-    | SetMenuNode Node k
-    | MenuInitialized (Bool -> k)
-    | SetMenuInitialized k
-
     | DisplayingLoggedIn (Bool -> k)
     | DisplayLoggedIn k
     | DisplayNotLoggedIn k
@@ -81,15 +53,6 @@ data Menu k
     | SetLoginWidgetNode Node k
     | LoggedInWidgetNode (Node -> k)
     | SetLoggedInWidgetNode Node k
-
-
-menuNode = self (MenuNode id)
-
-setMenuNode n = self (SetMenuNode n ())
-
-menuInitialized = self (MenuInitialized id)
-
-setMenuInitialized = self (SetMenuInitialized ())
 
 displayingLoggedIn = self (DisplayingLoggedIn id)
 
@@ -115,15 +78,6 @@ setLoggedInWidgetNode n = self (SetLoggedInWidgetNode n ())
 
 
 instance Ma (Menu) (Menu) where
-    ma use Menu{..} (MenuNode nk) =
-        use (snd _menuNode) (nk $ fst _menuNode)
-    ma use Menu{..} (SetMenuNode mn k) =
-        use (_setMenuNode mn) k
-    ma use Menu{..} (MenuInitialized bk) =
-        use (snd _menuInitialized) (bk $ fst _menuInitialized)
-    ma use Menu{..} (SetMenuInitialized k) =
-        use _setMenuInitialized k
-
     ma use Menu{..} (DisplayingLoggedIn bk) =
         use (snd $ _displayingLoggedIn _loginWidget)
             (bk $ fst $ _displayingLoggedIn _loginWidget)
@@ -151,16 +105,7 @@ mkMenu :: forall self super methods.
         (Ma (Methods methods) (Messages self), Monad super, '[Menu] <: self, Subclass '[Menu] methods)
      => Menu (Implementation methods super)
 mkMenu = Menu
-    { _menuNode = (undefined,return)
-    , _setMenuNode = \mn fs ->
-          let m = view fs
-          in return $ fs .= m { _menuNode = (mn,snd $ _menuNode m) }
-    , _menuInitialized = (False,return)
-    , _setMenuInitialized = \fs ->
-          let m = view fs
-          in return $ fs .= m { _menuInitialized = (True,snd $ _menuInitialized m) }
-
-    , _loginWidget = LoginWidget
+    { _loginWidget = LoginWidget
             { _displayingLoggedIn = (False,return)
             , _displayLoggedIn = return
             , _displayNotLoggedIn = return
@@ -184,8 +129,6 @@ mkMenu = Menu
 
 --------------------------------------------------------------------------------
 
-noTextDecoration = "text-decoration" =: "none"
-
 timesNewRoman weight color size =
     font "\"Times New Roman\", Serif" weight color size
 
@@ -193,141 +136,166 @@ helveticaNeue weight color size =
     font "\"Helvetica Neue\",Helvetica,Arial" weight color size
 
 brandLetterStyling = do
-    "background-color" =: "darkcyan"
-    "padding" =: "2px 5px"
-    "margin-right" =: "10px"
+    bgColor     =: darkcyan
+    padding     =: px2 2 5
+    marginRight =: px 10
 
 navLinkStyles = do
-    noTextDecoration
-    "font-size" =: "14px"
-    "color" =: "gray"
-    
+    textDecoration =: none
+    fontSize       =: px 14
+    color          =: gray
 
-dividerStyles = do
-    "border" =: "0"
-    "height" =: "1px"
-    "background-image" =:
-            "linear-gradient(to right,\
-            \  rgba(0,0,0,0),\
-            \  rgba(0,0,0,0.75),\
-            \  rgba(0,0,0,0)\
-            \)"
 
 --------------------------------------------------------------------------------
 
 logo = ahref_ "O" "" $ style $ do
-    noTextDecoration
+    textDecoration =: none
     brandLetterStyling
-    timesNewRoman "bold" "white" "15px"
+    timesNewRoman bold white (px 15)
 
 --------------------------------------------------------------------------------
 
 brand = a_ $ do
-    setAttr "href" "#"
+    href ""
     style $ do
-        noTextDecoration
-        "margin-right" =: "16px"
+        textDecoration =: none
+        marginRight    =: px 16
     linkText "Obvy"
     separator
     linkText "us"
     where
+
         linkText txt = span_ $ do
             text txt
-            style $ helveticaNeue "600" "black" "13px"
+            style $ helveticaNeue (weight 600) black (px 13)
+
         separator = span_ $ do
             text "|"
             style $ do
-                helveticaNeue "200" "rgba(0,0,0,0.5)" "28px"
-                "position" =: "relative"
-                "top" =: "4px"
+                helveticaNeue (weight 200) (rgba 0 0 0 0.5) (px 28)
+                position =: relative
+                top      =: px 4
 
 --------------------------------------------------------------------------------
 
 links = do
     ahref__ "Interesting" "/interesting" "InterestingLink" $
         style navLinkStyles
-    span_ $ style $ "margin" =: "0 6px"
+    span_ $ style $ margin =: px2 0 6
     ahref__ "Provacative" "/provacative" "ProvacativeLink" $
         style navLinkStyles
 
 --------------------------------------------------------------------------------
 
 loginLink = a_ $ do
-    setAttr "href" "#/login"
-    style $ "margin-right" =: "-4px"
+    href "/login"
+    style $ marginRight =: px (-4)
     span_ $ do
-        setAttr "class" "glyphicons glyphicons-log-in"
         style loginGlyphStyles
+        glyph gLogIn
     where
 
         loginGlyphStyles = do
-            "top" =: "6px"
-            "position" =: "relative"
-            "text-decoration" =: "none"
-            "font-size" =: "20px"
-            "color" =: "darkcyan"
+            top            =: px 8
+            position       =: relative
+            textDecoration =: none
+            fontSize       =: px 20
+            color          =: darkcyan
 
 --------------------------------------------------------------------------------
 
-menu = nav__ "menu" $ do
-    style row
-    hat
-    login
+hat = do
+    div_ $ do
+        style $ do
+            flexibleRow
+            marginBottom =: px 4
+        hatLeft
+        hatRight
+    divider
     where
 
-        hat = column_ 10 $ do
-            style start
+        -- left side containing branding and navigation
+        hatLeft = column_ 10 $ do
+            style flexibleStart
             logo
             brand
             links
 
-        login = column_ 2 $ do
-            style end
+        -- right side containing login button
+        hatRight = column_ 2 $ do
+            style flexibleEnd
             loginLink
 
 --------------------------------------------------------------------------------
 
-initializeMenu = do
-    with "lotus" $ do
-        (mn,_) <- menu
-        super $ setMenuNode mn
-    setMenuInitialized
-
---------------------------------------------------------------------------------
-
-divider =
-    divRow_ $ do
+divider = do
+    div_ $ do
+        style flexibleRow
         column_ 1 (return ())
         column_ 10 $ hr_ (style dividerStyles)
         column_ 1 (return ())
 
-footer = do
-    let footerLinkStyles = do
-            "text-decoration" =: "none"
-            "color" =: "gray"
-            "font-size" =: "12px"
-        footerLink txt lnk = void $ ahref_ txt lnk $ style footerLinkStyles
+dividerStyles = do
+    border  =: zero
+    height  =: px 1
+    margin  =: px2 5 0
+    bgImage =: "linear-gradient(to right,\
+               \  rgba(0,0,0,0),\
+               \  rgba(0,0,0,0.75),\
+               \  rgba(0,0,0,0)\
+               \)"
+
+--------------------------------------------------------------------------------
+
+footer =
+    div_ $ do
+        style footerStyles
+        divider
+        div_ $ do
+            style $ do
+                flexibleRow
+                flexibleMiddle
+            column_ 12 $ do
+                style flexibleCenter
+                unorderedList_ (style footerListStyles) $ do
+                    intersperse footerSeparator
+                        [ footerLink "About" "/about"
+                        , footerLink "Contact" "/contact"
+                        , footerLink "Privacy" "/privacy"
+                        ]
+            column_ 12 $ do
+                style flexibleCenter
+                span_ $ do
+                    style $ do
+                        color    =: gray
+                        fontSize =: px 12
+                    text "© 2016 S. M. Hickman"
+    where
+
+        footerStyles = do
+            height   =: ems 4
+
+        footerListStyles = do
+            listStyle =: none
+            margin    =: zero
+            padding   =: zero
+
+        footerLinkStyles = do
+            textDecoration =: none
+            color          =: gray
+            fontSize       =: px 12
+
+        footerLink txt lnk = do
+            style $ display =: inline
+            void $ ahref_ txt lnk $ style footerLinkStyles
+
         footerSeparatorStyles = do
-            "color" =: "gray"
-            "font-size" =: "12px"
-            "margin" =: "0px 10px"
-        footerSeparator = void $ a_ $ do
-            -- convert this to some non-content element.
-            style footerSeparatorStyles
-            text "|"
-    divRow_ $ do
-        column_ 12 $ do
-            style center
-            unorderedList_ (return ()) $
-                intersperse footerSeparator
-                    [ footerLink "About" "/about"
-                    , footerLink "Contact" "/contact"
-                    , footerLink "Privacy" "/privacy"
-                    ]
-        column_ 12 $ do
-            style center
-            span_ $ do
-                style $ do
-                    "color" =: "gray"
-                    "font-size" =: "12px"
-                text "© 2016 S. M. Hickman"
+            color    =: gray
+            fontSize =: px 12
+            margin   =: px2 0 10
+
+        footerSeparator = do
+            style $ display =: inline
+            void $ span_ $ do
+                style footerSeparatorStyles
+                text "|"

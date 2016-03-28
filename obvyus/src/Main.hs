@@ -1,4 +1,5 @@
 {-# language FlexibleContexts #-}
+{-# language FlexibleInstances #-}
 {-# language RecordWildCards #-}
 {-# language OverloadedStrings #-}
 {-# language NoMonomorphismRestriction #-}
@@ -23,58 +24,90 @@ import Control.Monad
 import Prelude hiding (div)
 import qualified Data.Map as Map
 
-appendMenu = do
-    menu <- super $ do
-        initialized <- menuInitialized
-        unless initialized initializeMenu
-        menuNode
-    nodeAppend menu (return ())
+lotusStyles = do
+    minHeight =: per 100
+    height    =: render auto important
+    height    +: per 100
+    flexibleContainer
 
-appendFooter = do
-    return ()
+content :: String
+content = "content"
 
-content = create "div" (Just "content") $ do
-    responsive 12 12 10 10
+contentContainer = child "div" (Just content) (return ())
 
 changeMenuHighlights iColor pColor =
     super $ do
-        with "InterestingLink" $ change $ "color" =: iColor
-        with "ProvacativeLink" $ change $ "color" =: pColor
+        with "InterestingLink" $ do
+            liftIO $ print $ "coloring interesting " ++ iColor
+            change $ color =: iColor
+        with "ProvacativeLink" $ do
+            liftIO $ print $ "coloring provoacative " ++ pColor
+            change $ color =: pColor
+
 
 main :: IO ()
 main = run Config{..}
     where
         routes = do
             path "/interesting" $ do
-                dispatch $ with "content" $ do
-                    changeMenuHighlights "black" "gray"
+                dispatch $ with content $ do
+                    liftIO $ print "in interesting"
+                    changeMenuHighlights black gray
                     deleteChildren
-                    p_ $ text "interesting page"
 
             path "/login" $ do
-                dispatch $ with "content" $ do
-                    changeMenuHighlights "gray" "gray"
+                dispatch $ with content $ do
+                    liftIO $ print "in login"
+                    changeMenuHighlights gray gray
                     deleteChildren
-                    p_ $ text "login form"
+
+            path "/about" $ do
+                dispatch $ with content $ do
+                    liftIO $ print "in about"
+                    changeMenuHighlights gray gray
+                    deleteChildren
+
+            path "/contact" $ do
+                dispatch $ with content $ do
+                    liftIO $ print "in contact"
+                    changeMenuHighlights gray gray
+                    deleteChildren
+
+            path "/privacy" $ do
+              dispatch $ with content $ do
+                    liftIO $ print "in privacy"
+                    changeMenuHighlights gray gray
+                    deleteChildren
 
             dispatch $ do
-                with "content" $ do
-                    changeMenuHighlights "gray" "black"
-                    deleteChildren
-                    p_ $ text "default page; provacative"
+                with content $ do
+                    liftIO $ print "in default; provacative"
+                    changeMenuHighlights gray black
+                    p <- deleteChildren
+                    demand p
+                    liftIO $ print "after deleteChildren"
 
         prime base = return (listings *:* obvyus *:* mkMenu *:* base,())
 
         build _ = do
-            create_ "div" (Just "lotus") (return ())
-            with "lotus" $
+            with lotus $ do
+                style $ do
+                    height =: per 100
+                    flexibleContainer
                 div_ $ do
-                    style containerFluid
-                    appendMenu
-                    divider
-                    content
-                    divider
-                    appendFooter
+                    style $ do
+                        minHeight =: per 100
+                        height =: render auto important
+                        height +: per 100
+                        margin =: render zero auto (ems (-4))
+                    hat
+                    contentContainer
+                    pushDiv
+                footer
             addNelumbo
 
         drive = blockingDriver
+
+pushDiv = child "div" Nothing $ do
+    style $ do
+        height =: ems 4
