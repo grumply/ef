@@ -5,7 +5,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
-module Ef.Event (trigger_, Reactor(..), Signal(..), construct, Event(..), event) where
+module Ef.Event (trigger_, Reactor(..), Signal(..), construct, Event(..), event, BehaviorToken(..)) where
 
 
 import Ef
@@ -32,7 +32,7 @@ data Reactor self super event =
 
 
 data Signal self super event
-    = Signal !(IORef event) !(IORef [event -> Narrative self super ()])
+    = Signal !(IORef event) !(IORef Int) !(IORef [(BehaviorToken,event -> Narrative self super ())])
 
 
 -- | Construct a new signal with an initial value. Undefined is a valid
@@ -41,8 +41,9 @@ data Signal self super event
 construct :: (Lift IO super,Monad super) => event -> super (Signal self super' event)
 construct event = do
     current <- lift $ newIORef event
+    count <- lift $ newIORef 0
     behaviors <- lift $ newIORef []
-    return $ Signal current behaviors
+    return $ Signal current count behaviors
 
 
 merge_
@@ -52,17 +53,19 @@ merge_
     -> event
     -> Signal self super event
     -> Signal self super event
-    -> Narrative self super (Signal self super event)
+    -> Narrative self super (Signal self super event,Narrative self super (),Narrative self super ())
 
-merge_ triggerMethod initial (Signal current0 behaviors0) (Signal current1 behaviors1) = do
+merge_ triggerMethod initial sig0@(Signal current0 count0 behaviors0) sig1@(Signal current1 count1 behaviors1) = do
     signal <- construct initial
+    c0 <- lift $ atomicModifyIORef count0 $ \c -> (c + 1,c)
     lift $ modifyIORef behaviors0 $ \bs ->
         let newBehavior event = triggerMethod signal event
-        in newBehavior:bs
+        in (BehaviorToken c0,newBehavior):bs
+    c1 <- lift $ atomicModifyIORef count1 $ \c -> (c + 1,c)
     lift $ modifyIORef behaviors1 $ \bs ->
         let newBehavior event = triggerMethod signal event
-        in newBehavior:bs
-    return signal
+        in (BehaviorToken c1,newBehavior):bs
+    return (signal,kill_ (BehaviorToken c0) sig0,kill_ (BehaviorToken c1) sig1)
 
 
 
@@ -72,14 +75,15 @@ mapSignal_
     -> (a -> b)
     -> b
     -> Signal self super a
-    -> Narrative self super (Signal self super b)
+    -> Narrative self super (Signal self super b, Narrative self super ())
 
-mapSignal_ triggerMethod f initial (Signal current0 behaviors0) = do
+mapSignal_ triggerMethod f initial sig@(Signal current0 count0 behaviors0) = do
     signal <- construct initial
+    c <- lift $ atomicModifyIORef count0 $ \c -> (c + 1,c)
     lift $ modifyIORef behaviors0 $ \bs ->
         let newBehavior event = triggerMethod signal (f event)
-        in newBehavior:bs
-    return signal
+        in (BehaviorToken c,newBehavior):bs
+    return (signal,kill_ (BehaviorToken c) sig)
 
 
 
@@ -89,18 +93,19 @@ filterSignal_
     -> (a -> Bool)
     -> a
     -> Signal self super a
-    -> Narrative self super (Signal self super a)
+    -> Narrative self super (Signal self super a,Narrative self super ())
 
-filterSignal_ triggerMethod predicate initial (Signal _ behaviors0) = do
+filterSignal_ triggerMethod predicate initial sig@(Signal _ count0 behaviors0) = do
     signal <- construct initial
+    c <- lift $ atomicModifyIORef count0 $ \c -> (c + 1,c)
     lift $ modifyIORef behaviors0 $ \bs ->
         let newBehavior event =
                 if predicate event then
                     triggerMethod signal event
                 else
                     return ()
-        in newBehavior:bs
-    return signal
+        in (BehaviorToken c,newBehavior):bs
+    return (signal,kill_ (BehaviorToken c) sig)
 
 
 
@@ -108,12 +113,20 @@ behavior_
     :: (Monad super, Lift IO super)
     => Signal self super event
     -> (event -> Narrative self super ())
+    -> Narrative self super (Narrative self super ())
+
+behavior_ sig@(Signal _ count behaviors) newBehavior = do
+    c <- lift $ atomicModifyIORef count $ \c -> (c + 1,c)
+    lift $ modifyIORef behaviors (++ [(BehaviorToken c,newBehavior)])
+    return (kill_ (BehaviorToken c) sig)
+
+kill_
+    :: (Monad super, Lift IO super)
+    => BehaviorToken
+    -> Signal self super event
     -> Narrative self super ()
-
-behavior_ (Signal _ behaviors) newBehavior =
-    lift $ modifyIORef behaviors (++ [newBehavior])
-
-
+kill_ bt (Signal _ _ behaviors) =
+    lift $ modifyIORef behaviors $ filter ((/=) bt . fst)
 
 trigger_
     :: (Monad super, Lift IO super)
@@ -121,13 +134,15 @@ trigger_
     -> event
     -> Narrative self super ()
 
-trigger_ (Signal current behaviors) event = do
+trigger_ (Signal current count behaviors) event = do
     writeCurrent <- lift $ writeIORef current event
     bs <- lift $ readIORef behaviors
-    let applied = map ($ event) bs
+    let applied = map (($ event) . snd) bs
     sequence_ applied
 
 
+data BehaviorToken = BehaviorToken Int
+  deriving Eq
 
 data Event self super =
     Event
@@ -146,6 +161,12 @@ data Event self super =
               :: forall event.
                  Signal self super event
               -> (Reactor self super event -> event -> Narrative self super ())
+              -> Narrative self super (Narrative self super ())
+
+        , kill
+              :: forall event.
+                 BehaviorToken
+              -> Signal self super event
               -> Narrative self super ()
 
           -- | Same as `behavior`, but reacts immediately to the current value
@@ -154,7 +175,7 @@ data Event self super =
               :: forall event.
                  Signal self super event
               -> (Reactor self super event -> event -> Narrative self super ())
-              -> Narrative self super ()
+              -> Narrative self super (Narrative self super ())
 
           -- | merge two `Signal`s; any time either `Signal` is `trigger`ed, the
           -- new signal will be triggered with that event.
@@ -163,7 +184,7 @@ data Event self super =
                  event
               -> Signal self super event
               -> Signal self super event
-              -> Narrative self super (Signal self super event)
+              -> Narrative self super (Signal self super event,Narrative self super (),Narrative self super ())
 
           -- | create a new `Signal` by mapping a function over an existing `Signal`.
         , mapSignal
@@ -171,7 +192,7 @@ data Event self super =
                  (a -> b)
               -> b
               -> Signal self super a
-              -> Narrative self super (Signal self super b)
+              -> Narrative self super (Signal self super b,Narrative self super ())
 
           -- | create a new `Signal` by filtering an existing `Signal` with a predicative function.
         , filterSignal
@@ -179,7 +200,7 @@ data Event self super =
                  (a -> Bool)
               -> a
               -> Signal self super a
-              -> Narrative self super (Signal self super a)
+              -> Narrative self super (Signal self super a,Narrative self super ())
         }
 
 
@@ -248,7 +269,7 @@ event loop =
                             in behavior_ signal (b reactor)
 
                   , behavior' =
-                         \signal@(Signal currentRef _) b ->
+                         \signal@(Signal currentRef _ _) b ->
                              let reactor = Reactor
                                      { become =
                                            \newBehavior ->
@@ -256,8 +277,11 @@ event loop =
                                      , die = join $ up Die
                                      }
                              in do current <- lift $ readIORef currentRef
-                                   behavior_ signal (b reactor)
+                                   unreg <- behavior_ signal (b reactor)
                                    b reactor current
+                                   return unreg
+
+                  , kill = kill_
 
                   , mergeSignals =
                         merge_ (\signal event ->
@@ -297,7 +321,7 @@ event loop =
                         eventLoop req =
                             case req of
 
-                                Trigger up (Signal currentRef behaviorsRef) event -> do
+                                Trigger up (Signal currentRef _ behaviorsRef) event -> do
                                     behaviors <- lift $ readIORef behaviorsRef
                                     current <- lift $ writeIORef currentRef event
                                     newBehaviors <- runBehaviors up event behaviors
@@ -311,8 +335,8 @@ event loop =
                                  -> Narrative self super (Narrative self super ())
                                )
                             -> event
-                            -> [event -> Narrative self super ()]
-                            -> Narrative self super [event -> Narrative self super ()]
+                            -> [(BehaviorToken,event -> Narrative self super ())]
+                            -> Narrative self super [(BehaviorToken,event -> Narrative self super ())]
 
                         runBehaviors up event =
                             withAcc []
@@ -321,33 +345,33 @@ event loop =
                                 withAcc acc [] = return (reverse acc)
 
                                 withAcc acc (behavior0:behaviors) = do
-                                    newRequest <- respond $ do behavior0 event
+                                    newRequest <- respond $ do snd behavior0 event
                                                                join (up Continue)
                                     withBehavior behavior0 True newRequest
                                     where
 
-                                        withBehavior behavior alive request =
+                                        withBehavior (bt,behavior) alive request =
                                             case request of
 
-                                                Trigger up' (Signal currentRef behaviorsRef) event' -> do
+                                                Trigger up' (Signal currentRef _ behaviorsRef) event' -> do
                                                     behaviors' <- lift $ readIORef behaviorsRef
                                                     current <- lift $ writeIORef currentRef event'
                                                     newBehaviors <- runBehaviors up' event' behaviors'
                                                     lift $ writeIORef behaviorsRef newBehaviors
                                                     newRequest <- respond (return ())
-                                                    withBehavior behavior alive newRequest
+                                                    withBehavior (bt,behavior) alive newRequest
 
                                                 Become f -> do
                                                     newRequest <- respond (return ())
-                                                    withBehavior (unsafeCoerce f) alive newRequest
+                                                    withBehavior (bt,unsafeCoerce f) alive newRequest
 
                                                 Die -> do
                                                     newRequest <- respond (return ())
-                                                    withBehavior behavior False newRequest
+                                                    withBehavior (bt,behavior) False newRequest
 
                                                 Continue ->
                                                     if alive then
-                                                        withAcc (behavior:acc) behaviors
+                                                        withAcc ((bt,behavior):acc) behaviors
                                                     else
                                                         withAcc acc behaviors
 
