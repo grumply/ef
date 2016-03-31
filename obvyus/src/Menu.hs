@@ -14,8 +14,7 @@ module Menu where
 import Ef
 import Ef.Event
 
-import Dahlia
-import Alyssum
+import Silicon
 
 import qualified GHCJS.DOM.Element as E
 import qualified GHCJS.DOM.Types as T

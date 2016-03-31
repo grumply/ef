@@ -15,6 +15,14 @@ import Ef
 import Ef.Type.Set
 import Ef.Single
 
+import Iron hiding (tag)
+
+import Carbon
+import Hydrogen as H
+import Helium as He
+import Neon as Ne
+
+
 import qualified GHCJS.DOM.Document as D
 import qualified GHCJS.DOM.Element as E
 import qualified GHCJS.DOM.EventM as Ev
@@ -24,8 +32,6 @@ import qualified GHCJS.DOM.UIEvent as U
 
 import qualified Control.Monad.Trans.Class as Trans
 
-import Flowers
-
 import Obvyus
 import Menu
 import Listing
@@ -34,8 +40,7 @@ import Listings
 import Data.Promise
 
 import Control.Monad
-import Data.List
-import Prelude
+import Prelude hiding (div,span)
 
 import Unsafe.Coerce
 
@@ -46,6 +51,28 @@ Consider allowing set and reset for pairs of events like onMouseIn/onMouseOut
 
 -}
 
+data Tag self super result = Tag
+    { tag :: String
+    , name :: String
+    , styles :: Narrative '[Carbon] (Narrative self super) ()
+    , element :: Narrative '[Hydrogen] (Narrative self super) result
+    }
+
+named :: (Monad super, Lift IO super)
+           => Tag self super result -> Narrative '[Hydrogen] (Narrative self super) result
+named Tag{..} =
+    fmap snd $ child tag (Just name) $ do
+        style styles
+        element
+
+anon :: (Monad super, Lift IO super)
+          => Tag self super result -> Narrative '[Hydrogen] (Narrative self super) result
+anon Tag{..} =
+    fmap snd $ child tag Nothing $ do
+        style styles
+        element
+
+
 --------------------------------------------------------------------------------
 
 app base = listings *:* listings *:* obvyus *:* mkMenu *:* base
@@ -54,8 +81,8 @@ type App = '[ Listings ProvocativeListings
             , Listings InterestingListings
             , Obvyus
             , Menu
-            , Dahlia
-            , Nelumbo
+            , Oxygen
+            , Silicon
             , SingleKnot
             ]
 
@@ -71,308 +98,432 @@ helveticaNeue weight color size =
 
 --------------------------------------------------------------------------------
 
-hat =
-    div_ $ do
-        style hatStyles
-        hatLeft
-        hatRight
-    where
+hat = Tag {..}
+  where
+    
+    tag = division
 
-        hatStyles = do
-            flexibleRow
-            marginBottom =: px 6
+    styles = do
+      flexibleRow
+      marginBottom =: px 6
 
-        hatLeft =
-            column_ 10 $ do
-                style flexibleStart
-                logo
-                brand
-                links
-            where
+    element = do
+      anon hatLeft
+      anon hatRight
 
-                logo =
-                    ahref_ "O" "" $ do
-                        style brandLetterStyling
-                    where
+hatLeft = Tag {..}
+  where
 
-                        brandLetterStyling = do
-                            textDecoration =: none
-                            bgColor     =: darkcyan
-                            padding     =: px2 2 5
-                            marginRight =: px 10
-                            timesNewRoman bold white (px 15)
+    tag = division
 
-                brand =
-                    a_ $ do
-                        href ""
-                        style brandStyles
-                        linkText "Obvy"
-                        separator
-                        linkText "us"
-                    where
+    styles = flexibleStart
 
-                        brandStyles = do
-                            textDecoration =: none
-                            marginRight    =: px 16
+    element = do
+      flexibleColumn 10
+      anon logo
+      anon brand
+      anon links
 
-                        linkText txt =
-                          span_ $ do
-                              text txt
-                              style $ helveticaNeue (weight 600) black (px 13)
+logo = Tag {..}
+  where
 
-                        separator =
-                            span_ $ do
-                                style separatorStyles
-                                text "|"
-                            where
+    tag = anchor
 
-                                separatorStyles = do
-                                    helveticaNeue (weight 200) (rgba 0 0 0 0.5) (px 28)
-                                    position =: relative
-                                    top      =: px 4
+    styles = do
+      textDecoration =: none
+      bgColor        =: darkcyan
+      padding        =: px2 2 5
+      marginRight    =: px 10
+      timesNewRoman bold white (px 15)
 
-                -- wrap in ul; make links li
-                links = do
-                    link "Interesting" "/interesting"
-                    spacer
-                    link "Provacative" "/provacative"
-                    where
+    element = do
+      text "O"
+      href ""
 
-                        link txt lnk =
-                            ahref__ txt lnk (txt ++ "Link") $ do
-                                style navLinkStyles
-                            where
+brand = Tag {..}
+  where
 
-                                navLinkStyles = do
-                                    textDecoration =: none
-                                    fontSize       =: px 14
-                                    color          =: gray
+    tag = anchor
 
-                        spacer =
-                            span_ $ do
-                                style spacerStyles
-                            where
+    styles = do
+      textDecoration =: none
+      marginRight    =: px 16
 
-                                spacerStyles = do
-                                    margin =: px2 0 6
+    element = do
+      href ""
+      anon $ linkText "Obvy"
+      anon $ separator
+      anon $ linkText "us"
 
-        -- right side containing login button
-        hatRight =
-            column_ 2 $ do
-                style flexibleEnd
-                loginLink
-            where
+linkText txt = Tag {..}
+  where
 
-                loginLink =
-                    a_ $ do
-                        style linkStyles
-                        loginGlyph
-                        fst <$> listen E.click (const ()) listenOpts
-                    where
+    tag = span
 
-                        linkStyles = do
-                            cursor =: pointer
-                            marginRight =: px (-4)
+    styles = do
+        helveticaNeue (weight 600) black (px 13)
 
-                        loginGlyph =
-                            span_ $ do
-                                glyph gLogIn
-                                style loginGlyphStyles
-                            where
+    element = do
+        text txt
 
-                                loginGlyphStyles = do
-                                    top            =: px 8
-                                    position       =: relative
-                                    textDecoration =: none
-                                    fontSize       =: px 20
-                                    color          =: darkcyan
+separator = Tag {..}
+  where
 
---------------------------------------------------------------------------------
+    tag = span
 
-divider =
-    div_ $ do
-        style dividerStyles
-        column_ 1 (return ())
-        column_ 10 $ hr_ (style ruleStyles)
-        column_ 1 (return ())
-    where
+    styles = do
+        helveticaNeue (weight 200) (rgba 0 0 0 0.5) (px 28)
+        position =: relative
+        top      =: px 4
 
-        dividerStyles = do
-            flexibleRow
+    element = do
+        text "|"
 
-        ruleStyles = do
-            border  =: zero
-            height  =: px 1
-            margin  =: px2 5 0
-            bgImage =: "linear-gradient(to right,\
-                       \  rgba(0,0,0,0),\
-                       \  rgba(0,0,0,0.75),\
-                       \  rgba(0,0,0,0)\
-                       \)"
+links = Tag {..}
+  where
 
---------------------------------------------------------------------------------
+    tag = unordered
 
-footer =
-    div_ $ do
-        style footerStyles
-        column_ 12 $ do
-            style flexibleCenter
-            footerNav
-        column_ 12 $ do
-            style flexibleCenter
-            copyright
-    where
+    styles = do
+        listStyle =: none
 
-        footerStyles = do
-            flexibleRow
+    element = do
+        named $ link "Interesting" "/interesting"
+        named $ link "Provacative" "/provacative"
 
-        footerNav =
-            unorderedList_ (style footerListStyles) $ do
-                intersperse footerSeparator
-                    [ footerLink "About" "/about"
-                    , footerLink "Contact" "/contact"
-                    , footerLink "Privacy" "/privacy"
-                    ]
-            where
+link txt lnk = Tag {..}
+  where
 
-                footerListStyles = do
-                    listStyle =: none
-                    margin    =: zero
-                    padding   =: zero
+    tag = item
 
-                footerLink txt lnk = do
-                    style $ display =: inline
-                    void $ ahref_ txt lnk $ do
-                        style footerLinkStyles
-                    where
+    name = txt ++ "Link"
 
-                        footerLinkStyles = do
-                            textDecoration =: none
-                            color          =: gray
-                            fontSize       =: px 12
+    styles = do
+      display =: inline
+      textDecoration =: none
+      fontSize       =: px 14
+      color          =: gray
+      marginRight    =: px 12
 
-                footerSeparator = do
-                    style $ display =: inline
-                    void $ span_ $ do
-                        style footerSeparatorStyles
-                        text "|"
-                    where
+    element = do
+      text txt
+      href lnk
 
-                        footerSeparatorStyles = do
-                            color    =: gray
-                            fontSize =: px 12
-                            margin   =: px2 0 10
+hatRight = Tag {..}
+  where
 
-        copyright =
-            span_ $ do
-                text "© 2016 S. M. Hickman"
-                style copyrightStyles
-            where
+    tag = division
 
-                copyrightStyles = do
-                    color    =: gray
-                    fontSize =: px 12
+    styles = do
+      flexibleEnd
+
+    element = do
+      flexibleColumn 2
+      anon loginLink
+
+loginLink = Tag {..}
+  where
+
+    tag = anchor
+
+    styles = do
+      cursor      =: pointer
+      marginRight =: px (-4)
+
+    element = do
+      anon loginGlyph
+      fst <$> listen E.click (const ()) listenOpts
+
+loginGlyph = Tag {..}
+  where
+
+    tag = span
+
+    styles = do
+      top            =: px 8
+      position       =: relative
+      textDecoration =: none
+      fontSize       =: px 20
+      color          =: darkcyan
+
+    element = do
+      glyph gLogIn
 
 --------------------------------------------------------------------------------
 
-content :: String
-content = "content"
+divider = Tag {..}
+  where
 
-contentContainer = div__ content (return ())
+    tag = division
 
-loginModal =
-    div__ "LoginModal" $ do
-        style loginModalStyles
-        closeButton
-    where
+    styles = do
+      flexibleRow
 
-        closeButton =
-            fst <$> (span_ $ do
-                text "X"
-                style closeButtonStyles
-                listen E.click (const ()) listenOpts)
-            where
+    element = do
+      anon spacer
+      anon rule
+      anon spacer
 
-                closeButtonStyles = do
-                    color      =: hex 0xaaa
-                    float      =: right
-                    fontSize   =: px 28
-                    fontWeight =: bold
+spacer = Tag {..}
+  where
 
-        loginModalStyles = do
-            display  =: none
-            position =: fixed
-            zIndex   =: one
-            left     =: zero
-            top      =: zero
-            width    =: per 100
-            height   =: per 100
-            overflow =: auto
-            bgColor  =: rgb 0 0 0
-            bgColor  +: rgba 0 0 0 0.4
+    tag = "division"
 
+    styles = return ()
+
+    element = do
+      flexibleColumn 1
+
+rule = Tag {..}
+  where
+
+    tag = hr
+
+    styles =  do
+      border  =: zero
+      height  =: px 1
+      margin  =: px2 5 0
+      bgImage =: "linear-gradient(to right,\
+                 \  rgba(0,0,0,0),\
+                 \  rgba(0,0,0,0.75),\
+                 \  rgba(0,0,0,0)\
+                 \)"
+
+    element = return ()
+
+--------------------------------------------------------------------------------
+
+shoes = Tag {..}
+  where
+
+    tag = footer
+
+    styles = do
+      flexibleRow
+
+    element = do
+      anon bottomLinkContainer
+      anon copyrightContainer
+
+bottomLinkContainer = Tag {..}
+  where
+
+    tag = division
+
+    styles = do
+      flexibleCenter
+
+    element = do
+      flexibleColumn 12
+      anon bottomLinks
+
+copyrightContainer = Tag {..}
+  where
+
+    tag = division
+
+    styles = do
+      flexibleCenter
+
+    element = do
+      flexibleColumn 12
+      anon copyright
+
+bottomLinks = Tag {..}
+  where
+
+    tag = unordered
+
+    styles = do
+      listStyle =: none
+      margin    =: zero
+      padding   =: zero
+
+    element = do
+      anon $ bottomLink "About" "/about"
+      anon $ bottomSeparator
+      anon $ bottomLink "Contact" "/contact"
+      anon $ bottomSeparator
+      anon $ bottomLink "Privacy" "/privacy"
+
+bottomLink txt lnk = Tag {..}
+  where
+
+    tag = item
+
+    styles = do
+      display        =: inline
+      textDecoration =: none
+      color          =: gray
+      fontSize       =: px 12
+
+    element = do
+      href lnk
+      text txt
+
+bottomSeparator = Tag {..}
+  where
+
+    tag = item
+
+    styles = do
+      display  =: inline
+      color    =: gray
+      fontSize =: px 12
+      margin   =: px2 0 10
+
+    element = return ()
+
+copyright = Tag {..}
+  where
+
+    tag = span
+
+    styles = do
+      color    =: gray
+      fontSize =: px 12
+
+    element = do
+      text "© 2016 S. M. Hickman"
+
+--------------------------------------------------------------------------------
+
+mainContent :: String
+mainContent = "main-content"
+
+mainContentContainer = Tag {..}
+  where
+
+    tag = division
+
+    name = mainContent
+
+    styles = return ()
+
+    element = return ()
+
+loginModal = Tag {..}
+  where
+
+    tag = division
+
+    name = "LoginModal"
+
+    styles = do
+      flexibleContainer
+      display    =: none
+      position   =: fixed
+      zIndex     =: one
+      left       =: zero
+      top        =: zero
+      width      =: per 100
+      height     =: per 100
+      overflow   =: auto
+      bgColor    =: rgb 0 0 0
+      bgColor    +: rgba 0 0 0 0.4
+      transition =: spaces <| str opacity (sec 0.5) linear
+
+    element = do
+        -- add backdrop click listener
+        anon modal
+
+modal = Tag {..}
+  where
+
+    tag = division
+
+    styles = do
+      flexibleRow
+      top        =: per 20
+      left       =: per 20
+      bgColor    =: rgb 40 40 66
+      height     =: per 80
+      width      =: per 80
+      position   =: fixed
+      transition =: commas <| do
+        spaces $ str transform_ (sec 0.3) easeOut
+        spaces $ str visibility (sec 0.3) easeOut
+
+    element = do
+      anon modalCloseButton
+
+modalCloseButton = Tag {..}
+  where
+
+    tag = span
+
+    styles = do
+      color      =: hex 0xaaa
+      float      =: right
+      fontSize   =: px 28
+      fontWeight =: bold
+
+    element = do
+      text "X"
+      fst <$> listen E.click (const ()) listenOpts
+
+-- Have to be a little tricky here; we create a new signal of Esc keypresses
+-- combined with close button clicks every time the login modal is opened and
+-- then clean up both when it closes.
 loginModalHandler :: Signal App IO ()
                   -> Signal App IO ()
-                  -> Narrative '[Camellia] (Narrative App IO) ()
-loginModalHandler loginClicks modalCloseClicks = void $
+                  -> Narrative '[Hydrogen] (Narrative App IO) ()
+loginModalHandler loginClicks closes = void $
     behavior loginClicks $ \_ ev -> do
-        (escPresses,removeEscListener) <- keyUp 27 listenOpts
-        (closeSignal,unregEscs,unregCloses) <- mergeSignals' escPresses modalCloseClicks
+        (escs,unlistenEscs) <- keyUp 27 listenOpts
+        (exits,escapeToken,closesToken) <- mergeSignals' escs closes
         with "LoginModal" $ style $ display =: block
-        void $ behavior' closeSignal $ \r _ -> do
+        void $ behavior' exits $ \Reactor{..} _ -> do
             with "LoginModal" $ style $ display =: none
-            removeEscListener
-            unregCloses
-            unregEscs
-            (die r)
+            unlistenEscs
+            stop' closesToken
+            stop' escapeToken
+            end
 
 --------------------------------------------------------------------------------
 
-layout =
-    void $ with lotus $ do
-        style lotusStyles
-        pageMain
-        pageBottom
+pageMain = Tag {..}
+  where
 
-    where
+    tag = division
 
-        lotusStyles = do
-            height =: per 100
-            flexibleContainer
+    styles = do
+      minHeight =: per 100
+      height    =: spaces <| str auto important
+      height    +: per 100
+      margin    =: spaces <| str zero auto (ems $ negate footerHeight)
 
-        pageMain =
-            div_ $ do
-                style pageMainStyles
-                loginClicks <- hat
-                divider
-                modalCloseClicks <- loginModal
-                contentContainer
-                loginModalHandler loginClicks modalCloseClicks
-                pushDiv
-                return loginClicks
-            where
-                pushDiv =
-                    child "div" Nothing $ do
-                        style $ height =: ems 4
+    element = do
+      loginClicks <- anon hat
+      anon divider
+      modalCloseClicks <- named loginModal
+      named mainContentContainer
+      loginModalHandler loginClicks modalCloseClicks
+      anon pushDiv
+      return loginClicks
 
+pushDiv = Tag {..}
+  where
 
-                pageMainStyles = do
-                    minHeight =: per 100
-                    height    =: render auto important
-                    height    +: per 100
-                    margin    =: render zero auto (ems $ negate footerHeight)
+    tag = division
 
+    styles = do
+      height =: ems footerHeight
 
-        pageBottom =
-            div_ $ do
-                style pageBottomStyles
-                divider
-                footer
-            where
+    element = return ()
 
-               pageBottomStyles = do
-                   flexibleContainer
-                   height =: ems footerHeight
+pageBottom = Tag {..}
+  where
+
+    tag = division
+
+    styles = do
+      flexibleContainer
+      height =: ems footerHeight
+
+    element = do
+      anon divider
+      anon shoes
 
 --------------------------------------------------------------------------------
 
@@ -383,12 +534,12 @@ changeMenuHighlights iColor pColor =
 
 --------------------------------------------------------------------------------
 
-pg :: String
-   -> String
-   -> Narrative '[Camellia] (Narrative App IO) ()
-   -> Narrative '[Rosa] (Narrative App IO) ()
+pg :: Str
+   -> Str
+   -> Narrative '[Hydrogen] (Narrative App IO) ()
+   -> Narrative '[Magnesium] (Narrative App IO) ()
 pg i p c =
-    dispatch $ with content $ do
+    dispatch $ with mainContent $ do
         changeMenuHighlights i p
         deleteChildren
         c
@@ -406,7 +557,7 @@ main = run Config{..}
     where
         routes = do
             path "/interesting" $ interesting $ do
-                return ()
+                void $ change $ height =: px 1200
 
             path "/about" $ about $ do
                 return ()
@@ -419,8 +570,17 @@ main = run Config{..}
 
             -- default
             provacative $ do
-                return ()
+                void $ change $ clear height
 
         prime base = return (app base)
 
-        build = layout
+        build = setup
+
+setup = do
+  void $ with fusion $ do
+    style $ do
+      height =: per 100
+      flexibleContainer
+    anon pageMain
+    anon pageBottom
+  void addFusion

@@ -13,6 +13,8 @@ module Listings where
 import Ef
 import Ef.Event
 
+import Silicon
+
 import Listing
 
 import Data.Array
