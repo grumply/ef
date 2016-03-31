@@ -8,12 +8,13 @@
 {-# language TypeOperators #-}
 {-# language PolyKinds #-}
 {-# language TypeFamilies #-}
+{-# language CPP #-}
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 module Main where
 
 import Ef
-import Ef.Type.Set
 import Ef.Single
+import Data.Promise
 
 import Iron
 
@@ -23,28 +24,21 @@ import Helium as Str
 import Neon as Glyph
 
 
-import qualified GHCJS.DOM.Document as D
 import qualified GHCJS.DOM.Element as E
-import qualified GHCJS.DOM.EventM as Ev
-import qualified GHCJS.DOM.Types as T
-import qualified GHCJS.DOM.KeyboardEvent as K
-import qualified GHCJS.DOM.UIEvent as U
-
-import qualified Control.Monad.Trans.Class as Trans
 
 import Obvyus
 import Menu
-import Listing
 import Listings
-
-import Data.Promise
 
 import Data.String
 import Control.Monad
 import Prelude hiding (div,span,all)
 import qualified Prelude
 
-import Unsafe.Coerce
+
+#ifdef HLINT
+{-# ANN module "HLint: ignore Redundant do" :: String #-}
+#endif
 
 --------------------------------------------------------------------------------
 
@@ -59,15 +53,28 @@ type App = '[ Listings ProvocativeListings
             , SingleKnot
             ]
 
+type CSS = Narrative '[Carbon] (Narrative App IO)
+type HTML = Narrative '[Hydrogen] (Narrative App IO)
+type Route = Narrative '[Magnesium] (Narrative App IO)
+
 --------------------------------------------------------------------------------
 
+footSize :: Double
 footSize = 3
 
-timesNewRoman weight color size =
-    font "\"Times New Roman\", Serif" weight color size
+timesNewRoman :: Str -> Str -> Str -> CSS ()
+timesNewRoman weight_ color_ size_ =
+    font "\"Times New Roman\", Serif"
+         weight_
+         color_
+         size_
 
-helveticaNeue weight color size =
-    font "\"Helvetica Neue\",Helvetica,Arial" weight color size
+helveticaNeue :: Str -> Str -> Str -> CSS ()
+helveticaNeue weight_ color_ size_ =
+    font "\"Helvetica Neue\",Helvetica,Arial"
+         weight_
+         color_
+         size_
 
 --------------------------------------------------------------------------------
 
@@ -125,7 +132,7 @@ brand = Component {..}
     element = do
       href ""
       unnamed $ linkText "Obvy"
-      unnamed $ separator
+      unnamed separator
       unnamed $ linkText "us"
 
 linkText txt = Component {..}
@@ -133,10 +140,10 @@ linkText txt = Component {..}
 
     tag = span
 
-    styles = do
+    styles =
         helveticaNeue (weight 600) black (px 13)
 
-    element = do
+    element =
         text txt
 
 separator = Component {..}
@@ -149,7 +156,7 @@ separator = Component {..}
         position =: relative
         top      =: px 4
 
-    element = do
+    element =
         text "|"
 
 links = Component {..}
@@ -170,10 +177,10 @@ linkBox txt lnk = Component {..}
 
     tag = item
 
-    styles = do
+    styles =
       display =: inline
 
-    element = do
+    element =
       named (link txt lnk)
 
 
@@ -200,7 +207,7 @@ hatRight = Component {..}
 
     tag = division
 
-    styles = do
+    styles =
       flexibleEnd
 
     element = do
@@ -232,7 +239,7 @@ loginGlyph = Component {..}
       fontSize       =: px 20
       color          =: darkcyan
 
-    element = do
+    element =
       glyph gLogIn
 
 --------------------------------------------------------------------------------
@@ -242,7 +249,7 @@ divider = Component {..}
 
     tag = division
 
-    styles = do
+    styles =
       flexibleRow
 
     element = do
@@ -253,11 +260,11 @@ divider = Component {..}
 spacer = Component {..}
   where
 
-    tag = "division"
+    tag = division
 
     styles = return ()
 
-    element = do
+    element =
       flexibleColumn 1
 
 rule = Component {..}
@@ -269,11 +276,7 @@ rule = Component {..}
       border  =: zero
       height  =: px 1
       margin  =: px2 5 0
-      bgImage =: "linear-gradient(to right,\
-                 \  rgba(0,0,0,0),\
-                 \  rgba(0,0,0,0.75),\
-                 \  rgba(0,0,0,0)\
-                 \)"
+      bgImage =: "linear-gradient(to right,rgba(0,0,0,0),rgba(0,0,0,0.75),rgba(0,0,0,0))"
 
     element =
       flexibleColumn 10
@@ -285,7 +288,7 @@ shoes = Component {..}
 
     tag = footer
 
-    styles = do
+    styles =
       flexibleRow
 
     element = do
@@ -297,7 +300,7 @@ bottomLinkContainer = Component {..}
 
     tag = division
 
-    styles = do
+    styles =
       flexibleCenter
 
     element = do
@@ -309,7 +312,7 @@ copyrightContainer = Component {..}
 
     tag = division
 
-    styles = do
+    styles =
       flexibleCenter
 
     element = do
@@ -328,9 +331,9 @@ bottomLinks = Component {..}
 
     element = do
       unnamed $ bottomLinkBox "About" "/about"
-      unnamed $ bottomSeparator
+      unnamed bottomSeparator
       unnamed $ bottomLinkBox "Contact" "/contact"
-      unnamed $ bottomSeparator
+      unnamed bottomSeparator
       unnamed $ bottomLinkBox "Privacy" "/privacy"
 
 bottomLinkBox txt lnk = Component {..}
@@ -338,10 +341,10 @@ bottomLinkBox txt lnk = Component {..}
 
     tag = item
 
-    styles = do
+    styles =
       display =: inline
 
-    element = do
+    element =
       unnamed (bottomLink txt lnk)
 
 bottomLink txt lnk = Component {..}
@@ -369,7 +372,7 @@ bottomSeparator = Component {..}
       fontSize =: px 12
       margin   =: px2 0 10
 
-    element = do
+    element =
       text "|"
 
 copyright = Component {..}
@@ -381,7 +384,7 @@ copyright = Component {..}
       color    =: gray
       fontSize =: px 12
 
-    element = do
+    element =
       text "© 2016 S. M. Hickman"
 
 --------------------------------------------------------------------------------
@@ -399,6 +402,8 @@ mainContentContainer = Component {..}
     styles = return ()
 
     element = return ()
+
+--------------------------------------------------------------------------------
 
 loginModal = Component {..}
   where
@@ -420,11 +425,25 @@ loginModal = Component {..}
       overflow   =: auto
       bgColor    =: rgb 0 0 0
       bgColor    +: rgba 0 0 0 0.4
-      transition =: spaces <| str all (sec 0.3) easeIn
+      transition =: commas <| do
+          restring $ spaces <| str width (sec 0.3) easeIn
+          restring $ spaces <| str height (sec 0.3) easeIn
 
-    element = do
+    element =
         -- add backdrop click listener
         unnamed modal
+
+modalBox = Component {..}
+  where
+
+    tag = division
+
+    styles = do
+      flexibleRow
+      flexibleCenter
+
+    element =
+      unnamed modal
 
 modal = Component {..}
   where
@@ -432,17 +451,10 @@ modal = Component {..}
     tag = division
 
     styles = do
-      flexibleRow
-      top        =: per 10
-      left       =: per 10
-      bgColor    =: rgb 40 40 66
-      height     =: per 80
-      width      =: per 80
-      position   =: fixed
-      opacity    =: int 1
-      transition =: spaces <| str all (sec 0.15) easeIn
+      bgColor    =: white
 
     element = do
+      responsive 11 11 8 8
       unnamed modalCloseButton
 
 modalCloseButton = Component {..}
@@ -453,11 +465,10 @@ modalCloseButton = Component {..}
     styles = do
       color      =: hex 0xaaa
       float      =: right
-      fontSize   =: px 28
-      fontWeight =: bold
+      fontSize   =: px 20
 
     element = do
-      text "X"
+      glyph gRemoveSign
       fst <$> listen E.click (const ()) listenOpts
 
 -- Have to be a little tricky here; we create a new signal of Esc keypresses
@@ -466,17 +477,19 @@ modalCloseButton = Component {..}
 loginModalHandler :: Signal App IO ()
                   -> Signal App IO ()
                   -> Narrative '[Hydrogen] (Narrative App IO) ()
-loginModalHandler loginClicks closes = void $
-    behavior loginClicks $ \_ ev -> do
+loginModalHandler loginModalOpens closes = void $
+    behavior loginModalOpens $ \_ _ -> do
         (escs,unlistenEscs) <- keyUp 27 listenOpts
         (exits,escapeToken,closesToken) <- mergeSignals' escs closes
-        with "LoginModal" $ style $ visibility =: visible
-        void $ behavior' exits $ \Reactor{..} _ -> do
-            with "LoginModal" $ style $ visibility =: hidden
+        with "LoginModal" $ change $
+            visibility =: visible
+        void $ behavior' exits $ \r _ -> do
+            with "LoginModal" $ change $
+                visibility =: hidden
             unlistenEscs
             stop' closesToken
             stop' escapeToken
-            end
+            Iron.end r
 
 --------------------------------------------------------------------------------
 
@@ -505,7 +518,7 @@ feet = Component {..}
 
     tag = division
 
-    styles = do
+    styles =
       height =: ems footSize
 
     element = return ()
@@ -532,21 +545,27 @@ changeMenuHighlights iColor pColor =
 
 --------------------------------------------------------------------------------
 
-pg :: Str
-   -> Str
-   -> Narrative '[Hydrogen] (Narrative App IO) ()
-   -> Narrative '[Magnesium] (Narrative App IO) ()
-pg i p c =
+pg :: Str -> Str -> HTML () -> Route ()
+pg iColor pColor c =
     dispatch $ with mainContent $ do
-        changeMenuHighlights i p
+        changeMenuHighlights iColor pColor
         deleteChildren
         c
 
+interesting :: HTML () -> Route ()
 interesting = pg black gray
-provacative = pg gray  black
-about       = pg gray  gray
-contact     = pg gray  gray
-privacy     = pg gray  gray
+
+provacative :: HTML () -> Route ()
+provacative = pg gray black
+
+about :: HTML () -> Route ()
+about = pg gray gray
+
+contact :: HTML () -> Route ()
+contact = pg gray gray
+
+privacy :: HTML () -> Route ()
+privacy = pg gray gray
 
 --------------------------------------------------------------------------------
 
@@ -554,20 +573,20 @@ main :: IO ()
 main = run Config{..}
     where
         routes = do
-            path "/interesting" $ interesting $ do
+            path "/interesting" $ interesting $
                 void $ change $ height =: px 1200
 
-            path "/about" $ about $ do
+            path "/about" $ about $
                 return ()
 
-            path "/contact" $ contact $ do
+            path "/contact" $ contact $
                 return ()
 
-            path "/privacy" $ privacy $ do
+            path "/privacy" $ privacy $
                 return ()
 
             -- default
-            provacative $ do
+            provacative $
                 void $ change $ clear height
 
         prime base = return (app base)
