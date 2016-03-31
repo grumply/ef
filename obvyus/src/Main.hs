@@ -15,12 +15,12 @@ import Ef
 import Ef.Type.Set
 import Ef.Single
 
-import Iron hiding (tag)
+import Iron
 
-import Carbon
-import Hydrogen as H
-import Helium as He
-import Neon as Ne
+import Carbon as CSS hiding (text)
+import Hydrogen as HTML
+import Helium as Str
+import Neon as Glyph
 
 
 import qualified GHCJS.DOM.Document as D
@@ -39,39 +39,12 @@ import Listings
 
 import Data.Promise
 
+import Data.String
 import Control.Monad
-import Prelude hiding (div,span)
+import Prelude hiding (div,span,all)
+import qualified Prelude
 
 import Unsafe.Coerce
-
-{-
-Add generic event listening for hover
-
-Consider allowing set and reset for pairs of events like onMouseIn/onMouseOut
-
--}
-
-data Tag self super result = Tag
-    { tag :: String
-    , name :: String
-    , styles :: Narrative '[Carbon] (Narrative self super) ()
-    , element :: Narrative '[Hydrogen] (Narrative self super) result
-    }
-
-named :: (Monad super, Lift IO super)
-           => Tag self super result -> Narrative '[Hydrogen] (Narrative self super) result
-named Tag{..} =
-    fmap snd $ child tag (Just name) $ do
-        style styles
-        element
-
-anon :: (Monad super, Lift IO super)
-          => Tag self super result -> Narrative '[Hydrogen] (Narrative self super) result
-anon Tag{..} =
-    fmap snd $ child tag Nothing $ do
-        style styles
-        element
-
 
 --------------------------------------------------------------------------------
 
@@ -88,7 +61,7 @@ type App = '[ Listings ProvocativeListings
 
 --------------------------------------------------------------------------------
 
-footerHeight = 3
+footSize = 3
 
 timesNewRoman weight color size =
     font "\"Times New Roman\", Serif" weight color size
@@ -98,20 +71,20 @@ helveticaNeue weight color size =
 
 --------------------------------------------------------------------------------
 
-hat = Tag {..}
+hat = Component {..}
   where
-    
-    tag = division
+
+    tag = header
 
     styles = do
       flexibleRow
       marginBottom =: px 6
 
     element = do
-      anon hatLeft
-      anon hatRight
+      unnamed hatLeft
+      unnamed hatRight
 
-hatLeft = Tag {..}
+hatLeft = Component {..}
   where
 
     tag = division
@@ -120,11 +93,11 @@ hatLeft = Tag {..}
 
     element = do
       flexibleColumn 10
-      anon logo
-      anon brand
-      anon links
+      unnamed logo
+      unnamed brand
+      unnamed links
 
-logo = Tag {..}
+logo = Component {..}
   where
 
     tag = anchor
@@ -140,7 +113,7 @@ logo = Tag {..}
       text "O"
       href ""
 
-brand = Tag {..}
+brand = Component {..}
   where
 
     tag = anchor
@@ -151,11 +124,11 @@ brand = Tag {..}
 
     element = do
       href ""
-      anon $ linkText "Obvy"
-      anon $ separator
-      anon $ linkText "us"
+      unnamed $ linkText "Obvy"
+      unnamed $ separator
+      unnamed $ linkText "us"
 
-linkText txt = Tag {..}
+linkText txt = Component {..}
   where
 
     tag = span
@@ -166,7 +139,7 @@ linkText txt = Tag {..}
     element = do
         text txt
 
-separator = Tag {..}
+separator = Component {..}
   where
 
     tag = span
@@ -179,27 +152,40 @@ separator = Tag {..}
     element = do
         text "|"
 
-links = Tag {..}
+links = Component {..}
   where
 
     tag = unordered
 
     styles = do
-        listStyle =: none
+      display   =: inline
+      listStyle =: none
 
     element = do
-        named $ link "Interesting" "/interesting"
-        named $ link "Provacative" "/provacative"
+      unnamed $ linkBox "Interesting" "/interesting"
+      unnamed $ linkBox "Provacative" "/provacative"
 
-link txt lnk = Tag {..}
+linkBox txt lnk = Component {..}
   where
 
     tag = item
 
+    styles = do
+      display =: inline
+
+    element = do
+      named (link txt lnk)
+
+
+link txt lnk = Component {..}
+  where
+
+    tag = anchor
+
     name = txt ++ "Link"
 
     styles = do
-      display =: inline
+      cursor         =: pointer
       textDecoration =: none
       fontSize       =: px 14
       color          =: gray
@@ -209,7 +195,7 @@ link txt lnk = Tag {..}
       text txt
       href lnk
 
-hatRight = Tag {..}
+hatRight = Component {..}
   where
 
     tag = division
@@ -219,9 +205,9 @@ hatRight = Tag {..}
 
     element = do
       flexibleColumn 2
-      anon loginLink
+      unnamed loginLink
 
-loginLink = Tag {..}
+loginLink = Component {..}
   where
 
     tag = anchor
@@ -231,10 +217,10 @@ loginLink = Tag {..}
       marginRight =: px (-4)
 
     element = do
-      anon loginGlyph
+      unnamed loginGlyph
       fst <$> listen E.click (const ()) listenOpts
 
-loginGlyph = Tag {..}
+loginGlyph = Component {..}
   where
 
     tag = span
@@ -251,7 +237,7 @@ loginGlyph = Tag {..}
 
 --------------------------------------------------------------------------------
 
-divider = Tag {..}
+divider = Component {..}
   where
 
     tag = division
@@ -260,11 +246,11 @@ divider = Tag {..}
       flexibleRow
 
     element = do
-      anon spacer
-      anon rule
-      anon spacer
+      unnamed spacer
+      unnamed rule
+      unnamed spacer
 
-spacer = Tag {..}
+spacer = Component {..}
   where
 
     tag = "division"
@@ -274,7 +260,7 @@ spacer = Tag {..}
     element = do
       flexibleColumn 1
 
-rule = Tag {..}
+rule = Component {..}
   where
 
     tag = hr
@@ -289,11 +275,12 @@ rule = Tag {..}
                  \  rgba(0,0,0,0)\
                  \)"
 
-    element = return ()
+    element =
+      flexibleColumn 10
 
 --------------------------------------------------------------------------------
 
-shoes = Tag {..}
+shoes = Component {..}
   where
 
     tag = footer
@@ -302,10 +289,10 @@ shoes = Tag {..}
       flexibleRow
 
     element = do
-      anon bottomLinkContainer
-      anon copyrightContainer
+      unnamed bottomLinkContainer
+      unnamed copyrightContainer
 
-bottomLinkContainer = Tag {..}
+bottomLinkContainer = Component {..}
   where
 
     tag = division
@@ -315,9 +302,9 @@ bottomLinkContainer = Tag {..}
 
     element = do
       flexibleColumn 12
-      anon bottomLinks
+      unnamed bottomLinks
 
-copyrightContainer = Tag {..}
+copyrightContainer = Component {..}
   where
 
     tag = division
@@ -327,9 +314,9 @@ copyrightContainer = Tag {..}
 
     element = do
       flexibleColumn 12
-      anon copyright
+      unnamed copyright
 
-bottomLinks = Tag {..}
+bottomLinks = Component {..}
   where
 
     tag = unordered
@@ -340,19 +327,29 @@ bottomLinks = Tag {..}
       padding   =: zero
 
     element = do
-      anon $ bottomLink "About" "/about"
-      anon $ bottomSeparator
-      anon $ bottomLink "Contact" "/contact"
-      anon $ bottomSeparator
-      anon $ bottomLink "Privacy" "/privacy"
+      unnamed $ bottomLinkBox "About" "/about"
+      unnamed $ bottomSeparator
+      unnamed $ bottomLinkBox "Contact" "/contact"
+      unnamed $ bottomSeparator
+      unnamed $ bottomLinkBox "Privacy" "/privacy"
 
-bottomLink txt lnk = Tag {..}
+bottomLinkBox txt lnk = Component {..}
   where
 
     tag = item
 
     styles = do
-      display        =: inline
+      display =: inline
+
+    element = do
+      unnamed (bottomLink txt lnk)
+
+bottomLink txt lnk = Component {..}
+  where
+
+    tag = anchor
+
+    styles = do
       textDecoration =: none
       color          =: gray
       fontSize       =: px 12
@@ -361,7 +358,7 @@ bottomLink txt lnk = Tag {..}
       href lnk
       text txt
 
-bottomSeparator = Tag {..}
+bottomSeparator = Component {..}
   where
 
     tag = item
@@ -372,9 +369,10 @@ bottomSeparator = Tag {..}
       fontSize =: px 12
       margin   =: px2 0 10
 
-    element = return ()
+    element = do
+      text "|"
 
-copyright = Tag {..}
+copyright = Component {..}
   where
 
     tag = span
@@ -391,7 +389,7 @@ copyright = Tag {..}
 mainContent :: String
 mainContent = "main-content"
 
-mainContentContainer = Tag {..}
+mainContentContainer = Component {..}
   where
 
     tag = division
@@ -402,7 +400,7 @@ mainContentContainer = Tag {..}
 
     element = return ()
 
-loginModal = Tag {..}
+loginModal = Component {..}
   where
 
     tag = division
@@ -411,9 +409,10 @@ loginModal = Tag {..}
 
     styles = do
       flexibleContainer
-      display    =: none
+      visibility =: hidden
       position   =: fixed
       zIndex     =: one
+      margin     =: none
       left       =: zero
       top        =: zero
       width      =: per 100
@@ -421,33 +420,32 @@ loginModal = Tag {..}
       overflow   =: auto
       bgColor    =: rgb 0 0 0
       bgColor    +: rgba 0 0 0 0.4
-      transition =: spaces <| str opacity (sec 0.5) linear
+      transition =: spaces <| str all (sec 0.3) easeIn
 
     element = do
         -- add backdrop click listener
-        anon modal
+        unnamed modal
 
-modal = Tag {..}
+modal = Component {..}
   where
 
     tag = division
 
     styles = do
       flexibleRow
-      top        =: per 20
-      left       =: per 20
+      top        =: per 10
+      left       =: per 10
       bgColor    =: rgb 40 40 66
       height     =: per 80
       width      =: per 80
       position   =: fixed
-      transition =: commas <| do
-        spaces $ str transform_ (sec 0.3) easeOut
-        spaces $ str visibility (sec 0.3) easeOut
+      opacity    =: int 1
+      transition =: spaces <| str all (sec 0.15) easeIn
 
     element = do
-      anon modalCloseButton
+      unnamed modalCloseButton
 
-modalCloseButton = Tag {..}
+modalCloseButton = Component {..}
   where
 
     tag = span
@@ -472,9 +470,9 @@ loginModalHandler loginClicks closes = void $
     behavior loginClicks $ \_ ev -> do
         (escs,unlistenEscs) <- keyUp 27 listenOpts
         (exits,escapeToken,closesToken) <- mergeSignals' escs closes
-        with "LoginModal" $ style $ display =: block
+        with "LoginModal" $ style $ visibility =: visible
         void $ behavior' exits $ \Reactor{..} _ -> do
-            with "LoginModal" $ style $ display =: none
+            with "LoginModal" $ style $ visibility =: hidden
             unlistenEscs
             stop' closesToken
             stop' escapeToken
@@ -482,7 +480,7 @@ loginModalHandler loginClicks closes = void $
 
 --------------------------------------------------------------------------------
 
-pageMain = Tag {..}
+bodyTop = Component {..}
   where
 
     tag = division
@@ -491,39 +489,39 @@ pageMain = Tag {..}
       minHeight =: per 100
       height    =: spaces <| str auto important
       height    +: per 100
-      margin    =: spaces <| str zero auto (ems $ negate footerHeight)
+      margin    =: spaces <| str zero auto (ems $ negate footSize)
 
     element = do
-      loginClicks <- anon hat
-      anon divider
+      loginClicks <- unnamed hat
+      unnamed divider
       modalCloseClicks <- named loginModal
       named mainContentContainer
       loginModalHandler loginClicks modalCloseClicks
-      anon pushDiv
+      unnamed feet
       return loginClicks
 
-pushDiv = Tag {..}
+feet = Component {..}
   where
 
     tag = division
 
     styles = do
-      height =: ems footerHeight
+      height =: ems footSize
 
     element = return ()
 
-pageBottom = Tag {..}
+bodyBottom = Component {..}
   where
 
     tag = division
 
     styles = do
       flexibleContainer
-      height =: ems footerHeight
+      height =: ems footSize
 
     element = do
-      anon divider
-      anon shoes
+      unnamed divider
+      unnamed shoes
 
 --------------------------------------------------------------------------------
 
@@ -581,6 +579,6 @@ setup = do
     style $ do
       height =: per 100
       flexibleContainer
-    anon pageMain
-    anon pageBottom
+    unnamed bodyTop
+    unnamed bodyBottom
   void addFusion
