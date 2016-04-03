@@ -20,12 +20,13 @@ cabal-version:       >=1.10
 executable obvyus
   hs-source-dirs:      src
   main-is:             Main.hs
-  other-modules:       Menu, Obvyus, Listing, Listings
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -DGHCJS_BUSY_YIELD=128 -O0
+  other-modules:       Listing, Listings, App, Components, Component.Body, Component.Header, Component.Divider, Component.Footer, Component.Login, Component.Modal, Component.Util, Page, View.About, View.Privacy, View.Contact, View.Interesting, View.Provacative, View.Login
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -DGHCJS_BROWSER -DGHCJS_BUSY_YIELD=128 -O0
   build-depends:       base
                      , containers
                      , transformers
                      , fusion
+                     , fusion-flex
                      , ef-core >= 1.0 && < 1.1
                      , ef-base >= 0.9 && < 1.0
                      , ghcjs-dom >= 0.2.3 && < 0.3

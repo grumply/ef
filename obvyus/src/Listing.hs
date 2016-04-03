@@ -75,6 +75,9 @@ data Listing k
     | LinkDomainTextNode (Node -> k)
     | SetLinkDomainTextNode Node k
 
+instance Ma Listing Listing where
+  ma use Listing{..} (UpvoteClicks sk) = use (snd _upvoteClicks) (sk $ fst _upvoteClicks)
+
 upvoteClicks :: (Monad super, '[Listing] <: self)
              => Narrative self (Narrative self' super) (Signal self' super T.MouseEvent)
 upvoteClicks = self (UpvoteClicks id)

@@ -33,8 +33,8 @@ listings :: Use (Listings pg) methods super
 listings = Listings (unsafeCoerce $ array (1,20) [],return)
 
 provocativeListingsArray :: forall self super.
-                            (Monad super, '[Listings ProvocativeListings] <: self)
-                         => Narrative self super (Array Int (Object '[Listing] (Narrative self super)))
+                 (Monad super, '[Listings ProvocativeListings] <: self)
+              => Narrative self super (Array Int (Object '[Listing] (Narrative self super)))
 provocativeListingsArray = self (ListingsArray id :: Listings ProvocativeListings (Array Int (Object '[Listing] (Narrative self super))))
 
 interestingListingsArray :: forall self super.
