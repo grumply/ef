@@ -55,22 +55,9 @@ bodyTop = Atom {..}
     element = do
       loginClicks <- embed header
       embed divider
-      embed modal
-      modalCloseClicks <- super $ with modalName $ do
-        example
-        fst <$> listen E.click (const ()) listenOpts
       embed mainContentContainer
-      loginModalHandler loginClicks modalCloseClicks
       embed feet
       return loginClicks
-
-example =
- void $ do
-      child division Nothing $ do
-        style $ do
-          bgColor       =: black
-          Flex.col 95
-        text "test"
 
 feet :: Component ()
 feet = Atom {..}
@@ -90,7 +77,6 @@ bodyBottom = Atom {..}
     tag = division
 
     styles = do
-      Flex.container
       height =: ems footSize
 
     element = do

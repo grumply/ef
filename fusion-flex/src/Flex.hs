@@ -1,7 +1,6 @@
 {-# language NoMonomorphismRestriction #-}
 module Flex
-  ( container
-  , Flex.row, Flex.rowReverse
+  ( Flex.row, Flex.rowReverse
   , col, colReverse
   , Flex.start, Flex.end
   , Flex.center, Flex.middle
@@ -18,12 +17,6 @@ import Oxygen
 import Silicon
 
 import Control.Monad
-
-container = do
-    marginRight  =: str auto
-    marginLeft   =: str auto
-    paddingRight =: px 16
-    paddingLeft  =: px 16
 
 row = do
     boxSizing           =: borderBox
@@ -49,9 +42,6 @@ row = do
     msFlexWrap          =: wrap
     flexWrap            =: wrap
 
-    marginLeft          =: px (-8)
-    marginRight         =: px (-8)
-
 rowReverse = do
     webkitFlexDirection =: CSS.rowReverse
     msFlexDirection     =: CSS.rowReverse
@@ -59,29 +49,24 @@ rowReverse = do
     webkitBoxDirection  =: CSS.reverse
     flexDirection       =: CSS.rowReverse
 
-colReverse = do
-    webkitFlexDirection =: CSS.columnReverse
-    msFlexDirection     =: CSS.columnReverse
-    webkitBoxOrient     =: vertical
-    webkitBoxDirection  =: CSS.reverse
-    flexDirection       =: CSS.columnReverse
-
-flexBaseColumnStyles = do
-    boxSizing     =: borderBox
-    webkitBoxFlex =: zero
-    webkitFlex    =: spaces <| str zero zero auto
-    msFlex        =: spaces <| str zero zero auto
-    flex          =: spaces <| str zero zero auto
-    paddingRight  =: px 8
-    paddingLeft   =: px 8
-
 col percent = do
   let w = per percent
   msFlexPreferredSize =: w
   webkitFlexBasis     =: w
   flexBasis           =: w
   maxWidth            =: w
-  flexBaseColumnStyles
+  boxSizing           =: borderBox
+  webkitBoxFlex       =: zero
+  webkitFlex          =: spaces <| str zero zero auto
+  msFlex              =: spaces <| str zero zero auto
+  flex                =: spaces <| str zero zero auto
+
+colReverse = do
+    webkitFlexDirection =: CSS.columnReverse
+    msFlexDirection     =: CSS.columnReverse
+    webkitBoxOrient     =: vertical
+    webkitBoxDirection  =: CSS.reverse
+    flexDirection       =: CSS.columnReverse
 
 start = do
     webkitJustifyContent =: flexStart

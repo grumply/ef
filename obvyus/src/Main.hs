@@ -23,6 +23,7 @@ import Components
 import Component.Body
 import Component.Modal
 import Component.Util
+import Component.Login
 
 import Model
 
@@ -35,6 +36,8 @@ import View.Provacative
 import App
 
 import Control.Monad
+
+import qualified GHCJS.DOM.Element as E
 
 main :: IO ()
 main = run Config{..}
@@ -66,9 +69,26 @@ main = run Config{..}
 setup :: Narrative App IO ()
 setup = do
   void $ with fusion $ do
-    style $ do
-      height =: per 100
-      Flex.container
-    embed bodyTop
-    embed bodyBottom
+    embed modal
+    modalCloseClicks <- super $ with modalName $ do
+      example
+      fst <$> listen E.click (const ()) listenOpts
+    child "div" Nothing $ do
+      style $ do
+        height =: per 100
+      loginClicks <- embed bodyTop
+      embed bodyBottom
+      loginModalHandler loginClicks modalCloseClicks
   void addFusion
+
+example =
+ void $ do
+  child division Nothing $ style (Flex.col 2.5)
+  child division Nothing $ do
+    style $ do
+      marginTop =: auto
+      marginBottom =: auto
+      bgColor       =: black
+      Flex.col 95
+    text "test"
+  child division Nothing $ style (Flex.col 2.5)
