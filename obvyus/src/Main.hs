@@ -61,7 +61,6 @@ defaultRouter =  do
       return ()
 
   provacative $ do
-    setRouter inProvacative
     return ()
 
 
@@ -93,7 +92,7 @@ setup = do
             borderRadius   =: px 12
             boxShadow      =: str (px 1) (px 1) (px 3) (hex 0x000)
       child "h2" Nothing $ do
-        setText "Test"
+        text "Test"
       style $ do
         position      =: fixed
         fontFamily    =: "Arial, Helvetica, sans-serif"
