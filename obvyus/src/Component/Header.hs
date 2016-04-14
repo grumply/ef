@@ -103,7 +103,7 @@ separator = Atom {..}
     tag = span
 
     styles = do
-        helveticaNeue (weight 200) (rgba 0 0 0 0.5) (px 28)
+        helveticaNeue (weight 200) (rgba(0,0,0,0.5)) (px 28)
         position =: relative
         top      =: px 4
 
@@ -134,7 +134,7 @@ linkBox txt lnk = Atom {..}
       display =: inline
 
     element =
-      embed (link txt lnk)
+      embed (Component.Header.link txt lnk)
 
 link :: String -> String -> Component ()
 link txt lnk = Named {..}

@@ -34,7 +34,7 @@ modal = Named {..}
     styles = do
       Flex.row
       position   =: fixed
-      bgColor    =: rgba 0 0 0 0.4
+      bgColor    =: rgba(0,0,0,0.4)
       height     =: per 100
       width      =: per 100
       visibility =: hidden

@@ -33,51 +33,82 @@ loginContainer = Atom {..}
 
     tag = division
 
-    styles = do
-      borderRadius =: px 15
-      backgroundColor =: azure
-      overflow =: hidden
+    styles =
+      return ()
 
     element = do
-      on XS (Flex.col 90)
-      on SM (Flex.col 90)
-      on MD (Flex.col 60)
-      on LG (Flex.col 60)
-      embed loginContent
+      embed loginSpacer
+      modalCloseButtonClicks <- embed loginContent
+      embed loginSpacer
+      modalOutsideClicks <- fst <$> listen E.click (const ()) interceptOpts
+      (sig,_,_) <- mergeSignals modalCloseButtonClicks modalOutsideClicks
+      return sig
       -- embed modalCloseButton
-      fst <$> listen E.click (const ()) listenOpts
 
-loginContent :: Component ()
+loginSpacer :: Component ()
+loginSpacer = Atom {..}
+  where
+
+    tag = division
+
+    styles = return ()
+
+    element = do
+      on XS (Flex.col 2.5)
+      on SM (Flex.col 2.5)
+      on MD (Flex.col 15)
+      on LG (Flex.col 15)
+      return ()
+
+loginContent :: Component (Signal App IO ())
 loginContent = Atom {..}
   where
 
     tag = division
 
     styles = do
-      return ()
+      marginTop =: auto
+      marginBottom =: auto
+      bgColor =: azure
 
     element = do
-      embed loginHeader
-      embed forms
+      on XS (Flex.col 95)
+      on SM (Flex.col 95)
+      on MD (Flex.col 70)
+      on MD (Flex.col 70)
+      fst <$> listen E.click (const ()) listenOpts
+      -- modalCloseButtonClicks <- embed loginHeader
+      -- embed forms
+      -- return modalCloseButtonClicks
 
 modalCloseButton :: Component (Signal App IO ())
 modalCloseButton = Atom {..}
+  where
+
+    tag = anchor
+
+    styles = do
+      float      =: right
+      position   =: relative
+      top        =: zero
+      right      =: zero
+      float      =: right
+
+    element = do
+      embed modalCloseGlyph
+      fst <$> listen E.click (const ()) listenOpts
+
+modalCloseGlyph = Atom {..}
   where
 
     tag = span
 
     styles = do
       color      =: hex 0xaaa
-      float      =: right
-      position   =: relative
-      top        =: zero
-      right      =: zero
-      float      =: right
       fontSize   =: px 20
 
     element = do
       glyph gRemoveSign
-      fst <$> listen E.click (const ()) listenOpts
 
 -- Have to be a little tricky here; we create a new signal of Esc keypresses
 -- combined with close button clicks every time the login modal is opened and
@@ -99,7 +130,7 @@ loginModalHandler loginModalOpens closes = void $
       stop' escapeToken
       Iron.end r
 
-loginHeader :: Component ()
+loginHeader :: Component (Signal App IO ())
 loginHeader = Atom {..}
   where
 
@@ -108,8 +139,9 @@ loginHeader = Atom {..}
     styles = do
       return ()
 
-    element = void $ do
+    element = do
       text "Log in or sign up"
+      embed modalCloseButton
 
 forms :: Component ()
 forms = Atom {..}
