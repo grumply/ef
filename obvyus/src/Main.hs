@@ -12,6 +12,7 @@ import Data.Promise
 import Iron
 
 import Carbon
+import qualified Dicarbon
 import Helium
 import Hydrogen
 import Oxygen
@@ -43,7 +44,7 @@ import qualified GHCJS.DOM.Element as E
 defaultRouter =  do
   path "/loginModal" $ do
     return ()
-    
+
   path "/interesting" $ do
     interesting $ do
       return ()
@@ -68,7 +69,7 @@ main :: IO ()
 main = run Config{..}
     where
         routes = defaultRouter
-       
+
         prime base = return (app base)
 
         build = setup
@@ -76,6 +77,9 @@ main = run Config{..}
 setup :: Narrative App IO ()
 setup = do
   void $ with fusion $ do
+    child "a" Nothing $ do
+      href "OpenModal"
+      text "Open Modal"
     child "div" (Just "modalDialog") $ do
       child "div" (Just "close") $ do
         style $ do
@@ -105,18 +109,18 @@ setup = do
         opacity       =: zero
         transition    =: spaces <| str opacity (ms 400) easeIn
         pointerEvents =: none
-    super $ styleGlobal (target (classified "modalDialog")) $ do
+    super $ stylePage (target (classified "modalDialog")) $ do
       opacity       =: one
       pointerEvents =: auto
-    super $ styleGlobal (hover (classified "close")) $ do
+    super $ stylePage (hover (classified "close")) $ do
       background =: hex 0x00d9ff
-    super $ styleGlobal (parents <| str (classified "modalDialog") <| string division) $ do
+    super $ stylePage (parents <| str (classified "modalDialog") <| string division) $ do
       width        =: px 400
       position     =: relative
-      margin       =: str (per 10) auto
+      margin       =: spaces <| str (per 10) auto
       padding      =: px4 5 20 13 20
       borderRadius =: px 10
-      background   =: linearGradient <| commas <| str (hex 0xfff) (hex 0x999)
+      background   =: linearGradient <| str (hex 0xfff) (hex 0x999)
     child "div" Nothing $ do
       style $ do
         minHeight =: per 100
