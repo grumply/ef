@@ -1,6 +1,8 @@
 {-# language NoMonomorphismRestriction #-}
+{-# language FlexibleContexts #-}
 module Flex
-  ( Flex.row, Flex.rowReverse
+  ( flexible, responsive
+  , Flex.row, Flex.rowReverse
   , col, colReverse
   , Flex.start, Flex.end
   , Flex.center, Flex.middle
@@ -17,6 +19,14 @@ import Oxygen
 import Silicon
 
 import Control.Monad
+
+flexible f xs sm md lg = void $ do
+  on XS (f xs)
+  on SM (f sm)
+  on MD (f md)
+  on LG (f lg)
+
+responsive = flexible
 
 row = do
     boxSizing           =: borderBox

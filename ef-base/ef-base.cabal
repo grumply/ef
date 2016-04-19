@@ -63,11 +63,3 @@ library
   build-depends:       base >=4.8 && <4.9, ef-core >= 1 && < 1.1, random >= 1.1, deepseq >= 1.4.1.1
   hs-source-dirs:      src
   default-language:    Haskell2010
-
-
-executable knot
-  main-is: Knots.hs
-  other-modules: Ef.Knot, Ef.Knot.Messages, Ef.Knot.Methods
-  hs-source-dirs: src test
-  build-depends: base >= 4.8 && < 4.9, ef-core >= 1 && < 1.1, ef-base >= 0.9 && < 1
-  default-language: Haskell2010
