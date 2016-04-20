@@ -3,6 +3,7 @@
 module Flex
   ( flexible, responsive
   , Flex.row, Flex.rowReverse
+  , Flex.column
   , col, colReverse
   , Flex.start, Flex.end
   , Flex.center, Flex.middle
@@ -26,8 +27,64 @@ flexible f xs sm md lg = void $ do
   on MD (f md)
   on LG (f lg)
 
-responsive = flexible
+responsive f = flexible (f =:)
 
+-- a column-oriented flexible layout
+--   horizontal box orientation
+--   normal top-to-bottom directional layout
+--   overflow wraps
+column = do
+    boxSizing =: borderBox
+
+    display =: webkitFlex
+    display +: msFlexBox
+    display +: webkitBox
+    display +: flex
+
+    webkitBoxFlex =: zero
+    webkitFlex =: vals <| str zero one auto
+    msFlex =: vals <| str zero one auto
+    flex =: vals <| str zero one auto
+
+    webkitFlexDirection =: CSS.column
+    msFlexDirection =: CSS.column
+    flexDirection =: CSS.column
+
+    Flex.orient Horizontal
+    Flex.direction Normal
+    Flex.wrap Wrap
+
+data Orientation = Vertical | Horizontal | InlineAxis | BlockAxis
+
+orient Vertical = webkitBoxOrient =: vertical
+orient Horizontal = webkitBoxOrient =: horizontal
+orient InlineAxis = webkitBoxOrient =: string "inline-axis"
+orient BlockAxis = webkitBoxOrient =: string  "block-axis"
+
+data Direction = Normal | Reverse
+
+direction Normal = webkitBoxDirection =: normal
+direction Reverse = webkitBoxDirection =: CSS.reverse
+
+data Wrap = Wrap | NoWrap | WrapReverse
+
+wrap Wrap = do
+  webkitFlexWrap =: CSS.wrap
+  msFlexWrap =: CSS.wrap
+  flexWrap =: CSS.wrap
+wrap NoWrap = do
+  webkitFlexWrap =: CSS.nowrap
+  msFlexWrap =: CSS.nowrap
+  flexWrap =: CSS.nowrap
+wrap WrapReverse = do
+  webkitFlexWrap =: wrapreverse
+  msFlexWrap =: wrapreverse
+  flexWrap =: wrapreverse
+
+-- a row-oriented flexible layout
+--  horizontal box orientation
+--  normal left-to-right directional layout
+--  overflow wraps
 row = do
     boxSizing           =: borderBox
 
@@ -36,21 +93,18 @@ row = do
     display             +: webkitBox
     display             +: flex
 
-    webkitBoxFlex       =: str zero
+    webkitBoxFlex       =: zero
     webkitFlex          =: vals <| str zero one auto
     msFlex              =: vals <| str zero one auto
     flex                =: vals <| str zero one auto
-
-    webkitBoxOrient     =: horizontal
-    webkitBoxDirection  =: normal
 
     webkitFlexDirection =: CSS.row
     msFlexDirection     =: CSS.row
     flexDirection       =: CSS.row
 
-    webkitFlexWrap      =: wrap
-    msFlexWrap          =: wrap
-    flexWrap            =: wrap
+    Flex.orient Horizontal
+    Flex.direction Normal
+    Flex.wrap Wrap
 
 rowReverse = do
     webkitFlexDirection =: CSS.rowReverse
