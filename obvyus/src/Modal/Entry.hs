@@ -2,6 +2,7 @@
 {-# language OverloadedStrings #-}
 {-# language FlexibleContexts #-}
 {-# language NoMonomorphismRestriction #-}
+{-# language TypeOperators #-}
 module Modal.Entry where
 
 import Ef
@@ -18,6 +19,8 @@ import Utility
 
 import qualified GHCJS.DOM.Element as E
 import qualified GHCJS.DOM.HTMLInputElement as IE
+
+import Control.Monad
 
 entryModal = modal "entry" $ do
   _ <- embed entryModalHeader
@@ -147,6 +150,19 @@ emailInput name = Named {..}
       placeholder_ "email"
       required_
 
+emailConfirmInput name = Named {..}
+  where
+
+    tag = input
+
+    styles = col 80
+
+    element = do
+      name_ "emailConfirm"
+      type_ text
+      placeholder_ "confirm email"
+      required_
+
 --------------------------------------------------------------------------------
 -- Signup Form
 
@@ -169,11 +185,11 @@ signupForm = Atom {..}
           (spaces <| str (px 1) solid (hex 0xe0e0e0))
       embed signupHeader
       embed signupFormInputFields
-      disableFormSubmissionOnShortPassword
-      disableFormSubmissionOnMissingField
-      disableFormSubmissionOnMismatch
-      showInvalidOnShortPassword
-      showInvalidOnPasswordMismatch
+      super signupValidater
+      super showInvalidOnUnavailableUsername
+      super showInvalidOnShortPassword
+      super showInvalidOnPasswordMismatch
+      super showInvalidOnEmailMismatch
       return ()
 
 signupHeader = Atom {..}
@@ -198,13 +214,16 @@ signupFormInputFields = Atom {..}
     element = do
       _ <- embed $ usernameInput "signupUsername" "signupUsername"
       _ <- embed $ emailInput "signupEmail"
+      _ <- embed $ emailConfirmInput "signupConfirmEmail"
       _ <- embed $ passwordInput "signupPassword" "signupPassword"
       _ <- embed $ passwordConfirmInput "signupConfirmPassword"
       _ <- embed signupFormSubmitButton
       return ()
 
-signupFormSubmitButton = Atom {..}
+signupFormSubmitButton = Named {..}
   where
+
+    name = "signupSubmit"
 
     tag = input
 
@@ -212,19 +231,58 @@ signupFormSubmitButton = Atom {..}
       formStyles
 
     element = do
+      setDisabled
       type_ submit
       value_ "Sign up"
 
-disableFormSubmissionOnShortPassword = do
-  
+signupValidater :: (Web <: self) => Narrative self IO ()
+signupValidater = do
+  (passwordInput,_)     <- with "signupPassword"        (listen E.input id listenOpts)
+  (confirmPassInput,_)  <- with "signupConfirmPassword" (listen E.input id listenOpts)
+  (emailInput,_)        <- with "signupEmail"           (listen E.input id listenOpts)
+  (confirmEmailInput,_) <- with "signupConfirmEmail"    (listen E.input id listenOpts)
+  (usernameInput,_)     <- with "signupUsername"        (listen E.input id listenOpts)
+  (pass,_,_)      <- mergeSignals' passwordInput confirmPassInput
+  (email,_,_)     <- mergeSignals' emailInput    confirmEmailInput
+  (passemail,_,_) <- mergeSignals' pass          email
+  (changes,_,_)   <- mergeSignals' passemail     usernameInput
+  behavior' changes $ \_ _ -> do
+    Just pass      <- with "signupPassword"        getInputValue
+    Just confPass  <- with "signupConfirmPassword" getInputValue
+    Just email     <- with "signupEmail"           getInputValue
+    Just confEmail <- with "signupConfirmEmail"    getInputValue
+    Just user      <- with "signupUsername"        getInputValue
+    when (pass == confPass && email == confEmail) $ 
+  return ()
 
-disableFormSubmissionOnMissingField = undefined
+-- disableFormSubmissionOnShortPassword =
+--   with "signupPassword" $ void $ do
+--     (updates,_) <- listen E.input id listenOpts
+--     behavior updates $ \_ _ -> void $ do
+--         Just pass <- with "signupPassword" getInputValue
+--         let lpass = length pass
+--             short = lpass < 8
+--         with "signupSubmit" $
+--           if short
+--             then setDisabled
+--             else setEnabled
 
-disableFormSubmissionOnMismatch = undefined
+showInvalidOnUnavailableUsername = return ()
 
-showInvalidOnShortPassword = undefined
+showInvalidOnShortPassword =
+  with "signupPassword" $ void $ do
+    (updates,_) <- listen E.input id listenOpts
+    behavior updates $ \_ _ -> void $
+      with "signupPassword" $ do
+        Just pass <- getInputValue
+        let lpass = length pass
+            short = lpass > 0 && lpass < 8
+            c = if short then red else none
+        style $ backgroundColor =: c
 
-showInvalidOnPasswordMismatch = undefined
+showInvalidOnPasswordMismatch = return ()
+
+showInvalidOnEmailMismatch = return ()
 
 --------------------------------------------------------------------------------
 -- Login Form
