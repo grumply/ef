@@ -16,6 +16,9 @@ import Flex
 import Modal
 import Utility
 
+import qualified GHCJS.DOM.Element as E
+import qualified GHCJS.DOM.HTMLInputElement as IE
+
 entryModal = modal "entry" $ do
   _ <- embed entryModalHeader
   _ <- embed divider
@@ -54,7 +57,7 @@ entryForms = Atom {..}
 
 
 --------------------------------------------------------------------------------
--- Shared form styles and content
+-- Shared form styles
 
 formStyles = do
   marginTop      =: px 20
@@ -90,7 +93,10 @@ setGlobalInputFocusStyles =
     margin    =: px4 5 1 3 0
     border    =: spaces <| str (px 1) solid (rgba(81,203,238,1))
 
-usernameInput nm = Atom {..}
+--------------------------------------------------------------------------------
+-- Form inputs
+
+usernameInput nm name = Named {..}
   where
 
     tag = input
@@ -103,7 +109,7 @@ usernameInput nm = Atom {..}
       placeholder_ "username"
       required_
 
-passwordInput nm = Atom {..}
+passwordInput nm name = Named {..}
   where
 
     tag = input
@@ -116,6 +122,31 @@ passwordInput nm = Atom {..}
       placeholder_ password
       required_
 
+passwordConfirmInput name = Named {..}
+  where
+
+    tag = input
+
+    styles = col 80
+
+    element = do
+      type_ password
+      placeholder_ "confirm password"
+      required_
+
+emailInput name = Named {..}
+  where
+
+    tag = input
+
+    styles = col 80
+
+    element = do
+      name_ "email"
+      type_ text
+      placeholder_ "email"
+      required_
+
 --------------------------------------------------------------------------------
 -- Signup Form
 
@@ -126,6 +157,7 @@ signupForm = Atom {..}
 
     styles = do
       padding    =: px 20
+      margin     =: spaces <| str none auto auto auto
 --      visibility =: hidden
 
     element = do
@@ -137,6 +169,11 @@ signupForm = Atom {..}
           (spaces <| str (px 1) solid (hex 0xe0e0e0))
       embed signupHeader
       embed signupFormInputFields
+      disableFormSubmissionOnShortPassword
+      disableFormSubmissionOnMissingField
+      disableFormSubmissionOnMismatch
+      showInvalidOnShortPassword
+      showInvalidOnPasswordMismatch
       return ()
 
 signupHeader = Atom {..}
@@ -159,37 +196,12 @@ signupFormInputFields = Atom {..}
       Flex.center
 
     element = do
-      _ <- embed $ usernameInput "signupUsername"
-      _ <- embed emailInput
-      _ <- embed $ passwordInput "signupPassword"
-      _ <- embed passwordConfirmInput
+      _ <- embed $ usernameInput "signupUsername" "signupUsername"
+      _ <- embed $ emailInput "signupEmail"
+      _ <- embed $ passwordInput "signupPassword" "signupPassword"
+      _ <- embed $ passwordConfirmInput "signupConfirmPassword"
       _ <- embed signupFormSubmitButton
       return ()
-
-emailInput = Atom {..}
-  where
-
-    tag = input
-
-    styles = col 80
-
-    element = do
-      name_ "email"
-      type_ text
-      placeholder_ "email"
-      required_
-
-passwordConfirmInput = Atom {..}
-  where
-
-    tag = input
-
-    styles = col 80
-
-    element = do
-      type_ password
-      placeholder_ "confirm password"
-      required_
 
 signupFormSubmitButton = Atom {..}
   where
@@ -203,6 +215,17 @@ signupFormSubmitButton = Atom {..}
       type_ submit
       value_ "Sign up"
 
+disableFormSubmissionOnShortPassword = do
+  
+
+disableFormSubmissionOnMissingField = undefined
+
+disableFormSubmissionOnMismatch = undefined
+
+showInvalidOnShortPassword = undefined
+
+showInvalidOnPasswordMismatch = undefined
+
 --------------------------------------------------------------------------------
 -- Login Form
 
@@ -211,14 +234,19 @@ loginForm = Atom {..}
 
     tag = form
 
-    styles =
+    styles = do
+      marginTop =: none
       padding =: px 20
 
     element = do
       flexible col 80 80 50 50
       embed loginHeader
       embed loginFormInputFields
-      embed loginFormSubmitButton
+      (submits,_) <- listen E.submit id interceptOpts
+      behavior submits $ \_ _ -> do
+        Just tc <- with "loginUsername" getInputValue
+        Just p <- with "loginPassword" getInputValue
+        lift $ print $ "login form submitted: (user,pass): " ++ show (tc,p)
 
 loginHeader = Atom {..}
   where
@@ -240,8 +268,9 @@ loginFormInputFields = Atom {..}
       Flex.center
 
     element = do
-      _ <- embed $ usernameInput "loginUsername"
-      _ <- embed $ passwordInput "loginPassword"
+      _ <- embed $ usernameInput "loginUsername" "loginUsername"
+      _ <- embed $ passwordInput "loginPassword" "loginPassword"
+      _ <- embed loginFormSubmitButton
       return ()
 
 loginFormSubmitButton = Atom {..}
