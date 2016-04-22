@@ -21,6 +21,14 @@ executable obvyus
   hs-source-dirs:      src
   main-is:             Main.hs
   other-modules:       Listing, Listings, Utility, Modal, Modal.Entry, Main
+  default-extensions:  RecordWildCards
+                       FlexibleContexts
+                       FlexibleInstances
+                       NoMonomorphismRestriction
+                       GADTs
+                       TypeOperators
+                       DataKinds
+                       PolyKinds
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N -DGHCJS_BROWSER -DGHCJS_BUSY_YIELD=128 -O0
   build-depends:       base
                      , fusion

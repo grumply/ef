@@ -1,11 +1,4 @@
-{-# language RecordWildCards #-}
-{-# language FlexibleContexts #-}
-{-# language TypeFamilies #-}
-{-# language PolyKinds #-}
 {-# language OverloadedStrings #-}
-{-# language NoMonomorphismRestriction #-}
-{-# language DataKinds #-}
-{-# language TypeOperators #-}
 module Main where
 
 import Ef
@@ -92,9 +85,7 @@ main = run Config{..}
 setup :: Narrative App IO ()
 setup =
   void $ with fusion $ do
-    super setGlobalInputStyles
-    super setGlobalInputFocusStyles
-    embed loginForm
+    entryForms
     child "div" Nothing $ do
       style $ do
         minHeight =: per 100
@@ -306,7 +297,7 @@ logo = Atom {..}
       bgColor        =: darkcyan
       padding        =: px2 2 5
       marginRight    =: px 10
-      timesNewRoman bold white (px 15)
+      timesNewRoman CSS.bold white (px 15)
 
     element = void $ do
       _ <- setText "O"

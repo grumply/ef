@@ -1,5 +1,3 @@
-{-# language RecordWildCards #-}
-{-# language FlexibleContexts #-}
 {-# language OverloadedStrings #-}
 module Modal where
 
@@ -77,7 +75,7 @@ modalClose nameBase = Named {..}
       top            =: px 10
       width          =: px 24
       textDecoration =: none
-      fontWeight     =: bold
+      fontWeight     =: CSS.bold
       borderRadius   =: px 12
       zIndex         =: int 9999
       boxShadow      =: str (px 1) (px 1) (px 3) (hex 0x000)

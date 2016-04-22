@@ -1,8 +1,4 @@
-{-# language RecordWildCards #-}
 {-# language OverloadedStrings #-}
-{-# language FlexibleContexts #-}
-{-# language NoMonomorphismRestriction #-}
-{-# language TypeOperators #-}
 module Modal.Entry where
 
 import Ef
@@ -18,24 +14,18 @@ import Modal
 import Utility
 
 import qualified GHCJS.DOM.Element as E
-import qualified GHCJS.DOM.HTMLInputElement as IE
 
 import Control.Monad
 
+entryForms = do
+  super setGlobalInputStyles
+  super setGlobalInputFocusStyles
+  _ <- embed signupForm
+  _ <- embed loginForm
+  return ()
+
 --------------------------------------------------------------------------------
 -- Shared form styles
-
-formStyles = do
-  marginTop      =: px 20
-  marginRight    =: px 20
-  background     =: slategray
-  border         =: none
-  color          =: white
-  padding        =: px2 12 24
-  borderRadius   =: px 13
-  fontSize       =: px 18
-  fontFamily     =: "Georgia, Serif"
-  textDecoration =: uppercase
 
 setGlobalInputStyles =
    styleGlobal (string "input[type=text],input[type=password]") $ do
@@ -62,7 +52,23 @@ setGlobalInputFocusStyles =
 --------------------------------------------------------------------------------
 -- Form inputs
 
-usernameInput nm name = Named {..}
+-- header
+h txt = Atom {..}
+  where
+
+    tag = h2
+
+    styles = do
+      col 100
+      textAlign     =: CSS.center
+      textTransform =: uppercase
+      timesNewRoman (weight 600) slategray (px 22)
+
+    element =
+      setText txt
+
+-- input
+i name typ plchldr = Named {..}
   where
 
     tag = input
@@ -70,110 +76,87 @@ usernameInput nm name = Named {..}
     styles = col 80
 
     element = do
-      name_ nm
-      type_ text
-      placeholder_ "username"
+      name_ name
+      type_ typ
+      placeholder_ plchldr
       required_
 
-passwordInput nm name = Named {..}
+s = Atom {..}
   where
 
-    tag = input
+    tag = division
 
-    styles = col 80
-
-    element = do
-      name_ nm
-      type_ password
-      placeholder_ password
-      required_
-
-passwordConfirmInput name = Named {..}
-  where
-
-    tag = input
-
-    styles = col 80
+    styles = return ()
 
     element = do
-      type_ password
-      placeholder_ "confirm password"
-      required_
+      flexible col 10 10 25 25
 
-emailInput name = Named {..}
-  where
-
-    tag = input
-
-    styles = col 80
-
-    element = do
-      name_ "email"
-      type_ text
-      placeholder_ "email"
-      required_
-
-emailConfirmInput name = Named {..}
-  where
-
-    tag = input
-
-    styles = col 80
-
-    element = do
-      name_ "emailConfirm"
-      type_ text
-      placeholder_ "confirm email"
-      required_
-
---------------------------------------------------------------------------------
--- Signup Form
-
-signupFormContainer = Atom {..}
+formBottom lnk but = Atom {..}
   where
 
     tag = division
 
     styles = do
       Flex.row
-      Flex.center
+      col 80
+      margin =: spaces <| str (px 10) auto
 
     element = do
-      _ <- embed signupForm
+      _ <- embed lnk
+      _ <- embed but
       return ()
 
-signupFormModalHeader = Atom {..}
+-- button
+b name txt = Named {..}
   where
 
-    tag = h2
+    tag = input
 
     styles = do
-      marginTop     =: px 15
-      textAlign     =: CSS.center
-      textTransform =: uppercase
-      timesNewRoman (weight 600) slategray (px 22)
+      col 20
 
-    element =
-      setText "Sign up"
+    element = do
+      type_ submit
+      value_ txt
 
-signupForm = Atom {..}
+-- link
+l txt lnk = Atom {..}
+  where
+
+    tag = anchor
+
+    styles = do
+      col 70
+      textAlign =: left
+
+    element = do
+      href lnk
+      setText txt
+
+--------------------------------------------------------------------------------
+-- Signup Form
+
+signupForm = modal "signup" $ do
+  _ <- embed $ h "Sign up"
+  _ <- embed divider
+  _ <- embed Atom {..}
+  return ()
   where
 
     tag = form
 
     styles = do
-      padding    =: px 20
-      margin     =: spaces <| str none auto auto auto
+      Flex.row
+      Flex.center
+      marginBottom =: px 15
 
     element = do
-      flexible col 80 80 50 50
-      responsive borderRight
-          none
-          none
-          (spaces <| str (px 1) solid (hex 0xe0e0e0))
-          (spaces <| str (px 1) solid (hex 0xe0e0e0))
-      embed signupHeader
-      embed signupFormInputFields
+      _ <- embed $ i "signupUsername" text "username"
+      _ <- embed $ i "signupEmail" text "email"
+      _ <- embed $ i "signupConfirmEmail" text "confirm email"
+      _ <- embed $ i "signupPassword" password "password"
+      _ <- embed $ i "signupConfirmPassword" password "confirm password"
+      _ <- embed $ formBottom (l "Log in" "loginModal") (b "signupSubmit" "Sign up")
       super signupValidater
       super showInvalidOnUnavailableUsername
       super showInvalidOnShortPassword
@@ -181,50 +164,32 @@ signupForm = Atom {..}
       super showInvalidOnEmailMismatch
       return ()
 
-signupHeader = Atom {..}
+--------------------------------------------------------------------------------
+-- Login form
+
+loginForm = modal "login" $ do
+  _ <- embed $ h "Log in"
+  _ <- embed divider
+  _ <- embed Atom {..}
+  return ()
   where
 
-    tag = h2
-
-    styles = return ()
-
-    element =
-      setText "Sign up"
-
-signupFormInputFields = Atom {..}
-  where
-
-    tag = division
+    tag = form
 
     styles = do
       Flex.row
       Flex.center
+      marginBottom =: px 15
 
     element = do
-      _ <- embed $ usernameInput "signupUsername" "signupUsername"
-      _ <- embed $ emailInput "signupEmail"
-      _ <- embed $ emailConfirmInput "signupConfirmEmail"
-      _ <- embed $ passwordInput "signupPassword" "signupPassword"
-      _ <- embed $ passwordConfirmInput "signupConfirmPassword"
-      _ <- embed signupFormSubmitButton
+      _ <- embed $ i "loginUsername" text "username"
+      _ <- embed $ i "loginPassword" password "password"
+      _ <- embed $ formBottom (l "Sign up" "signupModal") (b "loginSubmit" "Log in")
       return ()
 
-signupFormSubmitButton = Named {..}
-  where
+--------------------------------------------------------------------------------
+-- Signup form validation/interaction
 
-    name = "signupSubmit"
-
-    tag = input
-
-    styles = do
-      formStyles
-
-    element = do
-      setDisabled
-      type_ submit
-      value_ "Sign up"
-
-signupValidater :: (Web <: self) => Narrative self IO ()
 signupValidater = do
   (passwordInput,_)     <- with "signupPassword"        (listen E.input id listenOpts)
   (confirmPassInput,_)  <- with "signupConfirmPassword" (listen E.input id listenOpts)
@@ -290,92 +255,3 @@ showInvalidOnShortPassword =
 showInvalidOnPasswordMismatch = return ()
 
 showInvalidOnEmailMismatch = return ()
-
---------------------------------------------------------------------------------
--- Login Form
-
-loginForm = modal "login" $ do
-  embed loginFormHeader
-  embed loginFormContainer
-
-loginFormHeader = Atom {..}
-  where
-
-    tag = h2
-
-    styles = do
-      marginTop     =: px 15
-      textAlign     =: CSS.center
-      textTransform =: uppercase
-      timesNewRoman (weight 600) slategray (px 22)
-
-    element =
-      setText "Log in"
-
-loginFormContainer = Atom {..}
-  where
-
-    tag = division
-
-    styles = do
-      Flex.row
-      Flex.center
-
-    element = do
-      _ <- embed loginFormContent
-      return ()
-
-loginFormContent = Atom {..}
-  where
-
-    tag = form
-
-    styles = do
-      marginTop =: none
-      padding =: px 20
-
-    element = do
-      flexible col 80 80 50 50
-      embed loginHeader
-      embed loginFormInputFields
-      (submits,_) <- listen E.submit id interceptOpts
-      behavior submits $ \_ _ -> do
-        Just tc <- with "loginUsername" getInputValue
-        Just p <- with "loginPassword" getInputValue
-        lift $ print $ "login form submitted: (user,pass): " ++ show (tc,p)
-
-loginFormInputFields = Atom {..}
-  where
-
-    tag = division
-
-    styles = do
-      Flex.row
-
-    element = do
-      _ <- embed $ usernameInput "loginUsername" "loginUsername"
-      _ <- embed $ passwordInput "loginPassword" "loginPassword"
-      _ <- embed loginFormSubmitButton
-      return ()
-
-loginFormSubmitButton = Atom {..}
-  where
-
-    tag = input
-
-    styles = formStyles
-
-    element = do
-      type_ submit
-      value_ "Log in"
-
-signupLink = Atom {..}
-  where
-
-    tag = anchor
-
-    styles = return ()
-
-    element = do
-      href "/signup"
-      text "Sign up"
