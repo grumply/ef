@@ -92,7 +92,9 @@ main = run Config{..}
 setup :: Narrative App IO ()
 setup =
   void $ with fusion $ do
-    embed entryModal
+    super setGlobalInputStyles
+    super setGlobalInputFocusStyles
+    embed loginForm
     child "div" Nothing $ do
       style $ do
         minHeight =: per 100
@@ -422,7 +424,7 @@ loginLink = Atom {..}
 
     element = do
       embed loginGlyph
-      _ <- href "entryModal"
+      _ <- href "loginModal"
       return ()
 
 loginGlyph :: Component ()

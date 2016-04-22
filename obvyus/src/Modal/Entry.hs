@@ -22,43 +22,6 @@ import qualified GHCJS.DOM.HTMLInputElement as IE
 
 import Control.Monad
 
-entryModal = modal "entry" $ do
-  _ <- embed entryModalHeader
-  _ <- embed divider
-  _ <- embed entryForms
-  return ()
-
-entryModalHeader = Atom {..}
-  where
-
-    tag = h2
-
-    styles = do
-      marginTop     =: px 15
-      textAlign     =: CSS.center
-      textTransform =: uppercase
-      timesNewRoman (weight 600) slategray (px 22)
-
-    element =
-      setText "Sign up or Log in"
-
-entryForms = Atom {..}
-  where
-
-    tag = division
-
-    styles = do
-      Flex.row
-      Flex.center
-
-    element = do
-      super setGlobalInputStyles
-      super setGlobalInputFocusStyles
-      _ <- embed signupForm
-      _ <- embed loginForm
-      return ()
-
-
 --------------------------------------------------------------------------------
 -- Shared form styles
 
@@ -166,6 +129,33 @@ emailConfirmInput name = Named {..}
 --------------------------------------------------------------------------------
 -- Signup Form
 
+signupFormContainer = Atom {..}
+  where
+
+    tag = division
+
+    styles = do
+      Flex.row
+      Flex.center
+
+    element = do
+      _ <- embed signupForm
+      return ()
+
+signupFormModalHeader = Atom {..}
+  where
+
+    tag = h2
+
+    styles = do
+      marginTop     =: px 15
+      textAlign     =: CSS.center
+      textTransform =: uppercase
+      timesNewRoman (weight 600) slategray (px 22)
+
+    element =
+      setText "Sign up"
+
 signupForm = Atom {..}
   where
 
@@ -174,7 +164,6 @@ signupForm = Atom {..}
     styles = do
       padding    =: px 20
       margin     =: spaces <| str none auto auto auto
---      visibility =: hidden
 
     element = do
       flexible col 80 80 50 50
@@ -248,12 +237,30 @@ signupValidater = do
   (changes,_,_)   <- mergeSignals' passemail     usernameInput
   behavior' changes $ \_ _ -> do
     Just pass      <- with "signupPassword"        getInputValue
+    let passl = length pass
     Just confPass  <- with "signupConfirmPassword" getInputValue
+    let confPassl = length confPass
     Just email     <- with "signupEmail"           getInputValue
+    let emaill = length email
     Just confEmail <- with "signupConfirmEmail"    getInputValue
+    let confEmaill = length confEmail
     Just user      <- with "signupUsername"        getInputValue
-    when (pass == confPass && email == confEmail) $ 
+    validUsername <- checkUsername user
+    with "signupSubmit" $
+      if (passl >= 8 && pass == confPass && not (null email) && email == confEmail && validUsername)
+        then setEnabled
+        else setDisabled
+    when (passl < 8 && passl > 0) $
+      void $ with "signupPassword" $ style $ backgroundColor =: red
+    when (passl >= 8 && confPassl > 0 && pass /= confPass) $
+      void $ with "signupConfirmPassword" $ style $ backgroundColor =: red
+    when (emaill > 0 && confEmaill > 0 && email /= confEmail) $
+      void $ with "signupConfirmEmail" $ style $ backgroundColor =: red
   return ()
+
+checkUsername un
+  | not (null un) = return True
+  | otherwise = return False
 
 -- disableFormSubmissionOnShortPassword =
 --   with "signupPassword" $ void $ do
@@ -287,7 +294,38 @@ showInvalidOnEmailMismatch = return ()
 --------------------------------------------------------------------------------
 -- Login Form
 
-loginForm = Atom {..}
+loginForm = modal "login" $ do
+  embed loginFormHeader
+  embed loginFormContainer
+
+loginFormHeader = Atom {..}
+  where
+
+    tag = h2
+
+    styles = do
+      marginTop     =: px 15
+      textAlign     =: CSS.center
+      textTransform =: uppercase
+      timesNewRoman (weight 600) slategray (px 22)
+
+    element =
+      setText "Log in"
+
+loginFormContainer = Atom {..}
+  where
+
+    tag = division
+
+    styles = do
+      Flex.row
+      Flex.center
+
+    element = do
+      _ <- embed loginFormContent
+      return ()
+
+loginFormContent = Atom {..}
   where
 
     tag = form
@@ -306,16 +344,6 @@ loginForm = Atom {..}
         Just p <- with "loginPassword" getInputValue
         lift $ print $ "login form submitted: (user,pass): " ++ show (tc,p)
 
-loginHeader = Atom {..}
-  where
-
-    tag = h2
-
-    styles = return ()
-
-    element =
-      setText "Log in"
-
 loginFormInputFields = Atom {..}
   where
 
@@ -323,7 +351,6 @@ loginFormInputFields = Atom {..}
 
     styles = do
       Flex.row
-      Flex.center
 
     element = do
       _ <- embed $ usernameInput "loginUsername" "loginUsername"
@@ -341,3 +368,14 @@ loginFormSubmitButton = Atom {..}
     element = do
       type_ submit
       value_ "Log in"
+
+signupLink = Atom {..}
+  where
+
+    tag = anchor
+
+    styles = return ()
+
+    element = do
+      href "/signup"
+      text "Sign up"
