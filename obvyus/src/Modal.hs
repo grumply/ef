@@ -47,7 +47,6 @@ modalContent nameBase els = Named {..}
 
     styles = do
       position     =: relative
-      overflow     =: scroll
       margin       =: spaces <| str (per 10) auto none auto
       borderRadius =: px 10
       paddingTop   =: px 20

@@ -1,1 +1,1 @@
-cp ./.stack-work/install/x86_64-osx/lts-5.2/ghcjs-0.2.0.20151230.3_ghc-7.10.2/bin/obvyus.jsexe/all.js ~/Sites/main.js
+cp ./.stack-work/dist/x86_64-osx/Cabal-1.22.4.0_ghcjs/build/obvyus/obvyus.jsexe/all.js ~/Sites/main.js

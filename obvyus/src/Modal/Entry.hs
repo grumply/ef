@@ -49,6 +49,16 @@ setGlobalInputFocusStyles =
     margin    =: px4 5 1 3 0
     border    =: spaces <| str (px 1) solid (rgba(81,203,238,1))
 
+glow color = do
+  boxShadow =: commas <| do
+    restr $ spaces <| str zero zero (px 8) color
+    restr $ spaces <| str inset (px 1) (px 1) (px 2) (px (-1))
+  border    =: spaces <| str (px 1) solid color
+
+unglow = do
+  clearStyle boxShadow
+  clearStyle border
+
 --------------------------------------------------------------------------------
 -- Form inputs
 
@@ -99,7 +109,6 @@ formBottom lnk but = Atom {..}
     styles = do
       Flex.row
       col 80
-      margin =: spaces <| str (px 10) auto
 
     element = do
       _ <- embed lnk
@@ -114,8 +123,19 @@ b name txt = Named {..}
 
     styles = do
       col 20
+      border          =: spaces <| str (px 1) solid transparent
+      textAlign       =: CSS.center
+      margin          =: px 12
+      timesNewRoman CSS.bold white (px 18)
 
     element = do
+      super $ styleGlobal (string "input[type=submit]") $ do
+        backgroundColor =: hsl(180,100,27)
+      super $ styleGlobal (string "input[type=submit]:hover") $ do
+        backgroundColor =: hsl(180,100,20)
+        glow darkcyan
+      super $ styleGlobal (string "input[type=submit]:active") $ do
+        backgroundColor =: hsl(180,100,13)
       type_ submit
       value_ txt
 
@@ -164,42 +184,16 @@ signupForm = modal "signup" $ do
       super showInvalidOnEmailMismatch
       return ()
 
---------------------------------------------------------------------------------
--- Login form
-
-loginForm = modal "login" $ do
-  _ <- embed $ h "Log in"
-  _ <- embed divider
-  _ <- embed Atom {..}
-  return ()
-  where
-
-    tag = form
-
-    styles = do
-      Flex.row
-      Flex.center
-      marginBottom =: px 15
-
-    element = do
-      _ <- embed $ i "loginUsername" text "username"
-      _ <- embed $ i "loginPassword" password "password"
-      _ <- embed $ formBottom (l "Sign up" "signupModal") (b "loginSubmit" "Log in")
-      return ()
-
---------------------------------------------------------------------------------
--- Signup form validation/interaction
-
 signupValidater = do
   (passwordInput,_)     <- with "signupPassword"        (listen E.input id listenOpts)
   (confirmPassInput,_)  <- with "signupConfirmPassword" (listen E.input id listenOpts)
   (emailInput,_)        <- with "signupEmail"           (listen E.input id listenOpts)
   (confirmEmailInput,_) <- with "signupConfirmEmail"    (listen E.input id listenOpts)
   (usernameInput,_)     <- with "signupUsername"        (listen E.input id listenOpts)
-  (pass,_,_)      <- mergeSignals' passwordInput confirmPassInput
-  (email,_,_)     <- mergeSignals' emailInput    confirmEmailInput
-  (passemail,_,_) <- mergeSignals' pass          email
-  (changes,_,_)   <- mergeSignals' passemail     usernameInput
+  (pass,_,_)            <- mergeSignals' passwordInput confirmPassInput
+  (email,_,_)           <- mergeSignals' emailInput    confirmEmailInput
+  (passemail,_,_)       <- mergeSignals' pass          email
+  (changes,_,_)         <- mergeSignals' passemail     usernameInput
   behavior' changes $ \_ _ -> do
     Just pass      <- with "signupPassword"        getInputValue
     let passl = length pass
@@ -255,3 +249,54 @@ showInvalidOnShortPassword =
 showInvalidOnPasswordMismatch = return ()
 
 showInvalidOnEmailMismatch = return ()
+
+--------------------------------------------------------------------------------
+-- Login form
+
+loginForm = modal "login" $ do
+  _ <- embed $ h "Log in"
+  _ <- embed divider
+  _ <- embed Atom {..}
+  return ()
+  where
+
+    tag = form
+
+    styles = do
+      Flex.row
+      Flex.center
+      marginBottom =: px 15
+
+    element = do
+      _ <- embed $ i "loginUsername" text "username"
+      _ <- embed $ i "loginPassword" password "password"
+      _ <- embed $ formBottom (l "Sign up" "signupModal") (b "loginSubmit" "Log in")
+      super loginValidater
+      return ()
+
+loginValidater = do
+  (loginSubmitClicks,_) <- with "loginSubmit" (listen E.click id cancelSubmit)
+  behavior' loginSubmitClicks $ \_ _ -> do
+    hasUsername <- with "loginUsername" $ do
+      Just un <- getInputValue
+      when (length un < 4) $ void $ style $ glow orange
+      when (null un) $ void $ style $ glow red
+      return (length un >= 4)
+    hasPassword <- with "loginPassword" $ do
+      Just p <- getInputValue
+      when (length p < 8) $ void $ style $ glow orange
+      when (null p) $ void $ style $ glow red
+      return (length p >= 8)
+    when (hasUsername && hasPassword) $ do
+        -- check username and password here
+        setLocation "#close"
+  (loginUsernameInput,_) <- with "loginUsername" (listen E.input id listenOpts)
+  behavior' loginUsernameInput $ \_ _ -> do
+    with "loginUsername" $ do
+      Just un <- getInputValue
+      when (length un >= 4) $ void $ style unglow
+  (loginPasswordInput,_) <- with "loginPassword" (listen E.input id listenOpts)
+  behavior' loginPasswordInput $ \_ _ -> do
+    with "loginPassword" $ do
+      Just p <- getInputValue
+      when (length p >= 8) $ void $ style unglow
