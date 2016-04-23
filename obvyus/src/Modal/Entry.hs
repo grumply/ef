@@ -14,12 +14,18 @@ import Modal
 import Utility
 
 import qualified GHCJS.DOM.Element as E
+import qualified GHCJS.DOM.History as H
+import qualified GHCJS.DOM.Window as W
+import qualified GHCJS.DOM.Location as L
+import qualified GHCJS.DOM as D
 
 import Control.Monad
 
 entryForms = do
   super setGlobalInputStyles
   super setGlobalInputFocusStyles
+  super setGlobalSubmitHoverStyles
+  super setGlobalActiveStyles
   _ <- embed signupForm
   _ <- embed loginForm
   return ()
@@ -27,7 +33,7 @@ entryForms = do
 --------------------------------------------------------------------------------
 -- Shared form styles
 
-setGlobalInputStyles =
+setGlobalInputStyles = do
    styleGlobal (string "input[type=text],input[type=password]") $ do
      boxShadow    =: spaces <| str inset (px 1) (px 1) (px 2) (px (-1))
      border       =: spaces <| str (px 1) solid (hex 0xDDDDDD)
@@ -39,15 +45,26 @@ setGlobalInputStyles =
      height       =: px 34
      lineHeight   =: px 20
      helveticaNeue (weight 400) slategray (px 16)
+   styleGlobal (string "input[type=submit]") $ do
+        backgroundColor =: hsl(180,100,27)
 
 setGlobalInputFocusStyles =
-  styleGlobal (string "input[type=text]:focus,input[type=password]:focus") $ do
+  globalFocusStyle (string "input[type=text]:focus,input[type=password]:focus") $ do
     boxShadow =: commas <| do
       restr $ spaces <| str zero zero (px 5) (rgba(81,203,238,1))
       restr $ spaces <| str inset (px 1) (px 1) (px 2) (px (-1))
     padding   =: px4 3 0 3 8
     margin    =: px4 5 1 3 0
     border    =: spaces <| str (px 1) solid (rgba(81,203,238,1))
+
+setGlobalSubmitHoverStyles =
+  globalHoverStyle (string "input[type=submit]:hover") $ do
+        backgroundColor =: hsl(180,100,20)
+        glow darkcyan
+
+setGlobalActiveStyles =
+  globalActiveStyle (string "input[type=submit]:active") $ do
+        backgroundColor =: hsl(180,100,13)
 
 glow color = do
   boxShadow =: commas <| do
@@ -122,20 +139,13 @@ b name txt = Named {..}
     tag = input
 
     styles = do
-      col 20
+      col 40
       border          =: spaces <| str (px 1) solid transparent
       textAlign       =: CSS.center
-      margin          =: px 12
+      marginTop       =: px 12
       timesNewRoman CSS.bold white (px 18)
 
     element = do
-      super $ styleGlobal (string "input[type=submit]") $ do
-        backgroundColor =: hsl(180,100,27)
-      super $ styleGlobal (string "input[type=submit]:hover") $ do
-        backgroundColor =: hsl(180,100,20)
-        glow darkcyan
-      super $ styleGlobal (string "input[type=submit]:active") $ do
-        backgroundColor =: hsl(180,100,13)
       type_ submit
       value_ txt
 
@@ -146,8 +156,11 @@ l txt lnk = Atom {..}
     tag = anchor
 
     styles = do
-      col 70
+      col 60
+      marginTop =: px 12
       textAlign =: left
+      paddingTop =: px 6
+      fontSize =: px 18
 
     element = do
       href lnk
@@ -178,77 +191,72 @@ signupForm = modal "signup" $ do
       _ <- embed $ i "signupConfirmPassword" password "confirm password"
       _ <- embed $ formBottom (l "Log in" "loginModal") (b "signupSubmit" "Sign up")
       super signupValidater
-      super showInvalidOnUnavailableUsername
-      super showInvalidOnShortPassword
-      super showInvalidOnPasswordMismatch
-      super showInvalidOnEmailMismatch
       return ()
 
 signupValidater = do
-  (passwordInput,_)     <- with "signupPassword"        (listen E.input id listenOpts)
-  (confirmPassInput,_)  <- with "signupConfirmPassword" (listen E.input id listenOpts)
-  (emailInput,_)        <- with "signupEmail"           (listen E.input id listenOpts)
-  (confirmEmailInput,_) <- with "signupConfirmEmail"    (listen E.input id listenOpts)
-  (usernameInput,_)     <- with "signupUsername"        (listen E.input id listenOpts)
-  (pass,_,_)            <- mergeSignals' passwordInput confirmPassInput
-  (email,_,_)           <- mergeSignals' emailInput    confirmEmailInput
-  (passemail,_,_)       <- mergeSignals' pass          email
-  (changes,_,_)         <- mergeSignals' passemail     usernameInput
-  behavior' changes $ \_ _ -> do
-    Just pass      <- with "signupPassword"        getInputValue
-    let passl = length pass
-    Just confPass  <- with "signupConfirmPassword" getInputValue
-    let confPassl = length confPass
-    Just email     <- with "signupEmail"           getInputValue
-    let emaill = length email
-    Just confEmail <- with "signupConfirmEmail"    getInputValue
-    let confEmaill = length confEmail
-    Just user      <- with "signupUsername"        getInputValue
-    validUsername <- checkUsername user
-    with "signupSubmit" $
-      if (passl >= 8 && pass == confPass && not (null email) && email == confEmail && validUsername)
-        then setEnabled
-        else setDisabled
-    when (passl < 8 && passl > 0) $
-      void $ with "signupPassword" $ style $ backgroundColor =: red
-    when (passl >= 8 && confPassl > 0 && pass /= confPass) $
-      void $ with "signupConfirmPassword" $ style $ backgroundColor =: red
-    when (emaill > 0 && confEmaill > 0 && email /= confEmail) $
-      void $ with "signupConfirmEmail" $ style $ backgroundColor =: red
-  return ()
+  (signupSubmitClicks,_) <- with "signupSubmit" (listen E.click id interceptOpts)
+  behavior' signupSubmitClicks $ \_ _ -> do
+    username <- with "signupUsername" $ do
+      Just un <- getInputValue
+      when (length un < 4) $ void $ style $ glow orange
+      when (null un) $ void $ style $ glow red
+      return un
+    let hasUsername = length username >= 4
+    password <- with "signupPassword" $ do
+      Just p <- getInputValue
+      when (length p < 8) $ void $ style $ glow orange
+      when (null p) $ void $ style $ glow red
+      return p
+    let hasPassword = length password >= 8
+    confirmPassword <- with "signupConfirmPassword" $ do
+      Just cp <- getInputValue
+      when (cp /= password || null cp) $ void $ style $ glow red
+      return cp
+    let hasConfirmPassword = confirmPassword == password
+    email <- with "signupEmail" $ do
+      Just e <- getInputValue
+      when (null e) $ void $ style $ glow red
+      return e
+    let hasEmail = not (null email)
+    confirmEmail <- with "signupConfirmEmail" $ do
+      Just ce <- getInputValue
+      when (ce /= email || null ce) $ void $ style $ glow red
+      return ce
+    let hasConfirmEmail = confirmEmail == email
+    when (hasUsername && hasPassword && hasConfirmPassword && hasConfirmEmail) $ do
+        -- check username, email, and password here
+        setLocation "#close"
 
-checkUsername un
-  | not (null un) = return True
-  | otherwise = return False
+  (signupUsernameInput,_) <- with "signupUsername" (listen E.input id listenOpts)
+  behavior' signupUsernameInput $ \_ _ -> do
+    with "signupUsername" $ do
+      Just un <- getInputValue
+      when (length un >= 4) $ void $ style unglow
 
--- disableFormSubmissionOnShortPassword =
---   with "signupPassword" $ void $ do
---     (updates,_) <- listen E.input id listenOpts
---     behavior updates $ \_ _ -> void $ do
---         Just pass <- with "signupPassword" getInputValue
---         let lpass = length pass
---             short = lpass < 8
---         with "signupSubmit" $
---           if short
---             then setDisabled
---             else setEnabled
+  (signupPasswordInput,_) <- with "signupPassword" (listen E.input id listenOpts)
+  behavior' signupPasswordInput $ \_ _ -> do
+    with "signupPassword" $ do
+      Just p <- getInputValue
+      when (length p >= 8) $ void $ style unglow
+  (signupConfirmPasswordInput,_) <- with "signupConfirmPassword" (listen E.input id listenOpts)
+  behavior' signupConfirmPasswordInput $ \_ _ -> do
+    Just p <- with "signupPassword" getInputValue
+    with "signupConfirmPassword" $ do
+      Just pc <- getInputValue
+      when (pc /= p) $ void $ style $ glow red
+      when (pc == p) $ void $ style unglow
 
-showInvalidOnUnavailableUsername = return ()
-
-showInvalidOnShortPassword =
-  with "signupPassword" $ void $ do
-    (updates,_) <- listen E.input id listenOpts
-    behavior updates $ \_ _ -> void $
-      with "signupPassword" $ do
-        Just pass <- getInputValue
-        let lpass = length pass
-            short = lpass > 0 && lpass < 8
-            c = if short then red else none
-        style $ backgroundColor =: c
-
-showInvalidOnPasswordMismatch = return ()
-
-showInvalidOnEmailMismatch = return ()
+  (signupEmailInput,_) <- with "signupEmail" (listen E.input id listenOpts)
+  behavior' signupEmailInput $ \_ _ -> do
+    with "signupEmail" $ do
+      void $ style unglow
+  (signupConfirmEmailInput,_) <- with "signupConfirmEmail" (listen E.input id listenOpts)
+  behavior' signupConfirmEmailInput $ \_ _ -> do
+    Just e <- with "signupEmail" getInputValue
+    with "signupConfirmEmail" $ do
+      Just ec <- getInputValue
+      when (ec /= e) $ void $ style $ glow red
+      when (ec == e) $ void $ style unglow
 
 --------------------------------------------------------------------------------
 -- Login form
@@ -289,7 +297,7 @@ loginValidater = do
       return (length p >= 8)
     when (hasUsername && hasPassword) $ do
         -- check username and password here
-        setLocation "#close"
+      setLocation "#close"
   (loginUsernameInput,_) <- with "loginUsername" (listen E.input id listenOpts)
   behavior' loginUsernameInput $ \_ _ -> do
     with "loginUsername" $ do

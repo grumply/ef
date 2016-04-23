@@ -47,7 +47,7 @@ modalContent nameBase els = Named {..}
 
     styles = do
       position     =: relative
-      margin       =: spaces <| str (per 10) auto none auto
+      margin       =: auto
       borderRadius =: px 10
       paddingTop   =: px 20
       background   =: linearGradient <| str (string "aliceblue") azure
