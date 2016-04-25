@@ -92,6 +92,7 @@ setup = do
       -- confirm login key with server here
       return ()
     [] -> return ()
+  configureMaxNotes
   newNote SuccessNote
   newNote InfoNote
   newNote WarningNote

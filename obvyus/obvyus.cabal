@@ -22,6 +22,8 @@ executable obvyus
   main-is:             Main.hs
   other-modules:       Listing, Listings, Utility, Modal, Modal.Entry, Modal.Notification, Main
   default-extensions:  RecordWildCards
+                       LambdaCase
+                       MultiWayIf
                        MultiParamTypeClasses
                        FlexibleContexts
                        FlexibleInstances

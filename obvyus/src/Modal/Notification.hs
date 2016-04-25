@@ -16,6 +16,8 @@ import Modal
 import Utility
 
 import qualified GHCJS.DOM.Element as E
+import qualified GHCJS.DOM.Screen as S
+import qualified GHCJS.DOM.Window as W
 
 import Control.Monad
 import Data.Maybe
@@ -41,11 +43,11 @@ data Notes k
           , notesEnabled :: (Bool,k)
           , notesEnabledSetter :: Bool -> k
 
-          , activeNotes :: (Int,k)
-          , activeNotesSetter :: Int -> k
+          , activeNoteCount :: (Int,k)
+          , activeNoteCountSetter :: Int -> k
 
-          , activeNoteNodes :: ([Node],k)
-          , activeNoteNodesSetter :: [Node] -> k
+          , activeNoteNodes :: ([(Int,Node)],k)
+          , activeNoteNodesSetter :: [(Int,Node)] -> k
 
           , maxActiveNotes :: (Int,k)
           , maxActiveNotesSetter :: Int -> k
@@ -59,11 +61,11 @@ data Notes k
     | GetNotesEnabled (Bool -> k)
     | SetNotesEnabled Bool k
 
-    | GetActiveNotes (Int -> k)
-    | SetActiveNotes Int k
+    | GetActiveNoteCount (Int -> k)
+    | SetActiveNoteCount Int k
 
-    | GetActiveNoteNodes ([Node] -> k)
-    | SetActiveNoteNodes [Node] k
+    | GetActiveNoteNodes ([(Int,Node)] -> k)
+    | SetActiveNoteNodes [(Int,Node)] k
 
     | GetMaxActiveNotes (Int -> k)
     | SetMaxActiveNotes Int k
@@ -77,8 +79,8 @@ setQueuedNoteNodes ns = self (SetQueuedNoteNodes ns ())
 getNotesEnabled = self (GetNotesEnabled id)
 setNotesEnabled b = self (SetNotesEnabled b ())
 
-getActiveNotes = self (GetActiveNotes id)
-setActiveNotes an = self (SetActiveNotes an ())
+getActiveNoteCount = self (GetActiveNoteCount id)
+setActiveNoteCount an = self (SetActiveNoteCount an ())
 
 getActiveNoteNodes = self (GetActiveNoteNodes id)
 setActiveNoteNodes ns = self (SetActiveNoteNodes ns ())
@@ -96,8 +98,8 @@ instance Ma Notes Notes where
   ma use Notes{..} (GetNotesEnabled bk)      = use (snd notesEnabled) (bk $ fst notesEnabled)
   ma use Notes{..} (SetNotesEnabled b k)     = use (notesEnabledSetter b) k
 
-  ma use Notes{..} (GetActiveNotes ik)       = use (snd activeNotes) (ik $ fst activeNotes)
-  ma use Notes{..} (SetActiveNotes ns k)     = use (activeNotesSetter ns) k
+  ma use Notes{..} (GetActiveNoteCount ik)   = use (snd activeNoteCount) (ik $ fst activeNoteCount)
+  ma use Notes{..} (SetActiveNoteCount ns k) = use (activeNoteCountSetter ns) k
 
   ma use Notes{..} (GetActiveNoteNodes nsk)  = use (snd activeNoteNodes) (nsk $ fst activeNoteNodes)
   ma use Notes{..} (SetActiveNoteNodes ns k) = use (activeNoteNodesSetter ns) k
@@ -130,11 +132,11 @@ notes = Notes
           (_,neGetter) = notesEnabled ns
       in return $ fs .= ns { notesEnabled = (ne,neGetter) }
 
-  , activeNotes = (0,return)
-  , activeNotesSetter = \an fs ->
+  , activeNoteCount = (0,return)
+  , activeNoteCountSetter = \an fs ->
       let ns = view fs
-          (_,anGetter) = activeNotes ns
-      in return $ fs .= ns { activeNotes = (an,anGetter) }
+          (_,anGetter) = activeNoteCount ns
+      in return $ fs .= ns { activeNoteCount = (an,anGetter) }
 
   , activeNoteNodes = ([],return)
   , activeNoteNodesSetter = \ann fs ->
@@ -149,53 +151,74 @@ notes = Notes
       in return $ fs .= ns { maxActiveNotes = (man,manGetter) }
   }
 
+configureMaxNotes = do
+  (w,h) <- liftIO $ do
+    win      <- getWindow
+    Just scr <- W.getScreen win
+    liftM2 (,) (S.getWidth scr ) (S.getHeight scr)
+  setMaxActiveNotes $
+    if | w <= 400  -> 1
+       | h >= 1200 -> 4
+       | h >= 900  -> 3
+       | h >= 480  -> 2
+       | otherwise -> 1
+
 -- embed a note and create a delayed removal of it
 newNote noteType = do
   ne <- getNotesEnabled
   when ne $ void $ do
     man <- getMaxActiveNotes
-    an <- getActiveNotes
-    with fusion $
+    an <- getActiveNoteCount
+    let off = an * 65 + 12
+    with fusion $ do
       if an < man
         then do
           i <- super newNoteId
-          (n,(name,stopClickListen)) <- embedWith prepend $ note i noteType
+          (n,(name,stopClickListen)) <- embedWith prepend $ note i off noteType
           super $ do
-            sig <- construct ()
-            incrementActiveNotes
-            addActiveNote n
-            behavior' sig $ \_ _ ->
-              with fusion $ void $ do
-                x <- extract name
-                liftIO $ print (isJust x)
+            incrementActiveNoteCount
+            addActiveNote i n
+            delayed 8000000 $ do
+              with name $ do
+                style $ opacity =: zero
+              delayed 1000000 $ with fusion $ do
+                delete name
                 super $ do
                   stopClickListen
-                  decrementActiveNotes
+                  decrementActiveNoteCount
                   mn <- extractQueuedNote
-                  forM_ mn newNote
-            bufferDelay 8000000 () sig
-        else super $ queueNote noteType
+
+                    -- have to make the recursive call non-recursive to avoid nested calls to 'with fusion'
+                    -- this will just delay the call until the next iteration of the main event loop
+                  delayed 0 (forM_ mn newNote)
+        else
+          super $ queueNote noteType
+
+delayed t f = do
+  sig <- construct ()
+  behavior' sig $ \Reactor{..} _ -> f >> end
+  bufferDelay t () sig
 
 queueNote noteType = do
   qnn <- getQueuedNoteNodes
   setQueuedNoteNodes (qnn ++ [noteType])
 
-addActiveNote n = do
+addActiveNote i n = do
   ann <- getActiveNoteNodes
-  setActiveNoteNodes (ann ++ [n])
+  setActiveNoteNodes (ann ++ [(i,n)])
 
 newNoteId = do
   i <- getNoteCount
   setNoteCount $! i + 1
   return i
 
-decrementActiveNotes = do
-  an <- getActiveNotes
-  setActiveNotes $! an - 1
+decrementActiveNoteCount = do
+  an <- getActiveNoteCount
+  setActiveNoteCount $! an - 1
 
-incrementActiveNotes = do
-  an <- getActiveNotes
-  setActiveNotes $! an + 1
+incrementActiveNoteCount = do
+  an <- getActiveNoteCount
+  setActiveNoteCount $! an + 1
 
 extractQueuedNote = do
   qnn <- getQueuedNoteNodes
@@ -231,13 +254,9 @@ noteCloseButtonFocusStyle = globalFocusStyle (classified "noteClose") $ do
   opacity        =: dec 0.4
   CSS.filter     =: alpha (eq opacity (int 40))
 
-noteTopRightStyle = do
-  top   =: px 12
-  right =: px 12
-
 data NoteType = SuccessNote | InfoNote | WarningNote | ErrorNote
 
-note i noteType = Named {..}
+note i offTop noteType = Named {..}
   where
 
     name = "note" ++ show i
@@ -245,11 +264,14 @@ note i noteType = Named {..}
     tag = division
 
     styles = do
-      position =: fixed
-      zIndex =: int 999999
+      position      =: fixed
+      zIndex        =: int 999999
       pointerEvents =: none
-      top =: px 12
-      right =: px 12
+      top           =: px offTop
+      right         =: px 12
+      opacity       =: one
+      transition    =: spaces <| str opacity (sec 1) easeIn
+      transition    +: spaces <| str top (sec 0.3) (cubicBezier(0.02, 0.01, 0.47, 1))
 
     element = do
       stopClickListen <- embed $ noteContent name noteType
@@ -298,18 +320,18 @@ noteContent noteName noteType = Atom {..}
     tag = division
 
     styles = do
-      position =: relative
-      pointerEvents =: auto
-      overflow =: hidden
-      margin =: px3 0 0 6
-      padding =: px4 15 15 15 50
-      borderRadius =: px 3
+      position         =: relative
+      pointerEvents    =: auto
+      overflow         =: hidden
+      margin           =: px3 0 0 6
+      padding          =: px4 15 15 15 50
+      borderRadius     =: px 3
       backgroundRepeat =: noRepeat
-      boxShadow =: spaces <| str zero zero (px 12) (hex 0x999)
-      color =: hex 0xfff
-      opacity =: dec 0.8
-      CSS.filter =: alpha (eq opacity (int 80))
-      backgroundColor =: (hex $
+      boxShadow        =: spaces <| str zero zero (px 12) (hex 0x999)
+      color            =: hex 0xfff
+      opacity          =: dec 0.8
+      CSS.filter       =: alpha (eq opacity (int 80))
+      backgroundColor  =: (hex $
         case noteType of
           SuccessNote -> 0x51a351
           InfoNote    -> 0x2f96b4
@@ -320,10 +342,10 @@ noteContent noteName noteType = Atom {..}
       responsive width (ems 11) (ems 18) (ems 25) (px 300)
       stopClickListen <- embed $ okLink noteName
       super $ globalHoverStyle (individual noteName) $ do
-        boxShadow =: spaces <| str zero zero (px 12) white
-        opacity =: one
+        boxShadow  =: spaces <| str zero zero (px 12) white
+        opacity    =: one
         CSS.filter =: alpha (eq opacity (int 100))
-        cursor =: pointer
+        cursor     =: pointer
       return stopClickListen
 
 
