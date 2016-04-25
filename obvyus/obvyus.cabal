@@ -20,8 +20,9 @@ cabal-version:       >=1.10
 executable obvyus
   hs-source-dirs:      src
   main-is:             Main.hs
-  other-modules:       Listing, Listings, Utility, Modal, Modal.Entry, Main
+  other-modules:       Listing, Listings, Utility, Modal, Modal.Entry, Modal.Notification, Main
   default-extensions:  RecordWildCards
+                       MultiParamTypeClasses
                        FlexibleContexts
                        FlexibleInstances
                        NoMonomorphismRestriction

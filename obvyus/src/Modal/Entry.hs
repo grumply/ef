@@ -14,10 +14,6 @@ import Modal
 import Utility
 
 import qualified GHCJS.DOM.Element as E
-import qualified GHCJS.DOM.History as H
-import qualified GHCJS.DOM.Window as W
-import qualified GHCJS.DOM.Location as L
-import qualified GHCJS.DOM as D
 
 import Control.Monad
 
@@ -224,8 +220,11 @@ signupValidater = do
       return ce
     let hasConfirmEmail = confirmEmail == email
     when (hasUsername && hasPassword && hasConfirmPassword && hasConfirmEmail) $ do
-        -- check username, email, and password here
-        setLocation "#close"
+      -- check username, email, and password here
+      -- get loginKey for cookie storage
+      -- set logged in
+      -- maybe redirect to new user page
+      setLocation "#close"
 
   (signupUsernameInput,_) <- with "signupUsername" (listen E.input id listenOpts)
   behavior' signupUsernameInput $ \_ _ -> do
@@ -283,7 +282,7 @@ loginForm = modal "login" $ do
       return ()
 
 loginValidater = do
-  (loginSubmitClicks,_) <- with "loginSubmit" (listen E.click id cancelSubmit)
+  (loginSubmitClicks,_) <- with "loginSubmit" (listen E.click id interceptOpts)
   behavior' loginSubmitClicks $ \_ _ -> do
     hasUsername <- with "loginUsername" $ do
       Just un <- getInputValue
@@ -296,13 +295,17 @@ loginValidater = do
       when (null p) $ void $ style $ glow red
       return (length p >= 8)
     when (hasUsername && hasPassword) $ do
-        -- check username and password here
+      -- check username and password here
+      -- get loginKey for cookie storage
+      -- set logged in
       setLocation "#close"
+
   (loginUsernameInput,_) <- with "loginUsername" (listen E.input id listenOpts)
   behavior' loginUsernameInput $ \_ _ -> do
     with "loginUsername" $ do
       Just un <- getInputValue
       when (length un >= 4) $ void $ style unglow
+
   (loginPasswordInput,_) <- with "loginPassword" (listen E.input id listenOpts)
   behavior' loginPasswordInput $ \_ _ -> do
     with "loginPassword" $ do

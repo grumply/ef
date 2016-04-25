@@ -29,14 +29,16 @@ import qualified GHCJS.DOM.Element as E
 import Prelude hiding (span)
 
 import Modal.Entry
+import Modal.Notification
 
-app base = listings *:* listings *:* base
+app base = listings *:* listings *:* notes *:* base
 
 type App = '[
               Listings 'ProvocativeListings,
               Listings 'InterestingListings,
              -- Obvyus,
              -- Menu,
+             Notes,
              Oxygen,
              Silicon,
              SingleKnot
@@ -83,7 +85,17 @@ main = run Config{..}
         build = setup
 
 setup :: Narrative App IO ()
-setup =
+setup = do
+  mc <- lookupCookie "loginKey"
+  case mc of
+    (key:_)-> do
+      -- confirm login key with server here
+      return ()
+    [] -> return ()
+  newNote SuccessNote
+  newNote InfoNote
+  newNote WarningNote
+  newNote ErrorNote
   void $ with fusion $ do
     entryForms
     child "div" Nothing $ do
