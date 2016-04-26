@@ -224,7 +224,7 @@ signupValidater = do
       -- get loginKey for cookie storage
       -- set logged in
       -- maybe redirect to new user page
-      setLocation "#close"
+      setHash "#close"
 
   (signupUsernameInput,_) <- with "signupUsername" (listen E.input id listenOpts)
   behavior' signupUsernameInput $ \_ _ -> do
@@ -298,7 +298,7 @@ loginValidater = do
       -- check username and password here
       -- get loginKey for cookie storage
       -- set logged in
-      setLocation "#close"
+      setHash "#close"
 
   (loginUsernameInput,_) <- with "loginUsername" (listen E.input id listenOpts)
   behavior' loginUsernameInput $ \_ _ -> do

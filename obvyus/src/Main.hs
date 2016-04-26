@@ -84,8 +84,11 @@ main = run Config{..}
 
         build = setup
 
+
+
 setup :: Narrative App IO ()
 setup = do
+  liftIO $ print "in setup"
   mc <- lookupCookie "loginKey"
   case mc of
     (key:_)-> do
@@ -93,10 +96,12 @@ setup = do
       return ()
     [] -> return ()
   configureMaxNotes
-  newNote SuccessNote
-  newNote InfoNote
-  newNote WarningNote
-  newNote ErrorNote
+  newNote $ SuccessNote 3 $ textAtom "Success; this notification represents a successful occurence of some event as well as a long line of text."
+  newNote $ SuccessNote 7 $ textAtom "Success; this notification represents a successful occurence of some event as well as a long line of text."
+  newNote $ ErrorNote 4 $ textAtom "Error; this notification represents a failure of some event."
+  newNote $ SuccessNote 4 $ textAtom "Success; this notification represents a successful occurence of some event as well as a long line of text."
+  newNote $ SuccessNote 9 $ textAtom "Success; this notification represents a successful occurence of some event as well as a long line of text."
+  newNote $ InfoNote 3 $ textAtom "Info; this is an information notification representing info of some event as well as a long line of text."
   void $ with fusion $ do
     entryForms
     child "div" Nothing $ do
@@ -106,6 +111,14 @@ setup = do
         height    +: per 100
       embed bodyTop
       embed bodyBottom
+
+textAtom t = Atom {..}
+   where
+     tag = paragraph
+
+     styles = return ()
+
+     element = setText t
 
 mainContentContainer :: Component ()
 mainContentContainer = Named {..}
