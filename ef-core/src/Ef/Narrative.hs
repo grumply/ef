@@ -161,6 +161,7 @@ type Invokes messages self super result =
 
 
 
+-- set-oriented bounded parametric subtype polymorphism
 type family (<:) (messages :: [* -> *]) messages' where
 
     (message ': '[]) <: messages' =

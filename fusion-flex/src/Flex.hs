@@ -2,6 +2,7 @@
 {-# language FlexibleContexts #-}
 module Flex
   ( flexible, responsive
+  , transitionFlexWidth
   , Flex.row, Flex.rowReverse
   , Flex.column
   , col, colReverse
@@ -113,12 +114,21 @@ rowReverse = do
     webkitBoxDirection  =: CSS.reverse
     flexDirection       =: CSS.rowReverse
 
-col percent = do
+transitionFlexWidth dur easing = do
+  transitions $ spaces <| str msFlexPreferredSize dur easing
+  transitions $ spaces <| str webkitFlexBasis dur easing
+  transitions $ spaces <| str flexBasis dur easing
+  transitions $ spaces <| str maxWidth dur easing
+
+flexWidth percent = do
   let w = per percent
   msFlexPreferredSize =: w
   webkitFlexBasis     =: w
   flexBasis           =: w
   maxWidth            =: w
+
+col percent = do
+  flexWidth percent
   boxSizing           =: borderBox
   webkitBoxFlex       =: zero
   webkitFlex          =: spaces <| str zero zero auto

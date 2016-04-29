@@ -190,7 +190,7 @@ signupForm = modal "signup" $ do
       return ()
 
 signupValidater = do
-  (signupSubmitClicks,_) <- with "signupSubmit" (listen E.click id interceptOpts)
+  Just (signupSubmitClicks,_) <- with "signupSubmit" (listen E.click id interceptOpts)
   behavior' signupSubmitClicks $ \_ _ -> do
     username <- with "signupUsername" $ do
       Just un <- getInputValue
@@ -198,23 +198,23 @@ signupValidater = do
       when (null un) $ void $ style $ glow red
       return un
     let hasUsername = length username >= 4
-    password <- with "signupPassword" $ do
+    Just password <- with "signupPassword" $ do
       Just p <- getInputValue
       when (length p < 8) $ void $ style $ glow orange
       when (null p) $ void $ style $ glow red
       return p
     let hasPassword = length password >= 8
-    confirmPassword <- with "signupConfirmPassword" $ do
+    Just confirmPassword <- with "signupConfirmPassword" $ do
       Just cp <- getInputValue
       when (cp /= password || null cp) $ void $ style $ glow red
       return cp
     let hasConfirmPassword = confirmPassword == password
-    email <- with "signupEmail" $ do
+    Just email <- with "signupEmail" $ do
       Just e <- getInputValue
       when (null e) $ void $ style $ glow red
       return e
     let hasEmail = not (null email)
-    confirmEmail <- with "signupConfirmEmail" $ do
+    Just confirmEmail <- with "signupConfirmEmail" $ do
       Just ce <- getInputValue
       when (ce /= email || null ce) $ void $ style $ glow red
       return ce
@@ -226,33 +226,33 @@ signupValidater = do
       -- maybe redirect to new user page
       setHash "#close"
 
-  (signupUsernameInput,_) <- with "signupUsername" (listen E.input id listenOpts)
+  Just (signupUsernameInput,_) <- with "signupUsername" (listen E.input id listenOpts)
   behavior' signupUsernameInput $ \_ _ -> do
-    with "signupUsername" $ do
+    void $ with "signupUsername" $ do
       Just un <- getInputValue
       when (length un >= 4) $ void $ style unglow
 
-  (signupPasswordInput,_) <- with "signupPassword" (listen E.input id listenOpts)
+  Just (signupPasswordInput,_) <- with "signupPassword" (listen E.input id listenOpts)
   behavior' signupPasswordInput $ \_ _ -> do
-    with "signupPassword" $ do
+    void $ with "signupPassword" $ do
       Just p <- getInputValue
       when (length p >= 8) $ void $ style unglow
-  (signupConfirmPasswordInput,_) <- with "signupConfirmPassword" (listen E.input id listenOpts)
+  Just (signupConfirmPasswordInput,_) <- with "signupConfirmPassword" (listen E.input id listenOpts)
   behavior' signupConfirmPasswordInput $ \_ _ -> do
-    Just p <- with "signupPassword" getInputValue
-    with "signupConfirmPassword" $ do
+    Just p <- fmap join $ with "signupPassword" getInputValue
+    void $ with "signupConfirmPassword" $ do
       Just pc <- getInputValue
       when (pc /= p) $ void $ style $ glow red
       when (pc == p) $ void $ style unglow
 
-  (signupEmailInput,_) <- with "signupEmail" (listen E.input id listenOpts)
+  Just (signupEmailInput,_) <- with "signupEmail" (listen E.input id listenOpts)
   behavior' signupEmailInput $ \_ _ -> do
-    with "signupEmail" $ do
+    void $ with "signupEmail" $ do
       void $ style unglow
-  (signupConfirmEmailInput,_) <- with "signupConfirmEmail" (listen E.input id listenOpts)
+  Just (signupConfirmEmailInput,_) <- with "signupConfirmEmail" (listen E.input id listenOpts)
   behavior' signupConfirmEmailInput $ \_ _ -> do
-    Just e <- with "signupEmail" getInputValue
-    with "signupConfirmEmail" $ do
+    Just e <- fmap join $ with "signupEmail" getInputValue
+    void $ with "signupConfirmEmail" $ do
       Just ec <- getInputValue
       when (ec /= e) $ void $ style $ glow red
       when (ec == e) $ void $ style unglow
@@ -282,14 +282,14 @@ loginForm = modal "login" $ do
       return ()
 
 loginValidater = do
-  (loginSubmitClicks,_) <- with "loginSubmit" (listen E.click id interceptOpts)
+  Just (loginSubmitClicks,_) <- with "loginSubmit" (listen E.click id interceptOpts)
   behavior' loginSubmitClicks $ \_ _ -> do
-    hasUsername <- with "loginUsername" $ do
+    Just hasUsername <- with "loginUsername" $ do
       Just un <- getInputValue
       when (length un < 4) $ void $ style $ glow orange
       when (null un) $ void $ style $ glow red
       return (length un >= 4)
-    hasPassword <- with "loginPassword" $ do
+    Just hasPassword <- with "loginPassword" $ do
       Just p <- getInputValue
       when (length p < 8) $ void $ style $ glow orange
       when (null p) $ void $ style $ glow red
@@ -300,14 +300,14 @@ loginValidater = do
       -- set logged in
       setHash "#close"
 
-  (loginUsernameInput,_) <- with "loginUsername" (listen E.input id listenOpts)
+  Just (loginUsernameInput,_) <- with "loginUsername" (listen E.input id listenOpts)
   behavior' loginUsernameInput $ \_ _ -> do
-    with "loginUsername" $ do
+    void $ with "loginUsername" $ do
       Just un <- getInputValue
       when (length un >= 4) $ void $ style unglow
 
-  (loginPasswordInput,_) <- with "loginPassword" (listen E.input id listenOpts)
+  Just (loginPasswordInput,_) <- with "loginPassword" (listen E.input id listenOpts)
   behavior' loginPasswordInput $ \_ _ -> do
-    with "loginPassword" $ do
+    void $ with "loginPassword" $ do
       Just p <- getInputValue
       when (length p >= 8) $ void $ style unglow

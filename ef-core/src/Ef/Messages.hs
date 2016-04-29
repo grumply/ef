@@ -92,6 +92,7 @@ type family Subset (messages :: [* -> *]) messages' where
 
 
 
+-- used for bounded parametric subtype polymorphism
 class Can message messages
   where
 

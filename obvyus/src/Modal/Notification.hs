@@ -29,39 +29,47 @@ import Data.Maybe
 import Prelude hiding (span)
 
 import Unsafe.Coerce
--- Partial implementation of a Toastr-based equivalent.
 
--- noteTitleStyle = do
---   fontWeight =: CSS.bold
-
--- noteMessageStyle = do
---   wordWrap =: breakWord
+data Note self super result
+  = Note
+    { noteDurationSeconds :: Int
+    , noteInnerContent :: Atom self super result
+    }
 
 data Notes k
     = Notes
-          { noteCount :: (Int,k)
-          , noteCountSetter :: Int -> k
+          { -- uniqueness reservoir
+            noteCount :: (Int,k)
 
-          , queuedNoteNodes :: forall self super. ([NoteType self super ()],k)
-          , queuedNoteNodesSetter :: forall self super. [NoteType self super ()] -> k
+            -- Notes queued for display
+          , queuedNoteNodes :: forall self super. ([Note self super ()],k)
+          , queuedNoteNodesSetter :: forall self super. [Note self super ()] -> k
 
+            -- Whether notes are enabled for the application
           , notesEnabled :: (Bool,k)
           , notesEnabledSetter :: Bool -> k
 
+            -- Number of notes currently visible
           , activeNoteCount :: (Int,k)
           , activeNoteCountSetter :: Int -> k
 
+            -- Currently active notes
           , activeNoteNodes :: ([(Int,Node)],k)
           , activeNoteNodesSetter :: [(Int,Node)] -> k
 
+            -- Maximum number of visible notes
           , maxActiveNotes :: (Int,k)
           , maxActiveNotesSetter :: Int -> k
-          }
-    | GetNoteCount (Int -> k)
-    | SetNoteCount Int k
 
-    | forall self super. GetQueuedNoteNodes ([NoteType self super ()] -> k)
-    | forall self super. SetQueuedNoteNodes [NoteType self super ()] k
+            -- Container node for notes
+          , noteContainerNode :: (Node,k)
+          , noteContainerNodeSetter :: Node -> k
+          }
+
+    | GetFreshNoteId (Int -> k)
+
+    | forall self super. GetQueuedNoteNodes ([Note self super ()] -> k)
+    | forall self super. SetQueuedNoteNodes [Note self super ()] k
 
     | GetNotesEnabled (Bool -> k)
     | SetNotesEnabled Bool k
@@ -75,8 +83,10 @@ data Notes k
     | GetMaxActiveNotes (Int -> k)
     | SetMaxActiveNotes Int k
 
-getNoteCount = self (GetNoteCount id)
-setNoteCount nc = self (SetNoteCount nc ())
+    | GetNoteContainerNode (Node -> k)
+    | SetNoteContainerNode Node k
+
+getFreshNoteId = self (GetFreshNoteId id)
 
 getQueuedNoteNodes = self (GetQueuedNoteNodes id)
 setQueuedNoteNodes ns = self (SetQueuedNoteNodes ns ())
@@ -93,38 +103,44 @@ setActiveNoteNodes ns = self (SetActiveNoteNodes ns ())
 getMaxActiveNotes = self (GetMaxActiveNotes id)
 setMaxActiveNotes i = self (SetMaxActiveNotes i ())
 
+getNoteContainerNode = self (GetNoteContainerNode id)
+setNoteContainerNode n = self (SetNoteContainerNode n ())
+
 instance Ma Notes Notes where
-  ma use Notes{..} (GetNoteCount nck)        = use (snd noteCount) (nck $ fst noteCount)
-  ma use Notes{..} (SetNoteCount nc k)       = use (noteCountSetter nc) k
+  ma use Notes{..} (GetFreshNoteId nck)       = use (snd noteCount) (nck $ fst noteCount)
 
-  ma use Notes{..} (GetQueuedNoteNodes nsk)  = use (snd queuedNoteNodes) (nsk $ fst queuedNoteNodes)
-  ma use Notes{..} (SetQueuedNoteNodes ns k) = use (queuedNoteNodesSetter ns) k
+  ma use Notes{..} (GetQueuedNoteNodes nsk)   = use (snd queuedNoteNodes) (nsk $ fst queuedNoteNodes)
+  ma use Notes{..} (SetQueuedNoteNodes ns k)  = use (queuedNoteNodesSetter ns) k
 
-  ma use Notes{..} (GetNotesEnabled bk)      = use (snd notesEnabled) (bk $ fst notesEnabled)
-  ma use Notes{..} (SetNotesEnabled b k)     = use (notesEnabledSetter b) k
+  ma use Notes{..} (GetNotesEnabled bk)       = use (snd notesEnabled) (bk $ fst notesEnabled)
+  ma use Notes{..} (SetNotesEnabled b k)      = use (notesEnabledSetter b) k
 
-  ma use Notes{..} (GetActiveNoteCount ik)   = use (snd activeNoteCount) (ik $ fst activeNoteCount)
-  ma use Notes{..} (SetActiveNoteCount ns k) = use (activeNoteCountSetter ns) k
+  ma use Notes{..} (GetActiveNoteCount ik)    = use (snd activeNoteCount) (ik $ fst activeNoteCount)
+  ma use Notes{..} (SetActiveNoteCount ns k)  = use (activeNoteCountSetter ns) k
 
-  ma use Notes{..} (GetActiveNoteNodes nsk)  = use (snd activeNoteNodes) (nsk $ fst activeNoteNodes)
-  ma use Notes{..} (SetActiveNoteNodes ns k) = use (activeNoteNodesSetter ns) k
+  ma use Notes{..} (GetActiveNoteNodes nsk)   = use (snd activeNoteNodes) (nsk $ fst activeNoteNodes)
+  ma use Notes{..} (SetActiveNoteNodes ns k)  = use (activeNoteNodesSetter ns) k
 
-  ma use Notes{..} (GetMaxActiveNotes ik)    = use (snd maxActiveNotes) (ik $ fst maxActiveNotes)
-  ma use Notes{..} (SetMaxActiveNotes i k)   = use (maxActiveNotesSetter i) k
+  ma use Notes{..} (GetMaxActiveNotes ik)     = use (snd maxActiveNotes) (ik $ fst maxActiveNotes)
+  ma use Notes{..} (SetMaxActiveNotes i k)    = use (maxActiveNotesSetter i) k
+
+  ma use Notes{..} (GetNoteContainerNode nk)  = use (snd noteContainerNode) (nk $ fst noteContainerNode)
+  ma use Notes{..} (SetNoteContainerNode n k) = use (noteContainerNodeSetter n) k
 
 
--- X set max active notes based on device width and height
--- add text to notetype
--- add duration to notetype
--- add slide-off-page ability for note removal
--- - push notes apart so they don't stack
--- get close button working
+-- valid notes use requires calling:
+--   setMaxActiveNotes
+-- and
+--   setNoteContainerNode
 notes = Notes
-  { noteCount = (0,return)
-  , noteCountSetter = \nc fs ->
-      let ns = view fs
-          (_,ncGetter) = noteCount ns
-      in return $ fs .= ns { noteCount = (nc,ncGetter) }
+  { noteCount =
+      let start = 0
+          update = \fs ->
+            let ns = view fs
+                (nc,ncGetter) = noteCount ns
+                !nc' = nc + 1
+            in return $ fs .= ns { noteCount = (nc',ncGetter) }
+      in (start,update)
 
   , queuedNoteNodes = ([],return)
   , queuedNoteNodesSetter = \qnn fs ->
@@ -155,6 +171,12 @@ notes = Notes
       let ns = view fs
           (_,manGetter) = maxActiveNotes ns
       in return $ fs .= ns { maxActiveNotes = (man,manGetter) }
+
+  , noteContainerNode = (undefined,return)
+  , noteContainerNodeSetter = \ncn fs ->
+      let ns = view fs
+          (_,ncnGetter) = noteContainerNode ns
+      in return $ fs .= ns { noteContainerNode = (ncn,ncnGetter) }
   }
 
 configureMaxNotes = do
@@ -169,276 +191,254 @@ configureMaxNotes = do
        | h >= 480  -> 2
        | otherwise -> 1
 
--- embed a note and create a delayed removal of it
-newNote :: (Monad super, Lift IO super, Web <: self, '[Notes] <: self)
-        => NoteType self super res -> Narrative self super (Promise (Maybe (Promise res)))
-newNote noteType = delayed 0 $ do
-  ne <- getNotesEnabled
-  if ne
-    then do
-      man <- getMaxActiveNotes
-      an <- getActiveNoteCount
-      with fusion $
-        if an < man
-          then do
-            i <- super newNoteId
-            p <- newPromise
-            ans <- super getActiveNoteNodes
-            offset <- super $ calculateNoteOffset ans
-            liftIO $ print offset
-            embedResult <- embedWith prepend $ note i offset noteType
-            let (n,(name,(res,(closeClicks,stopClickListen)))) = embedResult
-            (_,styled) <- super $ using n $ style $ return ()
-            fulfill p res
-            super $ do
-              incrementActiveNoteCount
-              addActiveNote i n
-              behavior' closeClicks $ \_ _ -> remover i name stopClickListen
-              delayed (1000000 * noteDurationSeconds noteType)$ do
-                remover i name stopClickListen
-                clearSignal closeClicks
-            return $ Just p
-          else do
-            p <- newPromise
-            let modifiedNoteInnerContent =
-                  (noteInnerContent noteType) {
-                    element = do
-                      x <- element $ noteInnerContent noteType
-                      fulfill p x
-                      return ()
-                    }
-                modifiedNoteType = noteType {
-                  noteInnerContent = modifiedNoteInnerContent
-                  }
-            super $ queueNote modifiedNoteType
-            return $ Just p
-    else
-      return Nothing
+noteContinerId = "noteContainer"
+
+createNoteContainer = do
+  fromJust <$> with fusion $ embedWith child noteContainerAtom
   where
-    remover i name stopClickListen = void $ do
-      with name $ style $ opacity =: zero
-      delayed 1000000 $ with fusion $ do
-        delete name
-        super $ removeActiveNoteWithId i
-        super recalculateNoteOffsets
-        super $ do
-          stopClickListen
-          decrementActiveNoteCount
-          mn <- extractQueuedNote
-          -- have to make the recursive call non-recursive to avoid nested calls to 'with fusion'
-          -- this will just delay the call until the next iteration of the main event loop
-          delayed 0 (forM_ mn newNote)
+    noteContainerAtom = Atom{..}
+      where
 
-removeActiveNoteWithId i = do
-  ans <- getActiveNoteNodes
-  let newans = Prelude.filter (\(n,note) -> n /= i) ans
-  setActiveNoteNodes newans
+        tag = division
 
-recalculateNoteOffsets = do
-  ans <- getActiveNoteNodes
-  _ <- foldM (\acc (_,n) -> do
-               using n $ style $ top =: px (round acc)
-               return (acc + 64 + 12)
-             ) 12 ans
-  return ()
+        styles = do
+          visibility =: hidden
+          position   =: fixed
+          top        =: px 12
+          right      =: px 12
 
-calculateNoteOffset = fmap round . go 12
-  where
-    go acc [] = return acc
-    go acc (x@(_,n):ns) = go (acc + 64 + 12) ns
+        element = return ()
 
-delayedWith s t f = do
-  (sig,_) <- mapSignal' (const ()) s
-  behavior' sig $ \Reactor{..} _ -> f >> end
-  bufferDelay t () sig
-  clearSignal sig
+-- -- embed a note and create a delayed removal of it
+-- newNote :: (Monad super, Lift IO super, Web <: self, '[Notes] <: self)
+--         => Note self super res -> Narrative self super (Promise (Maybe (Promise res)))
+-- newNote noteType = delayed 0 $ do
+--   ne <- getNotesEnabled
+--   if ne
+--     then do
+--       man <- getMaxActiveNotes
+--       an <- getActiveNoteCount
+--       fmap join $ with fusion $
+--         if an < man
+--           then do
+--             i <- super newNoteId
+--             p <- newPromise
+--             ans <- super getActiveNoteNodes
+--             offset <- super $ calculateNoteOffset ans
+--             liftIO $ print offset
+--             embedResult <- embedWith prepend $ note i offset noteType
+--             let (n,(name,(res,(closeClicks,stopClickListen)))) = embedResult
+--             (_,styled) <- super $ using n $ style $ return ()
+--             fulfill p res
+--             super $ do
+--               incrementActiveNoteCount
+--               addActiveNote i n
+--               behavior' closeClicks $ \_ _ -> remover i name stopClickListen
+--               delayed (1000000 * noteDurationSeconds noteType)$ do
+--                 remover i name stopClickListen
+--                 clearSignal closeClicks
+--             return $ Just p
 
-delayed t f = do
-  p <- newPromise
-  sig <- construct ()
-  behavior' sig $ \Reactor{..} _ -> f >>= fulfill p >> end
-  bufferDelay t () sig
-  return p
+--           else do
+--             p <- newPromise
+--             let modifiedNoteInnerContent =
+--                   (noteInnerContent noteType) {
+--                     element = do
+--                       x <- element $ noteInnerContent noteType
+--                       fulfill p x
+--                       return ()
+--                     }
+--                 modifiedNoteType = noteType {
+--                   noteInnerContent = modifiedNoteInnerContent
+--                   }
+--             super $ queueNote modifiedNoteType
+--             return $ Just p
 
-queueNote noteType = do
-  qnn <- getQueuedNoteNodes
-  setQueuedNoteNodes (qnn ++ [noteType])
+--     else
+--       return Nothing
 
-addActiveNote i n = do
-  ann <- getActiveNoteNodes
-  setActiveNoteNodes (ann ++ [(i,n)])
+--   where
+--     remover i name stopClickListen = void $ do
+--       with name $ style $ opacity =: zero
+--       delayed 1000000 $ with fusion $ do
+--         delete name
+--         super $ removeActiveNoteWithId i
+--         super recalculateNoteOffsets
+--         super $ do
+--           stopClickListen
+--           decrementActiveNoteCount
+--           mn <- extractQueuedNote
+--           -- have to make the recursive call non-recursive to avoid nested calls to 'with fusion'
+--           -- this will just delay the call until the next iteration of the main event loop
+--           delayed 0 (forM_ mn newNote)
 
-newNoteId = do
-  i <- getNoteCount
-  setNoteCount $! i + 1
-  return i
+-- removeActiveNoteWithId i = do
+--   ans <- getActiveNoteNodes
+--   let newans = Prelude.filter (\(n,note) -> n /= i) ans
+--   setActiveNoteNodes newans
 
-decrementActiveNoteCount = do
-  an <- getActiveNoteCount
-  setActiveNoteCount $! an - 1
+-- recalculateNoteOffsets = do
+--   ans <- getActiveNoteNodes
+--   _ <- foldM (\acc (_,n) -> do
+--                using n $ style $ top =: px (round acc)
+--                return (acc + 64 + 12)
+--              ) 12 ans
+--   return ()
 
-incrementActiveNoteCount = do
-  an <- getActiveNoteCount
-  setActiveNoteCount $! an + 1
+-- calculateNoteOffset = fmap round . go 12
+--   where
+--     go acc [] = return acc
+--     go acc (x@(_,n):ns) = go (acc + 64 + 12) ns
 
-extractQueuedNote = do
-  qnn <- getQueuedNoteNodes
-  case qnn of
-    [] -> return Nothing
-    (x:xs) -> do
-      setQueuedNoteNodes xs
-      return (Just x)
+-- delayedWith s t f = do
+--   (sig,_) <- mapSignal' (const ()) s
+--   behavior' sig $ \Reactor{..} _ -> f >> end
+--   bufferDelay t () sig
+--   clearSignal sig
 
-noteCloseButtonStyle = do
-  position       =: relative
-  right          =: ems (-0.3)
-  top            =: ems (-0.3)
-  float          =: right
-  fontSize       =: px 20
-  fontWeight     =: CSS.bold
-  color          =: hex 0xfff
-  textShadow     =: spaces <| str zero (px 1) zero (hex 0xfff)
-  opacity        =: dec 0.8
-  CSS.filter     =: alpha (eq opacity (int 80))
+-- delayed t f = do
+--   p <- newPromise
+--   sig <- construct ()
+--   behavior' sig $ \Reactor{..} _ -> f >>= fulfill p >> end
+--   bufferDelay t () sig
+--   return p
 
-noteCloseButtonHoverStyle = globalHoverStyle (classified "noteClose") $ do
-  color          =: white
-  textDecoration =: none
-  cursor         =: pointer
-  opacity        =: dec 0.4
-  CSS.filter     =: alpha (eq opacity (int 40))
+-- queueNote noteType = do
+--   qnn <- getQueuedNoteNodes
+--   setQueuedNoteNodes (qnn ++ [noteType])
 
-noteCloseButtonFocusStyle = globalFocusStyle (classified "noteClose") $ do
-  color          =: white
-  textDecoration =: none
-  cursor         =: pointer
-  opacity        =: dec 0.4
-  CSS.filter     =: alpha (eq opacity (int 40))
+-- addActiveNote i n = do
+--   ann <- getActiveNoteNodes
+--   setActiveNoteNodes (ann ++ [(i,n)])
 
-data NoteType self super result
-  = SuccessNote
-    { noteDurationSeconds :: Int
-    , noteInnerContent :: Atom self super result
-    }
-  | InfoNote
-    { noteDurationSeconds :: Int
-    , noteInnerContent :: Atom self super result
-    }
-  | WarningNote
-    { noteDurationSeconds :: Int
-    , noteInnerContent :: Atom self super result
-    }
-  | ErrorNote
-    { noteDurationSeconds :: Int
-    , noteInnerContent :: Atom self super result
-    }
+-- newNoteId = do
+--   i <- getNoteCount
+--   setNoteCount $! i + 1
+--   return i
 
-note i offTop noteType = Named {..}
-  where
+-- decrementActiveNoteCount = do
+--   an <- getActiveNoteCount
+--   setActiveNoteCount $! an - 1
 
-    name = "note" ++ show i
+-- incrementActiveNoteCount = do
+--   an <- getActiveNoteCount
+--   setActiveNoteCount $! an + 1
 
-    tag = division
+-- extractQueuedNote = do
+--   qnn <- getQueuedNoteNodes
+--   case qnn of
+--     [] -> return Nothing
+--     (x:xs) -> do
+--       setQueuedNoteNodes xs
+--       return (Just x)
 
-    styles = do
-      position      =: fixed
-      height        =: px 64
-      padding       =: px4 8 8 8 40
-      overflow      =: hidden
-      zIndex        =: int 999999
-      pointerEvents =: none
-      top           =: px offTop
-      right         =: px 12
-      opacity       =: dec 0.8
-      transitions $ spaces <| str opacity (sec 1) easeIn
-      transitions $ spaces <| str top (sec 0.8) (cubicBezier(0.02, 0.01, 0.47, 1))
+-- note i offTop noteType = Named {..}
+--   where
 
-    element = do
-      closeInterface <- embed $ noteContent name noteType
-      return (name,closeInterface)
+--     name = "note" ++ show i
 
-okLink noteName = Atom {..}
-  where
+--     tag = division
 
-    tag = anchor
+--     styles = do
+--       borderRadius  =: px 5
+--       width         =: px 250
+--       position      =: fixed
+--       height        =: px 64
+--       padding       =: px 8
+--       zIndex        =: int 999999
+--       pointerEvents =: none
+--       top           =: px offTop
+--       right         =: px 12
+--       transitions $ spaces <| str top (sec 1) easeIn
 
-    styles = do
-      float       =: left
-      CSS.content =: quoted <| string "\\ue207"
-      fontFamily  =: string "Glyphicons Regular"
-      cursor      =: pointer
-      marginRight =: px (-4)
+--     element = do
+--       closeInterface <- embed $ noteContent i name noteType
+--       return (name,closeInterface)
 
-    element = do
-      -- _ <- embed okGlyph
-      setAttr "href" "#close"
-      (clicks,stopClickListen) <- listen E.click id interceptOpts
-      return (clicks,stopClickListen)
+-- noteContent :: (Monad super, Lift IO super, Web <: self)
+--             => Int -> String -> Note self super res -> Atom self super (res,(Signal self super T.MouseEvent,Narrative self super ()))
+-- noteContent i noteName noteType = Atom {..}
+--   where
 
-okGlyph = Atom {..}
-  where
+--     tag = division
 
-    tag = span
+--     styles = do
+--       marginLeft       =: px 25
+--       marginRight      =: px 20
+--       height           =: px 64
+--       pointerEvents    =: auto
+--       overflow         =: hidden
+--       backgroundRepeat =: noRepeat
+--       boxShadow        =: spaces <| str zero zero (px 12) (hex 0x999)
+--       color            =: hex 0xfff
+--       opacity          =: zero
+--       CSS.filter       =: alpha (eq opacity (int 80))
+--       backgroundColor  =: hex 0xddd
+--       helveticaNeue (weight 300) black (px 12)
+--       transitions $ spaces <| str opacity (sec 0.8) easeIn
 
-    styles = do
-      width =: px 50
-      top            =: px 8
-      position       =: relative
-      textDecoration =: none
-      fontSize       =: px 25
-      color          =: darkcyan
+--     element = do
+--       slf <- current
+--       void $ style $ opacity =: one
+--       _ <- embed obvyusIcon
+--       res <- embed (noteInnerContent noteType)
+--       closeInterface <- embed $ noteCloseButton i
+--       super $ globalHoverStyle (individual noteName) $ do
+--         boxShadow  =: spaces <| str zero zero (px 12) white
+--         opacity    =: one
+--         CSS.filter =: alpha (eq opacity (int 100))
+--         cursor     =: pointer
+--       return (res,closeInterface)
 
-    element =
-      glyph gOk
+-- noteCloseButton i = Named {..}
+--   where
 
-noteContent :: (Monad super, Lift IO super, Web <: self)
-            => String -> NoteType self super res -> Atom self super (res,(Signal self super T.MouseEvent,Narrative self super ()))
-noteContent noteName noteType = Atom {..}
-  where
+--     name = "noteClose" ++ show i
 
-    tag = division
+--     tag = anchor
 
-    styles = do
-      width            =: px 300
-      position         =: relative
-      height           =: px 64
-      pointerEvents    =: auto
-      overflow         =: hidden
-      borderRadius     =: px 3
-      backgroundRepeat =: noRepeat
-      boxShadow        =: spaces <| str zero zero (px 12) (hex 0x999)
-      color            =: hex 0xfff
-      opacity          =: dec 1
-      CSS.filter       =: alpha (eq opacity (int 80))
-      backgroundColor  =: hex
-        (case noteType of
-          SuccessNote{} -> 0x51a351
-          InfoNote{}    -> 0x2f96b4
-          WarningNote{} -> 0xf89406
-          ErrorNote{}   -> 0xbd362f)
+--     styles = do
+--       position       =: relative
+--       right          =: ems (-0.3)
+--       top            =: ems (-0.3)
+--       float          =: right
+--       fontSize       =: px 20
+--       fontWeight     =: CSS.bold
+--       color          =: hex 0xfff
+--       textShadow     =: spaces <| str zero (px 1) zero (hex 0xfff)
+--       opacity        =: dec 0.8
+--       CSS.filter     =: alpha (eq opacity (int 80))
 
-    element = do
-      responsive width (ems 11) (ems 18) (ems 25) (px 300)
-      res <- embed (noteInnerContent noteType)
-      closeInterface <- embed $ okLink noteName
-      super $ globalHoverStyle (individual noteName) $ do
-        boxShadow  =: spaces <| str zero zero (px 12) white
-        opacity    =: one
-        CSS.filter =: alpha (eq opacity (int 100))
-        cursor     =: pointer
-      return (res,closeInterface)
-      
+--     element = do
+--       super $ globalHoverStyle (classified name) $ do
+--         color          =: white
+--         textDecoration =: none
+--         cursor         =: pointer
+--         opacity        =: dec 0.4
+--         CSS.filter     =: alpha (eq opacity (int 40))
+--       super $ globalFocusStyle (classified name) $ do
+--         color          =: white
+--         textDecoration =: none
+--         cursor         =: pointer
+--         opacity        =: dec 0.4
+--         CSS.filter     =: alpha (eq opacity (int 40))
+--       setText "X"
+--       setAttr "href" "#close"
+--       listen E.click id listenOpts
 
+-- obvyusIcon = Atom {..}
+--   where
 
-{-
-/*Additional properties for button version
- iOS requires the button element instead of an anchor tag.
- If you want the anchor version, it requires `href="#"`.*/
-button.toast-close-button {
-  padding: 0;
-  cursor: pointer;
-  background: transparent;
-  border: 0;
-  -webkit-appearance: none;
-}
--}
+--     tag = span
+
+--     styles = do
+--       position       =: relative
+--       textDecoration =: none
+--       bgColor        =: darkcyan
+--       left           =: px 8
+--       top            =: px 8
+--       verticalAlign  =: CSS.center
+--       timesNewRoman CSS.bold white (px 15)
+
+--     element = void $ setText "O"
+
