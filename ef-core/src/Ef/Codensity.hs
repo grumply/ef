@@ -28,9 +28,6 @@ newtype Codensity messages super result =
 instance Functor (Codensity messages super)
   where
 
-    -- fmap a function, f, over a Codensity computation by unwrapping the
-    -- computation and applying it to a continuation composed with f and
-    -- rewrapping.
     fmap f (Codensity computation) =
         let
           compose continue =
@@ -44,13 +41,11 @@ instance Functor (Codensity messages super)
 instance Applicative (Codensity messages super)
   where
 
-    -- lift a value, x, into a Codensity computation by applying a
-    -- continuation to the value and wrapping in Codensity.
     pure x =
         let
           computation continue =
               continue x
-        
+
         in
           Codensity computation
 
@@ -81,7 +76,6 @@ instance Monad (Codensity messages super)
         Codensity composed
       where
 
-        -- compose two steps of a Codensity computation
         composed
             :: forall thirdResult.
                (    secondResult
@@ -93,9 +87,6 @@ instance Monad (Codensity messages super)
             runCodensity one (two threeFrom)
           where
 
-            -- build the second step of a computation with:
-            --     1. the first result
-            --     2. a continuation of the second result
             two
                 :: (    secondResult
                      -> Narrative messages super thirdResult

@@ -17,21 +17,12 @@ module Ef.Traits
     , stretch
     ) where
 
-
-
 import Ef.Type.Set
 import Ef.Type.Nat
 
 import Data.Typeable
 import Control.DeepSeq
 
-
--- | Traits are the abstract components of 'Object's. A Traits construction
--- consists of zero or more `Trait`s in a de-duplicated singly-linked. There
--- are negative performance implications to this approach, but it represents
--- exactly what we're looking for in a set of attributes. Refer to the
--- documentation for a discussion of the performance implications of this
--- approach.
 data Traits (traits :: [* -> *]) x
   where
 
@@ -75,36 +66,6 @@ instance (Ord (context x),Ord (Traits contexts x))
 
         (Trait trait0 contexts0) <= (Trait trait1 contexts1) =
             trait0 <= trait1 && contexts0 <= contexts1
-
-
-
--- instance Binary (Traits '[] x)
---   where
-
---     get =
---        pure Empty
-
-
-
---     put _ =
---        pure ()
-
-
-
--- instance ( Binary (Traits traits x)
---          , Denies trait traits
---          , Binary (trait x)
---          )
---     => Binary (Traits (trait ': traits) x)
---   where
-
---     get =
---         Trait <$> get <*> get
-
-
-
---     put (Trait x as) =
---         put x >> put as
 
 
 
@@ -163,12 +124,6 @@ instance {-# OVERLAPS #-}
 
 
 
--- | Has is a class representing (1) the ability to push a trait into a set of
--- traits and (2) the ability to pull a trait out of a set of traits. If an
--- object witnesses a trait, these exist automatically. There does appear to be
--- some room here for dynamic extension of object capabilities, like pulling
--- components out of an object and constructing a desired component that doesn't
--- exist naturally inside that object, but I have yet to explore that.
 class Has (trait :: * -> *) (traits :: [* -> *])
   where
 
@@ -210,7 +165,6 @@ instance ( index ~ Offset trait traits
           pull' index traits
 
 
--- | stretch is a 'pull' followed by a transformation by way of @f@ followed by a 'push'.
 stretch
     :: ( index ~ Offset trait traits
        , Has' trait traits index

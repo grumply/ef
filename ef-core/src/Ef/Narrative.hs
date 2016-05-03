@@ -160,7 +160,7 @@ type Invokes messages self super result =
     )
     => Narrative self super result
 
--- set-oriented bounded parametric subtype polymorphism implemented as statically guaranteed set containment.
+-- bounded parametric subtype polymorphism implemented as statically guaranteed set containment.
 -- Given S <: T, guarantee that forall elements t of T, there is an element s of S where t is equal to s.
 type family (<:) messages (messages' :: [* -> *]) where
 
@@ -172,7 +172,7 @@ type family (<:) messages (messages' :: [* -> *]) where
       , messages <: messages'
       )
 
--- set-oriented bounded parametric supertype polymorphism implemented as statically guaranteed set containment.
+-- bounded parametric supertype polymorphism implemented as statically guaranteed set containment.
 -- Given T :> S, guarantee that forall elements t of T, there is an element s of S where t is equal to s.
 type family (:>) (messages' :: [* -> *]) messages where
 
