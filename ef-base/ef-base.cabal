@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                ef-base
-version:             0.9.1.0
+version:             0.9.2.0
 synopsis:            Base libraries to enable more convenient Ef development including mtl-style computation components.
 -- description:         
 homepage:            ef-lang.org
@@ -19,47 +19,39 @@ cabal-version:       >=1.10
 library
   exposed-modules:     Ef.Contract
                      , Ef.Except
-                     , Ef.Except.Messages
-                     , Ef.Except.Methods
                      , Ef.Knot
-                     , Ef.Knot.Messages
-                     , Ef.Knot.Methods
-                     , Ef.Single
-                     , Ef.Knot.Messages.Single
-                     , Ef.Knot.Methods.Single
+                     , Ef.Bidir
                      , Ef.Fork
                      , Data.Promise
                      , Ef.IO
                      , Ef.Guard
                      , Ef.Manage
-                     , Ef.Manage.Messages
-                     , Ef.Manage.Methods
                      , Ef.Fiber
-                     , Ef.Fiber.Messages
-                     , Ef.Fiber.Methods
                      , Ef.Event
                      , Ef.Generate
                      , Ef.Note
                      , Ef.Var
                      , Ef.Set
-                     , Ef.Set.Messages
-                     , Ef.Set.Methods
                      , Ef.Get
-                     , Ef.Get.Messages
-                     , Ef.Get.Methods
                      , Ef.Reflect
                      , Ef.Reader
-                     , Ef.Reader.Messages
-                     , Ef.Reader.Methods
                      , Ef.State
-                     , Ef.State.Methods
-                     , Ef.State.Messages
                      , Ef.Writer
-                     , Ef.Writer.Methods
-                     , Ef.Writer.Messages
                      , System.Random.Shuffle
   -- other-modules:       
   -- other-extensions:
-  build-depends:       base >=4.8 && <4.9, ef-core >= 1 && < 1.1, random >= 1.1, deepseq >= 1.4.1.1
+  default-extensions:  DataKinds
+                       KindSignatures
+                       TypeOperators
+                       MultiParamTypeClasses
+                       FlexibleContexts
+                       BangPatterns
+                       GADTs
+                       RankNTypes
+                       NoMonomorphismRestriction
+                       ScopedTypeVariables
+                       ExistentialQuantification
+
+  build-depends:       base >=4.8 && <4.9, ef-core >= 1.1 && < 1.2, random >= 1.1
   hs-source-dirs:      src
   default-language:    Haskell2010

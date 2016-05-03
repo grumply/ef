@@ -22,7 +22,7 @@ module Ef
 import Ef.Type.Set as Core (Union)
 
 import Ef.Object as Core
-import Ef.Methods as Core
+import Ef.Traits as Core
 
 import Ef.Narrative as Core
 import Ef.Messages as Core
@@ -39,12 +39,12 @@ import qualified Control.Exception as Exception
 --
 -- >    (resultObj,result) <- delta obj narrative
 delta
-    :: ( (Methods methods) `Ma` (Messages self)
+    :: ( (Traits traits) `Ma` (Messages messages)
        , Monad super
        )
-    => Object methods super
-    -> Narrative self super result
-    -> super (Object methods super,result)
+    => Object traits super
+    -> Narrative messages super result
+    -> super (Object traits super,result)
 delta =
     _delta
 {-# INLINE delta #-}
@@ -55,34 +55,34 @@ infixr 5 $.
 --
 -- >    (resultObj,result) <- obj $. narrative
 ($.)
-    :: ( (Methods methods) `Ma` (Messages self)
+    :: ( (Traits traits) `Ma` (Messages messages)
        , Monad super
        )
-    => Object methods super
-    -> Narrative self super result
-    -> super (Object methods super,result)
+    => Object traits super
+    -> Narrative messages super result
+    -> super (Object traits super,result)
    
 ($.) = delta
 
 ($..)
-    :: ( (Methods methods) `Ma` (Messages self)
+    :: ( (Traits traits) `Ma` (Messages messages)
        , Monad super
-       , NFData (Methods methods (Implementation methods super))
+       , NFData (Traits traits (Object traits super -> super (Object traits super)))
        )
-    => Object methods super
-    -> Narrative self super result
-    -> super (Object methods super,result)
+    => Object traits super
+    -> Narrative messages super result
+    -> super (Object traits super,result)
 
 ($..) = delta__
 
 delta__
-    :: ( (Methods methods) `Ma` (Messages self)
+    :: ( (Traits traits) `Ma` (Messages messages)
        , Monad super
-       , NFData (Methods methods (Implementation methods super))
+       , NFData (Traits traits (Object traits super -> super (Object traits super)))
        )
-    => Object methods super
-    -> Narrative self super result
-    -> super (Object methods super,result)
+    => Object traits super
+    -> Narrative messages super result
+    -> super (Object traits super,result)
 delta__ obj =
     go
     where
@@ -101,12 +101,12 @@ infixl 5 #
 --
 -- >    resultObj <- pure obj # method1 # method2 # method3
 (#)
-    :: ( (Methods methods) `Ma` (Messages self)
+    :: ( (Traits traits) `Ma` (Messages messages)
        , Monad super
        )
-    => super (Object methods super)
-    -> Narrative self super result
-    -> super (Object methods super)
+    => super (Object traits super)
+    -> Narrative messages super result
+    -> super (Object traits super)
 (#) obj passage = fmap fst (obj #. passage)
 
 
@@ -116,12 +116,12 @@ infixl 5 #
 --
 -- >    (resultObj,result) <- pure obj # method1 # method2 #. method3
 (#.)
-    :: ( (Methods methods) `Ma` (Messages self)
+    :: ( (Traits traits) `Ma` (Messages messages)
        , Monad super
        )
-    => super (Object methods super)
-    -> Narrative self super result
-    -> super (Object methods super,result)
+    => super (Object traits super)
+    -> Narrative messages super result
+    -> super (Object traits super,result)
 
 (#.) obj passage = obj >>= ($. passage)
 
@@ -132,54 +132,49 @@ infixl 5 #
 --
 -- >    (resultObj,result) <- delta' obj smallNarrative
 delta'
-    :: ( (Methods methods) `Ma` (Messages self')
-       , Upcast (Messages self) (Messages self')
+    :: ( (Traits traits) `Ma` (Messages messages')
+       , Upcast (Messages messages) (Messages messages')
        , Monad super
        )
-    => Object methods super
-    -> Narrative self super result
-    -> super (Object methods super,result)
+    => Object traits super
+    -> Narrative messages super result
+    -> super (Object traits super,result)
 delta' o =
     _delta o . upcast
 
 
 
-($>) :: ( (Methods methods) `Ma` (Messages self)
+($>) :: ( (Traits traits) `Ma` (Messages messages)
         , Monad super
         )
-     => Object methods super
-     -> Narrative self super result
-     -> super ([(Object methods super,Narrative self super result)])
-
+     => Object traits super
+     -> Narrative messages super result
+     -> super [(Object traits super, Narrative messages super result)]
 ($>) = stream
 
-stream :: ( (Methods methods) `Ma` (Messages self)
+stream :: ( (Traits traits) `Ma` (Messages messages)
           , Monad super
           )
-       => Object methods super
-       -> Narrative self super result
-       -> super ([(Object methods super,Narrative self super result)])
-
+       => Object traits super
+       -> Narrative messages super result
+       -> super [(Object traits super, Narrative messages super result)]
 stream = __delta
 
 {-# INLINE __delta #-}
 __delta
-    :: ( (Methods methods) `Ma` (Messages self)
+    :: ( (Traits traits) `Ma` (Messages messages)
        , Monad super
        )
-    => Object methods super
-    -> Narrative self super result
-    -> super ([(Object methods super,Narrative self super result)])
-__delta =
+    => Object traits super
+    -> Narrative messages super result
+    -> super [(Object traits super, Narrative messages super result)]__delta =
     go []
     where
-        go acc object (Fail e) = do
-            return $ (object,Fail e):acc
+        go acc object (Fail e) = return $ (object, Fail e) : accil e):acc
         go acc object (Super sup) = do
             narrative <- sup
             go ((object,Super sup):acc) object narrative
-        go acc object (Return result) = do
-            return $ (object,Return result):acc
+        go acc object (Return result) = return $ (object, Return result) : accsult):acc
         go acc object (Say symbol k) =
             let !(method,b) = ma (,) (deconstruct object) symbol
             in do !object' <- method object
@@ -189,17 +184,17 @@ __delta =
 
 {-# INLINE _delta #-}
 _delta
-    :: ( (Methods methods) `Ma` (Messages self)
+    :: ( (Traits traits) `Ma` (Messages messages)
        , Monad super
        )
-    => Object methods super
-    -> Narrative self super result
-    -> super (Object methods super,result)
+    => Object traits super
+    -> Narrative messages super result
+    -> super (Object traits super,result)
 _delta object =
     go
   where
 
-      go (Say symbol ~k) =
+      go (Say symbol k) =
           let
               !(method,b) =
                   ma (,) (deconstruct object) symbol

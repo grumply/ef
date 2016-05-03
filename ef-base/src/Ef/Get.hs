@@ -1,26 +1,45 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
-module Ef.Get
-    ( module Ef.Get.Messages
-    ) where
+module Ef.Get (Get, get, introspect) where
 
-
-import Ef.Ma
-
-import qualified Ef.Get.Methods as Methods
-import Ef.Get.Messages
+import Ef
 
 import Unsafe.Coerce
 
+data Get k where
+    Get :: (Object methods super,k) -> k -> k -> Get k
+    Reset :: k -> Get k
+    Reify :: k -> Get k
+    View :: (Object gs m -> k)  -> Get k
 
-instance Ma Methods.Get Get
+get :: Use Get methods super
+get =
+    Get (undefined,reifier) resetter pure
   where
 
-    ma use (Methods.Get _ _ k) (Reify k') =
-        use k k'
+    resetter fs =
+        case view fs of
 
-    ma use (Methods.Get (o,k) _ _) (Get ok) =
-        use k (ok (unsafeCoerce o))
+            Get (_,reifies) reset gets ->
+                pure $ fs .=
+                    Get (undefined,reifies) reset gets
 
-    ma use (Methods.Get _ k _) (Reset k') =
-        use k k'
+    reifier fs =
+        case view fs of
+
+            Get _ reset gets ->
+                pure $ fs .=
+                     Get (fs,reifier) reset gets
+{-# INLINE get #-}
+
+introspect :: Invoke Get self super (Object methods super)
+introspect = do
+    -- does the reset help the GC or is it unnecessary?
+    self (Reify ())
+    slf <- self (View id)
+    self (Reset ())
+    return slf
+
+instance Ma Get Get where
+    ma use (Get _ _ k) (Reify k')    = use k k'
+    ma use (Get (o,k) _ _) (View ok) = use k (ok (unsafeCoerce o))
+    ma use (Get _ k _) (Reset k')    = use k k'
 

@@ -1,10 +1,3 @@
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
 module Ef.Generate
   ( Generator(..)
   , generate
@@ -29,7 +22,7 @@ import Unsafe.Coerce
 newtype Generator self super a =
     Select
         { enumerate
-              :: ('[Knot] <: self, Monad super)
+              :: ('[Knot] :> self, Monad super)
               => Producer a self super ()
         }
 
@@ -39,8 +32,7 @@ instance Functor (Generator self super)
   where
 
     fmap f (Select p) =
-        let produce = producer . flip id . f
-        in Select (p //> produce)
+        Select (p //> (producer . flip id . f))
 
 
 
@@ -100,13 +92,13 @@ instance Monoid (Generator self super a)
     mappend = (<|>)
 
 
-generate :: ('[Knot] <: self, Monad super)
+generate :: ('[Knot] :> self, Monad super)
          => Generator self super a -> Narrative self super ()
 generate l =
     linearize (enumerate (l >> mzero))
 
 
-each :: ('[Knot] <: self, Monad super, F.Foldable f)
+each :: ('[Knot] :> self, Monad super, F.Foldable f)
      => f a -> Producer' a self super ()
 each xs =
     let yields yield = F.foldr (const . yield) (return ()) xs
@@ -119,7 +111,7 @@ discard _ =
     in Knotted ignore
 
 
-every :: ('[Knot] <: self, Monad super)
+every :: ('[Knot] :> self, Monad super)
       => Generator self super a -> Producer' a self super ()
 every it =
     discard >\\ enumerate it

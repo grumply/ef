@@ -1,9 +1,3 @@
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RecordWildCards #-}
 module Ef.Note
     ( Book(..)
     , notate
@@ -73,7 +67,7 @@ data Book notes self super =
 
 
 notated
-    :: ('[Knot] <: self, Monad super) 
+    :: ('[Knot] :> self, Monad super) 
     => (Book notes self super -> Narrative self super result)
     -> Knotted (Action notes) notes () X self super (result,notes)
 
@@ -144,7 +138,7 @@ notated computation =
 
 
 notate
-    :: ( '[Knot] <: self
+    :: ( '[Knot] :> self
        , Monad super
        , Monoid notes
        )

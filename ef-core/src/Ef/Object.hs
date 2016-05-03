@@ -12,13 +12,12 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE Safe #-}
 module Ef.Object
-    ( Method
-    , Implementation
+    ( Trait
     , Subclass
     , Has(..)
     , Use
     , stretch
-    , Methods(..)
+    , Traits(..)
     , Object(..)
     , (*:*)
     , view
@@ -32,64 +31,56 @@ module Ef.Object
     , (.=)
     ) where
 
-
-
 import Ef.Type.Set
-import Ef.Methods
+import Ef.Traits
 
 import Ef.Type.Nat
 import Control.DeepSeq
 
-type Method method methods super =
-    method (Implementation methods super)
+type Trait trait traits super =
+    trait (Object traits super -> super (Object traits super))
 
-type Use method methods super =
-    (Has' method methods (Offset method methods), Monad super)
-    => method (Implementation methods super)
+type Use trait traits super =
+    (Has' trait traits (Offset trait traits), Monad super)
+    => trait (Object traits super -> super (Object traits super))
 
+type family Subclass (traits :: [* -> *]) traits' where
 
-type Implementation methods super =
-    Object methods super -> super (Object methods super)
+    Subclass (trait ': '[]) traits' =
+        (Has' trait traits' (Offset trait traits'))
 
-
-
-type family Subclass (methods :: [* -> *]) methods' where
-
-    Subclass (method ': '[]) methods' =
-        (Has' method methods' (Offset method methods'))
-
-    Subclass (method ': methods) methods' =
-        (Has' method methods' (Offset method methods'),methods `Subclass` methods')
+    Subclass (trait ': traits) traits' =
+        (Has' trait traits' (Offset trait traits'),traits `Subclass` traits')
 
 
 
-type family Superclass methods methods' where
+type family Superclass traits traits' where
 
-    Superclass methods methods' =
-        methods' `Subclass` methods
+    Superclass traits traits' =
+        traits' `Subclass` traits
 
 
 
-newtype Object methods super =
+newtype Object traits super =
       Object
           {
             deconstruct
-                :: Methods methods (Implementation methods super)
+                :: Traits traits (Object traits super -> super (Object traits super))
           }
-          
-instance (NFData (Methods methods (Implementation methods super))) => NFData (Object methods super) where
-    rnf (Object methods) = rnf methods
 
-instance (Eq (Methods methods (Implementation methods super)))
-        => Eq (Object methods super)
+instance (NFData (Traits traits (Object traits super -> super (Object traits super)))) => NFData (Object traits super) where
+    rnf (Object traits) = rnf traits
+
+instance (Eq (Traits traits (Object traits super -> super (Object traits super))))
+        => Eq (Object traits super)
     where
 
         (Object o1) == (Object o2) =
             o1 == o2
 
 
-instance (Ord (Methods methods (Implementation methods super)))
-        => Ord (Object methods super)
+instance (Ord (Traits traits (Object traits super -> super (Object traits super))))
+        => Ord (Object traits super)
      where
 
          (Object o1) <= (Object o2) =
@@ -104,16 +95,16 @@ instance (Ord (Methods methods (Implementation methods super)))
 
 
 
--- instance ( Typeable (Object methods super)
---          , Binary (Methods methods (Implementation methods super))
+-- instance ( Typeable (Object traits super)
+--          , Binary (Traits traits (Object traits super -> super (Object traits super)))
 --          )
---     => Binary (Object methods super)
+--     => Binary (Object traits super)
 --   where
 
 --     get =
 --         do
 --           typeRep <- get
---           if typeRep == typeOf (undefined :: Object methods super) then
+--           if typeRep == typeOf (undefined :: Object traits super) then
 --               Object <$> get
 --           else
 --               mzero
@@ -127,31 +118,31 @@ instance (Ord (Methods methods (Implementation methods super)))
 
 
 
-instance Show (Methods methods (Implementation methods super))
-         => Show (Object methods super)
+instance Show (Traits traits (Object traits super -> super (Object traits super)))
+         => Show (Object traits super)
     where
 
-        show (Object methods) =
-            "{ " ++ show methods ++ " }"
+        show (Object traits) =
+            "{ " ++ show traits ++ " }"
 
 
 
 infixr 6 *:*
 
 (*:*)
-    :: Denies method methods
-    => method a
-    -> Methods methods a
-    -> Methods (method ': methods) a
+    :: Denies trait traits
+    => trait a
+    -> Traits traits a
+    -> Traits (trait ': traits) a
 
-(*:*) = Method
+(*:*) = Trait
 
 
 
 view
-    :: Has method methods
-    => Object methods super
-    -> Method method methods super
+    :: Has trait traits
+    => Object traits super
+    -> Trait trait traits super
 
 view =
     pull . deconstruct
@@ -159,10 +150,10 @@ view =
 
 
 view2
-    :: (methods `Superclass` '[method1,method2])
-    => Object methods super
-    -> ( Method method1 methods super
-       , Method method2 methods super
+    :: (traits `Superclass` '[trait1,trait2])
+    => Object traits super
+    -> ( Trait trait1 traits super
+       , Trait trait2 traits super
        )
 view2 obj =
     (view obj,view obj)
@@ -170,11 +161,11 @@ view2 obj =
 
 
 view3
-    :: (methods `Superclass` '[method1,method2,method3])
-    => Object methods super
-    -> ( Method method1 methods super
-       , Method method2 methods super
-       , Method method3 methods super
+    :: (traits `Superclass` '[trait1,trait2,trait3])
+    => Object traits super
+    -> ( Trait trait1 traits super
+       , Trait trait2 traits super
+       , Trait trait3 traits super
        )
 view3 obj =
     (view obj,view obj,view obj)
@@ -183,12 +174,12 @@ view3 obj =
 
 
 view4
-    :: (methods `Superclass` '[method1,method2,method3,method4])
-    => Object methods super
-    -> ( Method method1 methods super
-       , Method method2 methods super
-       , Method method3 methods super
-       , Method method4 methods super
+    :: (traits `Superclass` '[trait1,trait2,trait3,trait4])
+    => Object traits super
+    -> ( Trait trait1 traits super
+       , Trait trait2 traits super
+       , Trait trait3 traits super
+       , Trait trait4 traits super
        )
 view4 obj =
     (view obj,view obj,view obj,view obj)
@@ -197,16 +188,16 @@ view4 obj =
 
 
 view5
-    :: ( methods `Superclass`
-            '[method1,method2,method3,method4
-             ,method5]
+    :: ( traits `Superclass`
+            '[trait1,trait2,trait3,trait4
+             ,trait5]
        )
-    => Object methods super
-    -> ( Method method1 methods super
-       , Method method2 methods super
-       , Method method3 methods super
-       , Method method4 methods super
-       , Method method5 methods super
+    => Object traits super
+    -> ( Trait trait1 traits super
+       , Trait trait2 traits super
+       , Trait trait3 traits super
+       , Trait trait4 traits super
+       , Trait trait5 traits super
        )
 view5 obj =
     (view obj,view obj,view obj,view obj,view obj)
@@ -214,17 +205,17 @@ view5 obj =
 
 
 view6
-    :: ( methods `Superclass`
-            '[method1,method2,method3,method4
-             ,method5,method6]
+    :: ( traits `Superclass`
+            '[trait1,trait2,trait3,trait4
+             ,trait5,trait6]
        )
-    => Object methods super
-    -> ( Method method1 methods super
-       , Method method2 methods super
-       , Method method3 methods super
-       , Method method4 methods super
-       , Method method5 methods super
-       , Method method6 methods super
+    => Object traits super
+    -> ( Trait trait1 traits super
+       , Trait trait2 traits super
+       , Trait trait3 traits super
+       , Trait trait4 traits super
+       , Trait trait5 traits super
+       , Trait trait6 traits super
        )
 view6 obj =
     (view obj,view obj,view obj,view obj,view obj,view obj)
@@ -232,18 +223,18 @@ view6 obj =
 
 
 view7
-    :: ( methods `Superclass`
-            '[method1,method2,method3,method4
-             ,method5,method6,method7]
+    :: ( traits `Superclass`
+            '[trait1,trait2,trait3,trait4
+             ,trait5,trait6,trait7]
        )
-    => Object methods super
-    -> ( Method method1 methods super
-       , Method method2 methods super
-       , Method method3 methods super
-       , Method method4 methods super
-       , Method method5 methods super
-       , Method method6 methods super
-       , Method method7 methods super
+    => Object traits super
+    -> ( Trait trait1 traits super
+       , Trait trait2 traits super
+       , Trait trait3 traits super
+       , Trait trait4 traits super
+       , Trait trait5 traits super
+       , Trait trait6 traits super
+       , Trait trait7 traits super
        )
 view7 obj =
     (view obj,view obj,view obj,view obj,view obj,view obj,view obj)
@@ -251,19 +242,19 @@ view7 obj =
 
 
 view8
-    :: ( methods `Superclass`
-            '[method1,method2,method3,method4
-             ,method5,method6,method7,method8]
+    :: ( traits `Superclass`
+            '[trait1,trait2,trait3,trait4
+             ,trait5,trait6,trait7,trait8]
        )
-    => Object methods super
-    -> ( Method method1 methods super
-       , Method method2 methods super
-       , Method method3 methods super
-       , Method method4 methods super
-       , Method method5 methods super
-       , Method method6 methods super
-       , Method method7 methods super
-       , Method method8 methods super
+    => Object traits super
+    -> ( Trait trait1 traits super
+       , Trait trait2 traits super
+       , Trait trait3 traits super
+       , Trait trait4 traits super
+       , Trait trait5 traits super
+       , Trait trait6 traits super
+       , Trait trait7 traits super
+       , Trait trait8 traits super
        )
 view8 obj =
     (view obj,view obj,view obj,view obj,view obj,view obj,view obj,view obj)
@@ -273,12 +264,12 @@ view8 obj =
 infixl 5 .=
 
 (.=)
-    :: ( Has method methods
+    :: ( Has trait traits
        , Monad super
        )
-    => Object methods super
-    -> Method method methods super
-    -> Object methods super
+    => Object traits super
+    -> Trait trait traits super
+    -> Object traits super
 
 is .= x =
     let

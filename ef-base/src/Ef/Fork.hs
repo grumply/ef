@@ -1,7 +1,3 @@
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE RankNTypes #-}
 module Ef.Fork
     ( forkWith
     , forkOSWith
@@ -22,20 +18,20 @@ import Control.Monad
 
 
 
-newtype ThreadRef methods super result =
-    ThreadRef (ThreadId,Promise (Object methods super,Either SomeException result))
+newtype ThreadRef traits super result =
+    ThreadRef (ThreadId,Promise (Object traits super,Either SomeException result))
 
 
 forkWith
-    :: ( (Methods methods) `Ma` (Messages messages)
+    :: ( (Traits traits) `Ma` (Messages messages)
        , Lift IO super'
        , Monad super'
        , Monad super
        )
-    => Object methods super
+    => Object traits super
     -> Narrative messages super result
     -> (forall x. super x -> IO x)
-    -> Narrative messages' super' (ThreadRef methods super result)
+    -> Narrative messages' super' (ThreadRef traits super result)
 
 forkWith comp plan embedInIO = do
     p <- io newPromiseIO
@@ -47,15 +43,15 @@ forkWith comp plan embedInIO = do
 
 
 forkOSWith
-    :: ( (Methods methods) `Ma` (Messages messages)
+    :: ( (Traits traits) `Ma` (Messages messages)
        , Lift IO super'
        , Monad super'
        , Monad super
        )
-    => Object methods super
+    => Object traits super
     -> Narrative messages super result
     -> (forall x. super x -> IO x)
-    -> Narrative messages' super' (ThreadRef methods super result)
+    -> Narrative messages' super' (ThreadRef traits super result)
     
 forkOSWith comp plan embedInIO = do
     p <- io newPromiseIO
@@ -67,16 +63,16 @@ forkOSWith comp plan embedInIO = do
 
 
 forkOnWith
-    :: ( (Methods methods) `Ma` (Messages messages)
+    :: ( (Traits traits) `Ma` (Messages messages)
        , Lift IO super'
        , Monad super'
        , Monad super
        )
     => Int
-    -> Object methods super
+    -> Object traits super
     -> Narrative messages super result
     -> (forall x. super x -> IO x)
-    -> Narrative messages' super' (ThreadRef methods super result)
+    -> Narrative messages' super' (ThreadRef traits super result)
 
 forkOnWith n comp plan embedInIO = do
     p <- io newPromiseIO

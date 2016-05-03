@@ -1,12 +1,6 @@
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-module Ef.Knot.Messages.Single
-    ( SingleKnot(..)
+module Ef.Bidir
+    ( Bidir(..)
+    , bidir
     , linearize
 
     , Producer
@@ -28,7 +22,7 @@ module Ef.Knot.Messages.Single
     , Server'
     -- , server
 
-    , SingleKnotted(..)
+    , Bi(..)
     , Effect
     , Effect'
     , knotted
@@ -65,33 +59,33 @@ module Ef.Knot.Messages.Single
     , for
     ) where
 
-
-
-import Ef.Narrative
+import Ef
 
 import Control.Applicative
 import Control.Monad
 import Unsafe.Coerce
 
-import Ef.Messages
+instance Ma Bidir Bidir
 
+data Bidir k where
+    Bidir :: k -> Bidir k
+    Request :: a' -> (a -> Narrative self super r) -> Bidir k
+    Respond :: b -> (b' -> Narrative self super r) -> Bidir k
 
-data SingleKnot k where
-    Request :: a' -> (a -> Narrative self super r) -> SingleKnot k
-    Respond :: b -> (b' -> Narrative self super r) -> SingleKnot k
+bidir =
+    Bidir return
+{-# INLINE bidir #-}
 
-
-linearize :: ('[SingleKnot] <: self, Monad super)
-          => Effect self super r -> Invoke SingleKnot self super r
+linearize :: ('[Bidir] :> self, Monad super)
+          => Effect self super r -> Invoke Bidir self super r
 linearize e = do
     rewrite $
-        runSingleKnotted e
+        runBi e
             (\a' apl -> self (Request a' apl))
             (\b b'p -> self (Respond b b'p))
 
-
 rewrite :: forall self super result.
-           ('[SingleKnot] <: self, Monad super)
+           ('[Bidir] :> self, Monad super)
         => Narrative self super result -> Narrative self super result
 rewrite = transform go
   where
@@ -106,57 +100,57 @@ rewrite = transform go
 
 
 instance Functor super
-    => Functor (SingleKnotted a' a b' b self super)
+    => Functor (Bi a' a b' b self super)
   where
 
-    fmap f (SingleKnotted w) =
-        SingleKnotted $ \up dn -> fmap f (w up dn)
+    fmap f (Bi w) =
+        Bi $ \up dn -> fmap f (w up dn)
 
 
 instance Monad super
-    => Applicative (SingleKnotted a' a b' b self super)
+    => Applicative (Bi a' a b' b self super)
   where
 
     pure a =
-        SingleKnotted $ \_ _ -> pure a
+        Bi $ \_ _ -> pure a
 
     wf <*> wx =
-        SingleKnotted $ \up dn -> do
-            f <- runSingleKnotted wf up dn
-            fmap f (runSingleKnotted wx (unsafeCoerce up) (unsafeCoerce dn))
+        Bi $ \up dn -> do
+            f <- runBi wf up dn
+            fmap f (runBi wx (unsafeCoerce up) (unsafeCoerce dn))
 
     (*>) = (>>)
 
 
 instance Monad super
-    => Monad (SingleKnotted a' a b' b self super)
+    => Monad (Bi a' a b' b self super)
   where
 
     return = pure
 
     r >>= rs =
-        SingleKnotted $ \up dn -> do
-            v <- runSingleKnotted r (unsafeCoerce up) (unsafeCoerce dn)
-            runSingleKnotted (rs v) up dn
+        Bi $ \up dn -> do
+            v <- runBi r (unsafeCoerce up) (unsafeCoerce dn)
+            runBi (rs v) up dn
 
 
 instance ( Monad super
          , Monoid r
-         ) => Monoid (SingleKnotted a' a b' b self super r)
+         ) => Monoid (Bi a' a b' b self super r)
   where
 
     mempty =
         pure mempty
 
     mappend w1 w2 =
-        SingleKnotted $ \up dn -> do
-            result <- runSingleKnotted w1 up dn
-            fmap (mappend result) $ runSingleKnotted w2 (unsafeCoerce up) (unsafeCoerce dn)
+        Bi $ \up dn -> do
+            result <- runBi w1 up dn
+            fmap (mappend result) $ runBi w2 (unsafeCoerce up) (unsafeCoerce dn)
 
 
 
 instance MonadPlus super
-    => Alternative (SingleKnotted a' a b' b self super)
+    => Alternative (Bi a' a b' b self super)
   where
 
     empty = mzero
@@ -167,17 +161,17 @@ instance MonadPlus super
 -- what does this look like without inspecting Super since that was the entire
 -- point of implementing 'transform'?
 instance MonadPlus super
-    => MonadPlus (SingleKnotted a' a b' b self super)
+    => MonadPlus (Bi a' a b' b self super)
   where
 
     mzero =
-        SingleKnotted $ \_ _ -> super mzero
+        Bi $ \_ _ -> super mzero
 
     mplus w0 w1 =
-        SingleKnotted $ \up dn ->
+        Bi $ \up dn ->
             let
               routine =
-                  runSingleKnotted w0 (unsafeCoerce up) (unsafeCoerce dn)
+                  runBi w0 (unsafeCoerce up) (unsafeCoerce dn)
             in
               rewriteMplus up dn routine
       where
@@ -196,7 +190,7 @@ instance MonadPlus super
             go (Super sup) =
               let
                 routine =
-                    runSingleKnotted w1 (unsafeCoerce up) (unsafeCoerce dn)
+                    runBi w1 (unsafeCoerce up) (unsafeCoerce dn)
 
               in
                 Super (fmap go sup `mplus` return routine)
@@ -209,19 +203,19 @@ closed :: X -> a
 closed (X x) = closed x
 
 
-type Effect self super r = SingleKnotted X () () X self super r
+type Effect self super r = Bi X () () X self super r
 
-type Producer b self super r = SingleKnotted X () () b self super r
+type Producer b self super r = Bi X () () b self super r
 
 
 producer
     :: forall self super b r.
-       ('[SingleKnot] <: self, Monad super)
+       ('[Bidir] :> self, Monad super)
     => ((b -> Narrative self super ()) -> Narrative self super r)
     -> Producer' b self super r
 
 producer f =
-    SingleKnotted $ \_ dn ->
+    Bi $ \_ dn ->
         do
           let
             scopedDown =
@@ -234,17 +228,17 @@ producer f =
           f respond
 
 
-type Consumer a self super r = SingleKnotted () a () X self super r
+type Consumer a self super r = Bi () a () X self super r
 
 
 consumer
     :: forall self super a r.
-       ('[SingleKnot] <: self, Monad super)
+       ('[Bidir] :> self, Monad super)
     => (Narrative self super a -> Narrative self super r)
     -> Consumer' a self super r
 
 consumer f =
-    SingleKnotted $ \up _ ->
+    Bi $ \up _ ->
         do
           let
             scopedUp =
@@ -257,17 +251,17 @@ consumer f =
           f request
 
 
-type Line a b self super r = SingleKnotted () a () b self super r
+type Line a b self super r = Bi () a () b self super r
 
 
 line
     :: forall self super a b r.
-       ('[SingleKnot] <: self, Monad super)
+       ('[Bidir] :> self, Monad super)
     => (Narrative self super a -> (b -> Narrative self super ()) -> Narrative self super r)
     -> Line a b self super r
 
 line f =
-    SingleKnotted $ \up _ ->
+    Bi $ \up _ ->
         do
           let
             request =
@@ -279,16 +273,16 @@ line f =
           f request respond
 
 
-type Client a' a self super r = SingleKnotted a' a () X self super r
+type Client a' a self super r = Bi a' a () X self super r
 
 
-type Server b' b self super r = SingleKnotted X () b' b self super r
+type Server b' b self super r = Bi X () b' b self super r
 
 
-newtype SingleKnotted a' a b' b self super r =
-    SingleKnotted
+newtype Bi a' a b' b self super r =
+    Bi
         {
-          runSingleKnotted
+          runBi
               :: (forall x. a' -> (a -> Narrative self super x) -> Narrative self super x)
               -> (forall x. b -> (b' -> Narrative self super x) -> Narrative self super x)
               -> Narrative self super r
@@ -298,49 +292,49 @@ newtype SingleKnotted a' a b' b self super r =
 
 knotted
     :: forall self a a' b b' super r.
-       ('[SingleKnot] <: self, Monad super)
+       ('[Bidir] :> self, Monad super)
     => ((a' -> Narrative self super a) -> (b -> Narrative self super b') -> Narrative self super r)
-    -> SingleKnotted a' a b' b self super r
+    -> Bi a' a b' b self super r
 
 knotted f =
-    SingleKnotted $ \up _ ->
+    Bi $ \up _ ->
         do
             let request a = self (Request a Return)
                 respond b' = self (Respond b' Return)
             f request respond
 
-type Effect' self super r = forall x' x y' y. SingleKnotted x' x y' y self super r
+type Effect' self super r = forall x' x y' y. Bi x' x y' y self super r
 
-type Producer' b self super r = forall x' x. SingleKnotted x' x () b self super r
+type Producer' b self super r = forall x' x. Bi x' x () b self super r
 
-type Consumer' a self super r = forall y' y. SingleKnotted () a y' y self super r
+type Consumer' a self super r = forall y' y. Bi () a y' y self super r
 
-type Server' b' b self super r = forall x' x. SingleKnotted x' x b' b self super r
+type Server' b' b self super r = forall x' x. Bi x' x b' b self super r
 
-type Client' a' a self super r = forall y' y. SingleKnotted a' a y' y self super r
+type Client' a' a self super r = forall y' y. Bi a' a y' y self super r
 
 --------------------------------------------------------------------------------
 -- Respond; substitute yields
 
-cat :: ('[SingleKnot] <: self, Monad super) => Line a a self super r
+cat :: ('[Bidir] :> self, Monad super) => Line a a self super r
 cat = line $ \awt yld -> forever (awt >>= yld)
 
 
 infixl 3 //>
-(//>) :: ('[SingleKnot] <: self, Monad super)
-      => SingleKnotted x' x b' b self super a'
-      -> (b -> SingleKnotted x' x c' c self super b')
-      -> SingleKnotted x' x c' c self super a'
+(//>) :: ('[Bidir] :> self, Monad super)
+      => Bi x' x b' b self super a'
+      -> (b -> Bi x' x c' c self super b')
+      -> Bi x' x c' c self super a'
 p0 //> fb =
-    SingleKnotted $ \up dn -> do
-        let routine = runSingleKnotted p0 up (unsafeCoerce dn)
+    Bi $ \up dn -> do
+        let routine = runBi p0 up (unsafeCoerce dn)
         substituteResponds fb up dn routine
 
 
 substituteResponds
     :: forall self super x' x c' c b' b a'.
-       ('[SingleKnot] <: self, Monad super)
-    => (b -> SingleKnotted x' x c' c self super b')
+       ('[Bidir] :> self, Monad super)
+    => (b -> Bi x' x c' c self super b')
     -> (forall r. x' -> (x -> Narrative self super r) -> Narrative self super r)
     -> (forall r. c -> (c' -> Narrative self super r) -> Narrative self super r)
     -> Narrative self super a'
@@ -358,7 +352,7 @@ substituteResponds fb up dn =
                    case x of
 
                        Respond b _ -> do
-                               let routine = runSingleKnotted (fb (unsafeCoerce b))
+                               let routine = runBi (fb (unsafeCoerce b))
                                                         (unsafeCoerce up)
                                                         (unsafeCoerce dn)
                                res <- routine
@@ -368,54 +362,54 @@ substituteResponds fb up dn =
                _ -> ignore
 
 
-for :: ('[SingleKnot] <: self, Monad super)
-    => SingleKnotted x' x b' b self super a'
-    -> (b -> SingleKnotted x' x c' c self super b')
-    -> SingleKnotted x' x c' c self super a'
+for :: ('[Bidir] :> self, Monad super)
+    => Bi x' x b' b self super a'
+    -> (b -> Bi x' x c' c self super b')
+    -> Bi x' x c' c self super a'
 for = (//>)
 
 
 infixr 3 <\\
-(<\\) :: ('[SingleKnot] <: self, Monad super)
-      => (b -> SingleKnotted x' x c' c self super b')
-      -> SingleKnotted x' x b' b self super a'
-      -> SingleKnotted x' x c' c self super a'
+(<\\) :: ('[Bidir] :> self, Monad super)
+      => (b -> Bi x' x c' c self super b')
+      -> Bi x' x b' b self super a'
+      -> Bi x' x c' c self super a'
 f <\\ p = p //> f
 
 
 infixl 4 \<\
-(\<\) :: ('[SingleKnot] <: self, Monad super)
-      => (b -> SingleKnotted x' x c' c self super b')
-      -> (a -> SingleKnotted x' x b' b self super a')
+(\<\) :: ('[Bidir] :> self, Monad super)
+      => (b -> Bi x' x c' c self super b')
+      -> (a -> Bi x' x b' b self super a')
       -> a
-      -> SingleKnotted x' x c' c self super a'
+      -> Bi x' x c' c self super a'
 p1 \<\ p2 = p2 />/ p1
 
 
 infixr 4 ~>
-(~>) :: ('[SingleKnot] <: self, Monad super)
-     => (a -> SingleKnotted x' x b' b self super a')
-     -> (b -> SingleKnotted x' x c' c self super b')
+(~>) :: ('[Bidir] :> self, Monad super)
+     => (a -> Bi x' x b' b self super a')
+     -> (b -> Bi x' x c' c self super b')
      -> a
-     -> SingleKnotted x' x c' c self super a'
+     -> Bi x' x c' c self super a'
 (~>) = (/>/)
 
 
 infixl 4 <~
-(<~) :: ('[SingleKnot] <: self, Monad super)
-     => (b -> SingleKnotted x' x c' c self super b')
-     -> (a -> SingleKnotted x' x b' b self super a')
+(<~) :: ('[Bidir] :> self, Monad super)
+     => (b -> Bi x' x c' c self super b')
+     -> (a -> Bi x' x b' b self super a')
      -> a
-     -> SingleKnotted x' x c' c self super a'
+     -> Bi x' x c' c self super a'
 g <~ f = f ~> g
 
 
 infixr 4 />/
-(/>/) :: ('[SingleKnot] <: self, Monad super)
-      => (a -> SingleKnotted x' x b' b self super a')
-      -> (b -> SingleKnotted x' x c' c self super b')
+(/>/) :: ('[Bidir] :> self, Monad super)
+      => (a -> Bi x' x b' b self super a')
+      -> (b -> Bi x' x c' c self super b')
       -> a
-      -> SingleKnotted x' x c' c self super a'
+      -> Bi x' x c' c self super a'
 (fa />/ fb) a = fa a //> fb
 
 
@@ -424,20 +418,20 @@ infixr 4 />/
 
 
 infixr 4 >\\
-(>\\) :: ('[SingleKnot] <: self, Monad super)
-      => (b' -> SingleKnotted a' a y' y self super b)
-      -> SingleKnotted b' b y' y self super c
-      -> SingleKnotted a' a y' y self super c
+(>\\) :: ('[Bidir] :> self, Monad super)
+      => (b' -> Bi a' a y' y self super b)
+      -> Bi b' b y' y self super c
+      -> Bi a' a y' y self super c
 fb' >\\ p0 =
-    SingleKnotted $ \up dn -> do
-        let routine = runSingleKnotted p0 (unsafeCoerce up) dn
+    Bi $ \up dn -> do
+        let routine = runBi p0 (unsafeCoerce up) dn
         substituteRequests fb' up dn routine
 
 
 substituteRequests
     :: forall self super x' x c' c b' b a'.
-       ('[SingleKnot] <: self, Monad super)
-    => (b -> SingleKnotted x' x c' c self super b')
+       ('[Bidir] :> self, Monad super)
+    => (b -> Bi x' x c' c self super b')
     -> (forall r. x' -> (x -> Narrative self super r) -> Narrative self super r)
     -> (forall r. c -> (c' -> Narrative self super r) -> Narrative self super r)
     -> Narrative self super a'
@@ -459,7 +453,7 @@ substituteRequests fb' up dn =
                   case x of
 
                       Request b' _ -> do
-                              let routine = runSingleKnotted (fb' (unsafeCoerce b'))
+                              let routine = runBi (fb' (unsafeCoerce b'))
                                                        (unsafeCoerce up)
                                                        (unsafeCoerce dn)
                               res <- routine
@@ -470,44 +464,44 @@ substituteRequests fb' up dn =
 
 
 infixr 5 /</
-(/</) :: ('[SingleKnot] <: self, Monad super)
-      => (c' -> SingleKnotted b' b x' x self super c)
-      -> (b' -> SingleKnotted a' a x' x self super b)
+(/</) :: ('[Bidir] :> self, Monad super)
+      => (c' -> Bi b' b x' x self super c)
+      -> (b' -> Bi a' a x' x self super b)
       -> c'
-      -> SingleKnotted a' a x' x self super c
+      -> Bi a' a x' x self super c
 p1 /</ p2 = p2 \>\ p1
 
 
 infixr 5 >~
-(>~) :: ('[SingleKnot] <: self, Monad super)
-     => SingleKnotted a' a y' y self super b
-     -> SingleKnotted () b y' y self super c
-     -> SingleKnotted a' a y' y self super c
+(>~) :: ('[Bidir] :> self, Monad super)
+     => Bi a' a y' y self super b
+     -> Bi () b y' y self super c
+     -> Bi a' a y' y self super c
 p1 >~ p2 = (\() -> p1) >\\ p2
 
 
 infixl 5 ~<
-(~<) :: ('[SingleKnot] <: self, Monad super)
-     => SingleKnotted () b y' y self super c
-     -> SingleKnotted a' a y' y self super b
-     -> SingleKnotted a' a y' y self super c
+(~<) :: ('[Bidir] :> self, Monad super)
+     => Bi () b y' y self super c
+     -> Bi a' a y' y self super b
+     -> Bi a' a y' y self super c
 p2 ~< p1 = p1 >~ p2
 
 
 infixl 5 \>\
-(\>\) :: ('[SingleKnot] <: self, Monad super)
-      => (b' -> SingleKnotted a' a y' y self super b)
-      -> (c' -> SingleKnotted b' b y' y self super c)
+(\>\) :: ('[Bidir] :> self, Monad super)
+      => (b' -> Bi a' a y' y self super b)
+      -> (c' -> Bi b' b y' y self super c)
       -> c'
-      -> SingleKnotted a' a y' y self super c
+      -> Bi a' a y' y self super c
 (fb' \>\ fc') c' = fb' >\\ fc' c'
 
 
 infixl 4 \\<
-(\\<) :: ('[SingleKnot] <: self, Monad super)
-      => SingleKnotted b' b y' y self super c
-      -> (b' -> SingleKnotted a' a y' y self super b)
-      -> SingleKnotted a' a y' y self super c
+(\\<) :: ('[Bidir] :> self, Monad super)
+      => Bi b' b y' y self super c
+      -> (b' -> Bi a' a y' y self super b)
+      -> Bi a' a y' y self super c
 p \\< f = f >\\ p
 
 
@@ -518,26 +512,26 @@ p \\< f = f >\\ p
 infixl 7 >>~
 (>>~)
     :: forall self a' a b' b c' c super r.
-       Knows SingleKnot self super
-    => SingleKnotted a' a b' b self super r
-    -> (b -> SingleKnotted b' b c' c self super r)
-    -> SingleKnotted a' a c' c self super r
+       Knows Bidir self super
+    => Bi a' a b' b self super r
+    -> (b -> Bi b' b c' c self super r)
+    -> Bi a' a c' c self super r
 p0 >>~ fb0 =
-    SingleKnotted $ \up dn -> do
+    Bi $ \up dn -> do
         pushRewrite up dn fb0 p0
 
 
 pushRewrite
     :: forall self super r a' a b' b c' c.
-       ('[SingleKnot] <: self, Monad super)
+       ('[Bidir] :> self, Monad super)
     => (forall x. a' -> (a -> Narrative self super x) -> Narrative self super x)
     -> (forall x. c -> (c' -> Narrative self super x) -> Narrative self super x)
-    -> (b -> SingleKnotted b' b c' c self super r)
-    -> SingleKnotted a' a b' b self super r
+    -> (b -> Bi b' b c' c self super r)
+    -> Bi a' a b' b self super r
     -> Narrative self super r
 pushRewrite up dn fb0 p0 =
-    let upstream = runSingleKnotted p0 (unsafeCoerce up) (unsafeCoerce dn)
-        downstream b = runSingleKnotted (fb0 b) (unsafeCoerce up) (unsafeCoerce dn)
+    let upstream = runBi p0 (unsafeCoerce up) (unsafeCoerce dn)
+        downstream b = runBi (fb0 b) (unsafeCoerce up) (unsafeCoerce dn)
     in goLeft downstream upstream
   where
 
@@ -573,28 +567,28 @@ pushRewrite up dn fb0 p0 =
 
 
 infixl 8 <~<
-(<~<) :: ('[SingleKnot] <: self, Monad super)
-      => (b -> SingleKnotted b' b c' c self super r)
-      -> (a -> SingleKnotted a' a b' b self super r)
+(<~<) :: ('[Bidir] :> self, Monad super)
+      => (b -> Bi b' b c' c self super r)
+      -> (a -> Bi a' a b' b self super r)
       -> a
-      -> SingleKnotted a' a c' c self super r
+      -> Bi a' a c' c self super r
 p1 <~< p2 = p2 >~> p1
 
 
 infixr 8 >~>
-(>~>) :: ('[SingleKnot] <: self, Monad super)
-      => (_a -> SingleKnotted a' a b' b self super r)
-      -> (b -> SingleKnotted b' b c' c self super r)
+(>~>) :: ('[Bidir] :> self, Monad super)
+      => (_a -> Bi a' a b' b self super r)
+      -> (b -> Bi b' b c' c self super r)
       -> _a
-      -> SingleKnotted a' a c' c self super r
+      -> Bi a' a c' c self super r
 (fa >~> fb) a = fa a >>~ fb
 
 
 infixr 7 ~<<
-(~<<) :: ('[SingleKnot] <: self, Monad super)
-      => (b -> SingleKnotted b' b c' c self super r)
-      -> SingleKnotted a' a b' b self super r
-      -> SingleKnotted a' a c' c self super r
+(~<<) :: ('[Bidir] :> self, Monad super)
+      => (b -> Bi b' b c' c self super r)
+      -> Bi a' a b' b self super r
+      -> Bi a' a c' c self super r
 k ~<< p = p >>~ k
 
 
@@ -603,26 +597,26 @@ k ~<< p = p >>~ k
 
 
 infixr 6 +>>
-(+>>) :: ('[SingleKnot] <: self, Monad super)
-      => (b' -> SingleKnotted a' a b' b self super r)
-      ->        SingleKnotted b' b c' c self super r
-      ->        SingleKnotted a' a c' c self super r
+(+>>) :: ('[Bidir] :> self, Monad super)
+      => (b' -> Bi a' a b' b self super r)
+      ->        Bi b' b c' c self super r
+      ->        Bi a' a c' c self super r
 fb' +>> p0 =
-    SingleKnotted $ \up dn -> do
+    Bi $ \up dn -> do
         pullRewrite up dn fb' p0
 
 
 pullRewrite
     :: forall self super a' a b' b c' c r.
-       ('[SingleKnot] <: self, Monad super)
+       ('[Bidir] :> self, Monad super)
     => (forall x. a' -> (a -> Narrative self super x) -> Narrative self super x)
     -> (forall x. c -> (c' -> Narrative self super x) -> Narrative self super x)
-    -> (b' -> SingleKnotted a' a b' b self super r)
-    -> SingleKnotted b' b c' c self super r
+    -> (b' -> Bi a' a b' b self super r)
+    -> Bi b' b c' c self super r
     -> Narrative self super r
 pullRewrite up dn fb' p =
-    let upstream b' = runSingleKnotted (fb' b') (unsafeCoerce up) (unsafeCoerce dn)
-        downstream = runSingleKnotted p (unsafeCoerce up) (unsafeCoerce dn)
+    let upstream b' = runBi (fb' b') (unsafeCoerce up) (unsafeCoerce dn)
+        downstream = runBi p (unsafeCoerce up) (unsafeCoerce dn)
     in goRight upstream downstream
   where
 
@@ -658,44 +652,44 @@ pullRewrite up dn fb' p =
 
 
 infixl 7 >->
-(>->) :: ('[SingleKnot] <: self, Monad super)
-      => SingleKnotted a' a () b self super r
-      -> SingleKnotted () b c' c self super r
-      -> SingleKnotted a' a c' c self super r
+(>->) :: ('[Bidir] :> self, Monad super)
+      => Bi a' a () b self super r
+      -> Bi () b c' c self super r
+      -> Bi a' a c' c self super r
 p1 >-> p2 = (\() -> p1) +>> p2
 
 
 infixr 7 <-<
-(<-<) :: ('[SingleKnot] <: self, Monad super)
-      => SingleKnotted () b c' c self super r
-      -> SingleKnotted a' a () b self super r
-      -> SingleKnotted a' a c' c self super r
+(<-<) :: ('[Bidir] :> self, Monad super)
+      => Bi () b c' c self super r
+      -> Bi a' a () b self super r
+      -> Bi a' a c' c self super r
 p2 <-< p1 = p1 >-> p2
 
 
 infixr 7 <+<
-(<+<) :: ('[SingleKnot] <: self, Monad super)
-      => (c' -> SingleKnotted b' b c' c self super r)
-      -> (b' -> SingleKnotted a' a b' b self super r)
+(<+<) :: ('[Bidir] :> self, Monad super)
+      => (c' -> Bi b' b c' c self super r)
+      -> (b' -> Bi a' a b' b self super r)
       -> c'
-      -> SingleKnotted a' a c' c self super r
+      -> Bi a' a c' c self super r
 p1 <+< p2 = p2 >+> p1
 
 
 infixl 7 >+>
-(>+>) :: ('[SingleKnot] <: self, Monad super)
-      => (b' -> SingleKnotted a' a b' b self super r)
-      -> (_c' -> SingleKnotted b' b c' c self super r)
+(>+>) :: ('[Bidir] :> self, Monad super)
+      => (b' -> Bi a' a b' b self super r)
+      -> (_c' -> Bi b' b c' c self super r)
       -> _c'
-      -> SingleKnotted a' a c' c self super r
+      -> Bi a' a c' c self super r
 (fb' >+> fc') c' = fb' +>> fc' c'
 
 
 infixl 6 <<+
-(<<+) :: ('[SingleKnot] <: self, Monad super)
-      => SingleKnotted b' b c' c self super r
-      -> (b' -> SingleKnotted a' a b' b self super r)
-      -> SingleKnotted a' a c' c self super r
+(<<+) :: ('[Bidir] :> self, Monad super)
+      => Bi b' b c' c self super r
+      -> (b' -> Bi a' a b' b self super r)
+      -> Bi a' a c' c self super r
 p <<+ fb = fb +>> p
 
 

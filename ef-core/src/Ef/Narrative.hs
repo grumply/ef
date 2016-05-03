@@ -18,6 +18,7 @@ module Ef.Narrative
      , Invokes
      , Knows
      , (<:)(..)
+     , (:>)(..)
      , self
      , super
      , transform
@@ -142,7 +143,7 @@ self message =
 
 
 type Knows message self super =
-    ( '[message] <:self
+    ( '[message] :> self
     , Monad super
     )
 
@@ -154,22 +155,33 @@ type Invoke message self super result =
 
 
 type Invokes messages self super result =
-    ( messages <: self
+    ( messages :> self
     , Monad super
     )
     => Narrative self super result
 
+-- set-oriented bounded parametric subtype polymorphism implemented as statically guaranteed set containment.
+-- Given S <: T, guarantee that forall elements t of T, there is an element s of S where t is equal to s.
+type family (<:) messages (messages' :: [* -> *]) where
 
+    messages <: (message ': '[]) =
+      (Can' message messages (Offset message messages))
 
--- set-oriented bounded parametric subtype polymorphism
-type family (<:) (messages :: [* -> *]) messages' where
+    messages <: (message ': messages') =
+      ( Can' message messages (Offset message messages)
+      , messages <: messages'
+      )
 
-    (message ': '[]) <: messages' =
-        (Can' message messages' (Offset message messages'))
+-- set-oriented bounded parametric supertype polymorphism implemented as statically guaranteed set containment.
+-- Given T :> S, guarantee that forall elements t of T, there is an element s of S where t is equal to s.
+type family (:>) (messages' :: [* -> *]) messages where
 
-    (message ': messages) <: messages' =
-        ( Can' message messages' (Offset message messages')
-        , messages <: messages' 
+    (message ': '[]) :> messages =
+        (Can' message messages (Offset message messages))
+
+    (message ': messages') :> messages =
+        ( Can' message messages (Offset message messages)
+        , messages' :> messages 
         )
 
 

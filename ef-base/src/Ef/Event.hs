@@ -1,16 +1,9 @@
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
 module Ef.Event (signal_, Reactor(..), Signal(..), construct, Event(..), event, BehaviorToken(..), clearSignal) where
 
 
 import Ef
 import Ef.Narrative
-import Ef.Single
+import Ef.Bidir
 import Ef.IO
 
 import Control.Monad
@@ -275,7 +268,7 @@ data Hole
 -- @
 event
     :: forall self super a.
-       (Knows SingleKnot self super, Lift IO super)
+       ('[Bidir] :> self, Monad super, Lift IO super)
     => (Event self super -> Narrative self super a)
     -> Narrative self super a
 
@@ -326,7 +319,7 @@ event loop =
     in linearize $ server +>> (knotted $ \up _ -> loop (ev up))
     where
 
-        server :: forall x. Action self super -> SingleKnotted X () (Action self super) (Narrative self super ()) self super x
+        server :: forall x. Action self super -> Bi X () (Action self super) (Narrative self super ()) self super x
         server initialRequest =
             knotted $ \_ dn -> withRespond dn initialRequest
             where

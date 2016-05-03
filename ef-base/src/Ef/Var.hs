@@ -1,9 +1,3 @@
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
 module Ef.Var
     ( Var(..)
     , var
@@ -64,7 +58,7 @@ data Var var self super =
 
 
 stateful
-    :: ('[Knot] <: self, Monad super)
+    :: ('[Knot] :> self, Monad super)
     => (Var state self super -> Narrative self super result)
     -> Knotted (Action state) state () X self super result
 
@@ -121,7 +115,7 @@ stateful computation =
 
 
 var
-    :: ('[Knot] <: self, Monad super)
+    :: ('[Knot] :> self, Monad super)
     => state
     -> (Var state self super -> Narrative self super result)
     -> Narrative self super result
@@ -153,7 +147,7 @@ var initial computation =
 
 
 var'
-    :: ('[Knot] <: self, Monad super)
+    :: ('[Knot] :> self, Monad super)
     => state
     -> (Var state self super -> Narrative self super result)
     -> Narrative self super result

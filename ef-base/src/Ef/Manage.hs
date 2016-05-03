@@ -1,35 +1,92 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
 module Ef.Manage
-    ( -- * Scoping construct
-      manage
-      -- * Scoped methods
+    ( manage
     , Manager(..)
-      -- * Resource Token
     , Token
+    , Manage
     ) where
 
 import Ef
-
-import qualified Ef.Manage.Methods as Methods
-import Ef.Manage.Messages
-import qualified Ef.Manage.Messages as Messages
 
 import Control.Arrow
 import Data.Either
 import Unsafe.Coerce
 
+newtype Token a = Token Int
 
-instance Ma Methods.Manage Messages.Manage where
+data Manage k where
+    Manage :: Int -> k -> k -> Manage k
+
+    FreshSelf :: (Int -> k) -> Manage k
+
+    Allocate :: Int -> Narrative self super a
+                    -> (a -> Narrative self super ())
+                    -> ((a,Token a) -> k)
+                    -> Manage k
+
+    Register :: Int -> Token a
+                    -> Narrative self super ()
+                    -> k
+                    -> Manage k
+
+    Unregister :: Int -> Token a -> k -> Manage k
+
+    Deallocate :: Token a -> k -> Manage k
+
+    Finish :: Int -> a -> Manage k
+
+
+-- | manage implements the scoping logic for creating
+-- managed contexts. Scoped manager logic is implemented
+-- in `Ef.Manage`.
+manages :: Use Manage methods super
+manages =
+    Manage 0 pure $ \fs ->
+        let Manage i non me = view fs
+            i' = succ i
+        in i' `seq` pure $ fs .= Manage i' non me
+
+
+-- | Interface for managing resources. The only way to create a Managed is with
+-- `Ef.Manage.managed`. As with all scoping constructs, never return a `Managed`
+-- from its root scope.
+data Manager self super =
+    Manager
+        { -- | allocate a resource with a given cleanup method to be performed
+          -- when the managed scope returns or when triggered via
+          -- deallocate/unregister.
+          allocate
+              :: forall resource.
+                 Narrative self super resource
+              -> (resource -> Narrative self super ())
+              -> Narrative self super (resource,Token resource)
+
+          -- | deallocate a resource by invoking the `Token`'s registered
+          -- actions across all nested managed scopes for which the
+          -- resource is registered.
+        , deallocate
+              :: forall resource. Token resource -> Narrative self super ()
+
+          -- | register a resource with this manager with a given cleanup action
+          -- to be performed when deallocate is called or the managed scope
+          -- returns. Resources may have multiple actions registered.
+        , register
+              :: forall resource.
+                 Token resource
+              -> Narrative self super ()
+              -> Narrative self super ()
+
+          -- | unregister a resource within this manager's context without
+          -- calling the associated cleanup actions.
+        , unregister
+              :: forall resource.
+                 Token resource
+              -> Narrative self super ()
+        }
+
+instance Ma Manage Manage where
     -- needed to let Deallocation cross manager scopes
-    ma use (Methods.Manage _ _ k) (Deallocate _ k') = use k k'
-    ma use (Methods.Manage i k _) (FreshSelf ik) = use k (ik i)
+    ma use (Manage _ _ k) (Deallocate _ k') = use k k'
+    ma use (Manage i k _) (FreshSelf ik) = use k (ik i)
 
 
 -- | managed creates a scoped construct to interface with
@@ -48,7 +105,7 @@ instance Ma Methods.Manage Messages.Manage where
 -- Tokens may be deallocated which forces registered cleanup actions to be
 -- performed in all managers for which that token is registered in LIFO order
 -- of the nesting scopes.
-manage :: Knows Manage self super
+manage :: ('[Manage] :> self, Monad super)
         => (Manager self super -> Narrative self super result)
         -> Narrative self super result
 manage f = do
@@ -64,7 +121,7 @@ manage f = do
 
 
 rewrite :: forall self super result.
-           Knows Manage self super
+           ('[Manage] :> self, Monad super)
         => Int
         -> [(Int,Narrative self super ())]
         -> Narrative self super result

@@ -1,26 +1,88 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE ImpredicativeTypes #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE Trustworthy #-}
-module Ef.Fiber (fiber, module Ef.Fiber.Messages) where
+module Ef.Fiber (fiber, fibers, Status(..), Operation(..), Ops(..), Threader(..))  where
 
 
 import Ef
 import Ef.Narrative
 import Ef.IO
 
-import Ef.Fiber.Messages
-import qualified Ef.Fiber.Methods as Methods
-
 import Data.IORef
 import Unsafe.Coerce
 
+-- | Status represents the state of a thread of execution.
+-- The status may be updated during
+data Status status result
+    = Running (Maybe status)
+    | Failed SomeException
+    | Done result
 
-instance Ma Methods.Fiber Fiber where
-    ma use (Methods.Fiber i k) (FreshScope ik) = use k (ik i)
+data Operation status result =
+    Operation (IORef (Status status result))
+
+
+data Ops scope parent status result = Ops
+    { notify :: status -> Narrative scope parent ()
+    , supplement :: (Maybe status -> Maybe status) -> Narrative scope parent ()
+    }
+
+query
+    :: ( Lift IO parent
+       , Monad parent
+       )
+    => Operation status result
+    -> Narrative scope parent (Status status result)
+
+query (Operation op) =
+    io (readIORef op)
+
+
+data Fiber k
+    = Fiber Int k
+    | forall scope status parent result. Fork Int (Operation status result) (Narrative scope parent result)
+    | Yield Int
+    | forall scope parent result. Focus Int (Narrative scope parent result)
+    | FreshScope (Int -> k)
+
+fibers :: Use Fiber attrs parent
+fibers =
+    Fiber 0 $ \fs ->
+        let Fiber i k = view fs
+            i' = succ i
+        in i' `seq` pure $ fs .= Fiber i' k
+
+
+data Threader self super =
+    Threader
+        {
+          fork :: forall status result.
+                 (   Ops self super status result
+                  -> Narrative self super result
+                 )
+              -> Narrative self super (Operation status result)
+
+        , await
+              :: forall status result.
+                 Operation status result
+              -> Narrative self super (Status status result)
+
+        , focus
+              :: forall focusResult.
+                 Narrative self super focusResult
+              -> Narrative self super focusResult
+
+        , yield
+              :: Narrative self super ()
+
+        , chunk
+              :: forall chunkResult.
+                 Int
+              -> Narrative self super chunkResult
+              -> Narrative self super chunkResult
+        }
+
+
+instance Ma Fiber Fiber where
+    ma use (Fiber i k) (FreshScope ik) = use k (ik i)
 
 
 -- | Create a fiber-capable scope within a `Narrative`. `fibers` is an approach to
@@ -107,7 +169,7 @@ instance Ma Methods.Fiber Fiber where
 -- to fibers and fork.
 --
 fiber :: forall self super result.
-          (Knows Fiber self super,Lift IO super)
+          ('[Fiber] :> self, Monad super, Lift IO super)
        => (Threader self super -> Narrative self super result)
        -> Narrative self super result
 fiber f =

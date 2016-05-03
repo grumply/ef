@@ -1,4 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
 module Ef.Lang.Exit
     ( enter
     ) where
