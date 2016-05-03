@@ -1,4 +1,4 @@
-module Ef.Reader (ask, asks, local, Reader) where
+module Ef.Reader (ask, asks, local, Reader, reader) where
 
 import Ef
 

@@ -10,9 +10,7 @@
 module Ef
     ( module Core
     , delta
-    , stream
     , ($..)
-    , ($>)
     , ($.)
     ) where
 
@@ -86,53 +84,6 @@ infixr 5 $.
         (obj',v) <- obj $. Say message Return
         obj' `deepseq` (obj' $.. k v)
 {-# INLINE ($..) #-}
-
-
-
-($>) :: ( (Traits traits) `Ma` (Messages messages)
-        , Monad super
-        )
-     => Object traits super
-     -> Narrative messages super result
-     -> super [(Object traits super, Narrative messages super result)]
-($>) = stream
-{-# INLINE ($>) #-}
-
-
-
-stream :: ( (Traits traits) `Ma` (Messages messages)
-          , Monad super
-          )
-       => Object traits super
-       -> Narrative messages super result
-       -> super [(Object traits super, Narrative messages super result)]
-stream = __delta
-{-# INLINE stream #-}
-
-
-
-__delta
-    :: ( (Traits traits) `Ma` (Messages messages)
-       , Monad super
-       )
-    => Object traits super
-    -> Narrative messages super result
-    -> super [(Object traits super, Narrative messages super result)]
-__delta = go []
-  where
-    go acc object (Fail e) = return $ (object,Fail e):acc
-
-    go acc object (Super sup) = do
-        narrative <- sup
-        go ((object,Super sup):acc) object narrative
-
-    go acc object (Return result) = return $ (object,Return result):acc
-
-    go acc object (Say symbol k) =
-        let !(method,b) = ma (,) (deconstruct object) symbol
-        in do !object' <- method object
-              go ((object,Say symbol k):acc) object'  (k b)
-{-# INLINE __delta #-}
 
 
 

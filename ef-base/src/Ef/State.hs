@@ -1,5 +1,6 @@
 module Ef.State
     ( State
+    , state
     , get
     , gets
     , put

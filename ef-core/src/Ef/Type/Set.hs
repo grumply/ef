@@ -60,11 +60,11 @@ type family (/==) (x :: k) (y :: k) :: Bool
         'True
 
 
-class Denies (x :: k) (ys :: [k])
+class Denies x (ys :: [* -> *])
 
 
 
-instance Denies x '[]
+instance Denies (x :: k) '[]
 
 
 
@@ -72,3 +72,9 @@ instance ( (/==) x y ~ 'True
          , Denies x ys
          )
     => Denies x (y ': ys)
+
+instance ( (/==) x y ~ 'True
+         , Denies x ys
+         , Denies xs ys
+         )
+    => Denies (x ': xs) (y ': ys)
