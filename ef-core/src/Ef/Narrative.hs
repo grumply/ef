@@ -40,8 +40,6 @@ import Control.Monad
 import GHC.Generics
 
 
--- | Narrative is a structure used for representing a composition of method invocations
--- in a vertical inheritance hierarchy. Narrative comes with a free Monad implementation.
 data Narrative self super result
     = forall intermediate.
       Say (Messages self intermediate)
@@ -73,19 +71,6 @@ instance ( Upcast (Messages small) (Messages large)
 
         upcast (Say message k) =
             Say (upcast message) (upcast . k)
-
-
-
--- -- | don't use this, just rewrite your Object constructors for consistency
--- rearrangeMessages
---     :: ( Upcast (Messages small) (Messages large)
---        , Functor super
---        )
---     => Narrative small super result
---     -> Narrative large super result
-
--- rearrangeMessages =
---     upcast
 
 
 

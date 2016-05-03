@@ -87,36 +87,6 @@ instance (Ord (Traits traits (Object traits super -> super (Object traits super)
              o1 <= o2
 
 
--- -- Orphans
--- instance Binary TyCon
--- instance Binary TypeRep
--- deriving instance Generic TyCon
--- deriving instance Generic TypeRep
-
-
-
--- instance ( Typeable (Object traits super)
---          , Binary (Traits traits (Object traits super -> super (Object traits super)))
---          )
---     => Binary (Object traits super)
---   where
-
---     get =
---         do
---           typeRep <- get
---           if typeRep == typeOf (undefined :: Object traits super) then
---               Object <$> get
---           else
---               mzero
-
-
-
---     put o@(Object as) =
---         do
---           put (typeOf o)
---           put as
-
-
 
 instance Show (Traits traits (Object traits super -> super (Object traits super)))
          => Show (Object traits super)

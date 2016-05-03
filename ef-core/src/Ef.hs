@@ -10,13 +10,10 @@
 module Ef
     ( module Core
     , delta
-    , delta'
     , stream
     , ($..)
     , ($>)
     , ($.)
-    , (#)
-    , (#.)
     ) where
 
 import Ef.Type.Set as Core (Union)
@@ -45,9 +42,9 @@ delta
     => Object traits super
     -> Narrative messages super result
     -> super (Object traits super,result)
-delta =
-    _delta
+delta = _delta
 {-# INLINE delta #-}
+
 
 
 infixr 5 $.
@@ -61,9 +58,13 @@ infixr 5 $.
     => Object traits super
     -> Narrative messages super result
     -> super (Object traits super,result)
-   
-($.) = delta
 
+($.) = _delta
+{-# INLINE ($.) #-}
+
+
+
+-- | Strict version of ($.)
 ($..)
     :: ( (Traits traits) `Ma` (Messages messages)
        , Monad super
@@ -72,21 +73,8 @@ infixr 5 $.
     => Object traits super
     -> Narrative messages super result
     -> super (Object traits super,result)
-
-($..) = delta__
-
-delta__
-    :: ( (Traits traits) `Ma` (Messages messages)
-       , Monad super
-       , NFData (Traits traits (Object traits super -> super (Object traits super)))
-       )
-    => Object traits super
-    -> Narrative messages super result
-    -> super (Object traits super,result)
-delta__ obj =
-    go
-    where
-
+($..) obj = go
+  where
         go (Fail e) = Exception.throw e
         go (Super sup) = do
             narrative <- sup
@@ -94,53 +82,8 @@ delta__ obj =
         go (Return result) = return (obj,result)
         go (Say message k) = do
             (obj',v) <- obj $. (Say message Return)
-            obj' `deepseq` delta__ obj' (k v)
-infixl 5 #
--- | Like 'delta' for objects in an super, but without a return value.
--- Permits a chaining syntax:
---
--- >    resultObj <- pure obj # method1 # method2 # method3
-(#)
-    :: ( (Traits traits) `Ma` (Messages messages)
-       , Monad super
-       )
-    => super (Object traits super)
-    -> Narrative messages super result
-    -> super (Object traits super)
-(#) obj passage = fmap fst (obj #. passage)
-
-
-
--- | Like 'delta' for objects in an super. Like '#', but can be used to end
--- a chain of method calls, for example:
---
--- >    (resultObj,result) <- pure obj # method1 # method2 #. method3
-(#.)
-    :: ( (Traits traits) `Ma` (Messages messages)
-       , Monad super
-       )
-    => super (Object traits super)
-    -> Narrative messages super result
-    -> super (Object traits super,result)
-
-(#.) obj passage = obj >>= ($. passage)
-
-
-
--- | Like 'delta' for pairing a narrative with an object that permits more capabilities
--- than those prescribed by the narrative.
---
--- >    (resultObj,result) <- delta' obj smallNarrative
-delta'
-    :: ( (Traits traits) `Ma` (Messages messages')
-       , Upcast (Messages messages) (Messages messages')
-       , Monad super
-       )
-    => Object traits super
-    -> Narrative messages super result
-    -> super (Object traits super,result)
-delta' o =
-    _delta o . upcast
+            obj' `deepseq` (obj' $.. k v)
+{-# INLINE ($..) #-}
 
 
 
@@ -151,6 +94,9 @@ delta' o =
      -> Narrative messages super result
      -> super [(Object traits super, Narrative messages super result)]
 ($>) = stream
+{-# INLINE ($>) #-}
+
+
 
 stream :: ( (Traits traits) `Ma` (Messages messages)
           , Monad super
@@ -159,30 +105,33 @@ stream :: ( (Traits traits) `Ma` (Messages messages)
        -> Narrative messages super result
        -> super [(Object traits super, Narrative messages super result)]
 stream = __delta
+{-# INLINE stream #-}
 
-{-# INLINE __delta #-}
+
+
 __delta
     :: ( (Traits traits) `Ma` (Messages messages)
        , Monad super
        )
     => Object traits super
     -> Narrative messages super result
-    -> super [(Object traits super, Narrative messages super result)]__delta =
-    go []
+    -> super [(Object traits super, Narrative messages super result)]
+__delta = go []
     where
-        go acc object (Fail e) = return $ (object, Fail e) : accil e):acc
+        go acc object (Fail e) = return $ (object,Fail e):acc
         go acc object (Super sup) = do
             narrative <- sup
             go ((object,Super sup):acc) object narrative
-        go acc object (Return result) = return $ (object, Return result) : accsult):acc
+        go acc object (Return result) = return $ (object,Return result):acc
         go acc object (Say symbol k) =
             let !(method,b) = ma (,) (deconstruct object) symbol
             in do !object' <- method object
                   let narrative = k b
                   go ((object,Say symbol k):acc) object' narrative
+{-# INLINE __delta #-}
 
 
-{-# INLINE _delta #-}
+
 _delta
     :: ( (Traits traits) `Ma` (Messages messages)
        , Monad super
@@ -211,6 +160,7 @@ _delta object =
           m >>= go
 
       go (Return result) = pure (object,result)
+{-# INLINE _delta #-}
 
 
 
