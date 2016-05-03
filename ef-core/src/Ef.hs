@@ -58,7 +58,6 @@ infixr 5 $.
     => Object traits super
     -> Narrative messages super result
     -> super (Object traits super,result)
-
 ($.) = _delta
 {-# INLINE ($.) #-}
 
@@ -75,14 +74,17 @@ infixr 5 $.
     -> super (Object traits super,result)
 ($..) obj = go
   where
-        go (Fail e) = Exception.throw e
-        go (Super sup) = do
-            narrative <- sup
-            go narrative
-        go (Return result) = return (obj,result)
-        go (Say message k) = do
-            (obj',v) <- obj $. (Say message Return)
-            obj' `deepseq` (obj' $.. k v)
+    go (Fail e) = Exception.throw e
+
+    go (Super sup) = do
+        narrative <- sup
+        go narrative
+
+    go (Return result) = return (obj,result)
+
+    go (Say message k) = do
+        (obj',v) <- obj $. Say message Return
+        obj' `deepseq` (obj' $.. k v)
 {-# INLINE ($..) #-}
 
 
@@ -117,17 +119,19 @@ __delta
     -> Narrative messages super result
     -> super [(Object traits super, Narrative messages super result)]
 __delta = go []
-    where
-        go acc object (Fail e) = return $ (object,Fail e):acc
-        go acc object (Super sup) = do
-            narrative <- sup
-            go ((object,Super sup):acc) object narrative
-        go acc object (Return result) = return $ (object,Return result):acc
-        go acc object (Say symbol k) =
-            let !(method,b) = ma (,) (deconstruct object) symbol
-            in do !object' <- method object
-                  let narrative = k b
-                  go ((object,Say symbol k):acc) object' narrative
+  where
+    go acc object (Fail e) = return $ (object,Fail e):acc
+
+    go acc object (Super sup) = do
+        narrative <- sup
+        go ((object,Super sup):acc) object narrative
+
+    go acc object (Return result) = return $ (object,Return result):acc
+
+    go acc object (Say symbol k) =
+        let !(method,b) = ma (,) (deconstruct object) symbol
+        in do !object' <- method object
+              go ((object,Say symbol k):acc) object'  (k b)
 {-# INLINE __delta #-}
 
 
@@ -139,27 +143,20 @@ _delta
     => Object traits super
     -> Narrative messages super result
     -> super (Object traits super,result)
-_delta object =
-    go
+_delta object = go
   where
+    go (Say symbol k) =
+        let !(method,b) = ma (,) (deconstruct object) symbol
+        in do !object' <- method object
+              _delta object' (k b)
 
-      go (Say symbol k) =
-          let
-              !(method,b) =
-                  ma (,) (deconstruct object) symbol
+    go (Fail e) =
+        Exception.throw e
 
-          in
-              do
-                  !object' <- method object
-                  _delta object' (k b)
+    go (Super m) =
+        m >>= go
 
-      go (Fail e) =
-          Exception.throw e
-
-      go (Super m) =
-          m >>= go
-
-      go (Return result) = pure (object,result)
+    go (Return result) = pure (object,result)
 {-# INLINE _delta #-}
 
 
