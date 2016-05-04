@@ -22,7 +22,7 @@ writer :: Monoid w => Use (Writer w) methods super
 writer = writerFrom mempty (<>)
 {-# INLINE writer #-}
 
-noted :: Subclass '[Writer w] methods => Object methods super -> w
+noted :: ('[Writer w] .> methods) => Object methods super -> w
 noted fs =
   let Writer w _ = view fs
   in w

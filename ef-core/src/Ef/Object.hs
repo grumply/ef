@@ -14,6 +14,9 @@
 module Ef.Object
     ( Trait
     , Subclass
+    , Superclass
+    , (.>)(..)
+    , (<.)(..)
     , Has(..)
     , Use
     , stretch
@@ -44,20 +47,24 @@ type Use trait traits super =
     (Has' trait traits (Offset trait traits), Monad super)
     => trait (Object traits super -> super (Object traits super))
 
-type family Subclass (traits :: [* -> *]) traits' where
+type Superclass t s = (.>) t s
 
-    Subclass (trait ': '[]) traits' =
+type family (.>) (traits :: [* -> *]) traits' where
+
+    (.>) (trait ': '[]) traits' =
         (Has' trait traits' (Offset trait traits'))
 
-    Subclass (trait ': traits) traits' =
-        (Has' trait traits' (Offset trait traits'),traits `Subclass` traits')
+    (.>) (trait ': traits) traits' =
+        ( Has' trait traits' (Offset trait traits')
+        , traits .> traits'
+        )
 
+type Subclass s t = (<.) s t
 
+type family (<.) traits traits' where
 
-type family Superclass traits traits' where
-
-    Superclass traits traits' =
-        traits' `Subclass` traits
+    (<.) traits traits' =
+        traits' .> traits
 
 
 
@@ -120,7 +127,7 @@ view =
 
 
 view2
-    :: (traits `Superclass` '[trait1,trait2])
+    :: (traits `Subclass` '[trait1,trait2])
     => Object traits super
     -> ( Trait trait1 traits super
        , Trait trait2 traits super
@@ -131,7 +138,7 @@ view2 obj =
 
 
 view3
-    :: (traits `Superclass` '[trait1,trait2,trait3])
+    :: (traits `Subclass` '[trait1,trait2,trait3])
     => Object traits super
     -> ( Trait trait1 traits super
        , Trait trait2 traits super
@@ -144,7 +151,7 @@ view3 obj =
 
 
 view4
-    :: (traits `Superclass` '[trait1,trait2,trait3,trait4])
+    :: (traits `Subclass` '[trait1,trait2,trait3,trait4])
     => Object traits super
     -> ( Trait trait1 traits super
        , Trait trait2 traits super
@@ -158,7 +165,7 @@ view4 obj =
 
 
 view5
-    :: ( traits `Superclass`
+    :: ( traits `Subclass`
             '[trait1,trait2,trait3,trait4
              ,trait5]
        )
@@ -175,7 +182,7 @@ view5 obj =
 
 
 view6
-    :: ( traits `Superclass`
+    :: ( traits `Subclass`
             '[trait1,trait2,trait3,trait4
              ,trait5,trait6]
        )
@@ -193,7 +200,7 @@ view6 obj =
 
 
 view7
-    :: ( traits `Superclass`
+    :: ( traits `Subclass`
             '[trait1,trait2,trait3,trait4
              ,trait5,trait6,trait7]
        )
@@ -212,7 +219,7 @@ view7 obj =
 
 
 view8
-    :: ( traits `Superclass`
+    :: ( traits `Subclass`
             '[trait1,trait2,trait3,trait4
              ,trait5,trait6,trait7,trait8]
        )
