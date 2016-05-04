@@ -1,57 +1,50 @@
 module Ef.Guard
-    ( Guarding
-    , guards
-    , Guardable
+    ( Guard
     , guard
-    , Guard(..)
+    , Guards(..)
+    , guards
     ) where
-
-
 
 import Ef
 
 import Data.Foldable
 import Unsafe.Coerce
 
-
-data Guarding k
-    = FreshSelf (Int -> k)
+data Guard k
+    = Guard Int k
+    | FreshSelf (Int -> k)
     | forall a. Choose Int [a] (a -> k)
     | Cut Int
 
+instance Ma Guard Guard where
+    ma use (Guard i k) (FreshSelf ik) = use k (ik i)
 
-data Guard self super = Guard
+data Guards self super = Guards
     { choose :: forall f a. Foldable f => f a -> Narrative self super a
     , cut :: forall b. Narrative self super b
     }
 
-
-data Guardable k = Guardable Int k
-
-
+guard :: (Monad super, '[Guard] .> traits)
+      => Trait Guard traits super
 guard =
-    Guardable 0 $ \fs ->
-        let Guardable i k = view fs
-        in return $ fs .= Guardable (succ i) k
+    Guard 0 $ \fs ->
+        let Guard i k = view fs
+        in return $ fs .= Guard (succ i) k
+{-# INLINE guard #-}
 
-
-instance Ma Guardable Guarding where
-    ma use (Guardable i k) (FreshSelf ik) = use k (ik i)
-
-
-guards :: Knows Guarding self super
-       => (Guard self super -> Narrative self super result)
+guards :: (Monad super, '[Guard] :> self)
+       => (Guards self super -> Narrative self super result)
        -> Narrative self super (Maybe result)
 guards l = do
     scope <- self (FreshSelf id)
-    transform (rewrite scope) $ Just <$> l Guard
+    transform (rewrite scope) $ Just <$> l Guards
         { choose = \foldable -> let list = toList foldable
                                 in self (Choose scope list id)
         , cut = self (Cut scope)
         }
+{-# INLINE guards #-}
 
-
-rewrite :: Knows Guarding self super
+rewrite :: (Monad super, '[Guard] :> self)
         => Int
         -> Messages self x
         -> (x -> Narrative self super (Maybe result))
@@ -69,24 +62,19 @@ rewrite scope message k =
                   _ -> ignore
           Nothing -> Say message (transform (rewrite scope) . k)
 
-
 choosing
-    :: Knows Guarding self super
+    :: (Monad super, '[Guard] :> self)
     => Int
     -> [a]
     -> (a -> Narrative self super r)
     -> Narrative self super r
     -> Narrative self super r
-choosing _ [] _ alt =
-    alt
-
+choosing _ [] _ alt = alt
 choosing scope (a:as) bp alt =
     transform (nestedChoosing scope as alt bp) (bp a)
 
-
-
 nestedChoosing
-    :: Knows Guarding self super
+    :: (Monad super, '[Guard] :> self)
     => Int
     -> [a]
     -> Narrative self super result
@@ -116,7 +104,3 @@ nestedChoosing scope choices alt superContinue message childContinue =
 
                    _ -> ignore
            Nothing -> ignore
-
-
-{-# INLINE guard #-}
-{-# INLINE guards #-}

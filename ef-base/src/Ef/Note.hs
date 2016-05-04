@@ -146,7 +146,7 @@ notate
     -> Narrative self super (result,notes)
 
 notate computation =
-    linearize (serve +>> notated computation)
+    runKnot (serve +>> notated computation)
     where
 
         serve firstRequest =

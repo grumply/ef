@@ -1,6 +1,5 @@
 module Ef.Event (signal_, Reactor(..), Signal(..), construct, Event(..), event, BehaviorToken(..), clearSignal) where
 
-
 import Ef
 import Ef.Narrative
 import Ef.Bidir
@@ -10,7 +9,6 @@ import Control.Monad
 import Data.IORef
 import Data.List
 import Unsafe.Coerce
-
 
 data Reactor self super event =
     Reactor
@@ -24,35 +22,33 @@ data Reactor self super event =
 
         }
 
-
 data Signal self super event
     = Signal (IORef event) (IORef Int) (IORef [(Int,event -> Narrative self super ())])
     deriving Eq
 
-
 -- | Construct a new signal with an initial value. Undefined is a valid
 -- start value as long as any behaviors linked to the `Signal` are not
 -- linked via `behavior'`.
-construct :: (Lift IO super,Monad super) => event -> super (Signal self super' event)
+construct :: (Monad super, Lift IO super)
+          => event -> super (Signal self super' event)
 construct event = do
     current <- lift $ newIORef event
     count <- lift $ newIORef 0
     behaviors <- lift $ newIORef []
     return $ Signal current count behaviors
+{-# INLINE construct #-}
 
-
-clearSignal :: (Lift IO super, Monad super) => Signal self super' e -> super ()
+clearSignal :: (Monad super, Lift IO super)
+            => Signal self super' e -> super ()
 clearSignal (Signal _ _ bs) = lift $ writeIORef bs []
+{-# INLINE clearSignal #-}
 
-merge_
-    :: forall self super event.
-       (Lift IO super, Monad super)
-    => (Signal self super event -> event -> Narrative self super ())
-    -> event
-    -> Signal self super event
-    -> Signal self super event
-    -> Narrative self super (Signal self super event,BehaviorToken self super event, BehaviorToken self super event)
-
+merge_ :: forall self super event. (Monad super, Lift IO super)
+       => (Signal self super event -> event -> Narrative self super ())
+       -> event
+       -> Signal self super event
+       -> Signal self super event
+       -> Narrative self super (Signal self super event,BehaviorToken self super event, BehaviorToken self super event)
 merge_ signalMethod initial sig0@(Signal current0 count0 behaviors0) sig1@(Signal current1 count1 behaviors1) = do
     signal <- construct initial
     c0 <- lift $ atomicModifyIORef count0 $ \c -> (c + 1,c)
@@ -64,17 +60,14 @@ merge_ signalMethod initial sig0@(Signal current0 count0 behaviors0) sig1@(Signa
         let newBehavior event = signalMethod signal event
         in bs ++ [(c1,newBehavior)]
     return (signal,BehaviorToken c0 sig0,BehaviorToken c1 sig1)
+{-# INLINE merge_ #-}
 
-
-
-mapSignal_
-    :: (Monad super, Lift IO super)
-    => (Signal self super b -> b -> Narrative self super ())
-    -> (a -> b)
-    -> b
-    -> Signal self super a
-    -> Narrative self super (Signal self super b, BehaviorToken self super b)
-
+mapSignal_ :: (Monad super, Lift IO super)
+           => (Signal self super b -> b -> Narrative self super ())
+           -> (a -> b)
+           -> b
+           -> Signal self super a
+           -> Narrative self super (Signal self super b, BehaviorToken self super b)
 mapSignal_ signalMethod f initial sig@(Signal current0 count0 behaviors0) = do
     signal <- construct initial
     c <- lift $ atomicModifyIORef count0 $ \c -> (c + 1,c)
@@ -82,17 +75,14 @@ mapSignal_ signalMethod f initial sig@(Signal current0 count0 behaviors0) = do
         let newBehavior event = signalMethod signal (f event)
         in bs ++ [(c,newBehavior)]
     return (signal,BehaviorToken c signal)
+{-# INLINE mapSignal_ #-}
 
-
-
-filterSignal_
-    :: (Monad super, Lift IO super)
-    => (Signal self super a -> a -> Narrative self super ())
-    -> (a -> Bool)
-    -> a
-    -> Signal self super a
-    -> Narrative self super (Signal self super a,BehaviorToken self super a)
-
+filterSignal_ :: (Monad super, Lift IO super)
+              => (Signal self super a -> a -> Narrative self super ())
+              -> (a -> Bool)
+              -> a
+              -> Signal self super a
+              -> Narrative self super (Signal self super a,BehaviorToken self super a)
 filterSignal_ signalMethod predicate initial sig@(Signal _ count0 behaviors0) = do
     signal <- construct initial
     c <- lift $ atomicModifyIORef count0 $ \c -> (c + 1,c)
@@ -104,51 +94,47 @@ filterSignal_ signalMethod predicate initial sig@(Signal _ count0 behaviors0) = 
                     return ()
         in bs ++ [(c,newBehavior)]
     return (signal,BehaviorToken c signal)
+{-# INLINE filterSignal_ #-}
 
-
-
-behavior_
-    :: (Monad super, Lift IO super)
-    => Signal self super event
-    -> (event -> Narrative self super ())
-    -> Narrative self super (BehaviorToken self super event)
-
+behavior_ :: (Monad super, Lift IO super)
+          => Signal self super event
+          -> (event -> Narrative self super ())
+          -> Narrative self super (BehaviorToken self super event)
 behavior_ sig@(Signal _ count behaviors) newBehavior = do
     c <- lift $ atomicModifyIORef count $ \c -> (c + 1,c)
     lift $ modifyIORef behaviors (++ [(c,newBehavior)])
     return (BehaviorToken c sig)
+{-# INLINE behavior_ #-}
 
-stop_
-    :: (Monad super, Lift IO super)
-    => BehaviorToken self super event
-    -> Narrative self super ()
+stop_ :: (Monad super, Lift IO super)
+      => BehaviorToken self super event
+      -> Narrative self super ()
 stop_ (BehaviorToken bt (Signal _ _ behaviors)) =
     lift $ modifyIORef behaviors $ filter ((/=) bt . fst)
+{-# INLINE stop_ #-}
 
-signal_
-    :: (Monad super, Lift IO super)
-    => Signal self super event
-    -> event
-    -> Narrative self super ()
-
+signal_ :: (Monad super, Lift IO super)
+        => Signal self super event
+        -> event
+        -> Narrative self super ()
 signal_ (Signal current count behaviors) event = do
     writeCurrent <- lift $ writeIORef current event
     bs <- lift $ readIORef behaviors
     let applied = map (($ event) . snd) bs
     sequence_ applied
+{-# INLINE signal_ #-}
 
-trigger_
-    :: (Monad super, Lift IO super)
-    => BehaviorToken self super event
-    -> event
-    -> Narrative self super ()
+trigger_ :: (Monad super, Lift IO super)
+         => BehaviorToken self super event
+         -> event
+         -> Narrative self super ()
 trigger_ (BehaviorToken bt (Signal current count behaviors)) event = do
     bs <- lift $ readIORef behaviors
     let (eq,neq) = partition ((==) bt . fst) bs
     case eq of
         [x] -> snd x event
         [] -> return ()
-
+{-# INLINE trigger_ #-}
 
 data BehaviorToken self super event = BehaviorToken Int (Signal self super event)
   deriving Eq
@@ -214,8 +200,6 @@ data Event self super =
               -> Narrative self super (Signal self super a,BehaviorToken self super a)
         }
 
-
-
 data Action self super
     where
 
@@ -252,8 +236,6 @@ data Action self super
         End
             :: Action self super
 
-data Hole
-
 -- | Scope an event framework to work with `Signal`s.
 --
 -- @
@@ -266,12 +248,9 @@ data Hole
 --                        else io (putChar ch)
 --         mapM_ (signal sig1) [1..100]
 -- @
-event
-    :: forall self super a.
-       ('[Bidir] :> self, Monad super, Lift IO super)
-    => (Event self super -> Narrative self super a)
-    -> Narrative self super a
-
+event :: forall self super a. (Monad super, Lift IO super, '[Bidir] :> self)
+      => (Event self super -> Narrative self super a)
+      -> Narrative self super a
 event loop =
     let
         ev
@@ -316,7 +295,7 @@ event loop =
                         filterSignal_
                             (\signal event -> join $ up (Signal_ up signal event))
                   }
-    in linearize $ server +>> (knotted $ \up _ -> loop (ev up))
+    in runBidir $ server +>> (knotted $ \up _ -> loop (ev up))
     where
 
         server :: forall x. Action self super -> Bi X () (Action self super) (Narrative self super ()) self super x
@@ -426,6 +405,4 @@ event loop =
                                                         withAcc ((bt,behavior):acc) behaviors
                                                     else
                                                         withAcc acc behaviors
-
-
 {-# INLINE event #-}

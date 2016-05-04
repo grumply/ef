@@ -18,7 +18,6 @@ module Ef.Object
     , (.>)(..)
     , (<.)(..)
     , Has(..)
-    , Use
     , stretch
     , Traits(..)
     , Object(..)
@@ -43,9 +42,6 @@ import Control.DeepSeq
 type Trait trait traits super =
     trait (Object traits super -> super (Object traits super))
 
-type Use trait traits super =
-    (Has' trait traits (Offset trait traits), Monad super)
-    => trait (Object traits super -> super (Object traits super))
 
 type Superclass t s = (.>) t s
 
@@ -58,6 +54,8 @@ type family (.>) (traits :: [* -> *]) traits' where
         ( Has' trait traits' (Offset trait traits')
         , traits .> traits'
         )
+
+
 
 type Subclass s t = (<.) s t
 

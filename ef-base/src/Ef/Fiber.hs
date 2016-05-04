@@ -19,37 +19,38 @@ data Status status result
 data Operation status result =
     Operation (IORef (Status status result))
 
-
-data Ops scope parent status result = Ops
-    { notify :: status -> Narrative scope parent ()
-    , supplement :: (Maybe status -> Maybe status) -> Narrative scope parent ()
+data Ops self super status result = Ops
+    { notify :: status -> Narrative self super ()
+    , supplement :: (Maybe status -> Maybe status) -> Narrative self super ()
     }
 
 query
-    :: ( Lift IO parent
-       , Monad parent
+    :: ( Lift IO super
+       , Monad super
        )
     => Operation status result
-    -> Narrative scope parent (Status status result)
+    -> Narrative self super (Status status result)
 
 query (Operation op) =
     io (readIORef op)
 
-
 data Fiber k
     = Fiber Int k
-    | forall scope status parent result. Fork Int (Operation status result) (Narrative scope parent result)
+    | forall self status super result. Fork Int (Operation status result) (Narrative self super result)
     | Yield Int
-    | forall scope parent result. Focus Int (Narrative scope parent result)
+    | forall self super result. Focus Int (Narrative self super result)
     | FreshScope (Int -> k)
 
-fibers :: Use Fiber attrs parent
+instance Ma Fiber Fiber where
+    ma use (Fiber i k) (FreshScope ik) = use k (ik i)
+
+fibers :: (Monad super, '[Fiber] .> traits)
+       => Trait Fiber traits super
 fibers =
     Fiber 0 $ \fs ->
         let Fiber i k = view fs
             i' = succ i
         in i' `seq` pure $ fs .= Fiber i' k
-
 
 data Threader self super =
     Threader
@@ -80,22 +81,6 @@ data Threader self super =
               -> Narrative self super chunkResult
         }
 
-
-instance Ma Fiber Fiber where
-    ma use (Fiber i k) (FreshScope ik) = use k (ik i)
-
-
--- | Create a fiber-capable scope within a `Narrative`. `fibers` is an approach to
--- optimistic pre-emptive multitasking. That means the threads being run are not
--- split across CPU cores but instead are just `Narrative`s being paused and
--- resumed in an automatically interleaved fashion. It is possible to perform
--- operations atomically with `focus`, but that only guarantees they will be run
--- atomically within scoped context in which the focus was called. Nested calls
--- to focus must be performed in an inside-out fashion relative to the scopes.
--- Atomicity can be measured by counting calls to `self`: a method with a single
--- `self` call will be guaranteed atomic, while a method with multiple calls to
--- `self` will only be atomic if wrapped with `focus`.
---
 -- Example use of `fibers`:
 --
 -- @
@@ -127,7 +112,7 @@ instance Ma Fiber Fiber where
 -- @
 --
 -- Note: I suggest not using this unless you absolutely know that you need it
--- and all that its use implies, including the ease which which it allows you to
+-- and all that its use implies, including the ease with which it allows you to
 -- introduce bugs based around atomicity assumptions. For instance, imagine a
 -- get-modify-put method:
 --

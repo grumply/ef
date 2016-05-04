@@ -6,13 +6,11 @@ import Ef
 import Ef.Get
 import Ef.Set
 
-
 data Reflection self traits super =
     Reflection
         { project :: Narrative self super (Object traits super)
         , inject :: Object traits super -> Narrative self super ()
         }
-
 
 withReflection
     :: ('[Get,Set] :> self, Monad super, Traits traits `Ma` Messages self)

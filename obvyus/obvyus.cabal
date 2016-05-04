@@ -32,12 +32,14 @@ executable obvyus
                        TypeOperators
                        DataKinds
                        PolyKinds
+                       RankNTypes
+                       BangPatterns
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N -DGHCJS_BROWSER -DGHCJS_BUSY_YIELD=128 -O0
   build-depends:       base
-                     , fusion
-                     , fusion-flex
-                     , ef-core >= 1.0 && < 1.1
-                     , ef-base >= 0.9 && < 1.0
                      , array
-                     , ghcjs-dom >= 0.2.2
+                     , fusion >= 0.3 && < 0.4
+                     , fusion-flex >= 0.2 && < 0.3
+                     , ef-core >= 1.2 && < 1.3
+                     , ef-base >= 0.9.3 && < 1.0
+                     , ghcjs-dom >= 0.2.3.1
   default-language:    Haskell2010

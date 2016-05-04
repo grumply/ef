@@ -10,36 +10,35 @@ data Get k where
     Reify :: k -> Get k
     View :: (Object gs m -> k)  -> Get k
 
-get :: Use Get methods super
-get =
-    Get (undefined,reifier) resetter pure
+instance Ma Get Get where
+    ma use (Get _ _ k) (Reify k')    = use k k'
+    ma use (Get (o,k) _ _) (View ok) = use k (ok (unsafeCoerce o))
+    ma use (Get _ k _) (Reset k')    = use k k'
+
+get :: (Monad super, '[Get] .> traits)
+    => Trait Get traits super
+get = Get (undefined,reifier) resetter pure
   where
 
     resetter fs =
         case view fs of
 
             Get (_,reifies) reset gets ->
-                pure $ fs .=
-                    Get (undefined,reifies) reset gets
+                pure $ fs .= Get (undefined,reifies) reset gets
 
     reifier fs =
         case view fs of
 
             Get _ reset gets ->
-                pure $ fs .=
-                     Get (fs,reifier) reset gets
+                pure $ fs .= Get (fs,reifier) reset gets
 {-# INLINE get #-}
 
-introspect :: Invoke Get self super (Object methods super)
+introspect :: (Monad super, '[Get] :> self)
+           => Narrative self super (Object methods super)
 introspect = do
     -- does the reset help the GC or is it unnecessary?
     self (Reify ())
     slf <- self (View id)
     self (Reset ())
     return slf
-
-instance Ma Get Get where
-    ma use (Get _ _ k) (Reify k')    = use k k'
-    ma use (Get (o,k) _ _) (View ok) = use k (ok (unsafeCoerce o))
-    ma use (Get _ k _) (Reset k')    = use k k'
-
+{-# INLINE introspect #-}

@@ -14,9 +14,6 @@
 {-# LANGUAGE Trustworthy #-}
 module Ef.Narrative
      ( Narrative(..)
-     , Invoke
-     , Invokes
-     , Knows
      , (<:)(..)
      , (:>)(..)
      , self
@@ -121,31 +118,13 @@ super m =
 
 
 self
-    :: message result
-    -> Invoke message self super result
+    :: (Monad super, '[message] :> self)
+    => message result -> Narrative self super result
 
 self message =
     Say (inj message) return
 
 
-
-type Knows message self super =
-    ( '[message] :> self
-    , Monad super
-    )
-
-
-type Invoke message self super result =
-    Knows message self super
-    => Narrative self super result
-
-
-
-type Invokes messages self super result =
-    ( messages :> self
-    , Monad super
-    )
-    => Narrative self super result
 
 type Subtype s t = (<:) s t
 
@@ -160,6 +139,8 @@ type family (<:) messages (messages' :: [* -> *]) where
       ( Can' message messages (Offset message messages)
       , messages <: messages'
       )
+
+
 
 type Supertype t s = (:>) t s
 

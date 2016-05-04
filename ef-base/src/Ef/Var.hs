@@ -8,21 +8,17 @@ module Ef.Var
     , stateful
     ) where
 
-
 import Ef.Narrative
 import Ef.Knot
 
 import Control.Monad
-
 
 data Eagerness
     = Strict
     | Lazy
     deriving Eq
 
-
 data Action state = Modify Eagerness (state -> state)
-
 
 data Var var self super =
     Var
@@ -55,13 +51,9 @@ data Var var self super =
 
         }
 
-
-
-stateful
-    :: ('[Knot] :> self, Monad super)
-    => (Var state self super -> Narrative self super result)
-    -> Knotted (Action state) state () X self super result
-
+stateful :: ('[Knot] :> self, Monad super)
+         => (Var state self super -> Narrative self super result)
+         -> Knotted (Action state) state () X self super result
 stateful computation =
     let
         stateInterface up =
@@ -113,15 +105,12 @@ stateful computation =
     in
         knotted $ \up _ -> computation (stateInterface up)
 
-
-var
-    :: ('[Knot] :> self, Monad super)
+var :: ('[Knot] :> self, Monad super)
     => state
     -> (Var state self super -> Narrative self super result)
     -> Narrative self super result
-
 var initial computation =
-    linearize (serve +>> stateful computation)
+    runKnot (serve +>> stateful computation)
     where
 
         serve firstRequest =
@@ -143,17 +132,14 @@ var initial computation =
                                 when (strictness == Strict) force
                                 next <- respond new
                                 handle new next
+{-# INLINE var #-}
 
-
-
-var'
-    :: ('[Knot] :> self, Monad super)
-    => state
-    -> (Var state self super -> Narrative self super result)
-    -> Narrative self super result
-
+var' :: ('[Knot] :> self, Monad super)
+     => state
+     -> (Var state self super -> Narrative self super result)
+     -> Narrative self super result
 var' initial computation =
-    linearize (serve +>> stateful computation)
+    runKnot (serve +>> stateful computation)
     where
 
         serve firstRequest =
@@ -165,6 +151,7 @@ var' initial computation =
                     handle
                     where
 
+
                         handle !current (Modify _ mod) =
                             do
                                 let
@@ -172,8 +159,4 @@ var' initial computation =
 
                                 next <- respond new
                                 handle new next
-
-
-
-{-# INLINE var #-}
 {-# INLINE var' #-}

@@ -8,16 +8,13 @@ data Set k where
     Set :: (Object contexts environment -> k) -> Set k
     Become :: Object traits super -> k -> Set k
 
-set :: Use Set contexts environment
+instance Ma Set Set where
+    ma use (Set ok) (Become o k) = use (ok (unsafeCoerce o)) k
+
+set :: (Monad super, '[Set] .> traits)
+    => Trait Set traits super
 set = Set (const . pure)
 
-become :: Ma (Traits traits) (Messages self)
-       => Object traits super
-       -> Invoke Set self super ()
-
+become :: (Monad super, '[Set] :> self, Ma (Traits traits) (Messages self))
+       => Object traits super -> Narrative self super ()
 become = self . flip Become ()
-
-instance Ma Set Set where
-    ma use (Set ok) (Become o k) =
-        let obj = unsafeCoerce o
-        in use (ok obj) k

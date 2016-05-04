@@ -4,8 +4,6 @@ module Ef.Fork
     , forkOnWith
     ) where
 
-
-
 import Ef
 import Ef.IO
 import Data.Promise
@@ -16,11 +14,8 @@ import Control.Concurrent.MVar
 import Control.Exception (SomeException(..))
 import Control.Monad
 
-
-
 newtype ThreadRef traits super result =
     ThreadRef (ThreadId,Promise (Object traits super,Either SomeException result))
-
 
 forkWith
     :: ( (Traits traits) `Ma` (Messages messages)
@@ -41,7 +36,6 @@ forkWith comp plan embedInIO = do
                void (fulfillIO p ea)
     return $ ThreadRef (tid,p)
 
-
 forkOSWith
     :: ( (Traits traits) `Ma` (Messages messages)
        , Lift IO super'
@@ -52,7 +46,7 @@ forkOSWith
     -> Narrative messages super result
     -> (forall x. super x -> IO x)
     -> Narrative messages' super' (ThreadRef traits super result)
-    
+
 forkOSWith comp plan embedInIO = do
     p <- io newPromiseIO
     let thread = embedInIO $ delta comp (try plan)
@@ -60,7 +54,6 @@ forkOSWith comp plan embedInIO = do
                ea <- restore thread
                void (fulfillIO p ea)
     return $ ThreadRef (tid,p)
-
 
 forkOnWith
     :: ( (Traits traits) `Ma` (Messages messages)
@@ -73,7 +66,6 @@ forkOnWith
     -> Narrative messages super result
     -> (forall x. super x -> IO x)
     -> Narrative messages' super' (ThreadRef traits super result)
-
 forkOnWith n comp plan embedInIO = do
     p <- io newPromiseIO
     let thread = embedInIO $ delta comp (try plan)

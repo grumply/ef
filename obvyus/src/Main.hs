@@ -2,7 +2,7 @@
 module Main where
 
 import Ef
-import Ef.Single
+import Ef.Bidir
 import Data.Promise
 
 import Iron
@@ -41,7 +41,7 @@ type App = '[
              Notes,
              Oxygen,
              Silicon,
-             SingleKnot
+             Bidir
             ]
 
 type CSS = Narrative '[Carbon] IO
@@ -95,13 +95,13 @@ setup = do
       -- confirm login key with server here
       return ()
     [] -> return ()
-  configureMaxNotes
-  newNote $ Note 3 $ textAtom "Success; this notification represents a successful occurence of some event as well as a long line of text."
-  newNote $ Note 7 $ textAtom "Success; this notification represents a successful occurence of some event as well as a long line of text."
-  newNote $ Note 4 $ textAtom "Error; this notification represents a failure of some event."
-  newNote $ Note 4 $ textAtom "Success; this notification represents a successful occurence of some event as well as a long line of text."
-  newNote $ Note 9 $ textAtom "Success; this notification represents a successful occurence of some event as well as a long line of text."
-  newNote $ Note  3 $ textAtom "Info; this is an information notification representing info of some event as well as a long line of text."
+  -- configureMaxNotes
+  -- newNote $ Note 3 $ textAtom "Success; this notification represents a successful occurence of some event as well as a long line of text."
+  -- newNote $ Note 7 $ textAtom "Success; this notification represents a successful occurence of some event as well as a long line of text."
+  -- newNote $ Note 4 $ textAtom "Error; this notification represents a failure of some event."
+  -- newNote $ Note 4 $ textAtom "Success; this notification represents a successful occurence of some event as well as a long line of text."
+  -- newNote $ Note 9 $ textAtom "Success; this notification represents a successful occurence of some event as well as a long line of text."
+  -- newNote $ Note 3 $ textAtom "Info; this is an information notification representing info of some event as well as a long line of text."
   void $ with fusion $ do
     entryForms
     child "div" Nothing $ do

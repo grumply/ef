@@ -78,11 +78,11 @@ data Listing k
 instance Ma Listing Listing where
   ma use Listing{..} (UpvoteClicks sk) = use (snd _upvoteClicks) (sk $ fst _upvoteClicks)
 
-upvoteClicks :: (Monad super, '[Listing] <: self)
+upvoteClicks :: (Monad super, '[Listing] :> self)
              => Narrative self (Narrative self' super) (Signal self' super T.MouseEvent)
 upvoteClicks = self (UpvoteClicks id)
 
-downvoteClicks :: (Monad super, '[Listing] <: self)
+downvoteClicks :: (Monad super, '[Listing] :> self)
                => Narrative self (Narrative self' super) (Signal self' super T.MouseEvent)
 downvoteClicks = self (DownvoteClicks id)
 

@@ -1,6 +1,7 @@
 module Ef.Knot
     ( Knot
-    , linearize
+    , knot
+    , runKnot
 
     , Producer
     , Producer'
@@ -15,11 +16,9 @@ module Ef.Knot
 
     , Client
     , Client'
-    -- , client
 
     , Server
     , Server'
-    -- , server
 
     , Knotted(..)
     , Effect
@@ -74,16 +73,16 @@ data Knot k where
     Request :: Int -> a' -> (a -> Narrative self super r) -> Knot k
     Respond :: Int -> b -> (b' -> Narrative self super r) -> Knot k
 
-knot =
-    Knot 0 $ \fs ->
-        let Knot n k = view fs
-            n' = succ n
-        in n' `seq` pure $ fs .= Knot n' k
+knot :: (Monad super, '[Knot] .> traits)
+     => Trait Knot traits super
+knot = Knot 0 $ \fs ->
+    let Knot n k = view fs
+        n' = succ n
+    in n' `seq` pure $ fs .= Knot n' k
 {-# INLINE knot #-}
 
 freshScope :: (Monad super, '[Knot] :> self) => Narrative self super Int
 freshScope = self (FreshScope id)
-
 
 getScope :: ('[Knot] :> self, Monad super) => Narrative self super a -> super Int
 getScope (Say symbol _) =
@@ -93,16 +92,14 @@ getScope (Say symbol _) =
                 Request i _ _ -> return i
                 Respond i _ _ -> return i
 
-
-linearize :: ('[Knot] :> self, Monad super)
-          => Effect self super r -> Narrative self super r
-linearize e = do
+runKnot :: ('[Knot] :> self, Monad super)
+        => Effect self super r -> Narrative self super r
+runKnot e = do
     scope <- freshScope
     rewrite scope $
         runKnotted e
             (\a' apl -> self (Request scope a' apl))
             (\b b'p -> self (Respond scope b b'p))
-
 
 rewrite :: forall self super result.
            ('[Knot] :> self, Monad super)
@@ -119,14 +116,12 @@ rewrite rewriteScope = transform go
                Just (Respond currentScope b _) -> check currentScope $ closed (unsafeCoerce b)
                Nothing -> Say message (transform go . k)
 
-
 instance Functor super
     => Functor (Knotted a' a b' b self super)
   where
 
     fmap f (Knotted w) =
         Knotted $ \up dn -> fmap f (w up dn)
-
 
 instance Monad super
     => Applicative (Knotted a' a b' b self super)
@@ -142,7 +137,6 @@ instance Monad super
 
     (*>) = (>>)
 
-
 instance Monad super
     => Monad (Knotted a' a b' b self super)
   where
@@ -153,7 +147,6 @@ instance Monad super
         Knotted $ \up dn -> do
             v <- runKnotted r (unsafeCoerce up) (unsafeCoerce dn)
             runKnotted (rs v) up dn
-
 
 instance ( Monad super
          , Monoid r
@@ -168,8 +161,6 @@ instance ( Monad super
             result <- runKnotted w1 up dn
             fmap (mappend result) $ runKnotted w2 (unsafeCoerce up) (unsafeCoerce dn)
 
-
-
 instance MonadPlus super
     => Alternative (Knotted a' a b' b self super)
   where
@@ -177,7 +168,6 @@ instance MonadPlus super
     empty = mzero
 
     (<|>) = mplus
-
 
 -- what does this look like without inspecting Super since that was the entire
 -- point of implementing 'transform'?
@@ -216,18 +206,14 @@ instance MonadPlus super
               in
                 Super (fmap go sup `mplus` return routine)
 
-
 newtype X = X X
-
 
 closed :: X -> a
 closed (X x) = closed x
 
-
 type Effect self super r = Knotted X () () X self super r
 
 type Producer b self super r = Knotted X () () b self super r
-
 
 producer
     :: forall self super b r.
@@ -249,9 +235,7 @@ producer f =
           i <- lift (getScope scopedDown)
           f (respond i)
 
-
 type Consumer a self super r = Knotted () a () X self super r
-
 
 consumer
     :: forall self super a r.
@@ -273,9 +257,7 @@ consumer f =
           i <- lift (getScope scopedUp)
           f (request i)
 
-
 type Line a b self super r = Knotted () a () b self super r
-
 
 line
     :: forall self super a b r.
@@ -300,12 +282,9 @@ line f =
 
           f request respond
 
-
 type Client a' a self super r = Knotted a' a () X self super r
 
-
 type Server b' b self super r = Knotted X () b' b self super r
-
 
 newtype Knotted a' a b' b self super r =
     Knotted
@@ -315,8 +294,6 @@ newtype Knotted a' a b' b self super r =
               -> (forall x. b -> (b' -> Narrative self super x) -> Narrative self super x)
               -> Narrative self super r
         }
-
-
 
 knotted
     :: forall self a a' b b' super r.
@@ -349,7 +326,6 @@ type Client' a' a self super r = forall y' y. Knotted a' a y' y self super r
 cat :: ('[Knot] :> self, Monad super) => Line a a self super r
 cat = line $ \awt yld -> forever (awt >>= yld)
 
-
 infixl 3 //>
 (//>) :: ('[Knot] :> self, Monad super)
       => Knotted x' x b' b self super a'
@@ -361,7 +337,6 @@ p0 //> fb =
         i <- lift (getScope scopedUp)
         let routine = runKnotted p0 up (unsafeCoerce dn)
         substituteResponds fb i up dn routine
-
 
 substituteResponds
     :: forall self super x' x c' c b' b a'.
@@ -396,13 +371,11 @@ substituteResponds fb rewriteScope up dn =
                        _ -> ignore
                _ -> ignore
 
-
 for :: ('[Knot] :> self, Monad super)
     => Knotted x' x b' b self super a'
     -> (b -> Knotted x' x c' c self super b')
     -> Knotted x' x c' c self super a'
 for = (//>)
-
 
 infixr 3 <\\
 (<\\) :: ('[Knot] :> self, Monad super)
@@ -410,7 +383,6 @@ infixr 3 <\\
       -> Knotted x' x b' b self super a'
       -> Knotted x' x c' c self super a'
 f <\\ p = p //> f
-
 
 infixl 4 \<\
 (\<\) :: ('[Knot] :> self, Monad super)
@@ -420,7 +392,6 @@ infixl 4 \<\
       -> Knotted x' x c' c self super a'
 p1 \<\ p2 = p2 />/ p1
 
-
 infixr 4 ~>
 (~>) :: ('[Knot] :> self, Monad super)
      => (a -> Knotted x' x b' b self super a')
@@ -428,7 +399,6 @@ infixr 4 ~>
      -> a
      -> Knotted x' x c' c self super a'
 (~>) = (/>/)
-
 
 infixl 4 <~
 (<~) :: ('[Knot] :> self, Monad super)
@@ -438,7 +408,6 @@ infixl 4 <~
      -> Knotted x' x c' c self super a'
 g <~ f = f ~> g
 
-
 infixr 4 />/
 (/>/) :: ('[Knot] :> self, Monad super)
       => (a -> Knotted x' x b' b self super a')
@@ -447,10 +416,8 @@ infixr 4 />/
       -> Knotted x' x c' c self super a'
 (fa />/ fb) a = fa a //> fb
 
-
 --------------------------------------------------------------------------------
 -- Request; substitute awaits
-
 
 infixr 4 >\\
 (>\\) :: ('[Knot] :> self, Monad super)
@@ -463,7 +430,6 @@ fb' >\\ p0 =
         i <- lift (getScope scopedUp)
         let routine = runKnotted p0 (unsafeCoerce up) dn
         substituteRequests fb' i up dn routine
-
 
 substituteRequests
     :: forall self super x' x c' c b' b a'.
@@ -507,7 +473,6 @@ substituteRequests fb' rewriteScope up dn =
                       _ -> ignore
               _ -> ignore
 
-
 infixr 5 /</
 (/</) :: ('[Knot] :> self, Monad super)
       => (c' -> Knotted b' b x' x self super c)
@@ -516,7 +481,6 @@ infixr 5 /</
       -> Knotted a' a x' x self super c
 p1 /</ p2 = p2 \>\ p1
 
-
 infixr 5 >~
 (>~) :: ('[Knot] :> self, Monad super)
      => Knotted a' a y' y self super b
@@ -524,14 +488,12 @@ infixr 5 >~
      -> Knotted a' a y' y self super c
 p1 >~ p2 = (\() -> p1) >\\ p2
 
-
 infixl 5 ~<
 (~<) :: ('[Knot] :> self, Monad super)
      => Knotted () b y' y self super c
      -> Knotted a' a y' y self super b
      -> Knotted a' a y' y self super c
 p2 ~< p1 = p1 >~ p2
-
 
 infixl 5 \>\
 (\>\) :: ('[Knot] :> self, Monad super)
@@ -541,7 +503,6 @@ infixl 5 \>\
       -> Knotted a' a y' y self super c
 (fb' \>\ fc') c' = fb' >\\ fc' c'
 
-
 infixl 4 \\<
 (\\<) :: ('[Knot] :> self, Monad super)
       => Knotted b' b y' y self super c
@@ -549,10 +510,8 @@ infixl 4 \\<
       -> Knotted a' a y' y self super c
 p \\< f = f >\\ p
 
-
 --------------------------------------------------------------------------------
 -- Push; substitute responds with requests
-
 
 infixl 7 >>~
 (>>~)
@@ -566,7 +525,6 @@ p0 >>~ fb0 =
         let scopedUp = up (unsafeCoerce ()) (unsafeCoerce ())
         i <- lift (getScope scopedUp)
         pushRewrite i up dn fb0 p0
-
 
 pushRewrite
     :: forall self super r a' a b' b c' c.
@@ -615,7 +573,6 @@ pushRewrite rewriteScope up dn fb0 p0 =
                            _ -> ignore
                    _ -> ignore
 
-
 infixl 8 <~<
 (<~<) :: ('[Knot] :> self, Monad super)
       => (b -> Knotted b' b c' c self super r)
@@ -623,7 +580,6 @@ infixl 8 <~<
       -> a
       -> Knotted a' a c' c self super r
 p1 <~< p2 = p2 >~> p1
-
 
 infixr 8 >~>
 (>~>) :: ('[Knot] :> self, Monad super)
@@ -633,7 +589,6 @@ infixr 8 >~>
       -> Knotted a' a c' c self super r
 (fa >~> fb) a = fa a >>~ fb
 
-
 infixr 7 ~<<
 (~<<) :: ('[Knot] :> self, Monad super)
       => (b -> Knotted b' b c' c self super r)
@@ -641,10 +596,8 @@ infixr 7 ~<<
       -> Knotted a' a c' c self super r
 k ~<< p = p >>~ k
 
-
 --------------------------------------------------------------------------------
 -- Pull; substitute requests with responds
-
 
 infixr 6 +>>
 (+>>) :: ('[Knot] :> self, Monad super)
@@ -656,7 +609,6 @@ fb' +>> p0 =
         let scopedUp = up (unsafeCoerce ()) (unsafeCoerce ())
         i <- lift (getScope scopedUp)
         pullRewrite i up dn fb' p0
-
 
 pullRewrite
     :: forall self super a' a b' b c' c r.
@@ -705,7 +657,6 @@ pullRewrite rewriteScope up dn fb' p =
                            _ -> ignore
                    _ -> ignore
 
-
 infixl 7 >->
 (>->) :: ('[Knot] :> self, Monad super)
       => Knotted a' a () b self super r
@@ -713,14 +664,12 @@ infixl 7 >->
       -> Knotted a' a c' c self super r
 p1 >-> p2 = (\() -> p1) +>> p2
 
-
 infixr 7 <-<
 (<-<) :: ('[Knot] :> self, Monad super)
       => Knotted () b c' c self super r
       -> Knotted a' a () b self super r
       -> Knotted a' a c' c self super r
 p2 <-< p1 = p1 >-> p2
-
 
 infixr 7 <+<
 (<+<) :: ('[Knot] :> self, Monad super)
@@ -730,7 +679,6 @@ infixr 7 <+<
       -> Knotted a' a c' c self super r
 p1 <+< p2 = p2 >+> p1
 
-
 infixl 7 >+>
 (>+>) :: ('[Knot] :> self, Monad super)
       => (b' -> Knotted a' a b' b self super r)
@@ -739,7 +687,6 @@ infixl 7 >+>
       -> Knotted a' a c' c self super r
 (fb' >+> fc') c' = fb' +>> fc' c'
 
-
 infixl 6 <<+
 (<<+) :: ('[Knot] :> self, Monad super)
       => Knotted b' b c' c self super r
@@ -747,7 +694,7 @@ infixl 6 <<+
       -> Knotted a' a c' c self super r
 p <<+ fb = fb +>> p
 
-
+-- valid rules from pipes
 {-# RULES
     "(p //> f) //> g" forall p f g . (p //> f) //> g = p //> (\x -> f x //> g)
 
@@ -766,15 +713,11 @@ p <<+ fb = fb +>> p
 
   #-}
 
-
-
-{-# INLINE linearize #-}
+{-# INLINE runKnot #-}
 {-# INLINE closed #-}
 {-# INLINE producer #-}
 {-# INLINE consumer #-}
 {-# INLINE line #-}
--- {-# INLINE client #-}
--- {-# INLINE server #-}
 {-# INLINE knotted #-}
 
 {-# INLINE freshScope #-}

@@ -2,17 +2,14 @@ module Ef.Lang.Exit
     ( enter
     ) where
 
-
 import Ef.Narrative
 import Ef.Knot
 
-
 exiting
-    :: (Can Knot self, Monad super)
+    :: (Monad super, '[Knot] :> self)
     => ((a' -> Narrative self super a) -> Narrative self super result)
     -> Knotted a' a b' b self super result
 exiting computation = knotted $ \up _ -> computation up
-
 
 -- | Scope a short-circuit continuation.
 --
@@ -23,7 +20,7 @@ exiting computation = knotted $ \up _ -> computation up
 --         ...
 -- @
 enter
-    :: (Can Knot self, Monad super)
+    :: (Monad super, '[Knot] :> self)
     => (    (result -> Narrative self super b)
          -> Narrative self super result
        )

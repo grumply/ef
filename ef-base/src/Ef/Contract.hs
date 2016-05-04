@@ -7,13 +7,10 @@ module Ef.Contract
     , Phase(..)
     ) where
 
-
-
 import Ef
 
 import Control.Exception (Exception(..), SomeException)
 import Data.Either
-
 
 data Phase = Before | During | After
   deriving Show
@@ -33,23 +30,18 @@ data Contract self super variables result
     = Contract [Consideration self super variables result]
                (Narrative self super result)
 
-
 consider :: Monad super
          => [Narrative self super ()] -> Narrative self super [SomeException]
-
-consider considerations =
-    do
-        results <- sequence (map try considerations)
-        let failures = fst (partitionEithers results)
-        return failures
-
+consider considerations = do
+    results <- sequence (map try considerations)
+    let failures = fst (partitionEithers results)
+    return failures
 
 runWithInvariants :: Monad super
                   => MethodName
                   -> [Narrative self super ()]
                   -> Narrative self super result
                   -> Narrative self super result
-
 runWithInvariants methodName invariants method =
     let invariant = sequence (map try invariants)
         test (Return r) = Return r
@@ -64,10 +56,7 @@ runWithInvariants methodName invariants method =
                         test (k result)
                     else
                         throw (Breaches methodName During failures)
-
-    in
-        test method
-
+    in test method
 
 contract
     :: forall variables result self super.
@@ -75,7 +64,6 @@ contract
     => MethodName
     -> Contract self super variables result
     -> Narrative self super result
-
 contract methodName (Contract considerations method) =
 #ifdef CONTRACTS
     do
@@ -102,7 +90,6 @@ contract methodName (Contract considerations method) =
 #else
     method
 #endif
-
 
 splitConsiderations considerations =
     let splitter = consider precondition invariant postcondition

@@ -1,4 +1,3 @@
-{-# language RankNTypes #-}
 module Modal.Notification where
 
 import Ef
@@ -193,8 +192,10 @@ configureMaxNotes = do
 
 noteContinerId = "noteContainer"
 
+createNoteContainer :: (Monad super, Web :> self, Lift IO super) => Narrative self super Node
 createNoteContainer = do
-  fromJust <$> with fusion $ embedWith child noteContainerAtom
+  Just (n,_) <- with fusion $ embedWith child noteContainerAtom
+  return n
   where
     noteContainerAtom = Atom{..}
       where

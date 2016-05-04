@@ -23,11 +23,14 @@ data Except k
   = Except (SomeException -> k)
   | Throw SomeException k
 
-excepts :: Trait Except contexts environment
+instance Ma Except Except where
+    ma use (Except k) (Throw e k') = use (k e) k'
+
+excepts :: (Monad super, '[Except] .> traits)
+        => Trait Except traits super
 excepts =
     let uncaught err = "Impossible uncaught checked exception: " ++ show err
     in Except (error . uncaught)
-
 {-# INLINE excepts #-}
 
 class Throws e
@@ -39,27 +42,23 @@ instance Throws (Catch e)
 newtype Wrap e a =
     Wrap { unWrap :: Throws e => a }
 
-
 -- | throw a checked exception; the exception must be caught via `catchChecked`
 -- before the `Narrative` can be sent to an `Object`.
 throwChecked
-    :: ('[Except] :> self, Monad super, Exception e)
+    :: (Monad super, '[Except] :> self, Exception e)
     => e -> (Throws e => Narrative self super a)
-
 throwChecked e =
     let exception = toException e
     in self (Throw exception undefined)
-
 
 -- | catch a chcked exception created via `throwChecked`; this method must be called
 -- on a `Narrative` carrying a (Throws _ =>) context before it may be sent to an `Object`.
 catchChecked
     :: forall e self super result.
-       ('[Except] :> self, Monad super, Exception e)
+       (Monad super, '[Except] :> self, Exception e)
     => (Throws e => Narrative self super result)
     -> (e -> Narrative self super result)
     -> Narrative self super result
-
 catchChecked act =
     let proxy = Proxy :: Proxy e
     in Except.catch (unthrow proxy act)
@@ -70,27 +69,18 @@ catchChecked act =
     coerceWrap :: forall e x. Wrap e x -> Wrap (Catch e) x
     coerceWrap = coerce
 
-
 -- | similar to `catchChecked` but doesn't handle the exception and instead
 -- lifts it into an `Either` sum with the `Narratives` expected result.
 tryChecked
-    :: ('[Except] :> self, Monad super, Exception e)
+    :: (Monad super, '[Except] :> self, Exception e)
     => (Throws e => Narrative self super result)
     -> Narrative self super (Either e result)
-
-tryChecked a =
-    catchChecked (Right <$> a) (return . Left)
-
+tryChecked a = catchChecked (Right <$> a) (return . Left)
 
 -- | cast a checked exception to another type
 mapChecked
-    :: ('[Except] :> self, Monad super, Exception e, Exception e')
+    :: (Monad super, '[Except] :> self, Exception e, Exception e')
     => (e -> e')
     -> (Throws e => Narrative self super a)
     -> (Throws e' => Narrative self super a)
-
-mapChecked f p =
-    catchChecked p (throwChecked . f)
-
-instance Ma Except Except where
-    ma use (Except k) (Throw e k') = use (k e) k'
+mapChecked f p = catchChecked p (throwChecked . f)

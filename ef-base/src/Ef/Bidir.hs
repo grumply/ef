@@ -1,7 +1,7 @@
 module Ef.Bidir
     ( Bidir(..)
     , bidir
-    , linearize
+    , runBidir
 
     , Producer
     , Producer'
@@ -16,11 +16,9 @@ module Ef.Bidir
 
     , Client
     , Client'
-    -- , client
 
     , Server
     , Server'
-    -- , server
 
     , Bi(..)
     , Effect
@@ -65,20 +63,21 @@ import Control.Applicative
 import Control.Monad
 import Unsafe.Coerce
 
-instance Ma Bidir Bidir
-
 data Bidir k where
     Bidir :: k -> Bidir k
     Request :: a' -> (a -> Narrative self super r) -> Bidir k
     Respond :: b -> (b' -> Narrative self super r) -> Bidir k
 
-bidir =
-    Bidir return
+instance Ma Bidir Bidir
+
+bidir :: (Monad super, '[Bidir] .> traits)
+      => Trait Bidir traits super
+bidir = Bidir return
 {-# INLINE bidir #-}
 
-linearize :: ('[Bidir] :> self, Monad super)
-          => Effect self super r -> Invoke Bidir self super r
-linearize e = do
+runBidir :: ('[Bidir] :> self, Monad super)
+         => Effect self super r -> Narrative self super r
+runBidir e = do
     rewrite $
         runBi e
             (\a' apl -> self (Request a' apl))
@@ -98,14 +97,12 @@ rewrite = transform go
                Just (Respond b _) -> closed (unsafeCoerce b)
                Nothing -> Say message (transform go . k)
 
-
 instance Functor super
     => Functor (Bi a' a b' b self super)
   where
 
     fmap f (Bi w) =
         Bi $ \up dn -> fmap f (w up dn)
-
 
 instance Monad super
     => Applicative (Bi a' a b' b self super)
@@ -121,7 +118,6 @@ instance Monad super
 
     (*>) = (>>)
 
-
 instance Monad super
     => Monad (Bi a' a b' b self super)
   where
@@ -132,7 +128,6 @@ instance Monad super
         Bi $ \up dn -> do
             v <- runBi r (unsafeCoerce up) (unsafeCoerce dn)
             runBi (rs v) up dn
-
 
 instance ( Monad super
          , Monoid r
@@ -147,8 +142,6 @@ instance ( Monad super
             result <- runBi w1 up dn
             fmap (mappend result) $ runBi w2 (unsafeCoerce up) (unsafeCoerce dn)
 
-
-
 instance MonadPlus super
     => Alternative (Bi a' a b' b self super)
   where
@@ -156,7 +149,6 @@ instance MonadPlus super
     empty = mzero
 
     (<|>) = mplus
-
 
 -- what does this look like without inspecting Super since that was the entire
 -- point of implementing 'transform'?
@@ -195,25 +187,18 @@ instance MonadPlus super
               in
                 Super (fmap go sup `mplus` return routine)
 
-
 newtype X = X X
-
 
 closed :: X -> a
 closed (X x) = closed x
-
 
 type Effect self super r = Bi X () () X self super r
 
 type Producer b self super r = Bi X () () b self super r
 
-
-producer
-    :: forall self super b r.
-       ('[Bidir] :> self, Monad super)
-    => ((b -> Narrative self super ()) -> Narrative self super r)
-    -> Producer' b self super r
-
+producer :: forall self super b r. ('[Bidir] :> self, Monad super)
+         => ((b -> Narrative self super ()) -> Narrative self super r)
+         -> Producer' b self super r
 producer f =
     Bi $ \_ dn ->
         do
@@ -227,16 +212,11 @@ producer f =
 
           f respond
 
-
 type Consumer a self super r = Bi () a () X self super r
 
-
-consumer
-    :: forall self super a r.
-       ('[Bidir] :> self, Monad super)
-    => (Narrative self super a -> Narrative self super r)
-    -> Consumer' a self super r
-
+consumer :: forall self super a r. ('[Bidir] :> self, Monad super)
+         => (Narrative self super a -> Narrative self super r)
+         -> Consumer' a self super r
 consumer f =
     Bi $ \up _ ->
         do
@@ -250,16 +230,11 @@ consumer f =
 
           f request
 
-
 type Line a b self super r = Bi () a () b self super r
 
-
-line
-    :: forall self super a b r.
-       ('[Bidir] :> self, Monad super)
-    => (Narrative self super a -> (b -> Narrative self super ()) -> Narrative self super r)
-    -> Line a b self super r
-
+line :: forall self super a b r. ('[Bidir] :> self, Monad super)
+     => (Narrative self super a -> (b -> Narrative self super ()) -> Narrative self super r)
+     -> Line a b self super r
 line f =
     Bi $ \up _ ->
         do
@@ -272,12 +247,9 @@ line f =
 
           f request respond
 
-
 type Client a' a self super r = Bi a' a () X self super r
 
-
 type Server b' b self super r = Bi X () b' b self super r
-
 
 newtype Bi a' a b' b self super r =
     Bi
@@ -288,14 +260,9 @@ newtype Bi a' a b' b self super r =
               -> Narrative self super r
         }
 
-
-
-knotted
-    :: forall self a a' b b' super r.
-       ('[Bidir] :> self, Monad super)
-    => ((a' -> Narrative self super a) -> (b -> Narrative self super b') -> Narrative self super r)
-    -> Bi a' a b' b self super r
-
+knotted :: forall self a a' b b' super r. ('[Bidir] :> self, Monad super)
+        => ((a' -> Narrative self super a) -> (b -> Narrative self super b') -> Narrative self super r)
+        -> Bi a' a b' b self super r
 knotted f =
     Bi $ \up _ ->
         do
@@ -319,7 +286,6 @@ type Client' a' a self super r = forall y' y. Bi a' a y' y self super r
 cat :: ('[Bidir] :> self, Monad super) => Line a a self super r
 cat = line $ \awt yld -> forever (awt >>= yld)
 
-
 infixl 3 //>
 (//>) :: ('[Bidir] :> self, Monad super)
       => Bi x' x b' b self super a'
@@ -329,7 +295,6 @@ p0 //> fb =
     Bi $ \up dn -> do
         let routine = runBi p0 up (unsafeCoerce dn)
         substituteResponds fb up dn routine
-
 
 substituteResponds
     :: forall self super x' x c' c b' b a'.
@@ -361,13 +326,11 @@ substituteResponds fb up dn =
                        _ -> ignore
                _ -> ignore
 
-
 for :: ('[Bidir] :> self, Monad super)
     => Bi x' x b' b self super a'
     -> (b -> Bi x' x c' c self super b')
     -> Bi x' x c' c self super a'
 for = (//>)
-
 
 infixr 3 <\\
 (<\\) :: ('[Bidir] :> self, Monad super)
@@ -375,7 +338,6 @@ infixr 3 <\\
       -> Bi x' x b' b self super a'
       -> Bi x' x c' c self super a'
 f <\\ p = p //> f
-
 
 infixl 4 \<\
 (\<\) :: ('[Bidir] :> self, Monad super)
@@ -385,7 +347,6 @@ infixl 4 \<\
       -> Bi x' x c' c self super a'
 p1 \<\ p2 = p2 />/ p1
 
-
 infixr 4 ~>
 (~>) :: ('[Bidir] :> self, Monad super)
      => (a -> Bi x' x b' b self super a')
@@ -393,7 +354,6 @@ infixr 4 ~>
      -> a
      -> Bi x' x c' c self super a'
 (~>) = (/>/)
-
 
 infixl 4 <~
 (<~) :: ('[Bidir] :> self, Monad super)
@@ -403,7 +363,6 @@ infixl 4 <~
      -> Bi x' x c' c self super a'
 g <~ f = f ~> g
 
-
 infixr 4 />/
 (/>/) :: ('[Bidir] :> self, Monad super)
       => (a -> Bi x' x b' b self super a')
@@ -412,10 +371,8 @@ infixr 4 />/
       -> Bi x' x c' c self super a'
 (fa />/ fb) a = fa a //> fb
 
-
 --------------------------------------------------------------------------------
 -- Request; substitute awaits
-
 
 infixr 4 >\\
 (>\\) :: ('[Bidir] :> self, Monad super)
@@ -426,7 +383,6 @@ fb' >\\ p0 =
     Bi $ \up dn -> do
         let routine = runBi p0 (unsafeCoerce up) dn
         substituteRequests fb' up dn routine
-
 
 substituteRequests
     :: forall self super x' x c' c b' b a'.
@@ -462,7 +418,6 @@ substituteRequests fb' up dn =
                       _ -> ignore
               _ -> ignore
 
-
 infixr 5 /</
 (/</) :: ('[Bidir] :> self, Monad super)
       => (c' -> Bi b' b x' x self super c)
@@ -471,7 +426,6 @@ infixr 5 /</
       -> Bi a' a x' x self super c
 p1 /</ p2 = p2 \>\ p1
 
-
 infixr 5 >~
 (>~) :: ('[Bidir] :> self, Monad super)
      => Bi a' a y' y self super b
@@ -479,14 +433,12 @@ infixr 5 >~
      -> Bi a' a y' y self super c
 p1 >~ p2 = (\() -> p1) >\\ p2
 
-
 infixl 5 ~<
 (~<) :: ('[Bidir] :> self, Monad super)
      => Bi () b y' y self super c
      -> Bi a' a y' y self super b
      -> Bi a' a y' y self super c
 p2 ~< p1 = p1 >~ p2
-
 
 infixl 5 \>\
 (\>\) :: ('[Bidir] :> self, Monad super)
@@ -496,7 +448,6 @@ infixl 5 \>\
       -> Bi a' a y' y self super c
 (fb' \>\ fc') c' = fb' >\\ fc' c'
 
-
 infixl 4 \\<
 (\\<) :: ('[Bidir] :> self, Monad super)
       => Bi b' b y' y self super c
@@ -504,22 +455,19 @@ infixl 4 \\<
       -> Bi a' a y' y self super c
 p \\< f = f >\\ p
 
-
 --------------------------------------------------------------------------------
 -- Push; substitute responds with requests
-
 
 infixl 7 >>~
 (>>~)
     :: forall self a' a b' b c' c super r.
-       Knows Bidir self super
+       (Monad super, '[Bidir] :> self)
     => Bi a' a b' b self super r
     -> (b -> Bi b' b c' c self super r)
     -> Bi a' a c' c self super r
 p0 >>~ fb0 =
     Bi $ \up dn -> do
         pushRewrite up dn fb0 p0
-
 
 pushRewrite
     :: forall self super r a' a b' b c' c.
@@ -565,7 +513,6 @@ pushRewrite up dn fb0 p0 =
                            _ -> ignore
                    _ -> ignore
 
-
 infixl 8 <~<
 (<~<) :: ('[Bidir] :> self, Monad super)
       => (b -> Bi b' b c' c self super r)
@@ -573,7 +520,6 @@ infixl 8 <~<
       -> a
       -> Bi a' a c' c self super r
 p1 <~< p2 = p2 >~> p1
-
 
 infixr 8 >~>
 (>~>) :: ('[Bidir] :> self, Monad super)
@@ -583,7 +529,6 @@ infixr 8 >~>
       -> Bi a' a c' c self super r
 (fa >~> fb) a = fa a >>~ fb
 
-
 infixr 7 ~<<
 (~<<) :: ('[Bidir] :> self, Monad super)
       => (b -> Bi b' b c' c self super r)
@@ -591,10 +536,8 @@ infixr 7 ~<<
       -> Bi a' a c' c self super r
 k ~<< p = p >>~ k
 
-
 --------------------------------------------------------------------------------
 -- Pull; substitute requests with responds
-
 
 infixr 6 +>>
 (+>>) :: ('[Bidir] :> self, Monad super)
@@ -604,7 +547,6 @@ infixr 6 +>>
 fb' +>> p0 =
     Bi $ \up dn -> do
         pullRewrite up dn fb' p0
-
 
 pullRewrite
     :: forall self super a' a b' b c' c r.
@@ -650,7 +592,6 @@ pullRewrite up dn fb' p =
                            _ -> ignore
                    _ -> ignore
 
-
 infixl 7 >->
 (>->) :: ('[Bidir] :> self, Monad super)
       => Bi a' a () b self super r
@@ -658,14 +599,12 @@ infixl 7 >->
       -> Bi a' a c' c self super r
 p1 >-> p2 = (\() -> p1) +>> p2
 
-
 infixr 7 <-<
 (<-<) :: ('[Bidir] :> self, Monad super)
       => Bi () b c' c self super r
       -> Bi a' a () b self super r
       -> Bi a' a c' c self super r
 p2 <-< p1 = p1 >-> p2
-
 
 infixr 7 <+<
 (<+<) :: ('[Bidir] :> self, Monad super)
@@ -675,7 +614,6 @@ infixr 7 <+<
       -> Bi a' a c' c self super r
 p1 <+< p2 = p2 >+> p1
 
-
 infixl 7 >+>
 (>+>) :: ('[Bidir] :> self, Monad super)
       => (b' -> Bi a' a b' b self super r)
@@ -684,14 +622,12 @@ infixl 7 >+>
       -> Bi a' a c' c self super r
 (fb' >+> fc') c' = fb' +>> fc' c'
 
-
 infixl 6 <<+
 (<<+) :: ('[Bidir] :> self, Monad super)
       => Bi b' b c' c self super r
       -> (b' -> Bi a' a b' b self super r)
       -> Bi a' a c' c self super r
 p <<+ fb = fb +>> p
-
 
 {-# RULES
     "(p //> f) //> g" forall p f g . (p //> f) //> g = p //> (\x -> f x //> g)
@@ -711,15 +647,11 @@ p <<+ fb = fb +>> p
 
   #-}
 
-
-
-{-# INLINE linearize #-}
+{-# INLINE runBidir #-}
 {-# INLINE closed #-}
 {-# INLINE producer #-}
 {-# INLINE consumer #-}
 {-# INLINE line #-}
--- {-# INLINE client #-}
--- {-# INLINE server #-}
 {-# INLINE knotted #-}
 
 {-# INLINE rewrite #-}

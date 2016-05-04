@@ -2,33 +2,31 @@ module Ef.Reader (ask, asks, local, Reader, reader) where
 
 import Ef
 
-instance Ma (Reader r) (Reader r) where
-    ma use (Reader r k) (Ask rk) = ma use (r,k) rk
-
 data Reader (r :: *) (k :: *)
   = Reader r k
   | Ask (r -> k)
 
-reader :: r -> Use (Reader r) scope environment
+instance Ma (Reader r) (Reader r) where
+    ma use (Reader r k) (Ask rk) = ma use (r,k) rk
+
+reader :: (Monad super, '[Reader r] .> traits)
+       => r -> Trait (Reader r) traits super
 reader r = Reader r pure
 {-# INLINE reader #-}
 
-ask :: Invoke (Reader r) self super r
+ask :: (Monad super, '[Reader r] :> self)
+    => Narrative self super r
 ask = self (Ask id)
 {-# INLINE ask #-}
 
-asks :: (r -> a) -> Invoke (Reader r) self super a
+asks :: (Monad super, '[Reader r] :> self)
+     => (r -> a) -> Narrative self super a
 asks f = self (Ask f)
 {-# INLINE asks #-}
 
-local
-    :: forall self super r.
-       ('[Reader r] :> self, Monad super)
-    => (r -> r)
-    -> Narrative self super r
-    -> Narrative self super r
-local f =
-    transform go
+local :: forall self super r. (Monad super, '[Reader r] :> self)
+      => (r -> r) -> Narrative self super r -> Narrative self super r
+local f = transform go
   where
 
     go :: forall x. Messages self x -> (x -> Narrative self super r) -> Narrative self super r

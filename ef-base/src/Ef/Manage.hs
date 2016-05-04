@@ -34,21 +34,19 @@ data Manage k where
 
     Finish :: Int -> a -> Manage k
 
+instance Ma Manage Manage where
+    -- needed to let Deallocation cross manager scopes
+    ma use (Manage _ _ k) (Deallocate _ k') = use k k'
+    ma use (Manage i k _) (FreshSelf ik) = use k (ik i)
 
--- | manage implements the scoping logic for creating
--- managed contexts. Scoped manager logic is implemented
--- in `Ef.Manage`.
-manages :: Use Manage methods super
-manages =
-    Manage 0 pure $ \fs ->
-        let Manage i non me = view fs
-            i' = succ i
-        in i' `seq` pure $ fs .= Manage i' non me
+manages :: (Monad super, '[Manage] .> traits)
+        => Trait Manage traits super
+manages = Manage 0 pure $ \fs ->
+    let Manage i non me = view fs
+        i' = succ i
+    in i' `seq` pure $ fs .= Manage i' non me
+{-# INLINE manages #-}
 
-
--- | Interface for managing resources. The only way to create a Managed is with
--- `Ef.Manage.managed`. As with all scoping constructs, never return a `Managed`
--- from its root scope.
 data Manager self super =
     Manager
         { -- | allocate a resource with a given cleanup method to be performed
@@ -83,15 +81,6 @@ data Manager self super =
               -> Narrative self super ()
         }
 
-instance Ma Manage Manage where
-    -- needed to let Deallocation cross manager scopes
-    ma use (Manage _ _ k) (Deallocate _ k') = use k k'
-    ma use (Manage i k _) (FreshSelf ik) = use k (ik i)
-
-
--- | managed creates a scoped construct to interface with
--- the manager.
---
 -- Simple Example:
 --
 --    > managed $ \Manager{..} -> do
@@ -118,10 +107,10 @@ manage f = do
             , unregister = \token -> self (Unregister scope token ())
             }
         ) >>= (self . Finish scope)
+{-# INLINE manage #-}
 
 
-rewrite :: forall self super result.
-           ('[Manage] :> self, Monad super)
+rewrite :: forall self super result. ('[Manage] :> self, Monad super)
         => Int
         -> [(Int,Narrative self super ())]
         -> Narrative self super result
@@ -199,8 +188,4 @@ rewrite rewriteSelf =
 
                                    _ -> ignore
                            _ -> ignore
-
--- | Inlines
-
 {-# INLINE rewrite #-}
-{-# INLINE manage #-}
