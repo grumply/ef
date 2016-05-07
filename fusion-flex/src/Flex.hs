@@ -20,6 +20,8 @@ import Carbon as CSS
 import Oxygen
 import Silicon
 
+import Attributes as CSS
+
 import Control.Monad
 
 flexible f xs sm md lg = void $ do
@@ -115,10 +117,10 @@ rowReverse = do
     flexDirection       =: CSS.rowReverse
 
 transitionFlexWidth dur easing = do
-  transitions $ spaces <| str msFlexPreferredSize dur easing
-  transitions $ spaces <| str webkitFlexBasis dur easing
-  transitions $ spaces <| str flexBasis dur easing
-  transitions $ spaces <| str maxWidth dur easing
+  transition =: spaces <| str msFlexPreferredSize dur easing
+  transition =: spaces <| str webkitFlexBasis dur easing
+  transition =: spaces <| str flexBasis dur easing
+  transition =: spaces <| str maxWidth dur easing
 
 flexWidth percent = do
   let w = per percent
