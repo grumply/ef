@@ -48,6 +48,7 @@ primaryWidget = Atom {..}
 
     styles = do
       position =: absolute
+      display =: block
       top =: px 128
       left =: px 64
 
@@ -66,9 +67,35 @@ addButton = SVG {..}
       (mouseOutof,_) <- listen E.mouseLeave  id listenOpts
       (clicks,_)     <- listen E.click id listenOpts
       svgDimensions 24 24
+      definitions $ do
+        svg circleGradient
       svg boundingCircle
       -- svg horLine
       -- svg verLine
+
+circleGradient = NamedSVG {..}
+  where
+
+    svgName = "addButtonCircleGradient"
+
+    svgTag = E.radialGradient
+
+    svgStyles = return ()
+
+    svgElement = do
+      svg (gradientStop 80 blue)
+      svg (gradientStop 90 orange)
+
+gradientStop p c = SVG {..}
+  where
+
+    svgTag = stop_
+
+    svgStyles = return ()
+
+    svgElement = do
+      svgSet offset (per p)
+      svgSet stopColor c
 
 boundingCircle = Circle {..}
   where
@@ -77,9 +104,7 @@ boundingCircle = Circle {..}
 
     circleRadius = 10
 
-    circleStyles = do
-      stroke =: black
-      strokeWidth =: px 2
-      fill =: transparent
+    circleStyles = return ()
 
-    circleElement = return ()
+    circleElement = do
+      svgSet fill (url (individual "addButtonCircleGradient"))
