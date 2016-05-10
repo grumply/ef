@@ -5,6 +5,7 @@ packages:
 - '../ef-base'
 - '../fusion'
 - '../fusion-flex'
+- '../fusion-websocket'
 extra-deps:
 - ghcjs-dom-0.2.3.1
 compiler: ghcjs-0.2.0.20160414_ghc-7.10.3

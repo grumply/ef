@@ -13,6 +13,7 @@
 {-# LANGUAGE Safe #-}
 module Ef.Object
     ( Trait
+    , Method
     , Subclass
     , Superclass
     , (.>)(..)
@@ -40,8 +41,10 @@ import Ef.Type.Nat
 import Control.DeepSeq
 
 type Trait trait traits super =
-    trait (Object traits super -> super (Object traits super))
+    trait (Method traits super)
 
+type Method traits super =
+    Object traits super -> super (Object traits super)
 
 type Superclass t s = (.>) t s
 

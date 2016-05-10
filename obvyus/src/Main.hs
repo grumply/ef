@@ -19,6 +19,7 @@ import Neon
 import Attributes as A
 import Elements as E
 
+import WebSocket
 import Flex
 
 import Control.Monad
@@ -27,84 +28,28 @@ import qualified GHCJS.DOM.Element as E
 
 import Prelude hiding (span)
 
+import Data.Time.Clock
+
+import Control.Concurrent
+
+import Data.JSString
+import JavaScript.Web.MessageEvent
+
+server = Proxy :: Proxy 8080
 
 main = run Config{..}
   where
 
-    prime = return
+    prime base = return $ ws server *:* base
 
-    build = void $ with fusion $ do
-      html primaryWidget
-      style $ do
-        height =: per 100
-      -- embed secondaryWidget
+    build = do
+      wsConnect server
+      start <- lift getCurrentTime
+      onMessage server $ \_ -> return True
+      void $ with fusion $ do
+        style $ height =: per 100
+        -- embed secondaryWidget
 
-    routes = dispatch $ return ()
-
-primaryWidget = Atom {..}
-  where
-
-    tag = division
-
-    styles = do
-      position =: absolute
-      display =: block
-      top =: px 128
-      left =: px 64
-
-    element = do
-      svg addButton
-
-addButton = SVG {..}
-  where
-
-    svgTag = svg_
-
-    svgStyles = return ()
-
-    svgElement = do
-      (mouseInto,_)  <- listen E.mouseEnter id listenOpts
-      (mouseOutof,_) <- listen E.mouseLeave  id listenOpts
-      (clicks,_)     <- listen E.click id listenOpts
-      svgDimensions 24 24
-      definitions $ do
-        svg circleGradient
-      svg boundingCircle
-      -- svg horLine
-      -- svg verLine
-
-circleGradient = NamedSVG {..}
-  where
-
-    svgName = "addButtonCircleGradient"
-
-    svgTag = E.radialGradient
-
-    svgStyles = return ()
-
-    svgElement = do
-      svg (gradientStop 80 blue)
-      svg (gradientStop 90 orange)
-
-gradientStop p c = SVG {..}
-  where
-
-    svgTag = stop_
-
-    svgStyles = return ()
-
-    svgElement = do
-      svgSet offset (per p)
-      svgSet stopColor c
-
-boundingCircle = Circle {..}
-  where
-
-    circleCenter = (12,12)
-
-    circleRadius = 10
-
-    circleStyles = return ()
-
-    circleElement = do
-      svgSet fill (url (individual "addButtonCircleGradient"))
+    routes = dispatch $ do
+      onState server $ \_ _ -> send server "test"
+      return ()

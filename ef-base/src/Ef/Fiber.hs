@@ -90,11 +90,9 @@ data Threader self super =
 --        notify 1
 --        ..
 --
---    thread2 thread1Status _ = do
---            startTime <- io getCurrentTime
---            go startTime
+--    thread2 thread1Status _ = go 
 --        where
---            go startTime = do
+--            go = do
 --                status <- query thread1Status
 --                case status of
 --                    Running Nothing  -> ... -- hasn't started executing yet
@@ -114,7 +112,7 @@ data Threader self super =
 -- Note: I suggest not using this unless you absolutely know that you need it
 -- and all that its use implies, including the ease with which it allows you to
 -- introduce bugs based around atomicity assumptions. For instance, imagine a
--- get-modify-put method:
+-- get-modify-put method in a shared context (forked threads share root context):
 --
 -- @
 --   getModifyPut modify = do
@@ -138,8 +136,8 @@ data Threader self super =
 -- @
 --
 -- if the call to put happens to be preempted in both threads, one will likely
--- overwrite the results of the other. It is easy to remedy with a call to `focus`
--- like this:
+-- overwrite the results of the other. It is easy to remedy with a call to
+-- `focus`, which is similar to a call to atomic, like this:
 --
 -- @
 --   fibers $ \Threader{..} -> do
@@ -151,7 +149,9 @@ data Threader self super =
 --
 -- but it is easy to believe that your method won't need the call, which leads
 -- you into the trap. This issue becomes even more difficult if you nest calls
--- to fibers and fork.
+-- to fiber and fork, in which case a call to the atomic primitive `focus` in
+-- the n-th context is, interestingly, not atomic in the context of the n-1 call
+-- to fiber.
 --
 fiber :: forall self super result.
           ('[Fiber] :> self, Monad super, Lift IO super)
