@@ -1,5 +1,6 @@
 {-# language OverloadedStrings #-}
 {-# language ImplicitParams #-}
+{-# language TemplateHaskell #-}
 module Main where
 
 import Ef
@@ -48,8 +49,56 @@ main = run Config{..}
       onMessage server $ \_ -> return True
       void $ with fusion $ do
         style $ height =: per 100
+        html editor
         -- embed secondaryWidget
 
     routes = dispatch $ do
       onState server $ \_ _ -> send server "test"
       return ()
+
+editor = Named {..}
+  where
+
+    name = $(unique)
+
+    tag = division
+
+    styles = do
+      Flex.row
+      Flex.center
+      height =: per 100
+
+    element = do
+      html styleBar
+      html contentArea
+
+styleBar = Named {..}
+  where
+
+    name = $(unique)
+
+    tag = division
+
+    styles = do
+      Flex.col 80
+      margin =: zero
+      height =: px 30
+
+    element = return ()
+
+
+
+contentArea = Named {..}
+  where
+
+    name = $(unique)
+
+    tag = division
+
+    styles = do
+      Flex.col 80
+      textAlign =: left
+      margin =: zero
+
+    element = do
+      set contenteditable true
