@@ -7,21 +7,22 @@ module Ef.State
     , puts
     , swap
     , modify
-    , modify'
     ) where
 
 import Ef
 
 data State st k
-  = State st (st -> k)
+  = State !st (st -> k)
   | Modify (st -> st) (st -> k)
 
 instance Ma (State st) (State st) where
-    ma use (State st stk) (Modify stst stk') = use (stk (stst st)) (stk' st)
+  ma use (State st stk) (Modify stst stk') =
+    use (stk (stst st)) (stk' st)
 
 state :: (Monad super, '[State st] .> traits)
       => st -> Trait (State st) traits super
-state initialState = State initialState $ \new fs -> pure $ (fs .=) $! state new
+state initialState = State initialState $ \new fs ->
+  return $! (fs .=) $! state new
 {-# INLINE state #-}
 
 get :: (Monad super, '[State st] :> self)
@@ -53,8 +54,3 @@ modify :: (Monad super, '[State st] :> self)
        => (st -> st) -> Narrative self super ()
 modify f = self (Modify f (const ()))
 {-# INLINE modify #-}
-
-modify' :: (Monad super, '[State st] :> self)
-        => (st -> st) -> Narrative self super ()
-modify' f = self (Modify (\x -> let x' = f x in x' `seq` x') (const ()))
-{-# INLINE modify' #-}

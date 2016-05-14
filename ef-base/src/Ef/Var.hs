@@ -104,6 +104,7 @@ stateful computation =
 
     in
         knotted $ \up _ -> computation (stateInterface up)
+{-# INLINE stateful #-}
 
 var :: ('[Knot] :> self, Monad super)
     => state
@@ -150,7 +151,6 @@ var' initial computation =
                 withRespond respond =
                     handle
                     where
-
 
                         handle !current (Modify _ mod) =
                             do

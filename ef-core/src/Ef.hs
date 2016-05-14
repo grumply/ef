@@ -9,12 +9,15 @@
 {-# LANGUAGE Trustworthy #-}
 module Ef
     ( module Core
+    , Offset
     , delta
     , ($..)
     , ($.)
     ) where
 
 import Ef.Type.Set as Core (Union)
+
+import Ef.Type.Nat (Offset)
 
 import Ef.Object as Core
 import Ef.Traits as Core
