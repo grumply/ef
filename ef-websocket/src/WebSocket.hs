@@ -32,10 +32,10 @@ instance Ma (WebSocket port) (WebSocket port) where
   ma use WebSocket {..} (GetWebSocket ck) = ma use webSocket ck
   ma use WebSocket {..} (SetWebSocket c k) = ma use webSocketSetter (c,k)
 
-ws :: forall traits super port.
-      (Monad super, KnownNat port, Lift IO super, '[WebSocket port] .> traits)
-   => S.Socket -> IO (Trait (WebSocket port) traits super)
-ws listenSocket = do
+ws :: forall traits super super' port.
+      (Monad super, Lift IO super, Monad super', Lift IO super', KnownNat port, '[WebSocket port] .> traits)
+   => Proxy port -> S.Socket -> super' (Trait (WebSocket port) traits super)
+ws _ listenSocket = do
   c <- lift $ WS.makePendingConnection listenSocket WS.defaultConnectionOptions >>= WS.acceptRequest
   return $ WebSocket
     { webSocket = (Just c,return)

@@ -108,7 +108,7 @@ ws _ = WebSocket
                 Just win <- D.currentWindow
                 Just loc <- W.getLocation win
                 hn <- L.getHostname loc
-                sock <- WS.newWebSocket ("ws://" ++ hn ++ ':':port) (Nothing :: Maybe [String])
+                sock <- WS.newWebSocket ("ws://" ++ hn ++ ':':port) (Just [] :: Maybe [String])
                 E.on sock WS.open $ T.lift $ arrive (unsafeCoerce gb) ([unsafeCoerce WSOpened],statesSignal)
                 E.on sock WS.closeEvent $ T.lift $ arrive (unsafeCoerce gb) ([unsafeCoerce WSClosed],statesSignal)
                 E.on sock WS.error $ T.lift $ arrive (unsafeCoerce gb) ([unsafeCoerce WSError],statesSignal)
