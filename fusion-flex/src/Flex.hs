@@ -14,13 +14,9 @@ module Flex
 
 import Ef
 
-import Helium
-import Iron
-import Carbon as CSS
-import Oxygen
-import Silicon
+import Fusion
 
-import Attributes as CSS
+import Attributes as A
 
 import Control.Monad
 
@@ -49,9 +45,9 @@ column = do
     msFlex =: vals <| str zero one auto
     flex =: vals <| str zero one auto
 
-    webkitFlexDirection =: CSS.column
-    msFlexDirection =: CSS.column
-    flexDirection =: CSS.column
+    webkitFlexDirection =: A.column
+    msFlexDirection =: A.column
+    flexDirection =: A.column
 
     Flex.orient Horizontal
     Flex.direction Normal
@@ -67,18 +63,18 @@ orient BlockAxis = webkitBoxOrient =: string  "block-axis"
 data Direction = Normal | Reverse
 
 direction Normal = webkitBoxDirection =: normal
-direction Reverse = webkitBoxDirection =: CSS.reverse
+direction Reverse = webkitBoxDirection =: A.reverse
 
 data Wrap = Wrap | NoWrap | WrapReverse
 
 wrap Wrap = do
-  webkitFlexWrap =: CSS.wrap
-  msFlexWrap =: CSS.wrap
-  flexWrap =: CSS.wrap
+  webkitFlexWrap =: A.wrap
+  msFlexWrap =: A.wrap
+  flexWrap =: A.wrap
 wrap NoWrap = do
-  webkitFlexWrap =: CSS.nowrap
-  msFlexWrap =: CSS.nowrap
-  flexWrap =: CSS.nowrap
+  webkitFlexWrap =: A.nowrap
+  msFlexWrap =: A.nowrap
+  flexWrap =: A.nowrap
 wrap WrapReverse = do
   webkitFlexWrap =: wrapreverse
   msFlexWrap =: wrapreverse
@@ -101,20 +97,20 @@ row = do
     msFlex              =: vals <| str zero one auto
     flex                =: vals <| str zero one auto
 
-    webkitFlexDirection =: CSS.row
-    msFlexDirection     =: CSS.row
-    flexDirection       =: CSS.row
+    webkitFlexDirection =: A.row
+    msFlexDirection     =: A.row
+    flexDirection       =: A.row
 
     Flex.orient Horizontal
     Flex.direction Normal
     Flex.wrap Wrap
 
 rowReverse = do
-    webkitFlexDirection =: CSS.rowReverse
-    msFlexDirection     =: CSS.rowReverse
+    webkitFlexDirection =: A.rowReverse
+    msFlexDirection     =: A.rowReverse
     webkitBoxOrient     =: horizontal
-    webkitBoxDirection  =: CSS.reverse
-    flexDirection       =: CSS.rowReverse
+    webkitBoxDirection  =: A.reverse
+    flexDirection       =: A.rowReverse
 
 transitionFlexWidth dur easing = do
   transition =: spaces <| str msFlexPreferredSize dur easing
@@ -138,16 +134,16 @@ col percent = do
   flex                =: spaces <| str zero zero auto
 
 colReverse = do
-    webkitFlexDirection =: CSS.columnReverse
-    msFlexDirection     =: CSS.columnReverse
+    webkitFlexDirection =: A.columnReverse
+    msFlexDirection     =: A.columnReverse
     webkitBoxOrient     =: vertical
-    webkitBoxDirection  =: CSS.reverse
-    flexDirection       =: CSS.columnReverse
+    webkitBoxDirection  =: A.reverse
+    flexDirection       =: A.columnReverse
 
 start = do
     webkitJustifyContent =: flexStart
-    msFlexPack           =: CSS.start
-    webkitBoxPack        =: CSS.start
+    msFlexPack           =: A.start
+    webkitBoxPack        =: A.start
     justifyContent       =: flexStart
 
     -- I would like to have textAlign =: start,
@@ -158,16 +154,16 @@ start = do
     textAlign            =: left
 
 center = do
-    webkitJustifyContent =: CSS.center
-    msFlexPack           =: CSS.center
-    webkitBoxPack        =: CSS.center
-    justifyContent       =: CSS.center
-    textAlign            =: CSS.center
+    webkitJustifyContent =: A.center
+    msFlexPack           =: A.center
+    webkitBoxPack        =: A.center
+    justifyContent       =: A.center
+    textAlign            =: A.center
 
 end = do
     webkitJustifyContent =: flexEnd
-    msFlexPack           =: CSS.end
-    webkitBoxPack        =: CSS.end
+    msFlexPack           =: A.end
+    webkitBoxPack        =: A.end
     justifyContent       =: flexEnd
 
     -- I would like to have textAlign =: end,
@@ -178,21 +174,21 @@ end = do
     textAlign            =: right
 
 top = do
-    webkitBoxAlign   =: CSS.start
+    webkitBoxAlign   =: A.start
     webkitAlignItems =: flexStart
-    msFlexAlign      =: CSS.start
+    msFlexAlign      =: A.start
     alignItems       =: flexStart
 
 middle = do
-    webkitAlignItems =: CSS.center
-    msFlexAlign      =: CSS.center
-    webkitBoxAlign   =: CSS.center
-    alignItems       =: CSS.center
+    webkitAlignItems =: A.center
+    msFlexAlign      =: A.center
+    webkitBoxAlign   =: A.center
+    alignItems       =: A.center
 
 bottom = do
     webkitAlignItems =: flexEnd
-    msFlexAlign      =: CSS.end
-    webkitBoxAlign   =: CSS.end
+    msFlexAlign      =: A.end
+    webkitBoxAlign   =: A.end
     alignItems       =: flexEnd
 
 around = do
