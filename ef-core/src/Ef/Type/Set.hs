@@ -15,10 +15,10 @@ type family (:+:) a xs
     a :+: '[] =
         '[a]
 
-    a :+: a ': xs =
+    a :+: (a ': xs) =
         (a ': xs)
 
-    a :+: x ': xs =
+    a :+: (x ': xs) =
         x ': a :+: xs
 
 

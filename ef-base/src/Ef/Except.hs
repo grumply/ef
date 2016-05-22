@@ -1,5 +1,6 @@
 {-# LANGUAGE IncoherentInstances #-}
 {-# LANGUAGE RoleAnnotations #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Ef.Except
      ( Except(..)
      , Throws
@@ -64,7 +65,9 @@ catchChecked act =
     in Except.catch (unthrow proxy act)
   where
     unthrow :: forall proxy e x. proxy e -> (Throws e => x) -> x
-    unthrow _ = unWrap . coerceWrap . Wrap
+    unthrow _ = (unWrap :: Wrap (Catch e) x -> x)
+              . (coerceWrap :: forall e. Wrap e x -> Wrap (Catch e) x)
+              . (Wrap :: forall e. (Throws e => x) -> Wrap e x)
 
     coerceWrap :: forall e x. Wrap e x -> Wrap (Catch e) x
     coerceWrap = coerce

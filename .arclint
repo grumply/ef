@@ -1,8 +1,0 @@
-{
-  "linters": {
-    "ef-core": {
-      "type": "hlint",
-      "include": "(^ef-core/.*\\.hs$)"
-    }
-  }
-}

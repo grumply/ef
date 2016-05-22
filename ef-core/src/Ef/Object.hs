@@ -10,14 +10,15 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE Safe #-}
 module Ef.Object
     ( Trait
     , Method
     , Subclass
     , Superclass
-    , (.>)(..)
-    , (<.)(..)
+    , type (.>)
+    , type (<.)
     , Has(..)
     , stretch
     , Traits(..)
@@ -29,8 +30,8 @@ module Ef.Object
     , view4
     , view5
     , view6
-    , view7
-    , view8
+    -- , view7
+    -- , view8
     , (.=)
     ) where
 
@@ -199,43 +200,46 @@ view6 obj =
     (view obj,view obj,view obj,view obj,view obj,view obj)
 
 
+-- fails ghc-8 with a solveWanteds: too many iteractions (limit = 4)
+-- I've never actually drawn more than 3 traits from an object at a time
+-- and I always use explicit `view`s rather than `viewN`s
 
-view7
-    :: ( traits `Subclass`
-            '[trait1,trait2,trait3,trait4
-             ,trait5,trait6,trait7]
-       )
-    => Object traits super
-    -> ( Trait trait1 traits super
-       , Trait trait2 traits super
-       , Trait trait3 traits super
-       , Trait trait4 traits super
-       , Trait trait5 traits super
-       , Trait trait6 traits super
-       , Trait trait7 traits super
-       )
-view7 obj =
-    (view obj,view obj,view obj,view obj,view obj,view obj,view obj)
+-- view7
+--     :: ( traits `Subclass`
+--             '[trait1,trait2,trait3,trait4
+--              ,trait5,trait6,trait7]
+--        )
+--     => Object traits super
+--     -> ( Trait trait1 traits super
+--        , Trait trait2 traits super
+--        , Trait trait3 traits super
+--        , Trait trait4 traits super
+--        , Trait trait5 traits super
+--        , Trait trait6 traits super
+--        , Trait trait7 traits super
+--        )
+-- view7 obj =
+--     (view obj,view obj,view obj,view obj,view obj,view obj,view obj)
 
 
 
-view8
-    :: ( traits `Subclass`
-            '[trait1,trait2,trait3,trait4
-             ,trait5,trait6,trait7,trait8]
-       )
-    => Object traits super
-    -> ( Trait trait1 traits super
-       , Trait trait2 traits super
-       , Trait trait3 traits super
-       , Trait trait4 traits super
-       , Trait trait5 traits super
-       , Trait trait6 traits super
-       , Trait trait7 traits super
-       , Trait trait8 traits super
-       )
-view8 obj =
-    (view obj,view obj,view obj,view obj,view obj,view obj,view obj,view obj)
+-- view8
+--     :: ( traits `Subclass`
+--             '[trait1,trait2,trait3,trait4
+--              ,trait5,trait6,trait7,trait8]
+--        )
+--     => Object traits super
+--     -> ( Trait trait1 traits super
+--        , Trait trait2 traits super
+--        , Trait trait3 traits super
+--        , Trait trait4 traits super
+--        , Trait trait5 traits super
+--        , Trait trait6 traits super
+--        , Trait trait7 traits super
+--        , Trait trait8 traits super
+--        )
+-- view8 obj =
+--     (view obj,view obj,view obj,view obj,view obj,view obj,view obj,view obj)
 
 
 

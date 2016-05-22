@@ -11,11 +11,12 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE IncoherentInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE Trustworthy #-}
 module Ef.Narrative
      ( Narrative(..)
-     , (<:)(..)
-     , (:>)(..)
+     , type (<:)
+     , type (:>)
      , self
      , super
      , transform
