@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                ef-base
-version:             0.10.1.0
+version:             0.10.2.0
 synopsis:            Base libraries to enable more convenient Ef development including mtl-style computation components.
 -- description:         
 homepage:            ef-lang.org
@@ -23,6 +23,7 @@ library
                      , Ef.Bidir
                      , Ef.Fork
                      , Data.Promise
+                     , Data.Queue
                      , Ef.IO
                      , Ef.Guard
                      , Ef.Manage
@@ -52,6 +53,9 @@ library
                        ScopedTypeVariables
                        ExistentialQuantification
 
-  build-depends:       base >=4.8 && <4.10, ef-core >= 1.4 && < 1.5, random >= 1.1
+  build-depends:       base >=4.8 && <4.10
+                     , ef-core >= 1.4 && < 1.5
+                     , random >= 1.1 && < 1.2
+                     , stm >= 2.4 && < 2.5
   hs-source-dirs:      src
   default-language:    Haskell2010

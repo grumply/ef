@@ -1,9 +1,19 @@
-module Ef.Event (signal_, Reactor(..), Signal(..), construct, Event(..), event, BehaviorToken(..), clearSignal) where
+module Ef.Event
+  ( signalRaw
+  , Reactor(..)
+  , Signal(..), construct
+  , Event(..), event
+  , BehaviorToken(..)
+  , Signaled(..), Signaling(..)
+  , clearSignal
+  ) where
 
 import Ef
 import Ef.Narrative
 import Ef.Bidir
 import Ef.IO
+
+import Data.Queue
 
 import Control.Monad
 import Data.IORef
@@ -25,6 +35,15 @@ data Reactor self super event =
 data Signal self super event
     = Signal (IORef event) (IORef Int) (IORef [(Int,event -> Narrative self super ())])
     deriving Eq
+
+-- An abstract Signal queue. Useful for building event loops.
+-- Note that there is still a need to call unsafeCoerce on the
+-- Signal itself since this data type avoids having `self` and
+-- `super` as type variables.
+data Signaling where
+    Signaling :: [e] -> Signal self super e -> Signaling
+data Signaled where
+    Signaled :: Queue Signaling -> Signaled
 
 -- | Construct a new signal with an initial value. Undefined is a valid
 -- start value as long as any behaviors linked to the `Signal` are not
@@ -113,16 +132,16 @@ stop_ (BehaviorToken bt (Signal _ _ behaviors)) =
     lift $ modifyIORef behaviors $ filter ((/=) bt . fst)
 {-# INLINE stop_ #-}
 
-signal_ :: (Monad super, Lift IO super)
+signalRaw :: (Monad super, Lift IO super)
         => Signal self super event
         -> event
         -> Narrative self super ()
-signal_ (Signal current count behaviors) event = do
+signalRaw (Signal current count behaviors) event = do
     writeCurrent <- lift $ writeIORef current event
     bs <- lift $ readIORef behaviors
     let applied = map (($ event) . snd) bs
     sequence_ applied
-{-# INLINE signal_ #-}
+{-# INLINE signalRaw #-}
 
 trigger_ :: (Monad super, Lift IO super)
          => BehaviorToken self super event
