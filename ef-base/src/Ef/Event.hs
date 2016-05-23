@@ -39,7 +39,9 @@ data Signal self super event
 -- An abstract Signal queue. Useful for building event loops.
 -- Note that there is still a need to call unsafeCoerce on the
 -- Signal itself since this data type avoids having `self` and
--- `super` as type variables.
+-- `super` as type variables. It is the responsibility of the
+-- programmer to know how to use this safely; single-responsibility
+-- for both injection and extraction with unified typing is required.
 data Signaling where
     Signaling :: [e] -> Signal self super e -> Signaling
 data Signaled where
