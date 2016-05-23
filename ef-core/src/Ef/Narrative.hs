@@ -119,7 +119,7 @@ super m =
 
 
 self
-    :: (Monad super, '[message] :> self)
+    :: (Monad super, '[message] <: self)
     => message result -> Narrative self super result
 
 self message =
@@ -128,33 +128,31 @@ self message =
 
 
 type Subtype s t = (<:) s t
-
 -- bounded parametric subtype polymorphism implemented as statically guaranteed set containment.
--- Given S <: T, guarantee that forall elements t of T, there is an element s of S where t is equal to s.
-type family (<:) messages (messages' :: [* -> *]) where
+-- Given S <: T, guarantee that for all elements t of T, there is an element s of S where t is equal to s.
+type family (:>) messages (messages' :: [* -> *]) where
 
-    messages <: (message ': '[]) =
+    messages :> (message ': '[]) =
       (Can' message messages (Offset message messages))
 
-    messages <: (message ': messages') =
+    messages :> (message ': messages') =
       ( Can' message messages (Offset message messages)
-      , messages <: messages'
+      , messages :> messages'
       )
 
 
 
 type Supertype t s = (:>) t s
-
 -- bounded parametric supertype polymorphism implemented as statically guaranteed set containment.
--- Given T :> S, guarantee that forall elements t of T, there is an element s of S where t is equal to s.
-type family (:>) (messages' :: [* -> *]) messages where
+-- Given T :> S, guarantee that for all elements t of T, there is an element s of S where t is equal to s.
+type family (<:) (messages' :: [* -> *]) messages where
 
-    (message ': '[]) :> messages =
+    (message ': '[]) <: messages =
         (Can' message messages (Offset message messages))
 
-    (message ': messages') :> messages =
+    (message ': messages') <: messages =
         ( Can' message messages (Offset message messages)
-        , messages' :> messages 
+        , messages' <: messages 
         )
 
 

@@ -24,7 +24,7 @@ data Guards self super = Guards
     , cut :: forall b. Narrative self super b
     }
 
-guard :: (Monad super, '[Guard] .> traits)
+guard :: (Monad super, '[Guard] <. traits)
       => Trait Guard traits super
 guard =
     Guard 0 $ \fs ->
@@ -32,7 +32,7 @@ guard =
         in return $ fs .= Guard (succ i) k
 {-# INLINE guard #-}
 
-guards :: (Monad super, '[Guard] :> self)
+guards :: (Monad super, '[Guard] <: self)
        => (Guards self super -> Narrative self super result)
        -> Narrative self super (Maybe result)
 guards l = do
@@ -44,7 +44,7 @@ guards l = do
         }
 {-# INLINE guards #-}
 
-rewrite :: (Monad super, '[Guard] :> self)
+rewrite :: (Monad super, '[Guard] <: self)
         => Int
         -> Messages self x
         -> (x -> Narrative self super (Maybe result))
@@ -63,7 +63,7 @@ rewrite scope message k =
           Nothing -> Say message (transform (rewrite scope) . k)
 
 choosing
-    :: (Monad super, '[Guard] :> self)
+    :: (Monad super, '[Guard] <: self)
     => Int
     -> [a]
     -> (a -> Narrative self super r)
@@ -74,7 +74,7 @@ choosing scope (a:as) bp alt =
     transform (nestedChoosing scope as alt bp) (bp a)
 
 nestedChoosing
-    :: (Monad super, '[Guard] :> self)
+    :: (Monad super, '[Guard] <: self)
     => Int
     -> [a]
     -> Narrative self super result

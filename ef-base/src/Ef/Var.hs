@@ -51,7 +51,7 @@ data Var var self super =
 
         }
 
-stateful :: ('[Knot] :> self, Monad super)
+stateful :: ('[Knot] <: self, Monad super)
          => (Var state self super -> Narrative self super result)
          -> Knotted (Action state) state () X self super result
 stateful computation =
@@ -106,7 +106,7 @@ stateful computation =
         knotted $ \up _ -> computation (stateInterface up)
 {-# INLINE stateful #-}
 
-var :: ('[Knot] :> self, Monad super)
+var :: ('[Knot] <: self, Monad super)
     => state
     -> (Var state self super -> Narrative self super result)
     -> Narrative self super result
@@ -135,7 +135,7 @@ var initial computation =
                                 handle new next
 {-# INLINE var #-}
 
-var' :: ('[Knot] :> self, Monad super)
+var' :: ('[Knot] <: self, Monad super)
      => state
      -> (Var state self super -> Narrative self super result)
      -> Narrative self super result

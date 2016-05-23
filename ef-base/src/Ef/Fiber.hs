@@ -44,7 +44,7 @@ data Fiber k
 instance Ma Fiber Fiber where
     ma use (Fiber i k) (FreshScope ik) = use k (ik i)
 
-fibers :: (Monad super, '[Fiber] .> traits)
+fibers :: (Monad super, '[Fiber] <. traits)
        => Trait Fiber traits super
 fibers =
     Fiber 0 $ \fs ->
@@ -154,7 +154,7 @@ data Threader self super =
 -- to fiber.
 --
 fiber :: forall self super result.
-          ('[Fiber] :> self, Monad super, Lift IO super)
+          ('[Fiber] <: self, Monad super, Lift IO super)
        => (Threader self super -> Narrative self super result)
        -> Narrative self super result
 fiber f =

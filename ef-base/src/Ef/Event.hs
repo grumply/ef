@@ -248,7 +248,7 @@ data Action self super
 --                        else io (putChar ch)
 --         mapM_ (signal sig1) [1..100]
 -- @
-event :: forall self super a. (Monad super, Lift IO super, '[Bidir] :> self)
+event :: forall self super a. (Monad super, Lift IO super, '[Bidir] <: self)
       => (Event self super -> Narrative self super a)
       -> Narrative self super a
 event loop =

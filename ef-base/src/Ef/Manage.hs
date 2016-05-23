@@ -39,7 +39,7 @@ instance Ma Manage Manage where
     ma use (Manage _ _ k) (Deallocate _ k') = use k k'
     ma use (Manage i k _) (FreshSelf ik) = use k (ik i)
 
-manages :: (Monad super, '[Manage] .> traits)
+manages :: (Monad super, '[Manage] <. traits)
         => Trait Manage traits super
 manages = Manage 0 pure $ \fs ->
     let Manage i non me = view fs
@@ -94,7 +94,7 @@ data Manager self super =
 -- Tokens may be deallocated which forces registered cleanup actions to be
 -- performed in all managers for which that token is registered in LIFO order
 -- of the nesting scopes.
-manage :: ('[Manage] :> self, Monad super)
+manage :: ('[Manage] <: self, Monad super)
         => (Manager self super -> Narrative self super result)
         -> Narrative self super result
 manage f = do
@@ -110,7 +110,7 @@ manage f = do
 {-# INLINE manage #-}
 
 
-rewrite :: forall self super result. ('[Manage] :> self, Monad super)
+rewrite :: forall self super result. ('[Manage] <: self, Monad super)
         => Int
         -> [(Int,Narrative self super ())]
         -> Narrative self super result

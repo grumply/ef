@@ -6,7 +6,7 @@ import Ef.Narrative
 import Ef.Knot
 
 exiting
-    :: (Monad super, '[Knot] :> self)
+    :: (Monad super, '[Knot] <: self)
     => ((a' -> Narrative self super a) -> Narrative self super result)
     -> Knotted a' a b' b self super result
 exiting computation = knotted $ \up _ -> computation up
@@ -20,7 +20,7 @@ exiting computation = knotted $ \up _ -> computation up
 --         ...
 -- @
 enter
-    :: (Monad super, '[Knot] :> self)
+    :: (Monad super, '[Knot] <: self)
     => (    (result -> Narrative self super b)
          -> Narrative self super result
        )

@@ -11,10 +11,10 @@ data Set k where
 instance Ma Set Set where
     ma use (Set ok) (Become o k) = use (ok (unsafeCoerce o)) k
 
-set :: (Monad super, '[Set] .> traits)
+set :: (Monad super, '[Set] <. traits)
     => Trait Set traits super
 set = Set (const . pure)
 
-become :: (Monad super, '[Set] :> self, Ma (Traits traits) (Messages self))
+become :: (Monad super, '[Set] <: self, Ma (Traits traits) (Messages self))
        => Object traits super -> Narrative self super ()
 become = self . flip Become ()

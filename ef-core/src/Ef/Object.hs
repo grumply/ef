@@ -47,26 +47,25 @@ type Trait trait traits super =
 type Method traits super =
     Object traits super -> super (Object traits super)
 
-type Superclass t s = (.>) t s
 
-type family (.>) (traits :: [* -> *]) traits' where
+type Subclass s t = (<.) s t
+type family (<.) (traits :: [* -> *]) traits' where
 
-    (.>) (trait ': '[]) traits' =
+    (<.) (trait ': '[]) traits' =
         (Has' trait traits' (Offset trait traits'))
 
-    (.>) (trait ': traits) traits' =
+    (<.) (trait ': traits) traits' =
         ( Has' trait traits' (Offset trait traits')
-        , traits .> traits'
+        , traits <. traits'
         )
 
 
 
-type Subclass s t = (<.) s t
+type Superclass t s = (.>) t s
+type family (.>) traits traits' where
 
-type family (<.) traits traits' where
-
-    (<.) traits traits' =
-        traits' .> traits
+    (.>) traits traits' =
+        traits' <. traits
 
 
 
@@ -129,7 +128,7 @@ view =
 
 
 view2
-    :: (traits `Subclass` '[trait1,trait2])
+    :: (traits .> '[trait1,trait2])
     => Object traits super
     -> ( Trait trait1 traits super
        , Trait trait2 traits super
@@ -140,7 +139,7 @@ view2 obj =
 
 
 view3
-    :: (traits `Subclass` '[trait1,trait2,trait3])
+    :: (traits .> '[trait1,trait2,trait3])
     => Object traits super
     -> ( Trait trait1 traits super
        , Trait trait2 traits super
@@ -153,7 +152,7 @@ view3 obj =
 
 
 view4
-    :: (traits `Subclass` '[trait1,trait2,trait3,trait4])
+    :: (traits .> '[trait1,trait2,trait3,trait4])
     => Object traits super
     -> ( Trait trait1 traits super
        , Trait trait2 traits super
@@ -167,7 +166,7 @@ view4 obj =
 
 
 view5
-    :: ( traits `Subclass`
+    :: ( traits .>
             '[trait1,trait2,trait3,trait4
              ,trait5]
        )
@@ -184,7 +183,7 @@ view5 obj =
 
 
 view6
-    :: ( traits `Subclass`
+    :: ( traits .>
             '[trait1,trait2,trait3,trait4
              ,trait5,trait6]
        )
@@ -205,7 +204,7 @@ view6 obj =
 -- and I always use explicit `view`s rather than `viewN`s
 
 -- view7
---     :: ( traits `Subclass`
+--     :: ( traits .>
 --             '[trait1,trait2,trait3,trait4
 --              ,trait5,trait6,trait7]
 --        )
@@ -224,7 +223,7 @@ view6 obj =
 
 
 -- view8
---     :: ( traits `Subclass`
+--     :: ( traits .>
 --             '[trait1,trait2,trait3,trait4
 --              ,trait5,trait6,trait7,trait8]
 --        )

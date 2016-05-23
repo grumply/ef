@@ -70,12 +70,12 @@ data Bidir k where
 
 instance Ma Bidir Bidir
 
-bidir :: (Monad super, '[Bidir] .> traits)
+bidir :: (Monad super, '[Bidir] <. traits)
       => Trait Bidir traits super
 bidir = Bidir return
 {-# INLINE bidir #-}
 
-runBidir :: ('[Bidir] :> self, Monad super)
+runBidir :: ('[Bidir] <: self, Monad super)
          => Effect self super r -> Narrative self super r
 runBidir e = do
     rewrite $
@@ -84,7 +84,7 @@ runBidir e = do
             (\b b'p -> self (Respond b b'p))
 
 rewrite :: forall self super result.
-           ('[Bidir] :> self, Monad super)
+           ('[Bidir] <: self, Monad super)
         => Narrative self super result -> Narrative self super result
 rewrite = transform go
   where
@@ -196,7 +196,7 @@ type Effect self super r = Bi X () () X self super r
 
 type Producer b self super r = Bi X () () b self super r
 
-producer :: forall self super b r. ('[Bidir] :> self, Monad super)
+producer :: forall self super b r. ('[Bidir] <: self, Monad super)
          => ((b -> Narrative self super ()) -> Narrative self super r)
          -> Producer' b self super r
 producer f =
@@ -214,7 +214,7 @@ producer f =
 
 type Consumer a self super r = Bi () a () X self super r
 
-consumer :: forall self super a r. ('[Bidir] :> self, Monad super)
+consumer :: forall self super a r. ('[Bidir] <: self, Monad super)
          => (Narrative self super a -> Narrative self super r)
          -> Consumer' a self super r
 consumer f =
@@ -232,7 +232,7 @@ consumer f =
 
 type Line a b self super r = Bi () a () b self super r
 
-line :: forall self super a b r. ('[Bidir] :> self, Monad super)
+line :: forall self super a b r. ('[Bidir] <: self, Monad super)
      => (Narrative self super a -> (b -> Narrative self super ()) -> Narrative self super r)
      -> Line a b self super r
 line f =
@@ -260,7 +260,7 @@ newtype Bi a' a b' b self super r =
               -> Narrative self super r
         }
 
-knotted :: forall self a a' b b' super r. ('[Bidir] :> self, Monad super)
+knotted :: forall self a a' b b' super r. ('[Bidir] <: self, Monad super)
         => ((a' -> Narrative self super a) -> (b -> Narrative self super b') -> Narrative self super r)
         -> Bi a' a b' b self super r
 knotted f =
@@ -283,11 +283,11 @@ type Client' a' a self super r = forall y' y. Bi a' a y' y self super r
 --------------------------------------------------------------------------------
 -- Respond; substitute yields
 
-cat :: ('[Bidir] :> self, Monad super) => Line a a self super r
+cat :: ('[Bidir] <: self, Monad super) => Line a a self super r
 cat = line $ \awt yld -> forever (awt >>= yld)
 
 infixl 3 //>
-(//>) :: ('[Bidir] :> self, Monad super)
+(//>) :: ('[Bidir] <: self, Monad super)
       => Bi x' x b' b self super a'
       -> (b -> Bi x' x c' c self super b')
       -> Bi x' x c' c self super a'
@@ -298,7 +298,7 @@ p0 //> fb =
 
 substituteResponds
     :: forall self super x' x c' c b' b a'.
-       ('[Bidir] :> self, Monad super)
+       ('[Bidir] <: self, Monad super)
     => (b -> Bi x' x c' c self super b')
     -> (forall r. x' -> (x -> Narrative self super r) -> Narrative self super r)
     -> (forall r. c -> (c' -> Narrative self super r) -> Narrative self super r)
@@ -326,21 +326,21 @@ substituteResponds fb up dn =
                        _ -> ignore
                _ -> ignore
 
-for :: ('[Bidir] :> self, Monad super)
+for :: ('[Bidir] <: self, Monad super)
     => Bi x' x b' b self super a'
     -> (b -> Bi x' x c' c self super b')
     -> Bi x' x c' c self super a'
 for = (//>)
 
 infixr 3 <\\
-(<\\) :: ('[Bidir] :> self, Monad super)
+(<\\) :: ('[Bidir] <: self, Monad super)
       => (b -> Bi x' x c' c self super b')
       -> Bi x' x b' b self super a'
       -> Bi x' x c' c self super a'
 f <\\ p = p //> f
 
 infixl 4 \<\
-(\<\) :: ('[Bidir] :> self, Monad super)
+(\<\) :: ('[Bidir] <: self, Monad super)
       => (b -> Bi x' x c' c self super b')
       -> (a -> Bi x' x b' b self super a')
       -> a
@@ -348,7 +348,7 @@ infixl 4 \<\
 p1 \<\ p2 = p2 />/ p1
 
 infixr 4 ~>
-(~>) :: ('[Bidir] :> self, Monad super)
+(~>) :: ('[Bidir] <: self, Monad super)
      => (a -> Bi x' x b' b self super a')
      -> (b -> Bi x' x c' c self super b')
      -> a
@@ -356,7 +356,7 @@ infixr 4 ~>
 (~>) = (/>/)
 
 infixl 4 <~
-(<~) :: ('[Bidir] :> self, Monad super)
+(<~) :: ('[Bidir] <: self, Monad super)
      => (b -> Bi x' x c' c self super b')
      -> (a -> Bi x' x b' b self super a')
      -> a
@@ -364,7 +364,7 @@ infixl 4 <~
 g <~ f = f ~> g
 
 infixr 4 />/
-(/>/) :: ('[Bidir] :> self, Monad super)
+(/>/) :: ('[Bidir] <: self, Monad super)
       => (a -> Bi x' x b' b self super a')
       -> (b -> Bi x' x c' c self super b')
       -> a
@@ -375,7 +375,7 @@ infixr 4 />/
 -- Request; substitute awaits
 
 infixr 4 >\\
-(>\\) :: ('[Bidir] :> self, Monad super)
+(>\\) :: ('[Bidir] <: self, Monad super)
       => (b' -> Bi a' a y' y self super b)
       -> Bi b' b y' y self super c
       -> Bi a' a y' y self super c
@@ -386,7 +386,7 @@ fb' >\\ p0 =
 
 substituteRequests
     :: forall self super x' x c' c b' b a'.
-       ('[Bidir] :> self, Monad super)
+       ('[Bidir] <: self, Monad super)
     => (b -> Bi x' x c' c self super b')
     -> (forall r. x' -> (x -> Narrative self super r) -> Narrative self super r)
     -> (forall r. c -> (c' -> Narrative self super r) -> Narrative self super r)
@@ -419,7 +419,7 @@ substituteRequests fb' up dn =
               _ -> ignore
 
 infixr 5 /</
-(/</) :: ('[Bidir] :> self, Monad super)
+(/</) :: ('[Bidir] <: self, Monad super)
       => (c' -> Bi b' b x' x self super c)
       -> (b' -> Bi a' a x' x self super b)
       -> c'
@@ -427,21 +427,21 @@ infixr 5 /</
 p1 /</ p2 = p2 \>\ p1
 
 infixr 5 >~
-(>~) :: ('[Bidir] :> self, Monad super)
+(>~) :: ('[Bidir] <: self, Monad super)
      => Bi a' a y' y self super b
      -> Bi () b y' y self super c
      -> Bi a' a y' y self super c
 p1 >~ p2 = (\() -> p1) >\\ p2
 
 infixl 5 ~<
-(~<) :: ('[Bidir] :> self, Monad super)
+(~<) :: ('[Bidir] <: self, Monad super)
      => Bi () b y' y self super c
      -> Bi a' a y' y self super b
      -> Bi a' a y' y self super c
 p2 ~< p1 = p1 >~ p2
 
 infixl 5 \>\
-(\>\) :: ('[Bidir] :> self, Monad super)
+(\>\) :: ('[Bidir] <: self, Monad super)
       => (b' -> Bi a' a y' y self super b)
       -> (c' -> Bi b' b y' y self super c)
       -> c'
@@ -449,7 +449,7 @@ infixl 5 \>\
 (fb' \>\ fc') c' = fb' >\\ fc' c'
 
 infixl 4 \\<
-(\\<) :: ('[Bidir] :> self, Monad super)
+(\\<) :: ('[Bidir] <: self, Monad super)
       => Bi b' b y' y self super c
       -> (b' -> Bi a' a y' y self super b)
       -> Bi a' a y' y self super c
@@ -461,7 +461,7 @@ p \\< f = f >\\ p
 infixl 7 >>~
 (>>~)
     :: forall self a' a b' b c' c super r.
-       (Monad super, '[Bidir] :> self)
+       (Monad super, '[Bidir] <: self)
     => Bi a' a b' b self super r
     -> (b -> Bi b' b c' c self super r)
     -> Bi a' a c' c self super r
@@ -471,7 +471,7 @@ p0 >>~ fb0 =
 
 pushRewrite
     :: forall self super r a' a b' b c' c.
-       ('[Bidir] :> self, Monad super)
+       ('[Bidir] <: self, Monad super)
     => (forall x. a' -> (a -> Narrative self super x) -> Narrative self super x)
     -> (forall x. c -> (c' -> Narrative self super x) -> Narrative self super x)
     -> (b -> Bi b' b c' c self super r)
@@ -514,7 +514,7 @@ pushRewrite up dn fb0 p0 =
                    _ -> ignore
 
 infixl 8 <~<
-(<~<) :: ('[Bidir] :> self, Monad super)
+(<~<) :: ('[Bidir] <: self, Monad super)
       => (b -> Bi b' b c' c self super r)
       -> (a -> Bi a' a b' b self super r)
       -> a
@@ -522,7 +522,7 @@ infixl 8 <~<
 p1 <~< p2 = p2 >~> p1
 
 infixr 8 >~>
-(>~>) :: ('[Bidir] :> self, Monad super)
+(>~>) :: ('[Bidir] <: self, Monad super)
       => (_a -> Bi a' a b' b self super r)
       -> (b -> Bi b' b c' c self super r)
       -> _a
@@ -530,7 +530,7 @@ infixr 8 >~>
 (fa >~> fb) a = fa a >>~ fb
 
 infixr 7 ~<<
-(~<<) :: ('[Bidir] :> self, Monad super)
+(~<<) :: ('[Bidir] <: self, Monad super)
       => (b -> Bi b' b c' c self super r)
       -> Bi a' a b' b self super r
       -> Bi a' a c' c self super r
@@ -540,7 +540,7 @@ k ~<< p = p >>~ k
 -- Pull; substitute requests with responds
 
 infixr 6 +>>
-(+>>) :: ('[Bidir] :> self, Monad super)
+(+>>) :: ('[Bidir] <: self, Monad super)
       => (b' -> Bi a' a b' b self super r)
       ->        Bi b' b c' c self super r
       ->        Bi a' a c' c self super r
@@ -550,7 +550,7 @@ fb' +>> p0 =
 
 pullRewrite
     :: forall self super a' a b' b c' c r.
-       ('[Bidir] :> self, Monad super)
+       ('[Bidir] <: self, Monad super)
     => (forall x. a' -> (a -> Narrative self super x) -> Narrative self super x)
     -> (forall x. c -> (c' -> Narrative self super x) -> Narrative self super x)
     -> (b' -> Bi a' a b' b self super r)
@@ -593,21 +593,21 @@ pullRewrite up dn fb' p =
                    _ -> ignore
 
 infixl 7 >->
-(>->) :: ('[Bidir] :> self, Monad super)
+(>->) :: ('[Bidir] <: self, Monad super)
       => Bi a' a () b self super r
       -> Bi () b c' c self super r
       -> Bi a' a c' c self super r
 p1 >-> p2 = (\() -> p1) +>> p2
 
 infixr 7 <-<
-(<-<) :: ('[Bidir] :> self, Monad super)
+(<-<) :: ('[Bidir] <: self, Monad super)
       => Bi () b c' c self super r
       -> Bi a' a () b self super r
       -> Bi a' a c' c self super r
 p2 <-< p1 = p1 >-> p2
 
 infixr 7 <+<
-(<+<) :: ('[Bidir] :> self, Monad super)
+(<+<) :: ('[Bidir] <: self, Monad super)
       => (c' -> Bi b' b c' c self super r)
       -> (b' -> Bi a' a b' b self super r)
       -> c'
@@ -615,7 +615,7 @@ infixr 7 <+<
 p1 <+< p2 = p2 >+> p1
 
 infixl 7 >+>
-(>+>) :: ('[Bidir] :> self, Monad super)
+(>+>) :: ('[Bidir] <: self, Monad super)
       => (b' -> Bi a' a b' b self super r)
       -> (_c' -> Bi b' b c' c self super r)
       -> _c'
@@ -623,7 +623,7 @@ infixl 7 >+>
 (fb' >+> fc') c' = fb' +>> fc' c'
 
 infixl 6 <<+
-(<<+) :: ('[Bidir] :> self, Monad super)
+(<<+) :: ('[Bidir] <: self, Monad super)
       => Bi b' b c' c self super r
       -> (b' -> Bi a' a b' b self super r)
       -> Bi a' a c' c self super r

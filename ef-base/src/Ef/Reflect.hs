@@ -13,7 +13,7 @@ data Reflection self traits super =
         }
 
 withReflection
-    :: ('[Get,Set] :> self, Monad super, Traits traits `Ma` Messages self)
+    :: ('[Get,Set] <: self, Monad super, Traits traits `Ma` Messages self)
     => (Reflection self traits super -> Narrative self super result) -> Narrative self super result
 
 withReflection f =
