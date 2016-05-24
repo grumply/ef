@@ -5,19 +5,19 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE ExplicitNamespaces #-}
 {-# OPTIONS_GHC -fno-warn-missing-methods #-}
 {-# LANGUAGE Trustworthy #-}
 module Ef
     ( module Core
-    , Offset
     , delta
     , ($..)
     , ($.)
     ) where
 
-import Ef.Type.Set as Core (Union)
+import Ef.Type.Set as Core (type (/==),Union)
 
-import Ef.Type.Nat (Offset)
+import Ef.Type.Nat as Core (Offset)
 
 import Ef.Object as Core
 import Ef.Traits as Core
