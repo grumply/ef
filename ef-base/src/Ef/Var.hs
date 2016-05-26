@@ -4,7 +4,6 @@ module Ef.Var
     , var'
 
     , Eagerness(..)
-    , Action(..)
     , stateful
     ) where
 
@@ -23,27 +22,27 @@ data Action state = Modify Eagerness (state -> state)
 data Var var self super =
     Var
         {
-          modify
+          alter
               :: (var -> var)
               -> Narrative self super ()
 
-        , modify'
+        , alter'
               :: (var -> var)
               -> Narrative self super ()
 
-        , get
+        , peek
               :: Narrative self super var
 
-        , gets
+        , peeks
               :: forall a.
                  (var -> a)
               -> Narrative self super a
 
-        , put
+        , poke
               :: var
               -> Narrative self super ()
 
-        , puts
+        , pokes
               :: forall a.
                  (a -> var)
               -> a
@@ -59,28 +58,28 @@ stateful computation =
         stateInterface up =
             Var
                 {
-                  modify =
+                  alter =
                       \mod ->
                           do
                               _ <- up (Modify Lazy mod)
                               return ()
 
-                , modify' =
+                , alter' =
                       \mod ->
                           do
                               _ <- up (Modify Strict mod)
                               return ()
 
-                , get =
+                , peek =
                       up (Modify Lazy id)
 
-                , gets =
+                , peeks =
                       \view ->
                           do
                               current <- up (Modify Lazy id)
                               return (view current)
 
-                , put =
+                , poke =
                       \new ->
                           let
                               update = const new
@@ -90,7 +89,7 @@ stateful computation =
                                   up (Modify Lazy update)
                                   return ()
 
-                , puts =
+                , pokes =
                       \view big ->
                           let
                               new = const (view big)

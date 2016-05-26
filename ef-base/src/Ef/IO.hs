@@ -2,6 +2,7 @@
 module Ef.IO
   ( unsafe
   , io
+  , liftIO
   , masked
   , masked_
   ) where
@@ -26,6 +27,10 @@ masked :: (Monad super, Lift IO super)
        => ((forall a. IO a -> IO a) -> IO result)
        -> Narrative messages super result
 masked = lift . Exc.mask
+
+liftIO :: (Monad super, Lift IO super)
+       => IO result -> super result
+liftIO = lift
 
 -- | `io` executes actions in the root IO context. This method is strongly
 -- advised for all effectful computations.

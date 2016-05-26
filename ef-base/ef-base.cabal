@@ -39,6 +39,8 @@ library
                      , Ef.State
                      , Ef.Writer
                      , System.Random.Shuffle
+
+                     , Ef.Base
   -- other-modules:       
   -- other-extensions:
   default-extensions:  DataKinds

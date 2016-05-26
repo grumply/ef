@@ -2,7 +2,6 @@ module Ef.Note
     ( Book(..)
     , notate
 
-    , Action(..)
     , notated
     ) where
 

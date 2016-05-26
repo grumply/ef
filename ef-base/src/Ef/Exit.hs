@@ -1,4 +1,4 @@
-module Ef.Lang.Exit
+module Ef.Exit
     ( enter
     ) where
 
@@ -25,4 +25,4 @@ enter
          -> Narrative self super result
        )
     -> Narrative self super result
-enter computation = linearize (return +>> exiting computation)
+enter computation = runKnot (return +>> exiting computation)
