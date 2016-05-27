@@ -4,11 +4,8 @@ module Ef.Event
   , Signal(..), construct
   , Event(..), event
   , BehaviorToken(..)
-  , Signaled(..), Signaling(..)
   , clearSignal
 
-  , buffer
-  , bufferIO
   , behavior
   , enact
   , stop
@@ -17,6 +14,12 @@ module Ef.Event
   , mergeSignals
   , mapSignal
   , filterSignal
+
+  , Signaled
+  , newSignalBuffer
+  , buffer, bufferIO
+  , As(..), constructAs
+  , driver
   ) where
 
 import Ef
@@ -25,6 +28,7 @@ import Ef.Bidir
 import Ef.IO
 
 import Data.Queue
+import Data.Promise
 
 import Control.Monad
 import Data.IORef
@@ -439,35 +443,74 @@ event loop =
                                                         withAcc acc behaviors
 {-# INLINE event #-}
 
-buffer :: (Monad super, Lift IO super)
+data As internal external
+  = As { runAs :: forall a. internal a -> external (Promise a) }
+
+{-# INLINE constructAs #-}
+constructAs :: ( Monad internal, Lift IO internal
+               , Monad external, Lift IO external
+               )
+            => Signaled
+            -> Signal internalSelf internal (Narrative internalSelf internal ())
+            -> (Narrative internalSelf internal) `As` (Narrative externalSelf external)
+constructAs buf sig = As $ \nar -> do
+  p <- newPromise
+  buffer buf sig $ nar >>= void . fulfill p
+  return p
+
+{-# INLINE newSignalBuffer #-}
+newSignalBuffer :: (Monad super, Lift IO super) => super Signaled
+newSignalBuffer = Signaled <$> lift newQueueIO
+
+{-# INLINE driver #-}
+driver :: (Monad super, Lift IO super, Ma (Traits traits) (Messages self), '[Bidir] <: self)
+       => Signaled -> Object traits super -> super ()
+driver (Signaled buf) = go
+  where
+    go obj = do
+      (obj',_) <- obj $. go'
+      go obj'
+      where
+        go' = do
+          evss <- lift (collectIO buf)
+          forM_ evss $ \(Signaling evs s) ->
+            forM_ evs (signal (unsafeCoerce s))
+
+{-# INLINE buffer #-}
+buffer :: (Monad super', Lift IO super')
               => Signaled
               -> Signal self super e
               -> e
-              -> Narrative self super ()
+              -> Narrative self' super' ()
 buffer buf sig e = lift $ bufferIO buf sig e
 
+{-# INLINE bufferIO #-}
 bufferIO :: Signaled
                 -> Signal self super e
                 -> e
                 -> IO ()
 bufferIO (Signaled gb) sig e = arriveIO gb $ Signaling [e] sig
 
+{-# INLINE behavior #-}
 behavior :: ('[Bidir] <: self, Monad super, Lift IO super)
          => Signal self super e
          -> (Reactor self super e -> e -> Narrative self super ())
          -> Narrative self super (BehaviorToken self super e)
 behavior sig b = event $ \e -> behavior_ e sig b
 
+{-# INLINE enact #-}
 enact :: ('[Bidir] <: self, Monad super, Lift IO super)
       => BehaviorToken self super e
       -> Narrative self super ()
 enact bt = event $ \e -> enact_ e bt
 
+{-# INLINE stop #-}
 stop :: ('[Bidir] <: self, Monad super, Lift IO super)
      => BehaviorToken self super e
      -> Narrative self super ()
 stop bt = event $ \e -> stop_ e bt
 
+{-# INLINE signal #-}
 signal :: ('[Bidir] <: self, Monad super, Lift IO super)
        => Signal self super e
        -> e
@@ -476,6 +519,7 @@ signal sig ev =
     event $ \e ->
         signal_ e sig ev
 
+{-# INLINE trigger #-}
 trigger :: ('[Bidir] <: self, Monad super, Lift IO super)
         => BehaviorToken self super e
         -> e
@@ -484,6 +528,7 @@ trigger bt ev =
     event $ \e ->
         trigger_ e bt ev
 
+{-# INLINE mergeSignals #-}
 mergeSignals :: ('[Bidir] <: self, Monad super, Lift IO super)
              => Signal self super e
              -> Signal self super e
@@ -491,6 +536,7 @@ mergeSignals :: ('[Bidir] <: self, Monad super, Lift IO super)
 mergeSignals sig1 sig2 = event $ \e ->
     mergeSignals_ e undefined sig1 sig2
 
+{-# INLINE mapSignal #-}
 mapSignal :: ('[Bidir] <: self, Monad super, Lift IO super)
           => (e -> e')
           -> Signal self super e
@@ -498,6 +544,7 @@ mapSignal :: ('[Bidir] <: self, Monad super, Lift IO super)
 mapSignal f sig = event $ \e ->
     mapSignal_ e f undefined sig
 
+{-# INLINE filterSignal #-}
 filterSignal :: ('[Bidir] <: self, Monad super, Lift IO super)
              => (e -> Bool)
              -> Signal self super e

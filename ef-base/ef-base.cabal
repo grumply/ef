@@ -19,6 +19,7 @@ cabal-version:       >=1.10
 library
   exposed-modules:     Ef.Contract
                      , Ef.Except
+                     , Ef.Exit
                      , Ef.Knot
                      , Ef.Bidir
                      , Ef.Fork
