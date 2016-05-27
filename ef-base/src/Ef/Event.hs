@@ -7,8 +7,8 @@ module Ef.Event
   , Signaled(..), Signaling(..)
   , clearSignal
 
-  , unsafeTrigger
-  , unsafeTriggerIO
+  , buffer
+  , bufferIO
   , behavior
   , enact
   , stop
@@ -439,18 +439,18 @@ event loop =
                                                         withAcc acc behaviors
 {-# INLINE event #-}
 
-unsafeTrigger :: (Monad super, Lift IO super)
+buffer :: (Monad super, Lift IO super)
               => Signaled
               -> Signal self super e
               -> e
               -> Narrative self super ()
-unsafeTrigger buf sig e = lift $ unsafeTriggerIO buf sig e
+buffer buf sig e = lift $ bufferIO buf sig e
 
-unsafeTriggerIO :: Signaled
+bufferIO :: Signaled
                 -> Signal self super e
                 -> e
                 -> IO ()
-unsafeTriggerIO (Signaled gb) sig e = arriveIO gb $ Signaling [e] sig
+bufferIO (Signaled gb) sig e = arriveIO gb $ Signaling [e] sig
 
 behavior :: ('[Bidir] <: self, Monad super, Lift IO super)
          => Signal self super e
