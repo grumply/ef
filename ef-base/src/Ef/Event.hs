@@ -446,6 +446,9 @@ event loop =
 data As internal external
   = As { runAs :: forall a. internal a -> external (Promise a) }
 
+-- Note that the `Signaled` passed to this method MUST be driven by
+-- a correctly witnessing object. It is only decoupled from `driver`
+-- for convenience to allow forked and unforked drivers. Be careful!
 {-# INLINE constructAs #-}
 constructAs :: ( Monad internal, Lift IO internal
                , Monad external, Lift IO external
@@ -467,10 +470,17 @@ driver :: (Monad super, Lift IO super, Ma (Traits traits) (Messages self), '[Bid
        => Signaled -> Object traits super -> super ()
 driver (Signaled buf) = go
   where
+    
+    {-# INLINE go #-}
     go obj = do
+      -- re-feed loop to avoid strange stack behavior in browser with ghcjs
+      -- shouldn't affect ghc, I think. I assume this has something to do with
+      -- gc but I haven't looked.
       (obj',_) <- obj $. go'
       go obj'
       where
+
+        {-# INLINE go' #-}
         go' = do
           evss <- lift (collectIO buf)
           forM_ evss $ \(Signaling evs s) ->
