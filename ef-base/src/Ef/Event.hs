@@ -19,7 +19,7 @@ module Ef.Event
   , newSignalBuffer
   , buffer, bufferIO
   , As(..), constructAs
-  , driver
+  , driver, driverPrintExceptions
   ) where
 
 import Ef
@@ -485,6 +485,27 @@ driver (Signaled buf) = go
           evss <- lift (collectIO buf)
           forM_ evss $ \(Signaling evs s) ->
             forM_ evs (signal (unsafeCoerce s))
+
+driverPrintExceptions :: (Monad super, Lift IO super, Ma (Traits traits) (Messages self), '[Bidir] <: self)
+                      => Signaled -> Object traits super -> super ()
+driverPrintExceptions (Signaled buf) = go
+  where
+    
+    {-# INLINE go #-}
+    go obj = do
+      -- re-feed loop to avoid strange stack behavior in browser with ghcjs
+      -- shouldn't affect ghc, I think. I assume this has something to do with
+      -- gc but I haven't looked.
+      (obj',_) <- obj $. go'
+      go obj'
+      where
+
+        {-# INLINE go' #-}
+        go' = do
+          evss <- lift (collectIO buf)
+          forM_ evss $ \(Signaling evs s) ->
+            forM_ evs (handle (\(e :: SomeException) -> lift $ print e) . signal (unsafeCoerce s))
+
 
 {-# INLINE buffer #-}
 buffer :: (Monad super', Lift IO super')
