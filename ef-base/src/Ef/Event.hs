@@ -455,10 +455,10 @@ constructAs :: ( Monad internal, Lift IO internal
                )
             => Signaled
             -> Signal internalSelf internal (Narrative internalSelf internal ())
-            -> (Narrative internalSelf internal) `As` (Narrative externalSelf external)
-constructAs buf sig = As $ \nar -> do
-  p <- newPromise
-  buffer buf sig $ nar >>= void . fulfill p
+            -> Narrative internalSelf internal `As` external
+constructAs buf sig = As $ \nar -> liftIO $ do
+  p <- newPromiseIO
+  bufferIO buf sig $ nar >>= void . fulfill p
   return p
 
 {-# INLINE newSignalBuffer #-}
