@@ -1,7 +1,8 @@
 module Ef.Event
   ( signalRaw
   , Reactor(..)
-  , Signal(..), construct
+  , Signal(..), construct, constructRunner
+  , Signaled(..), Signaling(..)
   , Event(..), event
   , BehaviorToken(..)
   , clearSignal
@@ -18,7 +19,7 @@ module Ef.Event
   , Signaled
   , newSignalBuffer
   , buffer, bufferIO
-  , As(..), constructAs
+  , As(..), constructAs, reconstructAs
   , driver, driverPrintExceptions
   ) where
 
@@ -51,6 +52,7 @@ data Signal self super event
     = Signal (IORef event) (IORef Int) (IORef [(Int,event -> Narrative self super ())])
     deriving Eq
 
+
 -- An abstract Signal queue. Useful for building event loops.
 -- Note that there is still a need to call unsafeCoerce on the
 -- Signal itself since this data type avoids having `self` and
@@ -73,6 +75,14 @@ construct event = do
     behaviors <- lift $ newIORef []
     return $ Signal current count behaviors
 {-# INLINE construct #-}
+
+constructRunner :: (Monad super, Lift IO super, Monad super')
+                 => super (Signal self super' (Narrative self super' ()))
+constructRunner  = do
+  current <- lift $ newIORef (return ())
+  count <- lift $ newIORef 0
+  behaviors <- lift $ newIORef [(-1,id)]
+  return $ Signal current count behaviors
 
 clearSignal :: (Monad super, Lift IO super)
             => Signal self super' e -> super ()
@@ -444,7 +454,9 @@ event loop =
 {-# INLINE event #-}
 
 data As internal external
-  = As { runAs :: forall a. internal a -> external (Promise a) }
+  = As { signaledAs :: Signaled
+       , runAs :: forall a. internal a -> external (Promise a)
+       }
 
 -- Note that the `Signaled` passed to this method MUST be driven by
 -- a correctly witnessing object. It is only decoupled from `driver`
@@ -456,10 +468,24 @@ constructAs :: ( Monad internal, Lift IO internal
             => Signaled
             -> Signal internalSelf internal (Narrative internalSelf internal ())
             -> Narrative internalSelf internal `As` external
-constructAs buf sig = As $ \nar -> liftIO $ do
+constructAs buf sig = As buf $ \nar -> liftIO $ do
   p <- newPromiseIO
   bufferIO buf sig $ nar >>= void . fulfill p
   return p
+
+reconstructAs :: forall internal external external' super internalSelf.
+                 ( Monad internal, Lift IO internal
+                 , Monad external, Lift IO external
+                 , Monad external', Lift IO external'
+                 , Monad super, Lift IO super
+                 )
+              => Narrative internalSelf internal `As` external -> super (Narrative internalSelf internal `As` external')
+reconstructAs (As buf _) = do
+  sig :: Signal internalSelf internal (Narrative internalSelf internal ()) <- constructRunner
+  return $ As buf $ \nar -> liftIO $ do
+    p <- newPromiseIO
+    bufferIO buf sig $ nar >>= void . fulfill p
+    return p
 
 {-# INLINE newSignalBuffer #-}
 newSignalBuffer :: (Monad super, Lift IO super) => super Signaled
