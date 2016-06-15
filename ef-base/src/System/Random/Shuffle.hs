@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module System.Random.Shuffle
     ( shuffle
+    , shuffleIO
     ) where
 
 import Ef
@@ -21,14 +22,15 @@ data Tree a where
     Node :: !Int -> !(Tree a) -> !(Tree a) -> Tree a
   deriving Show
 
+shuffleIO :: [a] -> IO [a]
+shuffleIO xs = do
+  rng <- newStdGen
+  let lngth = length xs
+  return $ shuffle'_ xs lngth rng
 
 shuffle  :: (Lift IO super, Monad super)
          => [a] -> Narrative self super [a]
-shuffle xs = do
-    rng <- lift newStdGen
-    let lngth = length xs
-    return (shuffle'_ xs lngth rng)
-
+shuffle = lift . shuffleIO
 
 buildTree :: [a] -> Tree a
 buildTree =
