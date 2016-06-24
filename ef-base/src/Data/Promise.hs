@@ -6,7 +6,8 @@ module Data.Promise
       -- * Promise
       Promise
     , newPromise
-      
+    , fake
+
       -- * Ef Use
     , fulfill
     , fulfilled
@@ -14,6 +15,7 @@ module Data.Promise
 
       -- * IO Creation and Use
     , newPromiseIO
+    , fakeIO
     , fulfillIO
     , fulfilledIO
     , demandIO
@@ -34,8 +36,20 @@ import Control.Concurrent
 --   4. may be read many times with `demand`
 --   5. may be shared across threads
 newtype Promise result = Promise { getPromise :: MVar result }
-    deriving Eq
+    deriving (Eq)
 
+fake :: (Monad super, Lift IO super)
+     => a -> Narrative self super (Promise a)
+fake a = do
+  p <- newPromise
+  fulfill p a
+  return p
+
+fakeIO :: a -> IO (Promise a)
+fakeIO a = do
+  p <- newPromiseIO
+  fulfillIO p a
+  return p
 
 -- | Construct a new un`fulfill`ed `Promise`.
 newPromise :: (Monad super, Lift IO super)

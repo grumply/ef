@@ -152,12 +152,12 @@ behavior__ sig@(Signal _ count behaviors) newBehavior = do
     return (BehaviorToken c sig)
 {-# INLINE behavior__ #-}
 
-stop__ :: (Monad super, Lift IO super)
-      => BehaviorToken self super event
-      -> Narrative self super ()
-stop__ (BehaviorToken bt (Signal _ _ behaviors)) =
+stop :: (Monad super, Lift IO super)
+     => BehaviorToken self' super' event
+     -> Narrative self super ()
+stop (BehaviorToken bt (Signal _ _ behaviors)) =
     lift $ modifyIORef behaviors $ filter ((/=) bt . fst)
-{-# INLINE stop__ #-}
+{-# INLINE stop #-}
 
 signalRaw :: (Monad super, Lift IO super)
         => Signal self super event
@@ -214,11 +214,6 @@ data Event self super =
                  Signal self super event
               -> (Reactor self super event -> event -> Narrative self super ())
               -> Narrative self super (BehaviorToken self super event)
-
-        , stop_
-              :: forall event.
-                 BehaviorToken self super event
-              -> Narrative self super ()
 
           -- | merge two `Signal`s; any time either `Signal` is `signal`ed, the
           -- new signal will be signaled with that event.
@@ -327,8 +322,6 @@ event loop =
                                     , end = join $ up End
                                     }
                             in behavior__ signal (b reactor)
-
-                  , stop_ = stop__
 
                   , mergeSignals_ =
                         merge__ (\signal event -> join $ up (Signal_ up signal event))
@@ -513,8 +506,8 @@ driver (Signaled buf) = go
             forM_ evs (signal (unsafeCoerce s))
 
 driverPrintExceptions :: (Monad super, Lift IO super, Ma (Traits traits) (Messages self), '[Bidir] <: self)
-                      => Signaled -> Object traits super -> super ()
-driverPrintExceptions (Signaled buf) = go
+                      => String -> Signaled -> Object traits super -> super ()
+driverPrintExceptions exceptionPrefix (Signaled buf) = go
   where
     
     {-# INLINE go #-}
@@ -530,7 +523,7 @@ driverPrintExceptions (Signaled buf) = go
         go' = do
           evss <- lift (collectIO buf)
           forM_ evss $ \(Signaling evs s) ->
-            forM_ evs (handle (\(e :: SomeException) -> lift $ print e) . signal (unsafeCoerce s))
+            forM_ evs (handle (\(e :: SomeException) -> lift $ putStrLn $ exceptionPrefix ++ ": " ++ show e) . signal (unsafeCoerce s))
 
 
 {-# INLINE buffer #-}
@@ -560,12 +553,6 @@ enact :: ('[Bidir] <: self, Monad super, Lift IO super)
       => BehaviorToken self super e
       -> Narrative self super ()
 enact bt = event $ \e -> enact_ e bt
-
-{-# INLINE stop #-}
-stop :: ('[Bidir] <: self, Monad super, Lift IO super)
-     => BehaviorToken self super e
-     -> Narrative self super ()
-stop bt = event $ \e -> stop_ e bt
 
 {-# INLINE signal #-}
 signal :: ('[Bidir] <: self, Monad super, Lift IO super)
