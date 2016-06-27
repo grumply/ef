@@ -11,7 +11,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE ExplicitNamespaces #-}
-{-# LANGUAGE Safe #-}
 module Ef.Object
     ( Trait
     , Method

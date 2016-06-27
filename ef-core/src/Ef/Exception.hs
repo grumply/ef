@@ -1,7 +1,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE Safe #-}
 module Ef.Exception
     ( throw
     , catch
@@ -17,7 +16,7 @@ module Ef.Exception
     , bracket
     , bracket_
     , bracketOnError
-      
+
     , SomeException(..)
     , Exception(..)
 

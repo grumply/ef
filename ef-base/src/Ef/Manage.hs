@@ -1,5 +1,6 @@
 module Ef.Manage
     ( manage
+    , manages
     , Manager(..)
     , Token
     , Manage

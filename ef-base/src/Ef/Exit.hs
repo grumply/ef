@@ -3,13 +3,13 @@ module Ef.Exit
     ) where
 
 import Ef.Narrative
-import Ef.Knot
+import Ef.Sync
 
 exiting
-    :: (Monad super, '[Knot] <: self)
+    :: (Monad super, '[Sync] <: self)
     => ((a' -> Narrative self super a) -> Narrative self super result)
-    -> Knotted a' a b' b self super result
-exiting computation = knotted $ \up _ -> computation up
+    -> Synchronized a' a b' b self super result
+exiting computation = synchronized $ \up _ -> computation up
 
 -- | Scope a short-circuit continuation.
 --
@@ -20,9 +20,9 @@ exiting computation = knotted $ \up _ -> computation up
 --         ...
 -- @
 enter
-    :: (Monad super, '[Knot] <: self)
+    :: (Monad super, '[Sync] <: self)
     => (    (result -> Narrative self super b)
          -> Narrative self super result
        )
     -> Narrative self super result
-enter computation = runKnot (return +>> exiting computation)
+enter computation = runSync (return +>> exiting computation)

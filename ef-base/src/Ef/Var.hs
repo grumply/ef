@@ -8,7 +8,7 @@ module Ef.Var
     ) where
 
 import Ef.Narrative
-import Ef.Knot
+import Ef.Sync
 
 import Control.Monad
 
@@ -50,9 +50,9 @@ data Var var self super =
 
         }
 
-stateful :: ('[Knot] <: self, Monad super)
+stateful :: ('[Sync] <: self, Monad super)
          => (Var state self super -> Narrative self super result)
-         -> Knotted (Action state) state () X self super result
+         -> Synchronized (Action state) state () X self super result
 stateful computation =
     let
         stateInterface up =
@@ -102,19 +102,19 @@ stateful computation =
                 }
 
     in
-        knotted $ \up _ -> computation (stateInterface up)
+        synchronized $ \up _ -> computation (stateInterface up)
 {-# INLINE stateful #-}
 
-var :: ('[Knot] <: self, Monad super)
+var :: ('[Sync] <: self, Monad super)
     => state
     -> (Var state self super -> Narrative self super result)
     -> Narrative self super result
 var initial computation =
-    runKnot (serve +>> stateful computation)
+    runSync (serve +>> stateful computation)
     where
 
         serve firstRequest =
-            knotted $ \_ dn ->
+            synchronized $ \_ dn ->
                 withRespond dn initial firstRequest
             where
 
@@ -134,16 +134,16 @@ var initial computation =
                                 handle new next
 {-# INLINE var #-}
 
-var' :: ('[Knot] <: self, Monad super)
+var' :: ('[Sync] <: self, Monad super)
      => state
      -> (Var state self super -> Narrative self super result)
      -> Narrative self super result
 var' initial computation =
-    runKnot (serve +>> stateful computation)
+    runSync (serve +>> stateful computation)
     where
 
         serve firstRequest =
-            knotted $ \_ dn ->
+            synchronized $ \_ dn ->
                 withRespond dn initial firstRequest
             where
 

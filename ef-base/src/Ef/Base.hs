@@ -2,7 +2,7 @@ module Ef.Base (module X) where
 
 import Ef as X
 
-import Ef.Knot as X
+import Ef.Sync as X
 import Ef.Contract as X
 import Ef.Event as X
 import Ef.Except as X
@@ -22,6 +22,9 @@ import Data.Promise as X
 import Data.Queue as X
 
 import System.Random.Shuffle as X
+
+import Control.Monad as X
+
 -- not exported:
 -- import Ef.Bidir as X
 -- import Ef.Get as X

@@ -7,7 +7,7 @@ module Ef.Generate
   ) where
 
 import Ef.Narrative
-import Ef.Knot
+import Ef.Sync
 
 import Control.Applicative
 import Control.Monad
@@ -18,7 +18,7 @@ import Unsafe.Coerce
 newtype Generator self super a =
     Select
         { enumerate
-              :: ('[Knot] <: self, Monad super)
+              :: ('[Sync] <: self, Monad super)
               => Producer a self super ()
         }
 
@@ -59,8 +59,8 @@ instance Alternative (Generator self super)
         in Select (producer ignore)
 
     p1 <|> p2 =
-        Select $ knotted $ \up dn ->
-            let run xs = runKnotted (enumerate xs) (unsafeCoerce up) (unsafeCoerce dn)
+        Select $ synchronized $ \up dn ->
+            let run xs = runSynchronized (enumerate xs) (unsafeCoerce up) (unsafeCoerce dn)
             in do run p1
                   run p2
 
@@ -78,22 +78,22 @@ instance Monoid (Generator self super a)
 
     mappend = (<|>)
 
-generate :: ('[Knot] <: self, Monad super)
+generate :: ('[Sync] <: self, Monad super)
          => Generator self super a -> Narrative self super ()
-generate l = runKnot (enumerate (l >> mzero))
+generate l = runSync (enumerate (l >> mzero))
 
-each :: ('[Knot] <: self, Monad super, F.Foldable f)
+each :: ('[Sync] <: self, Monad super, F.Foldable f)
      => f a -> Producer' a self super ()
 each xs =
     let yields yield = F.foldr (const . yield) (return ()) xs
     in producer yields
 
-discard :: Monad super => t -> Knotted self a' a b' b super ()
+discard :: Monad super => t -> Synchronized self a' a b' b super ()
 discard _ =
     let ignore _ _ = return ()
-    in Knotted ignore
+    in Synchronized ignore
 
-every :: ('[Knot] <: self, Monad super)
+every :: ('[Sync] <: self, Monad super)
       => Generator self super a -> Producer' a self super ()
 every it =
     discard >\\ enumerate it

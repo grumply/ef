@@ -1,4 +1,4 @@
-module Ef.Bidir
+module Ef.Bidir {-# WARNING "This module is not for general use!" #-}
     ( Bidir(..)
     , bidir
     , runBidir
@@ -56,6 +56,10 @@ module Ef.Bidir
     , cat
     , for
     ) where
+
+-- This module is not for general use!
+-- This implementation must be /very/ carefully used.
+-- Use only when needing a unique global eventing system.
 
 import Ef
 

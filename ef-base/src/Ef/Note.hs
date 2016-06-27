@@ -8,7 +8,7 @@ module Ef.Note
 
 
 import Ef.Narrative
-import Ef.Knot
+import Ef.Sync
 
 import Control.Monad
 
@@ -66,9 +66,9 @@ data Book notes self super =
 
 
 notated
-    :: ('[Knot] <: self, Monad super) 
+    :: ('[Sync] <: self, Monad super) 
     => (Book notes self super -> Narrative self super result)
-    -> Knotted (Action notes) notes () X self super (result,notes)
+    -> Synchronized (Action notes) notes () X self super (result,notes)
 
 notated computation =
     let
@@ -128,7 +128,7 @@ notated computation =
                 }
 
     in
-        knotted $ \up _ ->
+        synchronized $ \up _ ->
             do
                 result <- computation (notationInterface up)
                 notes <- up Finish
@@ -137,7 +137,7 @@ notated computation =
 
 
 notate
-    :: ( '[Knot] <: self
+    :: ( '[Sync] <: self
        , Monad super
        , Monoid notes
        )
@@ -145,11 +145,11 @@ notate
     -> Narrative self super (result,notes)
 
 notate computation =
-    runKnot (serve +>> notated computation)
+    runSync (serve +>> notated computation)
     where
 
         serve firstRequest =
-            knotted $ \_ dn ->
+            synchronized $ \_ dn ->
                 withRespond dn mempty firstRequest
             where
 

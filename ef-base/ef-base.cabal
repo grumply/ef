@@ -20,7 +20,7 @@ library
   exposed-modules:     Ef.Contract
                      , Ef.Except
                      , Ef.Exit
-                     , Ef.Knot
+                     , Ef.Sync
                      , Ef.Bidir
                      , Ef.Fork
                      , Data.Promise
