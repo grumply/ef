@@ -16,6 +16,7 @@ module Ef.Event
   , mapSignal
   , filterSignal
 
+  , DriverStopped(..)
   , Signaled
   , newSignalBuffer
   , buffer, bufferIO
@@ -35,6 +36,8 @@ import Control.Monad
 import Data.IORef
 import Data.List
 import Unsafe.Coerce
+
+import Control.Exception (BlockedIndefinitelyOnSTM(..))
 
 data Reactor self super event =
     Reactor
@@ -501,7 +504,7 @@ driver (Signaled buf) = go
 
         {-# INLINE go' #-}
         go' = do
-          evss <- lift (collectIO buf)
+          evss <- mapException (\BlockedIndefinitelyOnSTM -> DriverStopped) $ io (collectIO buf)
           forM_ evss $ \(Signaling evs s) ->
             forM_ evs (signal (unsafeCoerce s))
 
@@ -521,10 +524,12 @@ driverPrintExceptions exceptionPrefix (Signaled buf) = go
 
         {-# INLINE go' #-}
         go' = do
-          evss <- lift (collectIO buf)
+          evss <- mapException (\BlockedIndefinitelyOnSTM -> DriverStopped) $ io (collectIO buf)
           forM_ evss $ \(Signaling evs s) ->
             forM_ evs (handle (\(e :: SomeException) -> lift $ putStrLn $ exceptionPrefix ++ ": " ++ show e) . signal (unsafeCoerce s))
 
+data DriverStopped = DriverStopped deriving Show
+instance Exception DriverStopped
 
 {-# INLINE buffer #-}
 buffer :: (Monad super', Lift IO super')
