@@ -28,7 +28,7 @@ import Ef.Narrative as Core
 import Ef.Messages as Core
 import Ef.Exception as Core
 
--- import Ef.Codensity as Core -- doesn't load in GHCi; bug?
+import Ef.Codensity as Core
 
 import Ef.Ma as Core
 
