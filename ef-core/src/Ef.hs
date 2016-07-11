@@ -6,7 +6,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExplicitNamespaces #-}
-{-# OPTIONS_GHC -fno-warn-missing-methods #-}
+{-# OPTIONS_GHC -fno-warn-missing-methods -fno-warn-inline-rule-shadowing #-}
 module Ef
     ( module Core
     , delta

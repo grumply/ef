@@ -8,6 +8,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# OPTIONS_GHC -fno-warn-missing-methods #-}
 module Ef.Ma where
 
 import Ef.Traits

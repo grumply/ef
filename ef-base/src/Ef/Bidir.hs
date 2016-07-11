@@ -1,4 +1,5 @@
-module Ef.Bidir {-# WARNING "This module is not for general use!" #-}
+{-# OPTIONS_GHC -fno-warn-inline-rule-shadowing -fno-warn-missing-methods #-}
+module Ef.Bidir
     ( Bidir(..)
     , bidir
     , runBidir

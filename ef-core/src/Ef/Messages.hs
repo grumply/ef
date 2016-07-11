@@ -10,6 +10,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# OPTIONS_GHC -fno-warn-missing-methods #-}
 module Ef.Messages where
 
 

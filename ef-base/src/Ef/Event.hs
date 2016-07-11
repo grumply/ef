@@ -17,7 +17,6 @@ module Ef.Event
   , filterSignal
 
   , DriverStopped(..)
-  , Signaled
   , newSignalBuffer
   , buffer, bufferIO
   , As(..), constructAs, reconstructAs

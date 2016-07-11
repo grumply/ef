@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-inline-rule-shadowing #-}
 module Ef.Sync
     ( Sync
     , sync
