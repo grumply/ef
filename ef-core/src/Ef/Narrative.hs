@@ -262,7 +262,6 @@ _fmap f =
 
 
 
-{-# NOINLINE _bind #-}
 _bind
     :: Functor super
     => Narrative self super intermediate
@@ -431,7 +430,6 @@ transform f = transform_ (Transform f)
 
 
 
-{-# NOINLINE transform_ #-}
 transform_
     :: Functor super
     => Transform self super result
