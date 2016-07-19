@@ -69,7 +69,7 @@ import Control.Monad
 import Unsafe.Coerce
 
 data Bidir k where
-    Bidir :: k -> Bidir k
+    Bidir :: Bidir k
     Request :: a' -> (a -> Narrative self super r) -> Bidir k
     Respond :: b -> (b' -> Narrative self super r) -> Bidir k
 
@@ -77,8 +77,7 @@ instance Ma Bidir Bidir
 
 bidir :: (Monad super, '[Bidir] <. traits)
       => Trait Bidir traits super
-bidir = Bidir return
-{-# INLINE bidir #-}
+bidir = Bidir
 
 runBidir :: ('[Bidir] <: self, Monad super)
          => Effect self super r -> Narrative self super r
@@ -597,6 +596,8 @@ pullRewrite up dn fb' p =
                            _ -> ignore
                    _ -> ignore
 
+
+
 infixl 7 >->
 (>->) :: ('[Bidir] <: self, Monad super)
       => Bi a' a () b self super r
@@ -650,7 +651,19 @@ p <<+ fb = fb +>> p
   ; "p1 >-> (p2 >-> p3)" forall p1 p2 p3 .
         p1 >-> (p2 >-> p3) = (p1 >-> p2) >-> p3
 
+  ; "for (for p f) g" forall p f g . for (for p f) g = for p (\a -> for (f a) g)
+
+  ; "f >~ (g >~ p)" forall f g p . f >~ (g >~ p) = (f >~ g) >~ p
+
+  ; "p1 >-> (p2 >-> p3)" forall p1 p2 p3 .
+        p1 >-> (p2 >-> p3) = (p1 >-> p2) >-> p3
+
+  ; "p >-> cat" forall p . p >-> cat = p
+
+  ; "cat >-> p" forall p . cat >-> p = p
+
   #-}
+
 
 {-# INLINE runBidir #-}
 {-# INLINE closed #-}

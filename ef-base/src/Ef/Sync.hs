@@ -69,10 +69,10 @@ instance Ma Sync Sync where
     ma use (Sync i k) (FreshScope ik) = use k (ik i)
 
 data Sync k where
-    Sync :: Int -> k -> Sync k
+    Sync :: {-# UNPACK #-} !Int -> k -> Sync k
     FreshScope :: (Int -> k) -> Sync k
-    Request :: Int -> a' -> (a -> Narrative self super r) -> Sync k
-    Respond :: Int -> b -> (b' -> Narrative self super r) -> Sync k
+    Request :: {-# UNPACK #-} !Int -> a' -> (a -> Narrative self super r) -> Sync k
+    Respond :: {-# UNPACK #-} !Int -> b -> (b' -> Narrative self super r) -> Sync k
 
 sync :: (Monad super, '[Sync] <. traits)
      => Trait Sync traits super
@@ -697,7 +697,6 @@ infixl 6 <<+
       -> Synchronized a' a c' c self super r
 p <<+ fb = fb +>> p
 
--- valid rules from pipes
 {-# RULES
     "(p //> f) //> g" forall p f g . (p //> f) //> g = p //> (\x -> f x //> g)
 
@@ -714,10 +713,7 @@ p <<+ fb = fb +>> p
   ; "p1 >-> (p2 >-> p3)" forall p1 p2 p3 .
         p1 >-> (p2 >-> p3) = (p1 >-> p2) >-> p3
 
-  #-}
-
-{-# RULES
-    "for (for p f) g" forall p f g . for (for p f) g = for p (\a -> for (f a) g)
+  ; "for (for p f) g" forall p f g . for (for p f) g = for p (\a -> for (f a) g)
 
   ; "f >~ (g >~ p)" forall f g p . f >~ (g >~ p) = (f >~ g) >~ p
 

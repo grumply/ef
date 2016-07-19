@@ -106,7 +106,6 @@ instance Lift newSuper super
         super . lift
 
 
-{-# INLINABLE super #-}
 super
     :: Functor super
     => super result
@@ -116,7 +115,6 @@ super m =
     Super (fmap Return m)
 
 
-{-# INLINABLE self #-}
 self
     :: (Monad super, '[message] <: self)
     => message result -> Narrative self super result
@@ -259,9 +257,9 @@ _fmap f =
   #-}
 
 
-{-# NOINLINE _bind #-}
+{-# NOINLINE [1] _bind #-}
 _bind
-    :: Functor super
+    :: Monad super
     => Narrative self super intermediate
     -> (intermediate -> Narrative self super result)
     -> Narrative self super result
@@ -295,18 +293,13 @@ p0 `_bind` f =
     "_bind (Say message k) f"
         forall message k f .
             _bind (Say message k) f =
-                Say message (flip _bind f . k)
+                Say message (\a -> _bind (k a) f)
     ;
 
     "_bind (Super m) f"
         forall m f .
             _bind (Super m) f =
-                let
-                  continue =
-                      flip _bind f
-
-                in
-                  Super (fmap continue m)
+                Super (m >>= \p -> return (_bind p f))
     ;
 
     "_bind (Return result) f"
@@ -415,9 +408,8 @@ _mappend p0 p1 =
 --     lift (x >>= y) = lift x >>= (lift . y)
 -- as well as
 --     throw e >> _ = throw e
-{-# NOINLINE transform #-}
 transform
-    :: Functor super
+    :: Monad super
     => (forall x. Messages self x -> (x -> Narrative self super result) -> Narrative self super result)
     -> Narrative self super result
     -> Narrative self super result
@@ -425,9 +417,9 @@ transform
 transform f = _transform (Transform f)
 
 
-{-# NOINLINE _transform #-}
+{-# NOINLINE [1] _transform #-}
 _transform
-    :: Functor super
+    :: Monad super
     => Transform self super result
     -> Narrative self super result
     -> Narrative self super result
@@ -439,8 +431,8 @@ _transform (Transform t) =
         go (Say message k) =
            t message k
 
-        go (Super sup) =
-            Super (fmap go sup)
+        go (Super m) =
+           Super (m >>= return . go)
 
         go (Fail e) =
             Fail e
@@ -450,7 +442,7 @@ _transform (Transform t) =
 
 
 
-{-# INLINE applyTransform #-}
+{-# NOINLINE applyTransform #-}
 applyTransform
     :: Transform self super result
     -> Messages self x
@@ -463,7 +455,7 @@ data Transform (self :: [* -> *]) (super :: * -> *) (result :: *)
     where
 
         Transform
-            :: (forall x. Messages self x -> (x -> Narrative self super result) -> Narrative self super result)
+            :: {-# UNPACK #-} !(forall x. Messages self x -> (x -> Narrative self super result) -> Narrative self super result)
             -> Transform self super result
 
 {-# RULES
@@ -477,7 +469,7 @@ data Transform (self :: [* -> *]) (super :: * -> *) (result :: *)
     "_transform t (Super sup) == Super (fmap (_transform t) sup)"
         forall t sup.
             _transform t (Super sup) =
-                Super (fmap (_transform t) sup)
+                Super (sup >>= \p -> return (_transform t p))
     ;
 
     "_transform t (Return r) == Return r"
@@ -489,7 +481,7 @@ data Transform (self :: [* -> *]) (super :: * -> *) (result :: *)
     "_transform t (Say message k)"
         forall t message k.
             _transform t (Say message k) =
-                applyTransform t message k
+              applyTransform t message k
     ;
 
   #-}
