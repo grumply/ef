@@ -106,7 +106,7 @@ instance Lift newSuper super
         super . lift
 
 
-
+{-# INLINABLE super #-}
 super
     :: Functor super
     => super result
@@ -116,7 +116,7 @@ super m =
     Super (fmap Return m)
 
 
-
+{-# INLINABLE self #-}
 self
     :: (Monad super, '[message] <: self)
     => message result -> Narrative self super result
@@ -191,7 +191,6 @@ instance Monad super
         Return
 
 
-
     (>>=) =
         _bind
 
@@ -202,7 +201,6 @@ instance Monad super
 
 
 
-{-# NOINLINE _fmap #-}
 _fmap
     :: Functor super
     => (a -> b)
@@ -261,7 +259,7 @@ _fmap f =
   #-}
 
 
-
+{-# NOINLINE _bind #-}
 _bind
     :: Functor super
     => Narrative self super intermediate
@@ -348,7 +346,6 @@ instance MonadPlus super
         _mplus
 
 
-
 _mplus
     :: MonadPlus super
     => Narrative self super result
@@ -388,7 +385,6 @@ instance ( Monad super
         _mappend
 
 
-
 _mappend
     :: ( Monad super
        , Monoid result
@@ -419,24 +415,24 @@ _mappend p0 p1 =
 --     lift (x >>= y) = lift x >>= (lift . y)
 -- as well as
 --     throw e >> _ = throw e
-{-# INLINE transform #-}
+{-# NOINLINE transform #-}
 transform
     :: Functor super
     => (forall x. Messages self x -> (x -> Narrative self super result) -> Narrative self super result)
     -> Narrative self super result
     -> Narrative self super result
 
-transform f = transform_ (Transform f)
+transform f = _transform (Transform f)
 
 
-
-transform_
+{-# NOINLINE _transform #-}
+_transform
     :: Functor super
     => Transform self super result
     -> Narrative self super result
     -> Narrative self super result
 
-transform_ (Transform t) =
+_transform (Transform t) =
     go
     where
 
@@ -472,27 +468,27 @@ data Transform (self :: [* -> *]) (super :: * -> *) (result :: *)
 
 {-# RULES
 
-    "transform_ t (Fail e) == Fail e"
+    "_transform t (Fail e) == Fail e"
         forall t e.
-            transform_ t (Fail e) =
+            _transform t (Fail e) =
                 Fail e
     ;
 
-    "transform_ t (Super sup) == Super (fmap (transform_ t) sup)"
+    "_transform t (Super sup) == Super (fmap (_transform t) sup)"
         forall t sup.
-            transform_ t (Super sup) =
-                Super (fmap (transform_ t) sup)
+            _transform t (Super sup) =
+                Super (fmap (_transform t) sup)
     ;
 
-    "transform_ t (Return r) == Return r"
+    "_transform t (Return r) == Return r"
         forall t r.
-            transform_ t (Return r) =
+            _transform t (Return r) =
                 Return r
      ;
 
-    "transform_ t (Say message k)"
+    "_transform t (Say message k)"
         forall t message k.
-            transform_ t (Say message k) =
+            _transform t (Say message k) =
                 applyTransform t message k
     ;
 
