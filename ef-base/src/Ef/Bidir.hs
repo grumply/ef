@@ -68,6 +68,8 @@ import Control.Applicative
 import Control.Monad
 import Unsafe.Coerce
 
+import GHC.Exts
+
 data Bidir k where
     Bidir :: Bidir k
     Request :: a' -> (a -> Narrative self super r) -> Bidir k
@@ -314,21 +316,11 @@ substituteResponds fb up dn =
 
     go :: forall z. Messages self z -> (z -> Narrative self super a') -> Narrative self super a'
     go message k =
-        let ignore = Say message (transform go . k)
-        in case prj message of
-
-               Just x ->
-                   case x of
-
-                       Respond b _ -> do
-                               let routine = runBi (fb (unsafeCoerce b))
-                                                        (unsafeCoerce up)
-                                                        (unsafeCoerce dn)
-                               res <- routine
-                               let continue = k (unsafeCoerce res)
-                               transform go continue
-                       _ -> ignore
-               _ -> ignore
+        case prj message of
+            Just (Respond b _) -> do
+                res <- runBi (fb (unsafeCoerce b)) (unsafeCoerce up) (unsafeCoerce dn)
+                transform go $ k (unsafeCoerce res)
+            _ -> Say message (transform go . k)
 
 for :: ('[Bidir] <: self, Monad super)
     => Bi x' x b' b self super a'
@@ -402,25 +394,11 @@ substituteRequests fb' up dn =
 
     go :: forall z. Messages self z -> (z -> Narrative self super a') -> Narrative self super a'
     go message k =
-        let
-          ignore =
-              Say message (transform go . k)
-
-        in
-          case prj message of
-
-              Just x ->
-                  case x of
-
-                      Request b' _ -> do
-                              let routine = runBi (fb' (unsafeCoerce b'))
-                                                       (unsafeCoerce up)
-                                                       (unsafeCoerce dn)
-                              res <- routine
-                              let continue = k (unsafeCoerce res)
-                              transform go continue
-                      _ -> ignore
-              _ -> ignore
+        case prj message of
+            Just (Request b' _) -> do
+              res <- runBi (fb' (unsafeCoerce b')) (unsafeCoerce up) (unsafeCoerce dn)
+              transform go (k $ unsafeCoerce res)
+            _ -> Say message (transform go . k)
 
 infixr 5 /</
 (/</) :: ('[Bidir] <: self, Monad super)
@@ -484,38 +462,15 @@ pushRewrite
 pushRewrite up dn fb0 p0 =
     let upstream = runBi p0 (unsafeCoerce up) (unsafeCoerce dn)
         downstream b = runBi (fb0 b) (unsafeCoerce up) (unsafeCoerce dn)
-    in goLeft downstream upstream
+    in go downstream upstream
   where
 
-    goLeft fb =
-        transform goLeft'
-      where
-
-        goLeft' :: forall x. Messages self x -> (x -> Narrative self super r) -> Narrative self super r
-        goLeft' message k =
-            let ignore = Say message (transform goLeft' . k)
-            in case prj message of
-                   Just x ->
-                       case x of
-                          Respond b _ ->
-                            goRight (unsafeCoerce k) (fb (unsafeCoerce b))
-                          _ -> ignore
-                   _ -> ignore
-
-    goRight b'p =
-        transform goRight'
-      where
-
-        goRight' :: forall x. Messages self x -> (x -> Narrative self super r) -> Narrative self super r
-        goRight' message k =
-            let ignore = Say message (transform goRight' . k)
-            in case prj message of
-                   Just x  ->
-                       case x of
-                           Request b' _ ->
-                              goLeft (unsafeCoerce k) (b'p (unsafeCoerce b'))
-                           _ -> ignore
-                   _ -> ignore
+    go fx =
+      transform $ \message k ->
+          case prj message of
+              Just (Respond b _) -> unsafeCoerce go k (fx $ unsafeCoerce b)
+              Just (Request b' _) -> unsafeCoerce go k (fx $ unsafeCoerce b')
+              _ -> Say message (go fx . k)
 
 infixl 8 <~<
 (<~<) :: ('[Bidir] <: self, Monad super)
@@ -563,39 +518,13 @@ pullRewrite
 pullRewrite up dn fb' p =
     let upstream b' = runBi (fb' b') (unsafeCoerce up) (unsafeCoerce dn)
         downstream = runBi p (unsafeCoerce up) (unsafeCoerce dn)
-    in goRight upstream downstream
+    in go upstream downstream
   where
-
-    goRight fb'' =
-        transform goRight'
-      where
-
-        goRight' :: forall x. Messages self x -> (x -> Narrative self super r) -> Narrative self super r
-        goRight' message k =
-            let ignore = Say message (transform goRight' . k)
-            in case prj message of
-                   Just x ->
-                       case x of
-                           Request b' _ ->
-                               goLeft (unsafeCoerce k) (fb'' (unsafeCoerce b'))
-                           _ -> ignore
-                   _ -> ignore
-
-    goLeft bp =
-        transform goLeft'
-      where
-
-        goLeft' :: forall x. Messages self x -> (x -> Narrative self super r) -> Narrative self super r
-        goLeft' message k' =
-            let ignore = Say message (transform goLeft' . k')
-            in case prj message of
-                   Just x ->
-                       case x of
-                           Respond b _ ->
-                               goRight (unsafeCoerce k') (bp (unsafeCoerce b))
-                           _ -> ignore
-                   _ -> ignore
-
+    go fx = transform $ \message k ->
+      case prj message of
+          Just (Respond b _) -> unsafeCoerce go k (fx $ unsafeCoerce b)
+          Just (Request b' _) -> unsafeCoerce go k (fx $ unsafeCoerce b')
+          _ -> Say message (go fx . k)
 
 
 infixl 7 >->

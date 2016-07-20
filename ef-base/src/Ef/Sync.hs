@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-inline-rule-shadowing #-}
+{-# language ViewPatterns #-}
 module Ef.Sync
     ( Sync
     , sync
@@ -68,11 +69,11 @@ import Unsafe.Coerce
 instance Ma Sync Sync where
     ma use (Sync i k) (FreshScope ik) = use k (ik i)
 
-data Sync k where
-    Sync :: {-# UNPACK #-} !Int -> k -> Sync k
-    FreshScope :: (Int -> k) -> Sync k
-    Request :: {-# UNPACK #-} !Int -> a' -> (a -> Narrative self super r) -> Sync k
-    Respond :: {-# UNPACK #-} !Int -> b -> (b' -> Narrative self super r) -> Sync k
+data Sync k
+  = Sync {-# UNPACK #-} !Int k
+  | FreshScope (Int -> k)
+  | forall a' a self super r. Request {-# UNPACK #-} !Int a' (a -> Narrative self super r)
+  | forall b b' self super r. Respond {-# UNPACK #-} !Int b (b' -> Narrative self super r)
 
 sync :: (Monad super, '[Sync] <. traits)
      => Trait Sync traits super
@@ -354,24 +355,14 @@ substituteResponds fb rewriteScope up dn =
 
     go :: forall z. Messages self z -> (z -> Narrative self super a') -> Narrative self super a'
     go message k =
-        let check currentScope scoped = if currentScope == rewriteScope then scoped else ignore
-            ignore = Say message (transform go . k)
-        in case prj message of
-
-               Just x ->
-                   case x of
-
-                       Respond currentScope b _ ->
-                           check currentScope $ do
-                               let routine = runSynchronized
-                                               (fb (unsafeCoerce b))
-                                               (unsafeCoerce up)
-                                               (unsafeCoerce dn)
-                               res <- routine
-                               let continue = k (unsafeCoerce res)
-                               transform go continue
-                       _ -> ignore
-               _ -> ignore
+        case prj message of
+            Just (Respond currentScope b _) ->
+                if currentScope == rewriteScope
+                then do
+                  res <- runSynchronized (fb (unsafeCoerce b)) (unsafeCoerce up) (unsafeCoerce dn)
+                  transform go $ k (unsafeCoerce res)
+                else Say message (transform go . k)
+            _ -> Say message (transform go . k)
 
 for :: ('[Sync] <: self, Monad super)
     => Synchronized x' x b' b self super a'
@@ -448,33 +439,14 @@ substituteRequests fb' rewriteScope up dn =
 
     go :: forall z. Messages self z -> (z -> Narrative self super a') -> Narrative self super a'
     go message k =
-        let
-          check currentScope scoped =
-              if currentScope == rewriteScope then
-                  scoped
-              else
-                  ignore
-
-          ignore =
-              Say message (transform go . k)
-
-        in
-          case prj message of
-
-              Just x ->
-                  case x of
-
-                      Request currentScope b' _ ->
-                          check currentScope $ do
-                              let routine = runSynchronized
-                                              (fb' (unsafeCoerce b'))
-                                              (unsafeCoerce up)
-                                              (unsafeCoerce dn)
-                              res <- routine
-                              let continue = k (unsafeCoerce res)
-                              transform go continue
-                      _ -> ignore
-              _ -> ignore
+        case prj message of
+            Just (Request currentScope b' _) -> do
+                if currentScope == rewriteScope
+                then do
+                    res <- runSynchronized (fb' (unsafeCoerce b')) (unsafeCoerce up) (unsafeCoerce dn)
+                    transform go $ k (unsafeCoerce res)
+                else Say message (transform go . k)
+            _ -> Say message (transform go . k)
 
 infixr 5 /</
 (/</) :: ('[Sync] <: self, Monad super)
@@ -541,40 +513,20 @@ pushRewrite
 pushRewrite rewriteScope up dn fb0 p0 =
     let upstream = runSynchronized p0 (unsafeCoerce up) (unsafeCoerce dn)
         downstream b = runSynchronized (fb0 b) (unsafeCoerce up) (unsafeCoerce dn)
-    in goLeft downstream upstream
+    in go downstream upstream
   where
 
-    goLeft fb =
-        transform goLeft'
-      where
+    check cs i s = if cs == rewriteScope then s else i
 
-        goLeft' :: forall x. Messages self x -> (x -> Narrative self super r) -> Narrative self super r
-        goLeft' message k =
-            let check currentScope scoped = if currentScope == rewriteScope then scoped else ignore
-                ignore = Say message (transform goLeft' . k)
-            in case prj message of
-                   Just x ->
-                       case x of
-                          Respond currentScope b _ ->
-                            check currentScope $ goRight (unsafeCoerce k) (fb (unsafeCoerce b))
-                          _ -> ignore
-                   _ -> ignore
-
-    goRight b'p =
-        transform goRight'
-      where
-
-        goRight' :: forall x. Messages self x -> (x -> Narrative self super r) -> Narrative self super r
-        goRight' message k =
-            let check currentScope scoped = if currentScope == rewriteScope then scoped else ignore
-                ignore = Say message (transform goRight' . k)
-            in case prj message of
-                   Just x  ->
-                       case x of
-                           Request currentScope b' _ ->
-                              check currentScope $ goLeft (unsafeCoerce k) (b'p (unsafeCoerce b'))
-                           _ -> ignore
-                   _ -> ignore
+    go fx =
+      transform $ \message k ->
+          let ignore = Say message (go fx . k)
+          in case prj message of
+                Just (Respond currentScope b _) ->
+                    check currentScope ignore $ unsafeCoerce go k (fx (unsafeCoerce b))
+                Just (Request currentScope b' _) ->
+                    check currentScope ignore $ unsafeCoerce go k (fx (unsafeCoerce b'))
+                _ -> ignore
 
 infixl 8 <~<
 (<~<) :: ('[Sync] <: self, Monad super)
@@ -625,40 +577,20 @@ pullRewrite
 pullRewrite rewriteScope up dn fb' p =
     let upstream b' = runSynchronized (fb' b') (unsafeCoerce up) (unsafeCoerce dn)
         downstream = runSynchronized p (unsafeCoerce up) (unsafeCoerce dn)
-    in goRight upstream downstream
+    in go upstream downstream
   where
 
-    goRight fb'' =
-        transform goRight'
-      where
+    check cs i s = if cs == rewriteScope then s else i
 
-        goRight' :: forall x. Messages self x -> (x -> Narrative self super r) -> Narrative self super r
-        goRight' message k =
-            let check currentScope scoped = if currentScope == rewriteScope then scoped else ignore
-                ignore = Say message (transform goRight' . k)
-            in case prj message of
-                   Just x ->
-                       case x of
-                           Request currentScope b' _ ->
-                               check currentScope $ goLeft (unsafeCoerce k) (fb'' (unsafeCoerce b'))
-                           _ -> ignore
-                   _ -> ignore
-
-    goLeft bp =
-        transform goLeft'
-      where
-
-        goLeft' :: forall x. Messages self x -> (x -> Narrative self super r) -> Narrative self super r
-        goLeft' message k' =
-            let check currentScope scoped = if currentScope == rewriteScope then scoped else ignore
-                ignore = Say message (transform goLeft' . k')
-            in case prj message of
-                   Just x ->
-                       case x of
-                           Respond currentScope b _ ->
-                               check currentScope $ goRight (unsafeCoerce k') (bp (unsafeCoerce b))
-                           _ -> ignore
-                   _ -> ignore
+    go fx =
+      transform $ \message k ->
+          let ignore = Say message (go fx . k)
+          in case prj message of
+                Just (Respond currentScope b _) ->
+                    check currentScope ignore $ unsafeCoerce go k (fx (unsafeCoerce b))
+                Just (Request currentScope b' _) ->
+                    check currentScope ignore $ unsafeCoerce go k (fx (unsafeCoerce b'))
+                _ -> ignore
 
 infixl 7 >->
 (>->) :: ('[Sync] <: self, Monad super)

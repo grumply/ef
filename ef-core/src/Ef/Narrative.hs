@@ -118,10 +118,11 @@ super m =
 self
     :: (Monad super, '[message] <: self)
     => message result -> Narrative self super result
+self message = Say (inj message) return
 
-self message =
-    Say (inj message) return
-
+{-# RULES
+  "self/bind" forall m k. self m >>= k = Say (inj m) k
+  #-}
 
 
 type Subtype s t = (<:) s t
@@ -198,7 +199,7 @@ instance Monad super
         Fail . toException . PatternMatchFail
 
 
-
+{-# NOINLINE [1] _fmap #-}
 _fmap
     :: Functor super
     => (a -> b)
@@ -220,41 +221,6 @@ _fmap f =
 
     go (Say message k) =
         Say message (go . k)
-
-
-
-{-# RULES
-
-    "_fmap f (Fail e)"
-        forall f e.
-            _fmap f (Fail e) =
-                Fail e
-    ;
-
-    "_fmap f (Say message k)"
-        forall message k f.
-            _fmap f (Say message k) =
-                Say message (_fmap f . k)
-    ;
-
-    "_fmap f (Super m)"
-        forall f m.
-            _fmap f (Super m) =
-                let
-                  continue =
-                      _fmap f
-
-                in
-                  Super (fmap continue m)
-    ;
-
-    "_fmap f (Return result)"
-        forall f result.
-            _fmap f (Return result) =
-                Return (f result)
-    ;
-
-  #-}
 
 
 {-# NOINLINE [1] _bind #-}
@@ -338,7 +304,7 @@ instance MonadPlus super
     mplus =
         _mplus
 
-
+{-# NOINLINE [1] _mplus #-}
 _mplus
     :: MonadPlus super
     => Narrative self super result
@@ -377,7 +343,7 @@ instance ( Monad super
     mappend =
         _mappend
 
-
+{-# NOINLINE [1] _mappend #-}
 _mappend
     :: ( Monad super
        , Monoid result
@@ -408,23 +374,24 @@ _mappend p0 p1 =
 --     lift (x >>= y) = lift x >>= (lift . y)
 -- as well as
 --     throw e >> _ = throw e
+{-# INLINE transform #-}
 transform
     :: Monad super
     => (forall x. Messages self x -> (x -> Narrative self super result) -> Narrative self super result)
     -> Narrative self super result
     -> Narrative self super result
 
-transform f = _transform (Transform f)
+transform = _transform
 
 
 {-# NOINLINE [1] _transform #-}
 _transform
     :: Monad super
-    => Transform self super result
+    => (forall x. Messages self x -> (x -> Narrative self super result) -> Narrative self super result)
     -> Narrative self super result
     -> Narrative self super result
 
-_transform (Transform t) =
+_transform t =
     go
     where
 
@@ -439,50 +406,3 @@ _transform (Transform t) =
 
         go (Return r) =
             Return r
-
-
-
-{-# NOINLINE applyTransform #-}
-applyTransform
-    :: Transform self super result
-    -> Messages self x
-    -> (x -> Narrative self super result)
-    -> Narrative self super result
-
-applyTransform (Transform t) = t
-
-data Transform (self :: [* -> *]) (super :: * -> *) (result :: *)
-    where
-
-        Transform
-            :: {-# UNPACK #-} !(forall x. Messages self x -> (x -> Narrative self super result) -> Narrative self super result)
-            -> Transform self super result
-
-{-# RULES
-
-    "_transform t (Fail e) == Fail e"
-        forall t e.
-            _transform t (Fail e) =
-                Fail e
-    ;
-
-    "_transform t (Super sup) == Super (fmap (_transform t) sup)"
-        forall t sup.
-            _transform t (Super sup) =
-                Super (sup >>= \p -> return (_transform t p))
-    ;
-
-    "_transform t (Return r) == Return r"
-        forall t r.
-            _transform t (Return r) =
-                Return r
-     ;
-
-    "_transform t (Say message k)"
-        forall t message k.
-            _transform t (Say message k) =
-              applyTransform t message k
-    ;
-
-  #-}
-

@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                ef-base
-version:             0.10.2.0
+version:             0.11.0.0
 synopsis:            Base libraries to enable more convenient Ef development including mtl-style computation components.
 -- description:         
 homepage:            ef-lang.org
