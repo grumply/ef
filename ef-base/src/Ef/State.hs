@@ -12,7 +12,7 @@ module Ef.State
 import Ef
 
 data State st k
-  = State !st (st -> k)
+  = State st (st -> k)
   | Modify (st -> st) (st -> k)
 
 instance Ma (State st) (State st) where
@@ -22,7 +22,7 @@ instance Ma (State st) (State st) where
 state :: (Monad super, '[State st] <. traits)
       => st -> Trait (State st) traits super
 state initialState = State initialState $ \new fs ->
-  return $! (fs .=) $! state new
+  return $ (fs .=) $ state new
 {-# INLINE state #-}
 
 get :: (Monad super, '[State st] <: self)
