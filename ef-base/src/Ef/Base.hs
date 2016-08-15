@@ -9,7 +9,6 @@ import Ef.Except as X
 import Ef.Exit as X
 import Ef.Fiber as X
 import Ef.Fork as X
-import Ef.Generate as X
 import Ef.IO as X
 import Ef.Manage as X
 import Ef.Note as X

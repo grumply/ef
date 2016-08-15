@@ -1,56 +1,44 @@
-module Ef.State
-    ( State
-    , state
-    , get
-    , gets
-    , put
-    , puts
-    , swap
-    , modify
-    ) where
+module Ef.State (State(..),state,get,put,modify,lput,lmodify) where
 
 import Ef
 
-data State st k
-  = State st (st -> k)
-  | Modify (st -> st) (st -> k)
+data Eagerness = NonStrict | Strict
 
-instance Ma (State st) (State st) where
-  ma use (State st stk) (Modify stst stk') =
-    use (stk (stst st)) (stk' st)
+data State s k
+  = State s k (s -> k)
+  | Get (s -> k)
+  | Put Eagerness s k
+  | Modify Eagerness (s -> s) k
 
-state :: (Monad super, '[State st] <. traits)
+instance Ma (State s) (State s) where
+  ma use (State s k _) (Get sk) =
+    let k' = sk s
+    in use k k'
+  ma use (State _ _ sk) (Put Strict !s k') =
+    let k = sk s
+    in use k k'
+  ma use (State _ _ sk) (Put NonStrict s k') =
+    let k = sk s
+    in use k k'
+  ma use (State s _ sk) (Modify Strict ss k') =
+    let !s' = ss s
+    in use (sk s') k'
+  ma use (State s _ sk) (Modify NonStrict ss k') =
+    let s' = ss s
+    in use (sk s') k'
+
+state :: forall self st super traits.
+         (Monad super, '[State st] <. traits)
       => st -> Trait (State st) traits super
-state initialState = State initialState $ \new fs ->
-  return $ (fs .=) $ state new
+state initial = State initial return $! \new fs -> return $! (fs .=) $! state new
 {-# INLINE state #-}
 
-get :: (Monad super, '[State st] <: self)
-    => Narrative self super st
-get = self (Modify id id)
-{-# INLINE get #-}
+get = self (Get id)
 
-gets :: (Monad super, '[State st] <: self)
-     => (st -> result) -> Narrative self super result
-gets f = self (Modify id f)
-{-# INLINE gets #-}
+put new = self (Put Strict new ())
 
-put :: (Monad super, '[State st] <: self)
-    => st -> Narrative self super ()
-put st = self (Modify (const st) (const ()))
-{-# INLINE put #-}
+modify f = self (Modify Strict f ())
 
-puts :: (Monad super, '[State st] <: self)
-     => (a -> st) -> a -> Narrative self super ()
-puts f a = self (Modify (const (f a)) (const ()))
-{-# INLINE puts #-}
+lput new = self (Put NonStrict new ())
 
-swap :: (Monad super, '[State st] <: self)
-     => st -> Narrative self super st
-swap st = self (Modify (const st) id)
-{-# INLINE swap #-}
-
-modify :: (Monad super, '[State st] <: self)
-       => (st -> st) -> Narrative self super ()
-modify f = self (Modify f (const ()))
-{-# INLINE modify #-}
+lmodify f = self (Modify NonStrict f ())

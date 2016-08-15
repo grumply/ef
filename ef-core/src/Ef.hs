@@ -48,7 +48,7 @@ delta
     -> Narrative messages super result
     -> super (Object traits super,result)
 delta = _delta
-{-# INLINE delta #-}
+{-# INLINE [2] delta #-}
 
 
 -- | Send a narrative to an object for invocation in the context of another narrative;
@@ -64,7 +64,7 @@ delta_
     -> Narrative messages (Narrative self super) result
     -> Narrative self super (Object traits (Narrative self super),result)
 delta_ = __delta
-{-# INLINE delta_ #-}
+{-# INLINE [2] delta_ #-}
 
 
 
@@ -80,7 +80,7 @@ infixr 5 $.
     -> Narrative messages super result
     -> super (Object traits super,result)
 ($.) = _delta
-{-# INLINE ($.) #-}
+{-# INLINE [2] ($.) #-}
 
 
 infixr 5 $..
@@ -99,7 +99,7 @@ infixr 5 $..
     -> Narrative messages (Narrative self super) result
     -> Narrative self super (Object traits (Narrative self super),result)
 ($..) = __delta
-{-# INLINE ($..) #-}
+{-# INLINE [2] ($..) #-}
 
 
 
@@ -124,8 +124,7 @@ _delta object = go
     go (Super m) = m >>= go
 
     go (Return result) = pure (object,result)
-{-# INLINE _delta #-}
-
+{-# NOINLINE [2] _delta #-}
 
 
 {-# RULES
@@ -147,7 +146,7 @@ _delta object = go
     "_delta obj (Return result)"
         forall obj result.
             _delta obj (Return result) =
-                pure (obj,result)
+                return (obj,result)
 
     ;
 
@@ -187,7 +186,7 @@ __delta object = go
         m >>= go
 
     go (Return result) = pure (object,result)
-{-# INLINE __delta #-}
+{-# NOINLINE [2] __delta #-}
 
 {-# RULES
 
@@ -249,7 +248,7 @@ infixr 5 $!.
     go (Say message k) = do
         (obj',v) <- obj $. Say message Return
         obj' `deepseq` (obj' $!. k v)
-{-# INLINE ($!.) #-}
+{-# NOINLINE [2] ($!.) #-}
 
 {-# RULES
 
@@ -311,7 +310,7 @@ infixr 5 $!..
     go (Say message k) = do
         (obj',v) <- obj $. Say message Return
         obj' `deepseq` (obj' $!.. k v)
-{-# INLINE ($!..) #-}
+{-# NOINLINE [2] ($!..) #-}
 
 {-# RULES
 

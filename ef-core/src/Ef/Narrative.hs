@@ -38,7 +38,6 @@ import Control.Monad
 
 import GHC.Generics
 
-
 data Narrative self super result
     = forall intermediate.
       Say (Messages self intermediate)
@@ -114,14 +113,15 @@ super
 super m =
     Super (fmap Return m)
 
-
+{-# INLINE [2] self #-}
 self
     :: (Monad super, '[message] <: self)
     => message result -> Narrative self super result
 self message = Say (inj message) return
 
 {-# RULES
-  "self/bind" forall m k. self m >>= k = Say (inj m) k
+  "self/bind" [~3] forall m k. self m >>= k = Say (inj m) k;
+  "self/then" [~3] forall m k. self m >>  k = Say (inj m) (\_ -> k)
   #-}
 
 
@@ -162,7 +162,56 @@ instance Functor super
     fmap =
         _fmap
 
+{-# NOINLINE [2] _fmap #-}
+_fmap
+    :: Functor super
+    => (a -> b)
+    -> Narrative self super a
+    -> Narrative self super b
 
+_fmap f =
+    go
+  where
+
+    go (Fail e) =
+        Fail e
+
+    go (Return a) =
+        Return (f a)
+
+    go (Super m) =
+        Super (fmap go m)
+
+    go (Say message k) =
+        Say message (go . k)
+
+{-# RULES
+
+    "_fmap f (Fail e)"
+        forall e f .
+            _fmap f (Fail e) =
+                Fail e
+    ;
+
+    "_fmap f (Say message k)"
+        forall message k f .
+            _fmap f (Say message k) =
+                Say message (_fmap f . k)
+    ;
+
+    "_fmap f (Super m)"
+        forall m f .
+            _fmap f (Super m) =
+                Super (fmap (_fmap f) m)
+    ;
+
+    "_fmap f (Return result)"
+        forall result f .
+            _fmap f (Return result) =
+                Return (f result)
+    ;
+
+  #-}
 
 instance Monad super
     => Applicative (Narrative self super)
@@ -186,44 +235,24 @@ instance Monad super
 instance Monad super
     => Monad (Narrative self super)
   where
+
+    {-# INLINE return #-}
     return =
         Return
 
-
+    {-# INLINE [2] (>>=) #-}
     (>>=) =
         _bind
 
+    {-# INLINE [2] (>>) #-}
+    (>>) =
+        _then
 
-
+    {-# INLINE fail #-}
     fail =
         Fail . toException . PatternMatchFail
 
-
-{-# NOINLINE [1] _fmap #-}
-_fmap
-    :: Functor super
-    => (a -> b)
-    -> Narrative self super a
-    -> Narrative self super b
-
-_fmap f =
-    go
-  where
-
-    go (Fail e) =
-        Fail e
-
-    go (Return a) =
-        Return (f a)
-
-    go (Super m) =
-        Super (fmap go m)
-
-    go (Say message k) =
-        Say message (go . k)
-
-
-{-# NOINLINE [1] _bind #-}
+{-# NOINLINE [2] _bind #-}
 _bind
     :: Monad super
     => Narrative self super intermediate
@@ -245,8 +274,6 @@ p0 `_bind` f =
 
     go (Super m) =
         Super (fmap go m)
-
-
 
 {-# RULES
 
@@ -276,21 +303,56 @@ p0 `_bind` f =
 
   #-}
 
+{-# NOINLINE [2] _then #-}
+_then
+    :: Monad super
+    => Narrative self super intermediate
+    -> Narrative self super result
+    -> Narrative self super result
 
-
-instance MonadPlus super
-    => Alternative (Narrative self super)
+p0 `_then` f =
+    go p0
   where
 
-    empty =
-        mzero
+    go (Fail e) =
+        Fail e
 
+    go (Say message k) =
+        Say message (go . k)
 
+    go (Return res) =
+        f
 
-    (<|>) =
-        mplus
+    go (Super m) =
+        Super (fmap go m)
 
+{-# RULES
 
+    "_then (Fail e) f"
+        forall e f .
+            _then (Fail e) f =
+                Fail e
+    ;
+
+    "_then (Say message k) f"
+        forall message k f .
+            _then (Say message k) f =
+                Say message (\a -> _then (k a) f)
+    ;
+
+    "_then (Super m) f"
+        forall m f .
+            _then (Super m) f =
+                Super (m >>= \p -> return (_then p f))
+    ;
+
+    "_then (Return result) f"
+        forall result f .
+            _then (Return result) f =
+                f
+    ;
+
+  #-}
 
 instance MonadPlus super
     => MonadPlus (Narrative self super)
@@ -304,7 +366,7 @@ instance MonadPlus super
     mplus =
         _mplus
 
-{-# NOINLINE [1] _mplus #-}
+{-# NOINLINE [2] _mplus #-}
 _mplus
     :: MonadPlus super
     => Narrative self super result
@@ -327,7 +389,46 @@ _mplus p0 p1 =
     go result =
         result
 
+{-# RULES
 
+    "_mplus (Fail e) r"
+        forall e r.
+          _mplus (Fail e) r =
+            r
+    ;
+
+    "_mplus (Super sup) r"
+        forall sup r.
+          _mplus (Super sup) r =
+            Super (fmap (\x -> _mplus x r) sup)
+    ;
+
+    "_mplus (Return res) r"
+        forall r res.
+          _mplus (Return res) r =
+            Return res
+     ;
+
+    "_mplus (Say message k) f"
+        forall r message k.
+          _mplus (Say message k) r =
+            Say message ((\x -> _mplus x r) . k)
+    ;
+
+
+  #-}
+
+instance MonadPlus super
+    => Alternative (Narrative self super)
+  where
+
+    empty =
+        mzero
+
+
+
+    (<|>) =
+        mplus
 
 instance ( Monad super
          , Monoid result
@@ -343,7 +444,7 @@ instance ( Monad super
     mappend =
         _mappend
 
-{-# NOINLINE [1] _mappend #-}
+{-# NOINLINE [2] _mappend #-}
 _mappend
     :: ( Monad super
        , Monoid result
@@ -368,7 +469,56 @@ _mappend p0 p1 =
     go (Say message k) =
         Say message (go . k)
 
+{-# RULES
 
+    "_mappend (Fail e) r"
+        forall e r.
+          _mappend (Fail e) r =
+            Fail e
+    ;
+
+    "_mappend (Super sup) r"
+        forall sup r.
+          _mappend (Super sup) r =
+            Super (fmap (\x -> _mappend x r) sup)
+    ;
+
+    "_mappend (Return res) r"
+        forall r res.
+          _mappend (Return res) r =
+            fmap (mappend res) r
+     ;
+
+    "_mappend (Say message k) f"
+        forall r message k.
+          _mappend (Say message k) r =
+            Say message ((\x -> _mappend x r) . k)
+    ;
+
+
+  #-}
+
+data Transform (self :: [* -> *]) (super :: * -> *) (result :: *)
+  = Transform (forall x. Messages self x -> (x -> Narrative self super result) -> Narrative self super result)
+
+{-# INLINE applyTransform #-}
+applyTransform
+    :: Transform self super result
+    -> Messages self x
+    -> (x -> Narrative self super result)
+    -> Narrative self super result
+
+applyTransform (Transform t) = _applyTransform t
+
+{-# NOINLINE [2] _applyTransform #-}
+_applyTransform t m f = t m f
+
+{-# RULES
+  "_applyTransform (Transform t) m f"
+    forall t m f.
+      _applyTransform t m f =
+        t m f
+  #-}
 
 -- This approach to transformations tries to maintain that
 --     lift (x >>= y) = lift x >>= (lift . y)
@@ -376,33 +526,60 @@ _mappend p0 p1 =
 --     throw e >> _ = throw e
 {-# INLINE transform #-}
 transform
-    :: Monad super
+    :: Functor super
     => (forall x. Messages self x -> (x -> Narrative self super result) -> Narrative self super result)
     -> Narrative self super result
     -> Narrative self super result
 
-transform = _transform
+transform f = _transform (Transform f)
 
-
-{-# NOINLINE [1] _transform #-}
+{-# NOINLINE [2] _transform #-}
 _transform
-    :: Monad super
-    => (forall x. Messages self x -> (x -> Narrative self super result) -> Narrative self super result)
+    :: Functor super
+    => Transform self super result
     -> Narrative self super result
     -> Narrative self super result
 
-_transform t =
+_transform (Transform t) =
     go
     where
 
         go (Say message k) =
            t message k
 
-        go (Super m) =
-           Super (m >>= return . go)
+        go (Super sup) =
+            Super (fmap go sup)
 
         go (Fail e) =
             Fail e
 
         go (Return r) =
             Return r
+
+{-# RULES
+
+    "_transform t (Fail e) == Fail e"
+        forall t e.
+            _transform t (Fail e) =
+                Fail e
+    ;
+
+    "_transform t (Super sup) == Super (fmap (_transform t) sup)"
+        forall t sup.
+            _transform t (Super sup) =
+                Super (fmap (_transform t) sup)
+    ;
+
+    "_transform t (Return r) == Return r"
+        forall t r.
+            _transform t (Return r) =
+                Return r
+     ;
+
+    "_transform t (Say message k)"
+        forall t message k.
+            _transform t (Say message k) =
+                applyTransform t message k
+    ;
+
+  #-}

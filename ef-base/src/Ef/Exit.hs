@@ -6,9 +6,9 @@ import Ef.Narrative
 import Ef.Sync
 
 exiting
-    :: (Monad super, '[Sync] <: self)
+    :: (Monad super, '[Sync Int] <: self)
     => ((a' -> Narrative self super a) -> Narrative self super result)
-    -> Synchronized a' a b' b self super result
+    -> Synchronized Int a' a b' b self super result
 exiting computation = synchronized $ \up _ -> computation up
 
 -- | Scope a short-circuit continuation.
@@ -20,7 +20,7 @@ exiting computation = synchronized $ \up _ -> computation up
 --         ...
 -- @
 enter
-    :: (Monad super, '[Sync] <: self)
+    :: (Monad super, '[Sync Int] <: self)
     => (    (result -> Narrative self super b)
          -> Narrative self super result
        )

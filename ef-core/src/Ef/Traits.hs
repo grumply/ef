@@ -9,7 +9,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE Safe #-}
 module Ef.Traits
     ( Traits(..)
     , Has'(..)
@@ -180,8 +179,6 @@ stretch f traits =
     in
       push (f trait) traits
 
-
-
 class Has' (trait :: * -> *) (traits :: [* -> *]) (n :: Nat)
   where
 
@@ -198,7 +195,9 @@ class Has' (trait :: * -> *) (traits :: [* -> *]) (n :: Nat)
         -> Traits traits x
         -> trait x
 
-
+{-# RULES
+  "pull' . push'" forall n x ts. pull' n (push' n x ts) = x
+  #-}
 
 instance traits ~ (trait ': xs)
     => Has' trait traits 'Z

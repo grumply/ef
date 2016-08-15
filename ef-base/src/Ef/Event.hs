@@ -336,12 +336,12 @@ event loop =
                         filterSignal__
                             (\signal event -> join $ up (Signal_ up signal event))
                   }
-    in runBidir $ server +>> (knotted $ \up _ -> loop (ev up))
+    in runBidir $ server +>> (bi $ \up _ -> loop (ev up))
     where
 
         server :: forall x. Action self super -> Bi X () (Action self super) (Narrative self super ()) self super x
         server initialRequest =
-            knotted $ \_ dn -> withRespond dn initialRequest
+            bi $ \_ dn -> withRespond dn initialRequest
             where
 
                 withRespond

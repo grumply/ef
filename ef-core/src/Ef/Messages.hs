@@ -105,6 +105,9 @@ class Can message messages
         :: Messages messages a
         -> Maybe (message a)
 
+{-# RULES
+  "prj' . inj'" forall n x. prj' n (inj' n x) = Just x
+  #-}
 
 
 instance ( index ~ Offset message messages

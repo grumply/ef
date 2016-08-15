@@ -22,6 +22,7 @@ library
                      , Ef.Exit
                      , Ef.Sync
                      , Ef.Bidir
+                     , Ef.Pipes
                      , Ef.Fork
                      , Data.Promise
                      , Data.Queue
@@ -30,7 +31,6 @@ library
                      , Ef.Manage
                      , Ef.Fiber
                      , Ef.Event
-                     , Ef.Generate
                      , Ef.Note
                      , Ef.Var
                      , Ef.Set
