@@ -37,18 +37,18 @@ collectIO (Queue q) = atomically $ do
     q_ <- takeTMVar q
     return $ reverse q_
 
-newQueue :: (Monad super, Lift IO super)
+newQueue :: (Monad super, MonadIO super)
          => Narrative self super (Queue a)
-newQueue = lift newQueueIO
+newQueue = liftIO newQueueIO
 
-arrive :: (Monad super, Lift IO super)
+arrive :: (Monad super, MonadIO super)
        => Queue a -> a -> Narrative self super ()
-arrive q a = lift $ arriveIO q a
+arrive q a = liftIO $ arriveIO q a
 
-arriveMany :: (Monad super, Lift IO super, Foldable f)
+arriveMany :: (Monad super, MonadIO super, Foldable f)
            => Queue a -> f a -> Narrative self super ()
-arriveMany q fs = lift $ arriveManyIO q fs
+arriveMany q fs = liftIO $ arriveManyIO q fs
 
-collect :: (Monad super, Lift IO super)
+collect :: (Monad super, MonadIO super)
         => Queue a -> Narrative self super [a]
-collect q = lift $ collectIO q
+collect q = liftIO $ collectIO q

@@ -5,13 +5,11 @@ module Ef.Fork
     ) where
 
 import Ef
-import Ef.IO
 import Data.Promise
 
 import qualified Control.Concurrent
 import Control.Concurrent (ThreadId)
 import Control.Concurrent.MVar
-import Control.Exception (SomeException(..))
 import Control.Monad
 
 newtype ThreadRef traits super result =
@@ -19,7 +17,8 @@ newtype ThreadRef traits super result =
 
 forkWith
     :: ( (Traits traits) `Ma` (Messages messages)
-       , Lift IO super'
+       , MonadIO super'
+       , MonadThrow super
        , Monad super'
        , Monad super
        )
@@ -29,16 +28,17 @@ forkWith
     -> Narrative messages' super' (ThreadRef traits super result)
 
 forkWith comp plan embedInIO = do
-    p <- io newPromiseIO
+    p <- liftIO newPromiseIO
     let thread = embedInIO $ delta comp (try plan)
-    tid <- masked $ \restore -> Control.Concurrent.forkIO $ do
+    tid <- liftIO $ mask $ \restore -> Control.Concurrent.forkIO $ do
                ea <- restore thread
                void (fulfillIO p ea)
     return $ ThreadRef (tid,p)
 
 forkOSWith
     :: ( (Traits traits) `Ma` (Messages messages)
-       , Lift IO super'
+       , MonadIO super'
+       , MonadThrow super
        , Monad super'
        , Monad super
        )
@@ -48,16 +48,17 @@ forkOSWith
     -> Narrative messages' super' (ThreadRef traits super result)
 
 forkOSWith comp plan embedInIO = do
-    p <- io newPromiseIO
+    p <- liftIO newPromiseIO
     let thread = embedInIO $ delta comp (try plan)
-    tid <- masked $ \restore -> Control.Concurrent.forkOS $ do
+    tid <- liftIO $ mask $ \restore -> Control.Concurrent.forkOS $ do
                ea <- restore thread
                void (fulfillIO p ea)
     return $ ThreadRef (tid,p)
 
 forkOnWith
     :: ( (Traits traits) `Ma` (Messages messages)
-       , Lift IO super'
+       , MonadIO super'
+       , MonadThrow super
        , Monad super'
        , Monad super
        )
@@ -67,9 +68,9 @@ forkOnWith
     -> (forall x. super x -> IO x)
     -> Narrative messages' super' (ThreadRef traits super result)
 forkOnWith n comp plan embedInIO = do
-    p <- io newPromiseIO
+    p <- liftIO newPromiseIO
     let thread = embedInIO $ delta comp (try plan)
-    tid <- masked $ \restore -> Control.Concurrent.forkOn n $ do
+    tid <- liftIO $ mask $ \restore -> Control.Concurrent.forkOn n $ do
                ea <- restore thread
                void (fulfillIO p ea)
     return $ ThreadRef (tid,p)

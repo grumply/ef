@@ -23,7 +23,6 @@ module Data.Promise
 
 
 import Ef
-import Ef.IO
 
 import Control.Concurrent
 
@@ -38,7 +37,7 @@ import Control.Concurrent
 newtype Promise result = Promise { getPromise :: MVar result }
     deriving (Eq)
 
-fake :: (Monad super, Lift IO super)
+fake :: (Monad super, MonadIO super)
      => a -> Narrative self super (Promise a)
 fake a = do
   p <- newPromise
@@ -52,31 +51,31 @@ fakeIO a = do
   return p
 
 -- | Construct a new un`fulfill`ed `Promise`.
-newPromise :: (Monad super, Lift IO super)
+newPromise :: (Monad super, MonadIO super)
            => Narrative self super (Promise result)
-newPromise = io newPromiseIO
+newPromise = liftIO newPromiseIO
 
 
 -- | Demand a `Promise`d value, blocking until it is fulfilled. Lifts
 -- `BlockedIndefinitelyOnMVar` into the `Narrative` if the underlying
 -- `demandIO` throws it when a `Promise` can never be `fulfill`ed.
-demand :: (Monad super, Lift IO super)
+demand :: (Monad super, MonadIO super)
        => Promise result -> Narrative self super result
-demand = io . demandIO
+demand = liftIO . demandIO
 
 
 -- | Fulfill a `Promise`. Returns a Bool where False
 -- denotes that the `Promise` has already been fulfilled.
-fulfill :: (Monad super, Lift IO super)
+fulfill :: (Monad super, MonadIO super)
         => Promise result -> result -> Narrative self super Bool
-fulfill = (io .) . fulfillIO
+fulfill = (liftIO .) . fulfillIO
 
 
 -- | Poll a `Promise` for the result of a `fulfill`. Does not block but instead
 -- returns False if the `Promise` has already been `fulfill`ed.
-fulfilled :: (Monad super, Lift IO super)
+fulfilled :: (Monad super, MonadIO super)
           => Promise result -> Narrative self super Bool
-fulfilled = io . fulfilledIO
+fulfilled = liftIO . fulfilledIO
 
 
 -- | Construct a new un`fulfill`ed `Promise` in IO.

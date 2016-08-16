@@ -13,8 +13,6 @@ module Ef.Except
 
 import Ef
 
-import qualified Ef.Exception as Except
-
 import Control.Exception (SomeException,Exception(..))
 
 import Data.Coerce
@@ -62,7 +60,7 @@ catchChecked
     -> Narrative self super result
 catchChecked act =
     let proxy = Proxy :: Proxy e
-    in Except.catch (unthrow proxy act)
+    in catch (unthrow proxy act)
   where
     unthrow :: forall proxy e x. proxy e -> (Throws e => x) -> x
     unthrow _ = (unWrap :: Wrap (Catch e) x -> x)

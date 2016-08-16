@@ -28,9 +28,9 @@ shuffleIO xs = do
   let lngth = length xs
   return $ shuffle'_ xs lngth rng
 
-shuffle  :: (Lift IO super, Monad super)
+shuffle  :: (MonadIO super, Monad super)
          => [a] -> Narrative self super [a]
-shuffle = lift . shuffleIO
+shuffle = liftIO . shuffleIO
 
 buildTree :: [a] -> Tree a
 buildTree =

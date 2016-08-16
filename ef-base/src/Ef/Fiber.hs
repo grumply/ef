@@ -4,7 +4,6 @@ module Ef.Fiber (fiber, fibers, Status(..), Operation(..), Ops(..), Threader(..)
 
 import Ef
 import Ef.Narrative
-import Ef.IO
 
 import Data.IORef
 import Unsafe.Coerce
@@ -25,14 +24,14 @@ data Ops self super status result = Ops
     }
 
 query
-    :: ( Lift IO super
+    :: ( MonadIO super
        , Monad super
        )
     => Operation status result
     -> Narrative self super (Status status result)
 
 query (Operation op) =
-    io (readIORef op)
+    liftIO (readIORef op)
 
 data Fiber k
     = Fiber Int k
@@ -154,7 +153,7 @@ data Threader self super =
 -- to fiber.
 --
 fiber :: forall self super result.
-          ('[Fiber] <: self, Monad super, Lift IO super)
+          ('[Fiber] <: self, Monad super, MonadIO super)
        => (Threader self super -> Narrative self super result)
        -> Narrative self super result
 fiber f =
@@ -167,19 +166,19 @@ fiber f =
                                 Ops {notify =
                                        \status ->
                                          let running = Running (Just status)
-                                         in io (writeIORef op running)
+                                         in liftIO (writeIORef op running)
                                     ,supplement =
                                        \supp ->
                                          let modify (Running x) =
                                                Running (supp x)
-                                         in io (modifyIORef op modify)}
+                                         in liftIO (modifyIORef op modify)}
                               newOp = Operation <$> newIORef (Running Nothing)
-                          in do op <- io newOp
+                          in do op <- liftIO newOp
                                 self (Fork scope op (p (ops op)))
                      ,await =
                         \(Operation op) ->
                           let awaiting =
-                                do status <- io (readIORef op)
+                                do status <- liftIO (readIORef op)
                                    case status of
                                      Running _ ->
                                        do self (Yield scope)
@@ -209,7 +208,7 @@ fiber f =
                                     newN = n - 1
                                 in Say symbol continue
                           in focused}
-     rootOp <- io newOp
+     rootOp <- liftIO newOp
      rewrite scope rootOp (Threads [(root,rootOp)])
   where
     rewrite :: forall status.
@@ -223,9 +222,9 @@ fiber f =
                        -> Running self super
                        -> Narrative self super result
             withFibers (Threads []) (Threads []) =
-              do result <- io (readIORef rootOp :: IO (Status status result))
+              do result <- liftIO (readIORef rootOp :: IO (Status status result))
                  case result of
-                   Failed exception -> throw exception
+                   Failed exception -> throwM exception
                    ~(Done result) -> return result
             withFibers (Threads acc) (Threads []) =
               withFibers (Threads [])
@@ -236,14 +235,14 @@ fiber f =
                       let finish =
                             writeIORef operation
                                        (Done result)
-                      in do io finish
+                      in do liftIO finish
                             withFibers (Threads acc)
                                        (Threads fibers)
                     go (Fail exception) =
                       let fail =
                             writeIORef operation
                                        (Failed exception)
-                      in do io fail
+                      in do liftIO fail
                             withFibers (Threads acc)
                                        (Threads fibers)
                     go (Super sup) = Super (fmap go sup)
@@ -295,7 +294,7 @@ fiber f =
                               let fail =
                                     writeIORef operation
                                                (Failed exception)
-                              in do io fail
+                              in do liftIO fail
                                     withFibers (Threads acc)
                                                (Threads $ new ++ fibers)
                             withNew new (Super sup) =

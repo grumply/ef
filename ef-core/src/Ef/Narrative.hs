@@ -12,6 +12,8 @@
 {-# LANGUAGE IncoherentInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE ExplicitNamespaces #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE UndecidableInstances #-}
 module Ef.Narrative
      ( Narrative(..)
      , type (<:)
@@ -21,7 +23,6 @@ module Ef.Narrative
      , transform
      , Supertype
      , Subtype
-     , Lift(..)
      , Can(..)
      , Upcast(..)
      ) where
@@ -32,9 +33,17 @@ import Ef.Messages
 import Ef.Type.Nat
 
 import Control.Applicative
-import Control.Exception (Exception(..),SomeException)
-import Control.Exception.Base (PatternMatchFail(..))
 import Control.Monad
+import Control.Monad.Catch
+import Control.Monad.Trans.Class
+import Control.Monad.IO.Class
+import Control.Monad.Morph
+import Control.Monad.Except (MonadError(..))
+import Control.Monad.Reader (MonadReader(..))
+import Control.Monad.State (MonadState(..))
+import Control.Monad.Writer (MonadWriter(..))
+
+import Data.IORef
 
 import GHC.Generics
 
@@ -50,7 +59,6 @@ data Narrative self super result
     | Return result
 
     | Fail SomeException
-
 
 instance ( Upcast (Messages small) (Messages large)
          , Functor super
@@ -70,40 +78,182 @@ instance ( Upcast (Messages small) (Messages large)
         upcast (Say message k) =
             Say (upcast message) (upcast . k)
 
+instance MonadTrans (Narrative self) where
+    lift = super
+
+instance (Monad super, MonadIO super) => MonadIO (Narrative self super) where
+    liftIO m = Super (liftIO (m >>= \r -> return (Return r)))
+
+instance MonadState s super => MonadState s (Narrative self super) where
+  get = lift get
+  put = lift . put
+  state = lift . state
+
+instance MonadReader r super => MonadReader r (Narrative self super) where
+  ask = lift ask
+  local f = go
+    where
+      go n =
+        case n of
+          Return r -> Return r
+          Super sup -> Super (local f sup >>= \r -> return (go r))
+          Fail e -> Fail e
+          Say msg k -> Say msg (go . k)
+  reader = lift . reader
+
+instance MonadWriter w super => MonadWriter w (Narrative self super) where
+  writer = lift . writer
+  tell = lift . tell
+  listen n0 = go n0 mempty
+    where
+      go p w =
+        case p of
+          Return r -> Return (r,w)
+          Super sup -> Super (listen sup >>= \(n',w') -> return (go n' $! mappend w w'))
+          Fail e -> Fail e
+          Say msg k -> Say msg (flip go w . k)
+  pass n0 = go n0 mempty
+    where
+      go n w =
+        case n of
+          Return (r,f) -> Super (pass (return (Return r, const (f w))))
+          Super sup -> Super (listen sup >>= \(n',w') -> return (go n' $! mappend w w'))
+          Fail e -> Fail e
+          Say msg k -> Say msg (flip go w . k)
 
 
-class Functor m'
-    => Lift m m'
+instance Monad super => MonadThrow (Narrative self super) where
+  throwM = Fail . toException
+
+instance Monad super => MonadCatch (Narrative self super) where
+  catch = catch_
+    where
+      catch_
+          :: ( Functor super
+            , Exception e
+            )
+          => Narrative self super a
+          -> (e -> Narrative self super a)
+          -> Narrative self super a
+
+      catch_ plan handler =
+          rewrite plan
+        where
+          rewrite (Return r) =
+              Return r
+
+          rewrite (Super m) =
+              Super (fmap rewrite m)
+
+          rewrite (Say sym bp) =
+              Say sym (rewrite . bp)
+
+
+          rewrite (Fail se) =
+              case fromException se of
+
+                  Just e ->
+                      handler e
+
+                  Nothing ->
+                      Fail se
+
+instance (MonadError e super) => MonadError e (Narrative self super) where
+  throwError = lift . throwError
+  catchError n f = go n
+    where
+      go n =
+        case n of
+          Return r -> Return r
+          Super sup -> Super ((sup >>= \n' -> return (go n')) `catchError` (\e -> return (f e)))
+          Fail e -> Fail e
+          Say msg k -> Say msg (go . k)
+
+unsafeHoist :: (Monad super)
+            => (forall x. super x -> super' x) -> Narrative self super r -> Narrative self super' r
+unsafeHoist nat = go
   where
+    go n =
+      case n of
+        Return r -> Return r
+        Super sup -> Super (nat (sup >>= \n' -> return (go n')))
+        Fail e -> Fail e
+        Say msg k -> Say msg (go . k)
 
-    lift :: m a -> m' a
 
+instance MFunctor (Narrative self) where
+  hoist nat n0 = go (observe n0)
+    where
+      go p =
+        case p of
+          Return r -> Return r
+          Super sup -> Super (nat (sup >>= \n' -> return (go n')))
+          Fail e -> Fail e
+          Say msg k -> Say msg (go . k)
 
+instance MMonad (Narrative self) where
+  embed f = go
+    where
+      go n =
+        case n of
+          Return r -> Return r
+          Super sup -> f sup >>= go
+          Fail e -> Fail e
+          Say msg k -> Say msg (go . k)
 
-instance Functor m
-    => Lift m m
+observe :: Monad super => Narrative self super r -> Narrative self super r
+observe n0 = Super (go n0)
   where
-
-    lift =
-        id
-
-
-
-instance Functor super
-    => Lift super (Narrative self super)
-  where
-
-    lift =
-        super
+    go n =
+      case n of
+        Return r -> return (Return r)
+        Super sup -> sup >>= go
+        Say msg k -> return (Say msg $ observe . k)
 
 
-instance Lift newSuper super
-    => Lift newSuper (Narrative self super)
-  where
+tryAny :: ( Monad super
+          )
+       => Narrative self super a
+       -> Narrative self super (Either SomeException a)
 
-    lift =
-        super . lift
+tryAny = try
 
+
+data Restore m = Unmasked | Masked (forall x. m x -> m x)
+
+liftMask :: forall super self r. (MonadIO super, MonadCatch super)
+         => (forall s . ((forall x . super x -> super x) -> super s) -> super s)
+         -> ((forall x . Narrative self super x -> Narrative self super x)
+              -> Narrative self super r)
+         -> Narrative self super r
+liftMask maskVariant k = do
+  ioref <- liftIO $ newIORef Unmasked
+  let loop :: Narrative self super r -> Narrative self super r
+      loop n =
+        case n of
+          Return r -> Return r
+          Fail e -> Fail e
+          Super sup -> Super $ maskVariant $ \unmaskVariant -> do
+            liftIO $ writeIORef ioref $ Masked unmaskVariant
+            sup >>= chunk >>= return . loop
+          Say msg k -> Say msg (loop . k)
+      unmask :: forall q. Narrative self super q -> Narrative self super q
+      unmask n =
+        case n of
+          Return r -> Return r
+          Fail e -> Fail e
+          Super sup -> Super $ do
+            Masked unmaskVariant <- liftIO $ readIORef ioref
+            unmaskVariant (sup >>= chunk >>= return . unmask)
+          Say msg k -> Say msg (unmask . k)
+      chunk :: forall s. Narrative self super s -> super (Narrative self super s)
+      chunk (Super sup) = sup >>= chunk
+      chunk s           = return s
+  loop $ k unmask
+
+instance (MonadMask super, MonadCatch (Narrative self super), MonadIO super, Monad super) => MonadMask (Narrative self super) where
+  mask = liftMask mask
+  uninterruptibleMask = liftMask uninterruptibleMask
 
 super
     :: Functor super
@@ -247,10 +397,6 @@ instance Monad super
     {-# INLINE [2] (>>) #-}
     (>>) =
         _then
-
-    {-# INLINE fail #-}
-    fail =
-        Fail . toException . PatternMatchFail
 
 {-# NOINLINE [2] _bind #-}
 _bind

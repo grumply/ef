@@ -55,7 +55,7 @@ runWithInvariants methodName invariants method =
                     if null failures then
                         test (k result)
                     else
-                        throw (Breaches methodName During failures)
+                        throwM (Breaches methodName During failures)
     in test method
 
 contract
