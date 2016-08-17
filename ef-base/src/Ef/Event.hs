@@ -26,7 +26,6 @@ module Ef.Event
 import Ef
 import Ef.Narrative
 import Ef.Bidir
-import Ef.IO
 
 import Data.Queue
 import Data.Promise
@@ -69,29 +68,29 @@ data Signaled where
 -- | Construct a new signal with an initial value. Undefined is a valid
 -- start value as long as any behaviors linked to the `Signal` are not
 -- linked via `behavior'`.
-construct :: (Monad super, Lift IO super)
+construct :: (Monad super, MonadIO super)
           => event -> super (Signal self super' event)
 construct event = do
-    current <- lift $ newIORef event
-    count <- lift $ newIORef 0
-    behaviors <- lift $ newIORef []
+    current <- liftIO $ newIORef event
+    count <- liftIO $ newIORef 0
+    behaviors <- liftIO $ newIORef []
     return $ Signal current count behaviors
 {-# INLINE construct #-}
 
-constructRunner :: (Monad super, Lift IO super, Monad super')
+constructRunner :: (Monad super, MonadIO super, Monad super')
                  => super (Signal self super' (Narrative self super' ()))
 constructRunner  = do
-  current <- lift $ newIORef (return ())
-  count <- lift $ newIORef 0
-  behaviors <- lift $ newIORef [(-1,id)]
+  current <- liftIO $ newIORef (return ())
+  count <- liftIO $ newIORef 0
+  behaviors <- liftIO $ newIORef [(-1,id)]
   return $ Signal current count behaviors
 
-clearSignal :: (Monad super, Lift IO super)
+clearSignal :: (Monad super, MonadIO super)
             => Signal self super' e -> super ()
-clearSignal (Signal _ _ bs) = lift $ writeIORef bs []
+clearSignal (Signal _ _ bs) = liftIO $ writeIORef bs []
 {-# INLINE clearSignal #-}
 
-merge__ :: forall self super event. (Monad super, Lift IO super)
+merge__ :: forall self super event. (Monad super, MonadIO super)
        => (Signal self super event -> event -> Narrative self super ())
        -> event
        -> Signal self super event
@@ -99,18 +98,18 @@ merge__ :: forall self super event. (Monad super, Lift IO super)
        -> Narrative self super (Signal self super event,BehaviorToken self super event, BehaviorToken self super event)
 merge__ signalMethod initial sig0@(Signal current0 count0 behaviors0) sig1@(Signal current1 count1 behaviors1) = do
     signal <- construct initial
-    c0 <- lift $ atomicModifyIORef count0 $ \c -> (c + 1,c)
-    lift $ modifyIORef behaviors0 $ \bs ->
+    c0 <- liftIO $ atomicModifyIORef count0 $ \c -> (c + 1,c)
+    liftIO $ modifyIORef behaviors0 $ \bs ->
         let newBehavior event = signalMethod signal event
         in bs ++ [(c0,newBehavior)]
-    c1 <- lift $ atomicModifyIORef count1 $ \c -> (c + 1,c)
-    lift $ modifyIORef behaviors1 $ \bs ->
+    c1 <- liftIO $ atomicModifyIORef count1 $ \c -> (c + 1,c)
+    liftIO $ modifyIORef behaviors1 $ \bs ->
         let newBehavior event = signalMethod signal event
         in bs ++ [(c1,newBehavior)]
     return (signal,BehaviorToken c0 sig0,BehaviorToken c1 sig1)
 {-# INLINE merge__ #-}
 
-mapSignal__ :: (Monad super, Lift IO super)
+mapSignal__ :: (Monad super, MonadIO super)
            => (Signal self super b -> b -> Narrative self super ())
            -> (a -> b)
            -> b
@@ -118,14 +117,14 @@ mapSignal__ :: (Monad super, Lift IO super)
            -> Narrative self super (Signal self super b, BehaviorToken self super b)
 mapSignal__ signalMethod f initial sig@(Signal current0 count0 behaviors0) = do
     signal <- construct initial
-    c <- lift $ atomicModifyIORef count0 $ \c -> (c + 1,c)
-    lift $ modifyIORef behaviors0 $ \bs ->
+    c <- liftIO $ atomicModifyIORef count0 $ \c -> (c + 1,c)
+    liftIO $ modifyIORef behaviors0 $ \bs ->
         let newBehavior event = signalMethod signal (f event)
         in bs ++ [(c,newBehavior)]
     return (signal,BehaviorToken c signal)
 {-# INLINE mapSignal__ #-}
 
-filterSignal__ :: (Monad super, Lift IO super)
+filterSignal__ :: (Monad super, MonadIO super)
               => (Signal self super a -> a -> Narrative self super ())
               -> (a -> Bool)
               -> a
@@ -133,8 +132,8 @@ filterSignal__ :: (Monad super, Lift IO super)
               -> Narrative self super (Signal self super a,BehaviorToken self super a)
 filterSignal__ signalMethod predicate initial sig@(Signal _ count0 behaviors0) = do
     signal <- construct initial
-    c <- lift $ atomicModifyIORef count0 $ \c -> (c + 1,c)
-    lift $ modifyIORef behaviors0 $ \bs ->
+    c <- liftIO $ atomicModifyIORef count0 $ \c -> (c + 1,c)
+    liftIO $ modifyIORef behaviors0 $ \bs ->
         let newBehavior event =
                 if predicate event then
                     signalMethod signal event
@@ -144,40 +143,40 @@ filterSignal__ signalMethod predicate initial sig@(Signal _ count0 behaviors0) =
     return (signal,BehaviorToken c signal)
 {-# INLINE filterSignal__ #-}
 
-behavior__ :: (Monad super, Lift IO super)
+behavior__ :: (Monad super, MonadIO super)
           => Signal self super event
           -> (event -> Narrative self super ())
           -> Narrative self super (BehaviorToken self super event)
 behavior__ sig@(Signal _ count behaviors) newBehavior = do
-    c <- lift $ atomicModifyIORef count $ \c -> (c + 1,c)
-    lift $ modifyIORef behaviors (++ [(c,newBehavior)])
+    c <- liftIO $ atomicModifyIORef count $ \c -> (c + 1,c)
+    liftIO $ modifyIORef behaviors (++ [(c,newBehavior)])
     return (BehaviorToken c sig)
 {-# INLINE behavior__ #-}
 
-stop :: (Monad super, Lift IO super)
+stop :: (Monad super, MonadIO super)
      => BehaviorToken self' super' event
      -> Narrative self super ()
 stop (BehaviorToken bt (Signal _ _ behaviors)) =
-    lift $ modifyIORef behaviors $ filter ((/=) bt . fst)
+    liftIO $ modifyIORef behaviors $ filter ((/=) bt . fst)
 {-# INLINE stop #-}
 
-signalRaw :: (Monad super, Lift IO super)
+signalRaw :: (Monad super, MonadIO super)
         => Signal self super event
         -> event
         -> Narrative self super ()
 signalRaw (Signal current count behaviors) event = do
-    writeCurrent <- lift $ writeIORef current event
-    bs <- lift $ readIORef behaviors
+    writeCurrent <- liftIO $ writeIORef current event
+    bs <- liftIO $ readIORef behaviors
     let applied = map (($ event) . snd) bs
     sequence_ applied
 {-# INLINE signalRaw #-}
 
-trigger__ :: (Monad super, Lift IO super)
+trigger__ :: (Monad super, MonadIO super)
          => BehaviorToken self super event
          -> event
          -> Narrative self super ()
 trigger__ (BehaviorToken bt (Signal current count behaviors)) event = do
-    bs <- lift $ readIORef behaviors
+    bs <- liftIO $ readIORef behaviors
     let (eq,neq) = partition ((==) bt . fst) bs
     case eq of
         [x] -> snd x event
@@ -291,7 +290,7 @@ data Action self super
 --                        else io (putChar ch)
 --         mapM_ (signal sig1) [1..100]
 -- @
-event :: forall self super a. (Monad super, Lift IO super, '[Bidir] <: self)
+event :: forall self super a. (Monad super, MonadIO super, '[Bidir] <: self)
       => (Event self super -> Narrative self super a)
       -> Narrative self super a
 event loop =
@@ -360,27 +359,27 @@ event loop =
                             case req of
 
                                 Signal_ up (Signal currentRef _ behaviorsRef) event -> do
-                                    behaviors <- lift $ readIORef behaviorsRef
-                                    lift $ writeIORef currentRef event
+                                    behaviors <- liftIO $ readIORef behaviorsRef
+                                    liftIO $ writeIORef currentRef event
                                     newBehaviors <- runBehaviors up event behaviors
-                                    lift $ writeIORef behaviorsRef newBehaviors
+                                    liftIO $ writeIORef behaviorsRef newBehaviors
                                     newRequest <- respond (return ())
                                     eventLoop newRequest
 
                                 Enact up (BehaviorToken bt (Signal currentRef _ behaviorsRef)) -> do
-                                    behaviors <- lift $ readIORef behaviorsRef
+                                    behaviors <- liftIO $ readIORef behaviorsRef
                                     let (eq,neq) = partition ((==) bt . fst) behaviors -- will be ([] or [x],xs)
-                                    current <- lift $ readIORef currentRef
+                                    current <- liftIO $ readIORef currentRef
                                     newBehaviors <- runBehaviors up current eq
-                                    lift $ writeIORef behaviorsRef (newBehaviors ++ neq)
+                                    liftIO $ writeIORef behaviorsRef (newBehaviors ++ neq)
                                     newRequest <- respond (return ())
                                     eventLoop newRequest
 
                                 Trigger up (BehaviorToken bt (Signal _ _ behaviorsRef)) event -> do
-                                    behaviors <- lift $ readIORef behaviorsRef
+                                    behaviors <- liftIO $ readIORef behaviorsRef
                                     let (eq,neq) = partition ((==) bt . fst) behaviors
                                     newBehaviors <- runBehaviors up event eq
-                                    lift $ writeIORef behaviorsRef (newBehaviors ++ neq)
+                                    liftIO $ writeIORef behaviorsRef (newBehaviors ++ neq)
                                     newRequest <- respond (return ())
                                     eventLoop newRequest
 
@@ -409,27 +408,27 @@ event loop =
                                             case request of
 
                                                 Signal_ up' (Signal currentRef _ behaviorsRef) event' -> do
-                                                    behaviors' <- lift $ readIORef behaviorsRef
-                                                    lift $ writeIORef currentRef event'
+                                                    behaviors' <- liftIO $ readIORef behaviorsRef
+                                                    liftIO $ writeIORef currentRef event'
                                                     newBehaviors <- runBehaviors up' event' behaviors'
-                                                    lift $ writeIORef behaviorsRef newBehaviors
+                                                    liftIO $ writeIORef behaviorsRef newBehaviors
                                                     newRequest <- respond (return ())
                                                     withBehavior (bt,behavior) alive newRequest
 
                                                 Enact up' (BehaviorToken bt (Signal currentRef _ behaviorsRef)) -> do
-                                                    behaviors <- lift $ readIORef behaviorsRef
+                                                    behaviors <- liftIO $ readIORef behaviorsRef
                                                     let (eq,neq) = partition ((==) bt . fst) behaviors -- will be ([] or [x],xs)
-                                                    current <- lift $ readIORef currentRef
+                                                    current <- liftIO $ readIORef currentRef
                                                     newBehaviors <- runBehaviors up current eq
-                                                    lift $ writeIORef behaviorsRef (newBehaviors ++ neq)
+                                                    liftIO $ writeIORef behaviorsRef (newBehaviors ++ neq)
                                                     newRequest <- respond (return ())
                                                     withBehavior (bt,behavior) alive newRequest
 
                                                 Trigger up (BehaviorToken bt' (Signal _ _ behaviorsRef)) event -> do
-                                                    behaviors <- lift $ readIORef behaviorsRef
+                                                    behaviors <- liftIO $ readIORef behaviorsRef
                                                     let (eq,neq) = partition ((==) bt' . fst) behaviors
                                                     newBehaviors <- runBehaviors up event eq
-                                                    lift $ writeIORef behaviorsRef (newBehaviors ++ neq)
+                                                    liftIO $ writeIORef behaviorsRef (newBehaviors ++ neq)
                                                     newRequest <- respond (return ())
                                                     withBehavior (bt,behavior) alive newRequest
 
@@ -457,8 +456,8 @@ data As internal external
 -- a correctly witnessing object. It is only decoupled from `driver`
 -- for convenience to allow forked and unforked drivers. Be careful!
 {-# INLINE constructAs #-}
-constructAs :: ( Monad internal, Lift IO internal
-               , Monad external, Lift IO external
+constructAs :: ( Monad internal, MonadIO internal
+               , Monad external, MonadIO external
                )
             => Signaled
             -> Signal internalSelf internal (Narrative internalSelf internal ())
@@ -469,10 +468,10 @@ constructAs buf sig = As buf $ \nar -> liftIO $ do
   return p
 
 reconstructAs :: forall internal external external' super internalSelf.
-                 ( Monad internal, Lift IO internal
-                 , Monad external, Lift IO external
-                 , Monad external', Lift IO external'
-                 , Monad super, Lift IO super
+                 ( Monad internal, MonadIO internal
+                 , Monad external, MonadIO external
+                 , Monad external', MonadIO external'
+                 , Monad super, MonadIO super
                  )
               => Narrative internalSelf internal `As` external -> super (Narrative internalSelf internal `As` external')
 reconstructAs (As buf _) = do
@@ -483,11 +482,11 @@ reconstructAs (As buf _) = do
     return p
 
 {-# INLINE newSignalBuffer #-}
-newSignalBuffer :: (Monad super, Lift IO super) => super Signaled
-newSignalBuffer = Signaled <$> lift newQueueIO
+newSignalBuffer :: (Monad super, MonadIO super) => super Signaled
+newSignalBuffer = Signaled <$> liftIO newQueueIO
 
 {-# INLINE driver #-}
-driver :: (Monad super, Lift IO super, Ma (Traits traits) (Messages self), '[Bidir] <: self)
+driver :: (Monad super, MonadIO super, MonadThrow super, Ma (Traits traits) (Messages self), '[Bidir] <: self)
        => Signaled -> Object traits super -> super ()
 driver (Signaled buf) = go
   where
@@ -503,11 +502,11 @@ driver (Signaled buf) = go
 
         {-# INLINE go' #-}
         go' = do
-          evss <- mapException (\BlockedIndefinitelyOnSTM -> DriverStopped) $ io (collectIO buf)
+          evss <- handle (\BlockedIndefinitelyOnSTM -> throwM DriverStopped) $ liftIO (collectIO buf)
           forM_ evss $ \(Signaling evs s) ->
             forM_ evs (signal (unsafeCoerce s))
 
-driverPrintExceptions :: (Monad super, Lift IO super, Ma (Traits traits) (Messages self), '[Bidir] <: self)
+driverPrintExceptions :: (Monad super, MonadIO super, MonadThrow super, Ma (Traits traits) (Messages self), '[Bidir] <: self)
                       => String -> Signaled -> Object traits super -> super ()
 driverPrintExceptions exceptionPrefix (Signaled buf) = go
   where
@@ -523,20 +522,20 @@ driverPrintExceptions exceptionPrefix (Signaled buf) = go
 
         {-# INLINE go' #-}
         go' = do
-          evss <- mapException (\BlockedIndefinitelyOnSTM -> DriverStopped) $ io (collectIO buf)
+          evss <- handle (\BlockedIndefinitelyOnSTM -> throwM DriverStopped) $ liftIO (collectIO buf)
           forM_ evss $ \(Signaling evs s) ->
-            forM_ evs (handle (\(e :: SomeException) -> lift $ putStrLn $ exceptionPrefix ++ ": " ++ show e) . signal (unsafeCoerce s))
+            forM_ evs (handle (\(e :: SomeException) -> liftIO $ putStrLn $ exceptionPrefix ++ ": " ++ show e) . signal (unsafeCoerce s))
 
 data DriverStopped = DriverStopped deriving Show
 instance Exception DriverStopped
 
 {-# INLINE buffer #-}
-buffer :: (Monad super', Lift IO super')
+buffer :: (Monad super', MonadIO super')
               => Signaled
               -> Signal self super e
               -> e
               -> Narrative self' super' ()
-buffer buf sig e = lift $ bufferIO buf sig e
+buffer buf sig e = liftIO $ bufferIO buf sig e
 
 {-# INLINE bufferIO #-}
 bufferIO :: Signaled
@@ -546,20 +545,20 @@ bufferIO :: Signaled
 bufferIO (Signaled gb) sig e = arriveIO gb $ Signaling [e] sig
 
 {-# INLINE behavior #-}
-behavior :: ('[Bidir] <: self, Monad super, Lift IO super)
+behavior :: ('[Bidir] <: self, Monad super, MonadIO super)
          => Signal self super e
          -> (Reactor self super e -> e -> Narrative self super ())
          -> Narrative self super (BehaviorToken self super e)
 behavior sig b = event $ \e -> behavior_ e sig b
 
 {-# INLINE enact #-}
-enact :: ('[Bidir] <: self, Monad super, Lift IO super)
+enact :: ('[Bidir] <: self, Monad super, MonadIO super)
       => BehaviorToken self super e
       -> Narrative self super ()
 enact bt = event $ \e -> enact_ e bt
 
 {-# INLINE signal #-}
-signal :: ('[Bidir] <: self, Monad super, Lift IO super)
+signal :: ('[Bidir] <: self, Monad super, MonadIO super)
        => Signal self super e
        -> e
        -> Narrative self super ()
@@ -568,7 +567,7 @@ signal sig ev =
         signal_ e sig ev
 
 {-# INLINE trigger #-}
-trigger :: ('[Bidir] <: self, Monad super, Lift IO super)
+trigger :: ('[Bidir] <: self, Monad super, MonadIO super)
         => BehaviorToken self super e
         -> e
         -> Narrative self super ()
@@ -577,7 +576,7 @@ trigger bt ev =
         trigger_ e bt ev
 
 {-# INLINE mergeSignals #-}
-mergeSignals :: ('[Bidir] <: self, Monad super, Lift IO super)
+mergeSignals :: ('[Bidir] <: self, Monad super, MonadIO super)
              => Signal self super e
              -> Signal self super e
              -> Narrative self super (Signal self super e,BehaviorToken self super e,BehaviorToken self super e)
@@ -585,7 +584,7 @@ mergeSignals sig1 sig2 = event $ \e ->
     mergeSignals_ e undefined sig1 sig2
 
 {-# INLINE mapSignal #-}
-mapSignal :: ('[Bidir] <: self, Monad super, Lift IO super)
+mapSignal :: ('[Bidir] <: self, Monad super, MonadIO super)
           => (e -> e')
           -> Signal self super e
           -> Narrative self super (Signal self super e',BehaviorToken self super e')
@@ -593,7 +592,7 @@ mapSignal f sig = event $ \e ->
     mapSignal_ e f undefined sig
 
 {-# INLINE filterSignal #-}
-filterSignal :: ('[Bidir] <: self, Monad super, Lift IO super)
+filterSignal :: ('[Bidir] <: self, Monad super, MonadIO super)
              => (e -> Bool)
              -> Signal self super e
              -> Narrative self super (Signal self super e,BehaviorToken self super e)

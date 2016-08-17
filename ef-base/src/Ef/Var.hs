@@ -50,9 +50,9 @@ data Var var self super =
 
         }
 
-stateful :: ('[Sync Int] <: self, Monad super)
+stateful :: ('[Sync] <: self, Monad super)
          => (Var state self super -> Narrative self super result)
-         -> Synchronized Int (Action state) state () X self super result
+         -> Synchronized (Action state) state () X self super result
 stateful computation =
     let
         stateInterface up =
@@ -105,7 +105,7 @@ stateful computation =
         synchronized $ \up _ -> computation (stateInterface up)
 {-# INLINE stateful #-}
 
-var :: ('[Sync Int] <: self, Monad super)
+var :: ('[Sync] <: self, Monad super)
     => state
     -> (Var state self super -> Narrative self super result)
     -> Narrative self super result
@@ -134,7 +134,7 @@ var initial computation =
                                 handle new next
 {-# INLINE var #-}
 
-var' :: ('[Sync Int] <: self, Monad super)
+var' :: ('[Sync] <: self, Monad super)
      => state
      -> (Var state self super -> Narrative self super result)
      -> Narrative self super result

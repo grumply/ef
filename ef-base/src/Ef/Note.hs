@@ -66,9 +66,9 @@ data Book notes self super =
 
 
 notated
-    :: ('[Sync Int] <: self, Monad super) 
+    :: ('[Sync] <: self, Monad super)
     => (Book notes self super -> Narrative self super result)
-    -> Synchronized Int (Action notes) notes () X self super (result,notes)
+    -> Synchronized (Action notes) notes () X self super (result,notes)
 
 notated computation =
     let
@@ -89,7 +89,7 @@ notated computation =
                               notes <- up Finish
                               _ <- up (Write notes)
                               return (result,notes)
-                              
+
                 , condense =
                       \passage ->
                           do
@@ -137,7 +137,7 @@ notated computation =
 
 
 notate
-    :: ( '[Sync Int] <: self
+    :: ( '[Sync] <: self
        , Monad super
        , Monoid notes
        )
