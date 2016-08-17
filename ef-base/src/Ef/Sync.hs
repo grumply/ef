@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -fno-warn-inline-rule-shadowing #-}
 {-# language ViewPatterns #-}
 module Ef.Sync
-    ( Sync(..)
+    ( Sync
     , sync
     , runSync
 
@@ -27,7 +27,7 @@ module Ef.Sync
     , Effect
     , Effect'
 
-    , X(..)
+    , X
 
     , (<\\)
     , (\<\)
@@ -66,27 +66,27 @@ import Control.Monad
 
 import Unsafe.Coerce
 
-instance Ma (Sync key) (Sync key) where
+instance Ma Sync Sync where
     ma use (Sync i k) (FreshScope ik) = use k (ik i)
 
-data Sync key k
-  = Sync {-# UNPACK #-} !key k
-  | FreshScope (key -> k)
-  | forall a' a self super r. Request {-# UNPACK #-} !key a' (a -> Narrative self super r)
-  | forall b b' self super r. Respond {-# UNPACK #-} !key b (b' -> Narrative self super r)
+data Sync k
+  = Sync {-# UNPACK #-} !Int k
+  | FreshScope (Int -> k)
+  | forall a' a self super r. Request {-# UNPACK #-} !Int a' (a -> Narrative self super r)
+  | forall b b' self super r. Respond {-# UNPACK #-} !Int b (b' -> Narrative self super r)
 
-sync :: (Monad super, Eq key, '[Sync key] <. traits)
-     => (key -> key) -> key -> Trait (Sync key) traits super
-sync f init_key = Sync init_key $ \fs ->
+sync :: (Monad super, '[Sync] <. traits)
+     => Trait Sync traits super
+sync = Sync 0 $ \fs ->
     let Sync n k = view fs
-        n' = f n
+        n' = succ n
     in n' `seq` pure $ fs .= Sync n' k
 {-# INLINE sync #-}
 
-freshScope :: (Monad super, '[Sync key] <: self) => Narrative self super key
+freshScope :: (Monad super, '[Sync] <: self) => Narrative self super Int
 freshScope = self (FreshScope id)
 
-getScope :: ('[Sync key] <: self, Monad super) => Narrative self super a -> super key
+getScope :: ('[Sync] <: self, Monad super) => Narrative self super a -> super Int
 getScope (Say symbol _) =
     case prj symbol of
         Just x ->
@@ -94,19 +94,18 @@ getScope (Say symbol _) =
                 Request i _ _ -> return i
                 Respond i _ _ -> return i
 
-runSync :: forall self super key r.
-           ('[Sync key] <: self, Eq key, Monad super)
-        => Effect key self super r -> Narrative self super r
+runSync :: ('[Sync] <: self, Monad super)
+        => Effect self super r -> Narrative self super r
 runSync e = do
-    scope :: key <- freshScope
+    scope <- freshScope
     rewrite scope $
         runSynchronized e
             (\a' apl -> self (Request scope a' apl))
             (\b b'p -> self (Respond scope b b'p))
 
-rewrite :: forall self super result key.
-           ('[Sync key] <: self, Eq key, Monad super)
-        => key -> Narrative self super result -> Narrative self super result
+rewrite :: forall self super result.
+           ('[Sync] <: self, Monad super)
+        => Int -> Narrative self super result -> Narrative self super result
 rewrite rewriteScope = transform go
   where
 
@@ -120,14 +119,14 @@ rewrite rewriteScope = transform go
                Nothing -> Say message (transform go . k)
 
 instance Functor super
-    => Functor (Synchronized key a' a b' b self super)
+    => Functor (Synchronized a' a b' b self super)
   where
 
     fmap f (Synchronized w) =
         Synchronized $ \up dn -> fmap f (w up dn)
 
 instance Monad super
-    => Applicative (Synchronized key a' a b' b self super)
+    => Applicative (Synchronized a' a b' b self super)
   where
 
     pure a =
@@ -141,7 +140,7 @@ instance Monad super
     (*>) = (>>)
 
 instance Monad super
-    => Monad (Synchronized key a' a b' b self super)
+    => Monad (Synchronized a' a b' b self super)
   where
 
     return = pure
@@ -153,7 +152,7 @@ instance Monad super
 
 instance ( Monad super
          , Monoid r
-         ) => Monoid (Synchronized key a' a b' b self super r)
+         ) => Monoid (Synchronized a' a b' b self super r)
   where
 
     mempty =
@@ -165,7 +164,7 @@ instance ( Monad super
             fmap (mappend result) $ runSynchronized w2 (unsafeCoerce up) (unsafeCoerce dn)
 
 instance MonadPlus super
-    => Alternative (Synchronized key a' a b' b self super)
+    => Alternative (Synchronized a' a b' b self super)
   where
 
     empty = mzero
@@ -175,7 +174,7 @@ instance MonadPlus super
 -- what does this look like without inspecting Super since that was the entire
 -- point of implementing 'transform'?
 instance MonadPlus super
-    => MonadPlus (Synchronized key a' a b' b self super)
+    => MonadPlus (Synchronized a' a b' b self super)
   where
 
     mzero =
@@ -214,15 +213,15 @@ newtype X = X X
 closed :: X -> a
 closed (X x) = closed x
 
-type Effect key self super r = Synchronized key X () () X self super r
+type Effect self super r = Synchronized X () () X self super r
 
-type Producer key b self super r = Synchronized key X () () b self super r
+type Producer b self super r = Synchronized X () () b self super r
 
 producer
-    :: forall self super b r key.
-       ('[Sync key] <: self, Eq key, Monad super)
+    :: forall self super b r.
+       ('[Sync] <: self, Monad super)
     => ((b -> Narrative self super ()) -> Narrative self super r)
-    -> Producer' key b self super r
+    -> Producer' b self super r
 
 producer f =
     Synchronized $ \_ dn ->
@@ -231,20 +230,20 @@ producer f =
             scopedDown =
                 dn (unsafeCoerce ()) (unsafeCoerce ())
 
-            respond :: key -> b -> Narrative self super ()
+            respond :: Int -> b -> Narrative self super ()
             respond scope b =
                 self (Respond scope b Return)
 
           i <- lift (getScope scopedDown)
           f (respond i)
 
-type Consumer key a self super r = Synchronized key () a () X self super r
+type Consumer a self super r = Synchronized () a () X self super r
 
 consumer
-    :: forall self super a r key.
-       ('[Sync key] <: self, Eq key, Monad super)
+    :: forall self super a r.
+       ('[Sync] <: self, Monad super)
     => (Narrative self super a -> Narrative self super r)
-    -> Consumer' key a self super r
+    -> Consumer' a self super r
 
 consumer f =
     Synchronized $ \up _ ->
@@ -253,20 +252,20 @@ consumer f =
             scopedUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
-            request :: key -> Narrative self super a
+            request :: Int -> Narrative self super a
             request scope =
                 self (Request scope () Return)
 
           i <- lift (getScope scopedUp)
           f (request i)
 
-type Channel key a b self super r = Synchronized key () a () b self super r
+type Channel a b self super r = Synchronized () a () b self super r
 
 channel
-    :: forall self super a b r key.
-       ('[Sync key] <: self, Eq key, Monad super)
+    :: forall self super a b r.
+       ('[Sync] <: self, Monad super)
     => (Narrative self super a -> (b -> Narrative self super ()) -> Narrative self super r)
-    -> Channel key a b self super r
+    -> Channel a b self super r
 
 channel f =
     Synchronized $ \up _ ->
@@ -275,7 +274,7 @@ channel f =
             scopedUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
-          i :: key <- lift (getScope scopedUp)
+          i <- lift (getScope scopedUp)
           let
             request =
                 self (Request i () Return)
@@ -285,11 +284,11 @@ channel f =
 
           f request respond
 
-type Client key a' a self super r = Synchronized key a' a () X self super r
+type Client a' a self super r = Synchronized a' a () X self super r
 
-type Server key b' b self super r = Synchronized key X () b' b self super r
+type Server b' b self super r = Synchronized X () b' b self super r
 
-newtype Synchronized key a' a b' b self super r =
+newtype Synchronized a' a b' b self super r =
     Synchronized
         {
           runSynchronized
@@ -299,41 +298,41 @@ newtype Synchronized key a' a b' b self super r =
         }
 
 synchronized
-    :: forall self a a' b b' super r key.
-       ('[Sync key] <: self, Eq key, Monad super)
+    :: forall self a a' b b' super r.
+       ('[Sync] <: self, Monad super)
     => ((a' -> Narrative self super a) -> (b -> Narrative self super b') -> Narrative self super r)
-    -> Synchronized key a' a b' b self super r
+    -> Synchronized a' a b' b self super r
 
 synchronized f =
     Synchronized $ \up _ ->
         do
             let scopedUp = up (unsafeCoerce ()) (unsafeCoerce ())
-            i :: key <- lift (getScope scopedUp)
+            i <- lift (getScope scopedUp)
             let request a = self (Request i a Return)
                 respond b' = self (Respond i b' Return)
             f request respond
 
-type Effect' key self super r = forall x' x y' y. Synchronized key x' x y' y self super r
+type Effect' self super r = forall x' x y' y. Synchronized x' x y' y self super r
 
-type Producer' key b self super r = forall x' x. Synchronized key x' x () b self super r
+type Producer' b self super r = forall x' x. Synchronized x' x () b self super r
 
-type Consumer' key a self super r = forall y' y. Synchronized key () a y' y self super r
+type Consumer' a self super r = forall y' y. Synchronized () a y' y self super r
 
-type Server' key b' b self super r = forall x' x. Synchronized key x' x b' b self super r
+type Server' b' b self super r = forall x' x. Synchronized x' x b' b self super r
 
-type Client' key a' a self super r = forall y' y. Synchronized key a' a y' y self super r
+type Client' a' a self super r = forall y' y. Synchronized a' a y' y self super r
 
 --------------------------------------------------------------------------------
 -- Respond; substitute yields
 
-cat :: ('[Sync key] <: self, Eq key, Monad super) => Channel key a a self super r
+cat :: ('[Sync] <: self, Monad super) => Channel a a self super r
 cat = channel $ \awt yld -> forever (awt >>= yld)
 
 infixl 3 //>
-(//>) :: ('[Sync key] <: self, Eq key, Monad super)
-      => Synchronized key x' x b' b self super a'
-      -> (b -> Synchronized key x' x c' c self super b')
-      -> Synchronized key x' x c' c self super a'
+(//>) :: ('[Sync] <: self, Monad super)
+      => Synchronized x' x b' b self super a'
+      -> (b -> Synchronized x' x c' c self super b')
+      -> Synchronized x' x c' c self super a'
 p0 //> fb =
     Synchronized $ \up dn -> do
         let scopedUp = up (unsafeCoerce ()) (unsafeCoerce ())
@@ -342,10 +341,10 @@ p0 //> fb =
         substituteResponds fb i up dn routine
 
 substituteResponds
-    :: forall self super x' x c' c b' b a' key.
-       ('[Sync key] <: self, Eq key, Monad super)
-    => (b -> Synchronized key x' x c' c self super b')
-    -> key
+    :: forall self super x' x c' c b' b a'.
+       ('[Sync] <: self, Monad super)
+    => (b -> Synchronized x' x c' c self super b')
+    -> Int
     -> (forall r. x' -> (x -> Narrative self super r) -> Narrative self super r)
     -> (forall r. c -> (c' -> Narrative self super r) -> Narrative self super r)
     -> Narrative self super a'
@@ -365,59 +364,59 @@ substituteResponds fb rewriteScope up dn =
                 else Say message (transform go . k)
             _ -> Say message (transform go . k)
 
-for :: ('[Sync key] <: self, Eq key, Monad super)
-    => Synchronized key x' x b' b self super a'
-    -> (b -> Synchronized key x' x c' c self super b')
-    -> Synchronized key x' x c' c self super a'
+for :: ('[Sync] <: self, Monad super)
+    => Synchronized x' x b' b self super a'
+    -> (b -> Synchronized x' x c' c self super b')
+    -> Synchronized x' x c' c self super a'
 for = (//>)
 
 infixr 3 <\\
-(<\\) :: ('[Sync key] <: self, Eq key, Monad super)
-      => (b -> Synchronized key x' x c' c self super b')
-      -> Synchronized key x' x b' b self super a'
-      -> Synchronized key x' x c' c self super a'
+(<\\) :: ('[Sync] <: self, Monad super)
+      => (b -> Synchronized x' x c' c self super b')
+      -> Synchronized x' x b' b self super a'
+      -> Synchronized x' x c' c self super a'
 f <\\ p = p //> f
 
 infixl 4 \<\
-(\<\) :: ('[Sync key] <: self, Eq key, Monad super)
-      => (b -> Synchronized key x' x c' c self super b')
-      -> (a -> Synchronized key x' x b' b self super a')
+(\<\) :: ('[Sync] <: self, Monad super)
+      => (b -> Synchronized x' x c' c self super b')
+      -> (a -> Synchronized x' x b' b self super a')
       -> a
-      -> Synchronized key x' x c' c self super a'
+      -> Synchronized x' x c' c self super a'
 p1 \<\ p2 = p2 />/ p1
 
 infixr 4 ~>
-(~>) :: ('[Sync key] <: self, Eq key, Monad super)
-     => (a -> Synchronized key x' x b' b self super a')
-     -> (b -> Synchronized key x' x c' c self super b')
+(~>) :: ('[Sync] <: self, Monad super)
+     => (a -> Synchronized x' x b' b self super a')
+     -> (b -> Synchronized x' x c' c self super b')
      -> a
-     -> Synchronized key x' x c' c self super a'
+     -> Synchronized x' x c' c self super a'
 (~>) = (/>/)
 
 infixl 4 <~
-(<~) :: ('[Sync key] <: self, Eq key, Monad super)
-     => (b -> Synchronized key x' x c' c self super b')
-     -> (a -> Synchronized key x' x b' b self super a')
+(<~) :: ('[Sync] <: self, Monad super)
+     => (b -> Synchronized x' x c' c self super b')
+     -> (a -> Synchronized x' x b' b self super a')
      -> a
-     -> Synchronized key x' x c' c self super a'
+     -> Synchronized x' x c' c self super a'
 g <~ f = f ~> g
 
 infixr 4 />/
-(/>/) :: ('[Sync key] <: self, Eq key, Monad super)
-      => (a -> Synchronized key x' x b' b self super a')
-      -> (b -> Synchronized key x' x c' c self super b')
+(/>/) :: ('[Sync] <: self, Monad super)
+      => (a -> Synchronized x' x b' b self super a')
+      -> (b -> Synchronized x' x c' c self super b')
       -> a
-      -> Synchronized key x' x c' c self super a'
+      -> Synchronized x' x c' c self super a'
 (fa />/ fb) a = fa a //> fb
 
 --------------------------------------------------------------------------------
 -- Request; substitute awaits
 
 infixr 4 >\\
-(>\\) :: ('[Sync key] <: self, Eq key, Monad super)
-      => (b' -> Synchronized key a' a y' y self super b)
-      -> Synchronized key b' b y' y self super c
-      -> Synchronized key a' a y' y self super c
+(>\\) :: ('[Sync] <: self, Monad super)
+      => (b' -> Synchronized a' a y' y self super b)
+      -> Synchronized b' b y' y self super c
+      -> Synchronized a' a y' y self super c
 fb' >\\ p0 =
     Synchronized $ \up dn -> do
         let scopedUp = up (unsafeCoerce ()) (unsafeCoerce ())
@@ -426,10 +425,10 @@ fb' >\\ p0 =
         substituteRequests fb' i up dn routine
 
 substituteRequests
-    :: forall self super x' x c' c b' b a' key.
-       ('[Sync key] <: self, Eq key, Monad super)
-    => (b -> Synchronized key x' x c' c self super b')
-    -> key
+    :: forall self super x' x c' c b' b a'.
+       ('[Sync] <: self, Monad super)
+    => (b -> Synchronized x' x c' c self super b')
+    -> Int
     -> (forall r. x' -> (x -> Narrative self super r) -> Narrative self super r)
     -> (forall r. c -> (c' -> Narrative self super r) -> Narrative self super r)
     -> Narrative self super a'
@@ -450,40 +449,40 @@ substituteRequests fb' rewriteScope up dn =
             _ -> Say message (transform go . k)
 
 infixr 5 /</
-(/</) :: ('[Sync key] <: self, Eq key, Monad super)
-      => (c' -> Synchronized key b' b x' x self super c)
-      -> (b' -> Synchronized key a' a x' x self super b)
+(/</) :: ('[Sync] <: self, Monad super)
+      => (c' -> Synchronized b' b x' x self super c)
+      -> (b' -> Synchronized a' a x' x self super b)
       -> c'
-      -> Synchronized key a' a x' x self super c
+      -> Synchronized a' a x' x self super c
 p1 /</ p2 = p2 \>\ p1
 
 infixr 5 >~
-(>~) :: ('[Sync key] <: self, Eq key, Monad super)
-     => Synchronized key a' a y' y self super b
-     -> Synchronized key () b y' y self super c
-     -> Synchronized key a' a y' y self super c
+(>~) :: ('[Sync] <: self, Monad super)
+     => Synchronized a' a y' y self super b
+     -> Synchronized () b y' y self super c
+     -> Synchronized a' a y' y self super c
 p1 >~ p2 = (\() -> p1) >\\ p2
 
 infixl 5 ~<
-(~<) :: ('[Sync key] <: self, Eq key, Monad super)
-     => Synchronized key () b y' y self super c
-     -> Synchronized key a' a y' y self super b
-     -> Synchronized key a' a y' y self super c
+(~<) :: ('[Sync] <: self, Monad super)
+     => Synchronized () b y' y self super c
+     -> Synchronized a' a y' y self super b
+     -> Synchronized a' a y' y self super c
 p2 ~< p1 = p1 >~ p2
 
 infixl 5 \>\
-(\>\) :: ('[Sync key] <: self, Eq key, Monad super)
-      => (b' -> Synchronized key a' a y' y self super b)
-      -> (c' -> Synchronized key b' b y' y self super c)
+(\>\) :: ('[Sync] <: self, Monad super)
+      => (b' -> Synchronized a' a y' y self super b)
+      -> (c' -> Synchronized b' b y' y self super c)
       -> c'
-      -> Synchronized key a' a y' y self super c
+      -> Synchronized a' a y' y self super c
 (fb' \>\ fc') c' = fb' >\\ fc' c'
 
 infixl 4 //<
-(//<) :: ('[Sync key] <: self, Eq key, Monad super)
-      => Synchronized key b' b y' y self super c
-      -> (b' -> Synchronized key a' a y' y self super b)
-      -> Synchronized key a' a y' y self super c
+(//<) :: ('[Sync] <: self, Monad super)
+      => Synchronized b' b y' y self super c
+      -> (b' -> Synchronized a' a y' y self super b)
+      -> Synchronized a' a y' y self super c
 p //< f = f >\\ p
 
 --------------------------------------------------------------------------------
@@ -491,11 +490,11 @@ p //< f = f >\\ p
 
 infixl 7 >>~
 (>>~)
-    :: forall self a' a b' b c' c super r key.
-       (Monad super, Eq key, '[Sync key] <: self)
-    => Synchronized key a' a b' b self super r
-    -> (b -> Synchronized key b' b c' c self super r)
-    -> Synchronized key a' a c' c self super r
+    :: forall self a' a b' b c' c super r.
+       (Monad super, '[Sync] <: self)
+    => Synchronized a' a b' b self super r
+    -> (b -> Synchronized b' b c' c self super r)
+    -> Synchronized a' a c' c self super r
 p0 >>~ fb0 =
     Synchronized $ \up dn -> do
         let scopedUp = up (unsafeCoerce ()) (unsafeCoerce ())
@@ -503,13 +502,13 @@ p0 >>~ fb0 =
         pushRewrite i up dn fb0 p0
 
 pushRewrite
-    :: forall self super r a' a b' b c' c key.
-       ('[Sync key] <: self, Eq key, Monad super)
-    => key
+    :: forall self super r a' a b' b c' c.
+       ('[Sync] <: self, Monad super)
+    => Int
     -> (forall x. a' -> (a -> Narrative self super x) -> Narrative self super x)
     -> (forall x. c -> (c' -> Narrative self super x) -> Narrative self super x)
-    -> (b -> Synchronized key b' b c' c self super r)
-    -> Synchronized key a' a b' b self super r
+    -> (b -> Synchronized b' b c' c self super r)
+    -> Synchronized a' a b' b self super r
     -> Narrative self super r
 pushRewrite rewriteScope up dn fb0 p0 =
     let upstream = runSynchronized p0 (unsafeCoerce up) (unsafeCoerce dn)
@@ -530,36 +529,36 @@ pushRewrite rewriteScope up dn fb0 p0 =
                 _ -> ignore
 
 infixl 8 <~<
-(<~<) :: ('[Sync key] <: self, Eq key, Monad super)
-      => (b -> Synchronized key b' b c' c self super r)
-      -> (a -> Synchronized key a' a b' b self super r)
+(<~<) :: ('[Sync] <: self, Monad super)
+      => (b -> Synchronized b' b c' c self super r)
+      -> (a -> Synchronized a' a b' b self super r)
       -> a
-      -> Synchronized key a' a c' c self super r
+      -> Synchronized a' a c' c self super r
 p1 <~< p2 = p2 >~> p1
 
 infixr 8 >~>
-(>~>) :: ('[Sync key] <: self, Eq key, Monad super)
-      => (_a -> Synchronized key a' a b' b self super r)
-      -> (b -> Synchronized key b' b c' c self super r)
+(>~>) :: ('[Sync] <: self, Monad super)
+      => (_a -> Synchronized a' a b' b self super r)
+      -> (b -> Synchronized b' b c' c self super r)
       -> _a
-      -> Synchronized key a' a c' c self super r
+      -> Synchronized a' a c' c self super r
 (fa >~> fb) a = fa a >>~ fb
 
 infixr 7 ~<<
-(~<<) :: ('[Sync key] <: self, Eq key, Monad super)
-      => (b -> Synchronized key b' b c' c self super r)
-      -> Synchronized key a' a b' b self super r
-      -> Synchronized key a' a c' c self super r
+(~<<) :: ('[Sync] <: self, Monad super)
+      => (b -> Synchronized b' b c' c self super r)
+      -> Synchronized a' a b' b self super r
+      -> Synchronized a' a c' c self super r
 k ~<< p = p >>~ k
 
 --------------------------------------------------------------------------------
 -- Pull; substitute requests with responds
 
 infixr 6 +>>
-(+>>) :: ('[Sync key] <: self, Eq key, Monad super)
-      => (b' -> Synchronized key a' a b' b self super r)
-      ->        Synchronized key b' b c' c self super r
-      ->        Synchronized key a' a c' c self super r
+(+>>) :: ('[Sync] <: self, Monad super)
+      => (b' -> Synchronized a' a b' b self super r)
+      ->        Synchronized b' b c' c self super r
+      ->        Synchronized a' a c' c self super r
 fb' +>> p0 =
     Synchronized $ \up dn -> do
         let scopedUp = up (unsafeCoerce ()) (unsafeCoerce ())
@@ -567,13 +566,13 @@ fb' +>> p0 =
         pullRewrite i up dn fb' p0
 
 pullRewrite
-    :: forall self super a' a b' b c' c r key.
-       ('[Sync key] <: self, Eq key, Monad super)
-    => key
+    :: forall self super a' a b' b c' c r.
+       ('[Sync] <: self, Monad super)
+    => Int
     -> (forall x. a' -> (a -> Narrative self super x) -> Narrative self super x)
     -> (forall x. c -> (c' -> Narrative self super x) -> Narrative self super x)
-    -> (b' -> Synchronized key a' a b' b self super r)
-    -> Synchronized key b' b c' c self super r
+    -> (b' -> Synchronized a' a b' b self super r)
+    -> Synchronized b' b c' c self super r
     -> Narrative self super r
 pullRewrite rewriteScope up dn fb' p =
     let upstream b' = runSynchronized (fb' b') (unsafeCoerce up) (unsafeCoerce dn)
@@ -594,40 +593,40 @@ pullRewrite rewriteScope up dn fb' p =
                 _ -> ignore
 
 infixl 7 >->
-(>->) :: ('[Sync key] <: self, Eq key, Monad super)
-      => Synchronized key a' a () b self super r
-      -> Synchronized key () b c' c self super r
-      -> Synchronized key a' a c' c self super r
+(>->) :: ('[Sync] <: self, Monad super)
+      => Synchronized a' a () b self super r
+      -> Synchronized () b c' c self super r
+      -> Synchronized a' a c' c self super r
 p1 >-> p2 = (\() -> p1) +>> p2
 
 infixr 7 <-<
-(<-<) :: ('[Sync key] <: self, Eq key, Monad super)
-      => Synchronized key () b c' c self super r
-      -> Synchronized key a' a () b self super r
-      -> Synchronized key a' a c' c self super r
+(<-<) :: ('[Sync] <: self, Monad super)
+      => Synchronized () b c' c self super r
+      -> Synchronized a' a () b self super r
+      -> Synchronized a' a c' c self super r
 p2 <-< p1 = p1 >-> p2
 
 infixr 7 <+<
-(<+<) :: ('[Sync key] <: self, Eq key, Monad super)
-      => (c' -> Synchronized key b' b c' c self super r)
-      -> (b' -> Synchronized key a' a b' b self super r)
+(<+<) :: ('[Sync] <: self, Monad super)
+      => (c' -> Synchronized b' b c' c self super r)
+      -> (b' -> Synchronized a' a b' b self super r)
       -> c'
-      -> Synchronized key a' a c' c self super r
+      -> Synchronized a' a c' c self super r
 p1 <+< p2 = p2 >+> p1
 
 infixl 7 >+>
-(>+>) :: ('[Sync key] <: self, Eq key, Monad super)
-      => (b' -> Synchronized key a' a b' b self super r)
-      -> (_c' -> Synchronized key b' b c' c self super r)
+(>+>) :: ('[Sync] <: self, Monad super)
+      => (b' -> Synchronized a' a b' b self super r)
+      -> (_c' -> Synchronized b' b c' c self super r)
       -> _c'
-      -> Synchronized key a' a c' c self super r
+      -> Synchronized a' a c' c self super r
 (fb' >+> fc') c' = fb' +>> fc' c'
 
 infixl 6 <<+
-(<<+) :: ('[Sync key] <: self, Eq key, Monad super)
-      => Synchronized key b' b c' c self super r
-      -> (b' -> Synchronized key a' a b' b self super r)
-      -> Synchronized key a' a c' c self super r
+(<<+) :: ('[Sync] <: self, Monad super)
+      => Synchronized b' b c' c self super r
+      -> (b' -> Synchronized a' a b' b self super r)
+      -> Synchronized a' a c' c self super r
 p <<+ fb = fb +>> p
 
 {-# RULES
