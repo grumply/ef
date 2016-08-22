@@ -221,7 +221,8 @@ data Runnable self super where
            -> Runnable self super
 
 {-# INLINE signal #-}
-signal :: (Monad super, MonadIO super)
+signal :: forall self super event.
+          (Monad super, MonadIO super)
        => Signal self super event
        -> event
        -> Narrative self super ()
@@ -233,13 +234,16 @@ signal sig e = do
     return $ Runnable bs_ c f_ (f e)
   go seeded
   where
+    go :: [Runnable self super] -> Narrative self super ()
     go [] = return ()
     go (r@(Runnable bs_ c f_ f):rs) = do
       start r
       go rs
       where
+        start :: Runnable self super -> Narrative self super ()
         start (Runnable bs_ c f_ f) = go' f
           where
+            go' :: Narrative '[Event] (Narrative self super) () -> Narrative self super ()
             go' (Return _)  = return ()
             go' (Fail e)    = Fail e -- One behavior can clobber an entire process.
             go' (Super sup) = Super (fmap go' sup)
