@@ -71,8 +71,8 @@ data Signaled where
 construct :: (Monad super, MonadIO super)
           => Maybe event -> super (Signal self super' event)
 construct mevent = do
-    current <- liftIO $ newIORef mevent
-    count <- liftIO $ newIORef 0
+    current   <- liftIO $ newIORef mevent
+    count     <- liftIO $ newIORef 0
     behaviors <- liftIO $ newIORef []
     return $ Signal current count behaviors
 {-# INLINE construct #-}
@@ -110,17 +110,17 @@ merge__ :: forall self super event. (Monad super, MonadIO super)
                                , BehaviorToken self super event
                                , BehaviorToken self super event
                                )
-merge__ signalMethod initial sig0 sig1 = do
+merge__ signalMethod sig0 sig1 = do
     sig <- construct Nothing
-    bt  <- behavior__ (signalMethod sig) sig
-    bt0 <- behavior__ (signalMethod sig) sig0
-    bt1 <- behavior__ (signalMethod sig) sig1
+    bt  <- behavior__ sig  (signalMethod sig)
+    bt0 <- behavior__ sig0 (signalMethod sig)
+    bt1 <- behavior__ sig1 (signalMethod sig)
     return (sig,bt0,bt1,bt)
 {-# INLINE merge__ #-}
 
 readCurrent :: forall self super event super'.
                ( Monad super, MonadIO super
-               , Monad super, MonadIO super
+               , Monad super', MonadIO super'
                )
             => Signal self super event
             -> super' (Maybe event)
@@ -135,17 +135,17 @@ combine__ :: forall self super event1 event2. (Monad super, MonadIO super)
                                   , BehaviorToken self super event2
                                   , BehaviorToken self super (Maybe event1,Maybe event2)
                                   )
-combine__ signalMethod initial sig0 sig1 = do
+combine__ signalMethod sig0 sig1 = do
   sig <- construct Nothing
-  bt  <- behavior__ (signalMethod sig) sig
-  bt0 <- behavior__ (\e0 -> do
+  bt  <- behavior__ sig (signalMethod sig)
+  bt0 <- behavior__ sig0 (\e0 -> do
                       c1 <- readCurrent sig1
                       signalMethod sig (e0,c1)
-                    ) sig0
-  bt1 <- behavior__ (\e1 -> do
+                    )
+  bt1 <- behavior__ sig1 (\e1 -> do
                       c0 <- readCurrent sig1
                       signalMethod sig (c0,e1)
-                    ) sig1
+                    )
   return (sig,bt0,bt1,bt)
 
 mapSignal__ :: (Monad super, MonadIO super)
@@ -158,7 +158,7 @@ mapSignal__ :: (Monad super, MonadIO super)
                                    )
 mapSignal__ signalMethod f sig@(Signal current0 count0 behaviors0) = do
     signal <- construct Nothing
-    bt <- behavior__ (signalMethod signal . f) sig
+    bt <- behavior__ sig (signalMethod signal . f)
     return (signal,bt)
 {-# INLINE mapSignal__ #-}
 
@@ -173,7 +173,7 @@ filterSignal__ signalMethod predicate sig@(Signal _ count0 behaviors0) = do
     signal <- construct Nothing
     let newBehavior event =
           when (predicate event) $ signalMethod signal event
-    bt <- behavior__ newBehavior sig
+    bt <- behavior__ sig newBehavior
     return (signal,bt)
 {-# INLINE filterSignal__ #-}
 
