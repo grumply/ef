@@ -336,7 +336,7 @@ driver (Signaled buf) = go
           forM_ evss $ \(Signaling evs s) ->
             forM_ evs (signal (unsafeCoerce s))
 
-driverPrintExceptions :: (Monad super, MonadIO super, MonadThrow super)
+driverPrintExceptions :: (Monad super, MonadIO super, MonadThrow super, Ma (Traits traits) (Messages self))
                       => String -> Signaled -> Object traits super -> super ()
 driverPrintExceptions exceptionPrefix (Signaled buf) = go
   where
