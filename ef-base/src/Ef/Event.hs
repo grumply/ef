@@ -90,7 +90,7 @@ clearSignal :: (Monad super, MonadIO super)
 clearSignal (Signal _ _ bs) = liftIO $ writeIORef bs []
 {-# INLINE clearSignal #-}
 
-newBehaviorId :: forall self super event.
+newBehaviorId :: forall self super super' event.
                 ( Monad super, MonadIO super
                 , Monad super', MonadIO super'
                 )
@@ -127,7 +127,7 @@ readCurrent :: forall self super event super'.
 readCurrent (Signal current _ _) = liftIO $ readIORef current
 
 combine__ :: forall self super event1 event2. (Monad super, MonadIO super)
-          => (Signal self super event -> event -> Narrative self super ())
+          => (forall e. Signal self super e -> e -> Narrative self super ())
           -> Signal self super event1
           -> Signal self super event2
           -> Narrative self super ( Signal self super (Maybe event1,Maybe event2)
@@ -158,8 +158,8 @@ mapSignal__ :: (Monad super, MonadIO super)
                                    )
 mapSignal__ signalMethod f sig@(Signal current0 count0 behaviors0) = do
     signal <- construct Nothing
-    let newBehvior = signalMethod signal . f
-    return (signal,BehaviorToken c signal)
+    bt <- behavior__ (signalMethod signal . f) sig
+    return (signal,bt)
 {-# INLINE mapSignal__ #-}
 
 filterSignal__ :: (Monad super, MonadIO super)
@@ -283,7 +283,7 @@ data Event self super =
 
           -- | create a new `Signal` by filtering an existing `Signal` with a predicative function.
         , filterSignal_
-              :: forall a.
+              :: forall a b.
                  (a -> Maybe b)
               -> Signal self super a
               -> Narrative self super ( Signal self super b
