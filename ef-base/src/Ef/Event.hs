@@ -153,7 +153,7 @@ zipWithS f sig0@(Signal cur0 cnt0 bs0) sig1@(Signal cur1 cnt1 bs1) = do
   bt1 <- behavior sig1 $ \e1 -> do
     mc0 <- current sig0
     super $ signal sig $ f (mc0,Just e1)
-  return (sg,bt0,bt1)
+  return (sig,bt0,bt1)
 
 {-# INLINE mapS #-}
 mapS :: ( Monad super, MonadIO super
