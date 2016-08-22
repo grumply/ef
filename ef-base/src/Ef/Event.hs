@@ -246,11 +246,10 @@ signal sig e = do
             go' :: Narrative '[Event] (Narrative self super) () -> Narrative self super ()
             go' (Return _)  = return ()
             go' (Fail e)    = Fail e -- One behavior can clobber an entire process.
-            go' (Super sup) = Super (fmap go' sup)
+            go' (Super sup) = sup >>= go'
             go' (Say msg k) =
               case prj msg of
-                Nothing -> Say msg (go' . k)
-                Just x ->
+                ~(Just x) ->
                   case x of
                     Become f' x -> do
                       liftIO $ writeIORef f_ $ unsafeCoerce f'
@@ -266,7 +265,7 @@ signal sig e = do
                       seeded <- forM (Map.toList bs') $ \(c',f'_) -> do
                         f' <- liftIO $ readIORef f'_
                         return (Runnable bs'_ c' f'_ (f' e'))
-                      go ((Runnable bs_ c f_ (k x)):rs ++ seeded)
+                      go ((Runnable bs_ c f_ (k x)):rs ++ unsafeCoerce seeded)
 
 -- An abstract Signal queue. Useful for building event loops.
 -- Note that there is still a need to call unsafeCoerce on the
