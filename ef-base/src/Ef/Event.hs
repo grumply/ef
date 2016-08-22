@@ -125,22 +125,26 @@ readCurrent :: forall self super event super'.
 readCurrent (Signal current _ _) = liftIO $ readIORef current
 
 combine__ :: forall self super event1 event2. (Monad super, MonadIO super)
-          => (forall e. Signal self super e -> e -> Narrative self super ())
+          => (Signal self super (Maybe event1,Maybe event2)
+              -> (Maybe event1,Maybe event2)
+              -> Narrative self super ()
+              )
+          -> (Signal self super event2 -> event2 -> Narrative self super ())
           -> Signal self super event1
           -> Signal self super event2
           -> Narrative self super ( Signal self super (Maybe event1,Maybe event2)
                                   , BehaviorToken self super event1
                                   , BehaviorToken self super event2
                                   )
-combine__ signalMethod sig0 sig1 = do
+combine__ sigMeth sig0 sig1 = do
   sig <- construct Nothing
   bt0 <- behavior__ sig0 (\e0 -> do
                       c1 <- readCurrent sig1
-                      signalMethod sig (Just e0,c1)
+                      sigMeth sig (Just e0,c1)
                     )
   bt1 <- behavior__ sig1 (\e1 -> do
                       c0 <- readCurrent sig1
-                      signalMethod sig (c0,Just e1)
+                      sigMeth sig (c0,Just e1)
                     )
   return (sig,bt0,bt1)
 
@@ -151,9 +155,9 @@ mapSignal__ :: (Monad super, MonadIO super)
            -> Narrative self super ( Signal self super b
                                    , BehaviorToken self super a
                                    )
-mapSignal__ signalMethod f sig@(Signal current0 count0 behaviors0) = do
+mapSignal__ sigMeth f sig@(Signal current0 count0 behaviors0) = do
     signal <- construct Nothing
-    bt <- behavior__ sig (signalMethod signal . f)
+    bt <- behavior__ sig (sigMeth signal . f)
     return (signal,bt)
 {-# INLINE mapSignal__ #-}
 
@@ -194,7 +198,7 @@ signalRaw :: (Monad super, MonadIO super)
         -> event
         -> Narrative self super ()
 signalRaw (Signal current count behaviors) event = do
-    writeCurrent <- liftIO $ writeIORef current event
+    writeCurrent <- liftIO $ writeIORef current $ Just event
     bs <- liftIO $ readIORef behaviors
     let applied = map (($ event) . snd) bs
     sequence_ applied
@@ -406,7 +410,7 @@ event loop =
 
                                 Signal_ up (Signal currentRef _ behaviorsRef) event -> do
                                     behaviors <- liftIO $ readIORef behaviorsRef
-                                    liftIO $ writeIORef currentRef event
+                                    liftIO $ writeIORef currentRef $ Just event
                                     newBehaviors <- runBehaviors up event behaviors
                                     liftIO $ writeIORef behaviorsRef newBehaviors
                                     newRequest <- respond (return ())
@@ -455,7 +459,7 @@ event loop =
 
                                                 Signal_ up' (Signal currentRef _ behaviorsRef) event' -> do
                                                     behaviors' <- liftIO $ readIORef behaviorsRef
-                                                    liftIO $ writeIORef currentRef event'
+                                                    liftIO $ writeIORef currentRef $ Just event'
                                                     newBehaviors <- runBehaviors up' event' behaviors'
                                                     liftIO $ writeIORef behaviorsRef newBehaviors
                                                     newRequest <- respond (return ())
