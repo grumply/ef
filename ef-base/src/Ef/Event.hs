@@ -239,8 +239,9 @@ signal :: forall self super event.
        -> event
        -> Narrative self super ()
 signal sig e = do
-  let Signal _ _ bs_ = sig
+  let Signal cur _ bs_ = sig
   bs <- liftIO $ readIORef bs_
+  liftIO $ writeIORef cur e
   seeded <- forM (Map.toList bs) $ \(c,f_) -> do
     f <- liftIO $ readIORef f_
     return $ Runnable bs_ c f_ (f e)
