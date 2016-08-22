@@ -79,7 +79,7 @@ constructSelf = construct
 {-# INLINE runner #-}
 runner :: (Monad super, MonadIO super, Monad super')
        => super (Signal self super' (Narrative self super' ()))
-runner = do
+runner = liftIO $ do
   current   <- newIORef Nothing
   count     <- newIORef 0
   bhvr      <- newIORef super
@@ -117,8 +117,8 @@ mergeS :: (Monad super', MonadIO super')
                  )
 mergeS sig0 sig1 = do
   sig <- construct Nothing
-  bt0 <- behavior sig0 $ signal sig
-  bt1 <- behavior sig1 $ signal sig
+  bt0 <- behavior sig0 $ super $ signal sig
+  bt1 <- behavior sig1 $ super $ signal sig
   return (sig,bt0,bt1)
 
 {-# INLINE zipS #-}
@@ -135,10 +135,10 @@ zipS sig0@(Signal cur0 cnt0 bs0) sig1@(Signal cur1 cnt1 bs1) = do
   sig <- construct Nothing
   bt0 <- behavior sig0 $ \e0 -> do
     mc1 <- current sig1
-    signal sig (Just e0,mc1)
+    super $ signal sig (Just e0,mc1)
   bt1 <- behavior sig1 $ \e1 -> do
     mc0 <- current sig0
-    signal sig (mc0,Just e1)
+    super $ signal sig (mc0,Just e1)
   return (sig,bt0,bt1)
 
 {-# INLINE mapS #-}
@@ -152,7 +152,7 @@ mapS :: ( Monad super, MonadIO super
                )
 mapS sig f = do
   sig' <- construct Nothing
-  bt   <- behavior sig $ signal sig' . f
+  bt   <- behavior sig $ super . signal sig' . f
   return (sig',bt)
 
 {-# INLINE filterS #-}
@@ -166,7 +166,7 @@ filterS :: ( Monad super, MonadIO super
                   )
 filterS sig f = do
   sig' <- construct Nothing
-  bt   <- behavior sig $ \e -> forM_ (f e) (signal sig')
+  bt   <- behavior sig $ \e -> super $ forM_ (f e) (signal sig')
   return (sig',bt)
 
 {-# INLINE duplicate #-}
