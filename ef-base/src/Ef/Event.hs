@@ -214,10 +214,10 @@ stop (Behavior s_ b) = liftIO $ do
       in bs' `seq` (bs',())
 
 data Runnable self super where
-  Runnable :: IORef (Map.IntMap (IORef (event -> Narrative self super ())))
+  Runnable :: IORef (Map.IntMap (IORef (event -> Narrative '[Event] (Narrative self super) ())))
            -> Int
-           -> IORef (event -> Narrative self super ())
-           -> Narrative self super ()
+           -> IORef (event -> Narrative '[Event] (Narrative self super) ())
+           -> Narrative '[Event] (Narrative self super) ()
            -> Runnable self super
 
 {-# INLINE signal #-}
@@ -238,12 +238,7 @@ signal sig e = do
       start r
       go rs
       where
-        start (Runnable bs_ c f_ f) = do
-          del <- go' f
-          when del $
-            liftIO $ atomicModifyIORef' bs_ $ \bs ->
-              let bs' = Map.delete c bs
-              in bs' `seq` (bs',())
+        start (Runnable bs_ c f_ f) = go' f
           where
             go' (Return _)  = return ()
             go' (Fail e)    = Fail e -- One behavior can clobber an entire process.
