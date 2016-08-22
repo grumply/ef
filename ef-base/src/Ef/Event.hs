@@ -108,7 +108,9 @@ behavior sig@(Signal _ count behaviors) newBehavior = liftIO $ do
   return (Behavior s b)
 
 {-# INLINE mergeS #-}
-mergeS :: (Monad super', MonadIO super')
+mergeS :: ( Monad super, MonadIO super
+          , Monad super', MonadIO super'
+          )
        => Signal self super event
        -> Signal self super event
        -> super' ( Signal self super event
@@ -212,7 +214,7 @@ stop (Behavior s_ b) = liftIO $ do
       in bs' `seq` (bs',())
 
 data Runnable self super where
-  Runnable :: Map.IntMap (IORef (event -> Narrative self super ()))
+  Runnable :: IORef (Map.IntMap (IORef (event -> Narrative self super ())))
            -> Int
            -> IORef (event -> Narrative self super ())
            -> Narrative self super ()
@@ -243,7 +245,7 @@ signal sig e = do
               let bs' = Map.delete c bs
               in bs' `seq` (bs',())
           where
-            go' (Return _)  = return False
+            go' (Return _)  = return ()
             go' (Fail e)    = Fail e -- One behavior can clobber an entire process.
             go' (Super sup) = Super (fmap go' sup)
             go' (Say msg k) =
@@ -252,10 +254,13 @@ signal sig e = do
                 Just x ->
                   case x of
                     Become f' x -> do
-                      liftIO $ writeIORef f_ f'
+                      liftIO $ writeIORef f_ $ unsafeCoerce f'
                       go' (k x)
-                    Continue -> return False
-                    End      -> return True
+                    Continue -> return ()
+                    End      ->
+                      liftIO $ atomicModifyIORef' bs_ $ \bs ->
+                        let bs' = Map.delete c bs
+                        in bs' `seq` (bs',())
                     Subsignal sig' e' x -> do
                       let Signal _ _ bs'_ = sig'
                       bs' <- liftIO $ readIORef bs'_
