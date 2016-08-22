@@ -3,7 +3,6 @@ module Ef.Event where
 
 import Ef
 import Ef.Narrative
-import Ef.Bidir
 
 import Data.Queue
 import Data.Promise
@@ -317,7 +316,7 @@ newSignalBuffer :: (Monad super, MonadIO super) => super Signaled
 newSignalBuffer = Signaled <$> liftIO newQueueIO
 
 {-# INLINE driver #-}
-driver :: (Monad super, MonadIO super, MonadThrow super, Ma (Traits traits) (Messages self), '[Bidir] <: self)
+driver :: (Monad super, MonadIO super, MonadThrow super, Ma (Traits traits) (Messages self))
        => Signaled -> Object traits super -> super ()
 driver (Signaled buf) = go
   where
@@ -337,7 +336,7 @@ driver (Signaled buf) = go
           forM_ evss $ \(Signaling evs s) ->
             forM_ evs (signal (unsafeCoerce s))
 
-driverPrintExceptions :: (Monad super, MonadIO super, MonadThrow super, Ma (Traits traits) (Messages self), '[Bidir] <: self)
+driverPrintExceptions :: (Monad super, MonadIO super, MonadThrow super)
                       => String -> Signaled -> Object traits super -> super ()
 driverPrintExceptions exceptionPrefix (Signaled buf) = go
   where
