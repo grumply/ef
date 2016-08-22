@@ -241,7 +241,7 @@ signal :: forall self super event.
 signal sig e = do
   let Signal cur _ bs_ = sig
   bs <- liftIO $ readIORef bs_
-  liftIO $ writeIORef cur e
+  liftIO $ writeIORef cur $ Just e
   seeded <- forM (Map.toList bs) $ \(c,f_) -> do
     f <- liftIO $ readIORef f_
     return $ Runnable bs_ c f_ (f e)
