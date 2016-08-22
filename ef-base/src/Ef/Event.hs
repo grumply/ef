@@ -18,21 +18,23 @@ import Control.Exception (BlockedIndefinitelyOnSTM(..))
 import qualified Data.IntMap.Strict as Map
 
 data Event k where
-  Become :: (event -> Narrative self super ())
+  Become :: (event -> Narrative '[Event] (Narrative self super) ())
          -> k
          -> Event k
 
-  Continue :: Action k
+  Continue :: Event k
 
-  End :: Action k
+  End :: Event k
 
   Subsignal :: Signal self super event'
             -> event'
             -> k
-            -> Action k
+            -> Event k
 
-become :: Monad super => Narrative '[Event] (Narrative self super) ()
-become = self $ Become f ()
+become :: Monad super
+      => (event -> Narrative '[Event] (Narrative self super) ())
+      -> Narrative '[Event] (Narrative self super) ()
+become f = self $ Become f ()
 
 continue :: Monad super => Narrative '[Event] (Narrative self super) a
 continue = self Continue
@@ -54,7 +56,7 @@ data Signal self super event
     deriving Eq
 
 data Behavior self super event
-  = BehaviorToken
+  = Behavior
       (IORef [(Int,Signal self super event)])
       (IORef (event -> Narrative '[Event] (Narrative self super) ()))
   deriving Eq
@@ -78,7 +80,7 @@ constructSelf = construct
 runner :: (Monad super, MonadIO super, Monad super')
        => super (Signal self super' (Narrative self super' ()))
 runner = do
-  current   <- newIORef mevent
+  current   <- newIORef Nothing
   count     <- newIORef 0
   behaviors <- newIORef $ Map.fromList [(-1,super)]
   return $ Signal current count behaviors
@@ -166,13 +168,13 @@ filterS sig f = do
   bt   <- behavior sig $ \_ e -> forM_ (f e) (signal sig')
   return (sig',bt)
 
-{-# INLINE duplate #-}
+{-# INLINE duplicate #-}
 duplicate :: (Monad super, MonadIO super)
           => Behavior self super event
           -> Signal self super event
           -> super' ()
-duplicate (Behavior s b) (Signal _ _ bs_) = liftIO $ do
-  c <- atomicModifyIORef' count $ \c ->
+duplicate (Behavior s b) (Signal _ c_ bs_) = liftIO $ do
+  c <- atomicModifyIORef' c_ $ \c ->
          let c' = c + 1
          in c' `seq` (c',c)
   atomicModifyIORef' bs_ $ \bs ->
@@ -202,10 +204,16 @@ stop :: (Monad super', MonadIO super')
 stop (Behavior s b) =
   liftIO $ forM_ s unbind'
   where
-    unbind' (c,Signal _ _ bs_) = atomicModifyIORf' bs_ $ \bs ->
+    unbind' (c,Signal _ _ bs_) = atomicModifyIORef' bs_ $ \bs ->
       let bs' = Map.delete c bs
       in bs' `seq` (bs',())
 
+data Runnable self super where
+  Runnable :: Map.IntMap (IORef (event -> Narrative self super ()))
+           -> Int
+           -> IORef (event -> Narrative self super ())
+           -> Narrative self super ()
+           -> Runnable self super
 
 {-# INLINE signal #-}
 signal :: (Monad super, MonadIO super)
@@ -217,16 +225,15 @@ signal sig e = do
   bs <- liftIO $ readIORef bs_
   seeded <- mapM (Map.toList bs) $ \(c,f_) -> do
     f <- liftIO $ readIORef f_
-    return (bs_,c,f e)
+    return $ Runnable bs_ c f_ (f e)
   go seeded
   where
     go [] = return ()
-    go ((bs_,c,f):bs) = do
-      f <- liftIO $ readIORef f_
-      del <- start bs_ c f
-      go bs
+    go (r@(Runnable bs_ c f_ f):rs) = do
+      start r
+      go rs
       where
-        start bs_ c f = do
+        start (Runnable bs_ c f_ f) = do
           del <- go' f
           when del $
             liftIO $ atomicModifyIORef' bs_ $ \bs ->
@@ -251,8 +258,8 @@ signal sig e = do
                       bs' <- liftIO $ readIORef bs'_
                       seeded <- mapM (Map.toList bs') $ \(c',f'_) -> do
                         f' <- liftIO $ readIORef f'_
-                        return (bs'_,c',f' e')
-                      go ((bs_,c,k x):bs ++ seeded)
+                        return (Runnable bs'_ c' f'_ (f' e'))
+                      go ((Runnable bs_ c f_ (k x)):rs ++ seeded)
 
 -- An abstract Signal queue. Useful for building event loops.
 -- Note that there is still a need to call unsafeCoerce on the
