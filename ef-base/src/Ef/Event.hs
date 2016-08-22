@@ -132,15 +132,28 @@ zipS :: ( Monad super, MonadIO super
                , Behavior self super event
                , Behavior self super event'
                )
-zipS sig0@(Signal cur0 cnt0 bs0) sig1@(Signal cur1 cnt1 bs1) = do
+zipS = zipWithS id
+
+{-# INLINE zipWithS #-}
+zipWithS :: ( Monad super, MonadIO super
+            , Monad super', MonadIO super'
+            )
+         => ((Maybe event,Maybe event') -> x)
+         -> Signal self super event
+         -> Signal self super event'
+         -> super' ( Signal self super x
+                   , Behavior self super event
+                   , Behavior self super event'
+                   )
+zipWithS f sig0@(Signal cur0 cnt0 bs0) sig1@(Signal cur1 cnt1 bs1) = do
   sig <- construct Nothing
   bt0 <- behavior sig0 $ \e0 -> do
     mc1 <- current sig1
-    super $ signal sig (Just e0,mc1)
+    super $ signal sig $ f (Just e0,mc1)
   bt1 <- behavior sig1 $ \e1 -> do
     mc0 <- current sig0
-    super $ signal sig (mc0,Just e1)
-  return (sig,bt0,bt1)
+    super $ signal sig $ f (mc0,Just e1)
+  return (sg,bt0,bt1)
 
 {-# INLINE mapS #-}
 mapS :: ( Monad super, MonadIO super
