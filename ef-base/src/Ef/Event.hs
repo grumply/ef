@@ -249,7 +249,7 @@ signal sig e = do
                     Subsignal sig' e' x -> do
                       let Signal _ _ bs'_ = sig'
                       bs' <- liftIO $ readIORef bs'_
-                      seeded <- mapM (Map.toList bs') $ \(c',f'_) ->
+                      seeded <- mapM (Map.toList bs') $ \(c',f'_) -> do
                         f' <- liftIO $ readIORef f'_
                         return (bs'_,c',f' e')
                       go ((bs_,c,k x):bs ++ seeded)
