@@ -50,7 +50,7 @@ data Reactor self super event =
         }
 
 data Signal self super event
-    = Signal (IORef event) (IORef Int) (IORef [(Int,event -> Narrative self super ())])
+    = Signal (IORef (Maybe event)) (IORef Int) (IORef [(Int,event -> Narrative self super ())])
     deriving Eq
 
 
@@ -69,9 +69,9 @@ data Signaled where
 -- start value as long as any behaviors linked to the `Signal` are not
 -- linked via `behavior'`.
 construct :: (Monad super, MonadIO super)
-          => event -> super (Signal self super' event)
-construct event = do
-    current <- liftIO $ newIORef event
+          => Maybe event -> super (Signal self super' event)
+construct mevent = do
+    current <- liftIO $ newIORef mevent
     count <- liftIO $ newIORef 0
     behaviors <- liftIO $ newIORef []
     return $ Signal current count behaviors
@@ -80,8 +80,8 @@ construct event = do
 constructRunner :: (Monad super, MonadIO super, Monad super')
                  => super (Signal self super' (Narrative self super' ()))
 constructRunner  = do
-  current <- liftIO $ newIORef (return ())
-  count <- liftIO $ newIORef 0
+  current   <- liftIO $ newIORef (Just $ return ())
+  count     <- liftIO $ newIORef 0
   behaviors <- liftIO $ newIORef [(-1,id)]
   return $ Signal current count behaviors
 
@@ -90,57 +90,91 @@ clearSignal :: (Monad super, MonadIO super)
 clearSignal (Signal _ _ bs) = liftIO $ writeIORef bs []
 {-# INLINE clearSignal #-}
 
+newBehaviorId :: forall self super event.
+                ( Monad super, MonadIO super
+                , Monad super', MonadIO super'
+                )
+              => Signal self super event
+              -> super' Int
+newBehaviorId (Signal _ c_ _) = do
+  liftIO $ atomicModifyIORef c_ $ \c ->
+    let c' = c + 1
+    in c' `seq` (c',c)
+
 merge__ :: forall self super event. (Monad super, MonadIO super)
        => (Signal self super event -> event -> Narrative self super ())
-       -> event
        -> Signal self super event
        -> Signal self super event
-       -> Narrative self super (Signal self super event,BehaviorToken self super event, BehaviorToken self super event)
-merge__ signalMethod initial sig0@(Signal current0 count0 behaviors0) sig1@(Signal current1 count1 behaviors1) = do
-    signal <- construct initial
-    c0 <- liftIO $ atomicModifyIORef count0 $ \c -> (c + 1,c)
-    liftIO $ modifyIORef behaviors0 $ \bs ->
-        let newBehavior event = signalMethod signal event
-        in bs ++ [(c0,newBehavior)]
-    c1 <- liftIO $ atomicModifyIORef count1 $ \c -> (c + 1,c)
-    liftIO $ modifyIORef behaviors1 $ \bs ->
-        let newBehavior event = signalMethod signal event
-        in bs ++ [(c1,newBehavior)]
-    return (signal,BehaviorToken c0 sig0,BehaviorToken c1 sig1)
+       -> Narrative self super ( Signal self super event
+                               , BehaviorToken self super event
+                               , BehaviorToken self super event
+                               , BehaviorToken self super event
+                               )
+merge__ signalMethod initial sig0 sig1 = do
+    sig <- construct Nothing
+    bt  <- behavior__ (signalMethod sig) sig
+    bt0 <- behavior__ (signalMethod sig) sig0
+    bt1 <- behavior__ (signalMethod sig) sig1
+    return (sig,bt0,bt1,bt)
 {-# INLINE merge__ #-}
+
+readCurrent :: forall self super event super'.
+               ( Monad super, MonadIO super
+               , Monad super, MonadIO super
+               )
+            => Signal self super event
+            -> super' (Maybe event)
+readCurrent (Signal current _ _) = liftIO $ readIORef current
+
+combine__ :: forall self super event1 event2. (Monad super, MonadIO super)
+          => (Signal self super event -> event -> Narrative self super ())
+          -> Signal self super event1
+          -> Signal self super event2
+          -> Narrative self super ( Signal self super (Maybe event1,Maybe event2)
+                                  , BehaviorToken self super event1
+                                  , BehaviorToken self super event2
+                                  , BehaviorToken self super (Maybe event1,Maybe event2)
+                                  )
+combine__ signalMethod initial sig0 sig1 = do
+  sig <- construct Nothing
+  bt  <- behavior__ (signalMethod sig) sig
+  bt0 <- behavior__ (\e0 -> do
+                      c1 <- readCurrent sig1
+                      signalMethod sig (e0,c1)
+                    ) sig0
+  bt1 <- behavior__ (\e1 -> do
+                      c0 <- readCurrent sig1
+                      signalMethod sig (c0,e1)
+                    ) sig1
+  return (sig,bt0,bt1,bt)
 
 mapSignal__ :: (Monad super, MonadIO super)
            => (Signal self super b -> b -> Narrative self super ())
            -> (a -> b)
-           -> b
            -> Signal self super a
-           -> Narrative self super (Signal self super b, BehaviorToken self super b)
-mapSignal__ signalMethod f initial sig@(Signal current0 count0 behaviors0) = do
-    signal <- construct initial
-    c <- liftIO $ atomicModifyIORef count0 $ \c -> (c + 1,c)
-    liftIO $ modifyIORef behaviors0 $ \bs ->
-        let newBehavior event = signalMethod signal (f event)
-        in bs ++ [(c,newBehavior)]
+           -> Narrative self super ( Signal self super b
+                                   , BehaviorToken self super a
+                                   , BehaviorToken self super b
+                                   )
+mapSignal__ signalMethod f sig@(Signal current0 count0 behaviors0) = do
+    signal <- construct Nothing
+    let newBehvior = signalMethod signal . f
     return (signal,BehaviorToken c signal)
 {-# INLINE mapSignal__ #-}
 
 filterSignal__ :: (Monad super, MonadIO super)
-              => (Signal self super a -> a -> Narrative self super ())
-              -> (a -> Bool)
-              -> a
+              => (Signal self super b -> b -> Narrative self super ())
+              -> (a -> Maybe b)
               -> Signal self super a
-              -> Narrative self super (Signal self super a,BehaviorToken self super a)
-filterSignal__ signalMethod predicate initial sig@(Signal _ count0 behaviors0) = do
-    signal <- construct initial
-    c <- liftIO $ atomicModifyIORef count0 $ \c -> (c + 1,c)
-    liftIO $ modifyIORef behaviors0 $ \bs ->
-        let newBehavior event =
-                if predicate event then
-                    signalMethod signal event
-                else
-                    return ()
-        in bs ++ [(c,newBehavior)]
-    return (signal,BehaviorToken c signal)
+              -> Narrative self super ( Signal self super b
+                                      , BehaviorToken self super a
+                                      , BehaviorToken self super b)
+filterSignal__ signalMethod predicate sig@(Signal _ count0 behaviors0) = do
+    signal <- construct Nothing
+    let newBehavior event =
+          when (predicate event) $ signalMethod signal event
+    bt <- behavior__ newBehavior sig
+    return (signal,bt)
 {-# INLINE filterSignal__ #-}
 
 behavior__ :: (Monad super, MonadIO super)
@@ -220,26 +254,41 @@ data Event self super =
           -- new signal will be signaled with that event.
         , mergeSignals_
               :: forall event.
-                 event
+                 Signal self super event
               -> Signal self super event
-              -> Signal self super event
-              -> Narrative self super (Signal self super event,BehaviorToken self super event,BehaviorToken self super event)
+              -> Narrative self super ( Signal self super event
+                                      , BehaviorToken self super event
+                                      , BehaviorToken self super event
+                                      )
+
+        , combineSignals_
+              :: forall event event'.
+                 Signal self super event
+              -> Signal self super event'
+              -> Narrative self super ( Signal self super (Maybe event,Maybe event')
+                                      , BehaviorToken self super event
+                                      , BehaviorToken self super event'
+                                      , BehaviorToken self super (Maybe event,Maybe event')
+                                      )
+
 
           -- | create a new `Signal` by mapping a function over an existing `Signal`.
         , mapSignal_
               :: forall a b.
                  (a -> b)
-              -> b
               -> Signal self super a
-              -> Narrative self super (Signal self super b,BehaviorToken self super b)
+              -> Narrative self super ( Signal self super b
+                                      , BehaviorToken self super b
+                                      )
 
           -- | create a new `Signal` by filtering an existing `Signal` with a predicative function.
         , filterSignal_
               :: forall a.
-                 (a -> Bool)
-              -> a
+                 (a -> Maybe b)
               -> Signal self super a
-              -> Narrative self super (Signal self super a,BehaviorToken self super a)
+              -> Narrative self super ( Signal self super b
+                                      , BehaviorToken self super b
+                                      )
         }
 
 data Action self super
@@ -326,6 +375,9 @@ event loop =
 
                   , mergeSignals_ =
                         merge__ (\signal event -> join $ up (Signal_ up signal event))
+
+                  , combineSignals_ =
+                        combine__ (\signal event -> join $ up (Signal_ up signal event))
 
                   , mapSignal_ =
                         mapSignal__
@@ -579,22 +631,41 @@ trigger bt ev =
 mergeSignals :: ('[Bidir] <: self, Monad super, MonadIO super)
              => Signal self super e
              -> Signal self super e
-             -> Narrative self super (Signal self super e,BehaviorToken self super e,BehaviorToken self super e)
+             -> Narrative self super ( Signal self super e
+                                     , BehaviorToken self super e
+                                     , BehaviorToken self super e
+                                     )
 mergeSignals sig1 sig2 = event $ \e ->
-    mergeSignals_ e undefined sig1 sig2
+    mergeSignals_ e sig1 sig2
+
+{-# INLINE combineSignals #-}
+combineSignals :: ('[Bidir] <: self, Monad super, MonadIO super)
+               => Signal self super e
+               -> Signal self super e'
+               -> Narrative self super ( Signal self super (Maybe e,Maybe e')
+                                       , BehaviorToken self super e
+                                       , BehaviorToken self super e'
+                                       , BehaviorToken self super (Maybe e,Maybe e')
+                                       )
+combineSignals sig1 sig2 = event $ \e ->
+  combineSignals_ e sig1 sig2
 
 {-# INLINE mapSignal #-}
 mapSignal :: ('[Bidir] <: self, Monad super, MonadIO super)
           => (e -> e')
           -> Signal self super e
-          -> Narrative self super (Signal self super e',BehaviorToken self super e')
+          -> Narrative self super ( Signal self super e'
+                                  , BehaviorToken self super e'
+                                  )
 mapSignal f sig = event $ \e ->
-    mapSignal_ e f undefined sig
+    mapSignal_ e f sig
 
 {-# INLINE filterSignal #-}
 filterSignal :: ('[Bidir] <: self, Monad super, MonadIO super)
-             => (e -> Bool)
+             => (e -> Maybe e')
              -> Signal self super e
-             -> Narrative self super (Signal self super e,BehaviorToken self super e)
+             -> Narrative self super ( Signal self super e'
+                                     , BehaviorToken self super e'
+                                     )
 filterSignal f sig = event $ \e ->
-    filterSignal_ e f undefined sig
+    filterSignal_ e f sig
