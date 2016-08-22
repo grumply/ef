@@ -99,7 +99,7 @@ behavior sig@(Signal _ count behaviors) newBehavior = liftIO $ do
          in c' `seq` (c',c)
   s <- newIORef [(c,sig)]
   b <- newIORef newBehavior
-  atomicModifyIORef' behaviors \bs ->
+  atomicModifyIORef' behaviors $ \bs ->
     let bs' = Map.insert (c,b) bs
     in bs' `seq` (bs',())
   return (Behavior s b)
