@@ -94,7 +94,7 @@ current (Signal cur _ _) = liftIO $ readIORef cur
 behavior :: (Monad super', MonadIO super')
          => Signal self super event
          -> (event -> Narrative '[Event] (Narrative self super) ())
-         -> super' (BehaviorToken self super event)
+         -> super' (Behavior self super event)
 behavior sig@(Signal _ count behaviors) newBehavior = liftIO $ do
   c <- atomicModifyIORef' count $ \c ->
          let c' = c + 1
@@ -300,7 +300,7 @@ reconstructAs :: forall internal external external' super internalSelf.
                  )
               => Narrative internalSelf internal `As` external -> super (Narrative internalSelf internal `As` external')
 reconstructAs (As buf _) = do
-  sig :: Signal internalSelf internal (Narrative internalSelf internal ()) <- constructRunner
+  sig :: Signal internalSelf internal (Narrative internalSelf internal ()) <- runner
   return $ As buf $ \nar -> liftIO $ do
     p <- newPromiseIO
     bufferIO buf sig $ nar >>= void . fulfill p
