@@ -88,7 +88,7 @@ runner = liftIO $ do
 
 {-# INLINE current #-}
 current :: (Monad super, MonadIO super)
-        => Signal self super e -> Narrative self super (Maybe e)
+        => Signal self' super' e -> Narrative self super (Maybe e)
 current (Signal cur _ _) = liftIO $ readIORef cur
 
 {-# INLINE behavior #-}
@@ -117,8 +117,8 @@ mergeS :: (Monad super', MonadIO super')
                  )
 mergeS sig0 sig1 = do
   sig <- construct Nothing
-  bt0 <- behavior sig0 $ super $ signal sig
-  bt1 <- behavior sig1 $ super $ signal sig
+  bt0 <- behavior sig0 $ super . signal sig
+  bt1 <- behavior sig1 $ super . signal sig
   return (sig,bt0,bt1)
 
 {-# INLINE zipS #-}
@@ -148,7 +148,7 @@ mapS :: ( Monad super, MonadIO super
      => Signal self super event
      -> (event -> event')
      -> super' ( Signal self super event'
-               , Behavior self super event'
+               , Behavior self super event
                )
 mapS sig f = do
   sig' <- construct Nothing
@@ -162,7 +162,7 @@ filterS :: ( Monad super, MonadIO super
         => Signal self super event
         -> (event -> Maybe event')
         -> super' ( Signal self super event'
-                  , Behavior self super event'
+                  , Behavior self super event
                   )
 filterS sig f = do
   sig' <- construct Nothing
@@ -226,7 +226,7 @@ signal :: (Monad super, MonadIO super)
 signal sig e = do
   let Signal _ _ bs_ = sig
   bs <- liftIO $ readIORef bs_
-  seeded <- mapM (Map.toList bs) $ \(c,f_) -> do
+  seeded <- forM (Map.toList bs) $ \(c,f_) -> do
     f <- liftIO $ readIORef f_
     return $ Runnable bs_ c f_ (f e)
   go seeded
@@ -259,7 +259,7 @@ signal sig e = do
                     Subsignal sig' e' x -> do
                       let Signal _ _ bs'_ = sig'
                       bs' <- liftIO $ readIORef bs'_
-                      seeded <- mapM (Map.toList bs') $ \(c',f'_) -> do
+                      seeded <- forM (Map.toList bs') $ \(c',f'_) -> do
                         f' <- liftIO $ readIORef f'_
                         return (Runnable bs'_ c' f'_ (f' e'))
                       go ((Runnable bs_ c f_ (k x)):rs ++ seeded)
