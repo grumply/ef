@@ -108,14 +108,12 @@ merge__ :: forall self super event. (Monad super, MonadIO super)
        -> Narrative self super ( Signal self super event
                                , BehaviorToken self super event
                                , BehaviorToken self super event
-                               , BehaviorToken self super event
                                )
 merge__ signalMethod sig0 sig1 = do
     sig <- construct Nothing
-    bt  <- behavior__ sig  (signalMethod sig)
     bt0 <- behavior__ sig0 (signalMethod sig)
     bt1 <- behavior__ sig1 (signalMethod sig)
-    return (sig,bt0,bt1,bt)
+    return (sig,bt0,bt1)
 {-# INLINE merge__ #-}
 
 readCurrent :: forall self super event super'.
@@ -133,20 +131,18 @@ combine__ :: forall self super event1 event2. (Monad super, MonadIO super)
           -> Narrative self super ( Signal self super (Maybe event1,Maybe event2)
                                   , BehaviorToken self super event1
                                   , BehaviorToken self super event2
-                                  , BehaviorToken self super (Maybe event1,Maybe event2)
                                   )
 combine__ signalMethod sig0 sig1 = do
   sig <- construct Nothing
-  bt  <- behavior__ sig (signalMethod sig)
   bt0 <- behavior__ sig0 (\e0 -> do
                       c1 <- readCurrent sig1
-                      signalMethod sig (e0,c1)
+                      signalMethod sig (Just e0,c1)
                     )
   bt1 <- behavior__ sig1 (\e1 -> do
                       c0 <- readCurrent sig1
-                      signalMethod sig (c0,e1)
+                      signalMethod sig (c0,Just e1)
                     )
-  return (sig,bt0,bt1,bt)
+  return (sig,bt0,bt1)
 
 mapSignal__ :: (Monad super, MonadIO super)
            => (Signal self super b -> b -> Narrative self super ())
@@ -154,7 +150,6 @@ mapSignal__ :: (Monad super, MonadIO super)
            -> Signal self super a
            -> Narrative self super ( Signal self super b
                                    , BehaviorToken self super a
-                                   , BehaviorToken self super b
                                    )
 mapSignal__ signalMethod f sig@(Signal current0 count0 behaviors0) = do
     signal <- construct Nothing
@@ -168,11 +163,11 @@ filterSignal__ :: (Monad super, MonadIO super)
               -> Signal self super a
               -> Narrative self super ( Signal self super b
                                       , BehaviorToken self super a
-                                      , BehaviorToken self super b)
+                                      )
 filterSignal__ signalMethod predicate sig@(Signal _ count0 behaviors0) = do
     signal <- construct Nothing
     let newBehavior event =
-          when (predicate event) $ signalMethod signal event
+          forM_ (predicate event) $ signalMethod signal
     bt <- behavior__ sig newBehavior
     return (signal,bt)
 {-# INLINE filterSignal__ #-}
@@ -268,7 +263,6 @@ data Event self super =
               -> Narrative self super ( Signal self super (Maybe event,Maybe event')
                                       , BehaviorToken self super event
                                       , BehaviorToken self super event'
-                                      , BehaviorToken self super (Maybe event,Maybe event')
                                       )
 
 
@@ -645,7 +639,6 @@ combineSignals :: ('[Bidir] <: self, Monad super, MonadIO super)
                -> Narrative self super ( Signal self super (Maybe e,Maybe e')
                                        , BehaviorToken self super e
                                        , BehaviorToken self super e'
-                                       , BehaviorToken self super (Maybe e,Maybe e')
                                        )
 combineSignals sig1 sig2 = event $ \e ->
   combineSignals_ e sig1 sig2
