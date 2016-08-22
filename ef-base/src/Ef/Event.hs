@@ -215,7 +215,7 @@ signal :: (Monad super, MonadIO super)
 signal sig e = do
   let Signal _ _ bs_ = sig
   bs <- liftIO $ readIORef bs_
-  seeded <- mapM (Map.toList bs) $ \(c,f_) ->
+  seeded <- mapM (Map.toList bs) $ \(c,f_) -> do
     f <- liftIO $ readIORef f_
     return (bs_,c,f e)
   go seeded
