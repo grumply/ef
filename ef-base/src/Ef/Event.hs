@@ -82,7 +82,8 @@ runner :: (Monad super, MonadIO super, Monad super')
 runner = do
   current   <- newIORef Nothing
   count     <- newIORef 0
-  behaviors <- newIORef $ Map.fromList [(-1,super)]
+  bhvr      <- newIORef super
+  behaviors <- newIORef $ Map.fromList [(-1,bhvr)]
   return $ Signal current count behaviors
 
 {-# INLINE current #-}
@@ -102,7 +103,7 @@ behavior sig@(Signal _ count behaviors) newBehavior = liftIO $ do
   s <- newIORef [(c,sig)]
   b <- newIORef newBehavior
   atomicModifyIORef' behaviors $ \bs ->
-    let bs' = Map.insert (c,b) bs
+    let bs' = Map.insert c b bs
     in bs' `seq` (bs',())
   return (Behavior s b)
 
@@ -116,8 +117,8 @@ mergeS :: (Monad super', MonadIO super')
                  )
 mergeS sig0 sig1 = do
   sig <- construct Nothing
-  bt0 <- behavior sig0 $ \_ -> signal sig
-  bt1 <- behavior sig1 $ \_ -> signal sig
+  bt0 <- behavior sig0 $ signal sig
+  bt1 <- behavior sig1 $ signal sig
   return (sig,bt0,bt1)
 
 {-# INLINE zipS #-}
@@ -132,10 +133,10 @@ zipS :: ( Monad super, MonadIO super
                )
 zipS sig0@(Signal cur0 cnt0 bs0) sig1@(Signal cur1 cnt1 bs1) = do
   sig <- construct Nothing
-  bt0 <- behavior sig0 $ \_ e0 -> do
+  bt0 <- behavior sig0 $ \e0 -> do
     mc1 <- current sig1
     signal sig (Just e0,mc1)
-  bt1 <- behavior sig1 $ \_ e1 -> do
+  bt1 <- behavior sig1 $ \e1 -> do
     mc0 <- current sig0
     signal sig (mc0,Just e1)
   return (sig,bt0,bt1)
@@ -151,7 +152,7 @@ mapS :: ( Monad super, MonadIO super
                )
 mapS sig f = do
   sig' <- construct Nothing
-  bt   <- behavior sig $ \_ -> signal sig' . f
+  bt   <- behavior sig $ signal sig' . f
   return (sig',bt)
 
 {-# INLINE filterS #-}
@@ -165,11 +166,11 @@ filterS :: ( Monad super, MonadIO super
                   )
 filterS sig f = do
   sig' <- construct Nothing
-  bt   <- behavior sig $ \_ e -> forM_ (f e) (signal sig')
+  bt   <- behavior sig $ \e -> forM_ (f e) (signal sig')
   return (sig',bt)
 
 {-# INLINE duplicate #-}
-duplicate :: (Monad super, MonadIO super)
+duplicate :: (Monad super', MonadIO super')
           => Behavior self super event
           -> Signal self super event
           -> super' ()
@@ -186,7 +187,8 @@ removeFrom :: (Monad super', MonadIO super')
            => Behavior self super event
            -> Signal self super event
            -> super' ()
-removeFrom (Behavior s b) from@(Signal _ _ bs_) = liftIO $ do
+removeFrom (Behavior s_ b) from@(Signal _ _ bs_) = liftIO $ do
+  s <- readIORef s_
   forM_ s $ \(c,sig) ->
     when (sig == from) $
       atomicModifyIORef' bs_ $ \bs ->
@@ -201,8 +203,9 @@ clear (Signal _ _ bs) = liftIO $ writeIORef bs Map.empty
 {-# INLINE stop #-}
 stop :: (Monad super', MonadIO super')
      => Behavior self super a -> super' ()
-stop (Behavior s b) =
-  liftIO $ forM_ s unbind'
+stop (Behavior s_ b) = liftIO $ do
+  s <- readIORef s_
+  forM_ s unbind'
   where
     unbind' (c,Signal _ _ bs_) = atomicModifyIORef' bs_ $ \bs ->
       let bs' = Map.delete c bs
