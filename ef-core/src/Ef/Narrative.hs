@@ -21,6 +21,9 @@ module Ef.Narrative
      , self
      , super
      , transform
+     , tryAny
+     , observe
+     , unsafeHoist
      , Supertype
      , Subtype
      , Can(..)
