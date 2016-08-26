@@ -26,6 +26,8 @@ import Ef.Traits as Core
 import Ef.Narrative as Core
 import Ef.Messages as Core
 
+import Ef.Machine as Core
+
 import Ef.Codensity as Core
 
 import Ef.Ma as Core
