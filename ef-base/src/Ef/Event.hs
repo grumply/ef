@@ -10,14 +10,26 @@ import Data.Promise
 import Control.Monad
 import Data.IORef
 import Data.List
+import System.Mem.Weak
 import Unsafe.Coerce
 
 import Control.Exception (BlockedIndefinitelyOnSTM(..))
 
-import qualified Data.IntMap.Strict as Map
+import qualified Data.Sequence as Seq
+
+-- A highly simplified implementation of reactive programming; behaviors
+-- are in an Event monad that permits behavior self-modification including
+-- short-circuiting, exit, and switching as well as secondary signaling.
+-- Signals are a sequence of mutable behaviors. Signals do not hold on
+-- to old values to improve GC. Behaviors are the mutable references that
+-- are stored in the Signal; they do not hold onto the Signal itself to
+-- improve GC. When combining signals, a weak reference is created to hold
+-- the latest values. The weak references is keyed on the upstream signal.
+-- Subsignal/secondary signaling tries to be productive in that events are
+-- run breadth first rather than depth first.
 
 data Event k where
-  Become :: (event -> Narrative '[Event] (Narrative self super) ())
+  Become :: (event -> Narrative '[Event] super ())
          -> k
          -> Event k
 
@@ -25,260 +37,322 @@ data Event k where
 
   End :: Event k
 
-  Subsignal :: Signal self super event'
+  Subsignal :: Signal' super event'
             -> event'
             -> k
             -> Event k
 
 become :: Monad super
-      => (event -> Narrative '[Event] (Narrative self super) ())
-      -> Narrative '[Event] (Narrative self super) ()
+      => (event -> Narrative '[Event] super ())
+      -> Narrative '[Event] super ()
 become f = self $ Become f ()
 
-continue :: Monad super => Narrative '[Event] (Narrative self super) a
+continue :: Monad super => Narrative '[Event] super a
 continue = self Continue
 
-end :: Monad super => Narrative '[Event] (Narrative self super) a
+end :: Monad super => Narrative '[Event] super a
 end = self End
 
 subsignal :: Monad super
-          => Signal self super event
+          => Signal' super event
           -> event
-          -> Narrative '[Event] (Narrative self super) ()
+          -> Narrative '[Event] super ()
 subsignal sig e = self $ Subsignal sig e ()
 
-data Signal self super event
+type Signal self super event = Signal' (Narrative self super) event
+
+data Signal' super event
     = Signal
-        (IORef (Maybe event))
-        (IORef Int)
-        (IORef (Map.IntMap (IORef (event -> Narrative '[Event] (Narrative self super) ()))))
+        (IORef [IORef (event -> Narrative '[Event] super ())])
     deriving Eq
 
-data Behavior self super event
+type Behavior self super event = Behavior' (Narrative self super) event
+
+data Behavior' super event
   = Behavior
-      (IORef [(Int,Signal self super event)])
-      (IORef (event -> Narrative '[Event] (Narrative self super) ()))
+      (IORef (event -> Narrative '[Event] super ()))
   deriving Eq
 
 {-# INLINE construct #-}
 construct :: (Monad super', MonadIO super')
-          => Maybe event -> super' (Signal self super event)
-construct mevent = liftIO $ do
-  current   <- newIORef mevent
-  count     <- newIORef 0
-  behaviors <- newIORef Map.empty
-  return $ Signal current count behaviors
+          => super' (Signal' super event)
+construct = liftIO $ do
+  behaviors <- newIORef []
+  return $ Signal behaviors
 
 {-# INLINE constructSelf #-}
 constructSelf :: (Monad super, MonadIO super)
-              => Maybe event -> Narrative self super (Signal self super event)
+              => Narrative self super (Signal self super event)
 constructSelf = construct
 
 -- Slightly more specific than necessary to avoid required type signatures.
 {-# INLINE runner #-}
-runner :: (Monad super, MonadIO super, Monad super')
-       => super (Signal self super' (Narrative self super' ()))
+runner :: forall self super super'.
+          (Monad super, MonadIO super, Monad super')
+       => super (Signal' super' (super' ()))
 runner = liftIO $ do
-  current   <- newIORef Nothing
-  count     <- newIORef 0
-  bhvr      <- newIORef super
-  behaviors <- newIORef $ Map.fromList [(-1,bhvr)]
-  return $ Signal current count behaviors
-
-{-# INLINE current #-}
-current :: (Monad super, MonadIO super)
-        => Signal self' super' e -> Narrative self super (Maybe e)
-current (Signal cur _ _) = liftIO $ readIORef cur
+  bhvr <- newIORef super
+  behaviors <- newIORef $ [bhvr]
+  return $ Signal behaviors
 
 {-# INLINE behavior #-}
 behavior :: (Monad super', MonadIO super')
-         => Signal self super event
-         -> (event -> Narrative '[Event] (Narrative self super) ())
-         -> super' (Behavior self super event)
-behavior sig@(Signal _ count behaviors) newBehavior = liftIO $ do
-  c <- atomicModifyIORef' count $ \c ->
-         let c' = c + 1
-         in c' `seq` (c',c)
-  s <- newIORef [(c,sig)]
+         => Signal' super event
+         -> (event -> Narrative '[Event] super ())
+         -> super' (Behavior' super event)
+behavior sig@(Signal behaviors) newBehavior = liftIO $ do
   b <- newIORef newBehavior
-  atomicModifyIORef' behaviors $ \bs ->
-    let bs' = Map.insert c b bs
-    in bs' `seq` (bs',())
-  return (Behavior s b)
+  modifyIORef behaviors (++ [b])
+  return (Behavior b)
 
 {-# INLINE mergeS #-}
-mergeS :: ( Monad super, MonadIO super
+mergeS :: ( Monad super, MonadIO super, MonadThrow super
           , Monad super', MonadIO super'
           )
-       => Signal self super event
-       -> Signal self super event
-       -> super' ( Signal self super event
-                 , Behavior self super event
-                 , Behavior self super event
+       => Signal' super event
+       -> Signal' super event
+       -> super' ( Signal' super event
+                 , Behavior' super event
+                 , Behavior' super event
                  )
 mergeS sig0 sig1 = do
-  sig <- construct Nothing
+  sig <- construct
   bt0 <- behavior sig0 $ super . signal sig
   bt1 <- behavior sig1 $ super . signal sig
   return (sig,bt0,bt1)
 
 {-# INLINE zipS #-}
-zipS :: ( Monad super, MonadIO super
+zipS :: ( Monad super, MonadIO super, MonadThrow super
         , Monad super', MonadIO super'
         )
-     => Signal self super event
-     -> Signal self super event'
-     -> super' ( Signal self super (Maybe event,Maybe event')
-               , Behavior self super event
-               , Behavior self super event'
+     => Signal' super event
+     -> Signal' super event'
+     -> super' ( Signal' super (Maybe event,Maybe event')
+               , Behavior' super event
+               , Behavior' super event'
                )
-zipS = zipWithS id
+zipS = zipWithS (,)
 
+-- events are seen as transient in zipWithS; it does not hold onto previous
+-- values if a signal falls out of scope.
 {-# INLINE zipWithS #-}
-zipWithS :: ( Monad super, MonadIO super
+zipWithS :: ( Monad super, MonadIO super, MonadThrow super
             , Monad super', MonadIO super'
             )
-         => ((Maybe event,Maybe event') -> x)
-         -> Signal self super event
-         -> Signal self super event'
-         -> super' ( Signal self super x
-                   , Behavior self super event
-                   , Behavior self super event'
+         => (Maybe event -> Maybe event' -> x)
+         -> Signal' super event
+         -> Signal' super event'
+         -> super' ( Signal' super x
+                   , Behavior' super event
+                   , Behavior' super event'
                    )
-zipWithS f sig0@(Signal cur0 cnt0 bs0) sig1@(Signal cur1 cnt1 bs1) = do
-  sig <- construct Nothing
+zipWithS f sig0@(Signal bs0) sig1@(Signal bs1) = do
+  sig <- construct
+  wc0_ <- liftIO $ newIORef Nothing
+  let clear_wc0_ = liftIO $ writeIORef wc0_ Nothing
+  wc1_ <- liftIO $ newIORef Nothing
+  let clear_wc1_ = liftIO $ writeIORef wc1_ Nothing
   bt0 <- behavior sig0 $ \e0 -> do
-    mc1 <- current sig1
-    super $ signal sig $ f (Just e0,mc1)
+    mc1 <- liftIO $ do
+      we0 <- mkWeak sig0 e0 $ Just clear_wc0_
+      writeIORef wc0_ (Just we0)
+      wc1 <- readIORef wc1_
+      join <$> forM wc1 deRefWeak
+    super $ signal sig $ f (Just e0) mc1
   bt1 <- behavior sig1 $ \e1 -> do
-    mc0 <- current sig0
-    super $ signal sig $ f (mc0,Just e1)
+    mc0 <- liftIO $ do
+      we1 <- mkWeak sig1 e1 $ Just clear_wc1_
+      writeIORef wc1_ (Just we1)
+      wc0 <- readIORef wc0_
+      join <$> forM wc0 deRefWeak
+    super $ signal sig $ f mc0 (Just e1)
+  return (sig,bt0,bt1)
+
+-- holds onto old value references even if a signal falls out of scope.
+{-# INLINE zipWithS' #-}
+zipWithS' :: ( Monad super, MonadIO super, MonadThrow super
+            , Monad super', MonadIO super'
+            )
+         => (Maybe event -> Maybe event' -> x)
+         -> Signal' super event
+         -> Signal' super event'
+         -> super' ( Signal' super x
+                   , Behavior' super event
+                   , Behavior' super event'
+                   )
+zipWithS' f sig0@(Signal bs0) sig1@(Signal bs1) = do
+  sig <- construct
+  c0 <- liftIO $ newIORef Nothing
+  c1 <- liftIO $ newIORef Nothing
+  bt0 <- behavior sig0 $ \e0 -> do
+    mc1 <- liftIO $ readIORef c1
+    super $ signal sig $ f (Just e0) mc1
+  bt1 <- behavior sig1 $ \e1 -> do
+    mc0 <- liftIO $ readIORef c0
+    super $ signal sig $ f mc0 (Just e1)
   return (sig,bt0,bt1)
 
 {-# INLINE mapS #-}
-mapS :: ( Monad super, MonadIO super
+mapS :: ( Monad super, MonadIO super, MonadThrow super
         , Monad super', MonadIO super'
         )
-     => Signal self super event
+     => Signal' super event
      -> (event -> event')
-     -> super' ( Signal self super event'
-               , Behavior self super event
+     -> super' ( Signal' super event'
+               , Behavior' super event
                )
 mapS sig f = do
-  sig' <- construct Nothing
+  sig' <- construct
   bt   <- behavior sig $ super . signal sig' . f
   return (sig',bt)
 
+{-# INLINE map2S #-}
+map2S :: ( Monad super, MonadIO super, MonadThrow super
+         , Monad super', MonadIO super'
+         )
+      => Signal' super event0
+      -> Signal' super event1
+      -> (Either event0 event1 -> event2)
+      -> super' ( Signal' super event2
+                , Behavior' super event0
+                , Behavior' super event1
+                )
+map2S sig0 sig1 f = do
+  sig <- construct
+  bt0 <- behavior sig0 $ super . signal sig . f . Left
+  bt1 <- behavior sig1 $ super . signal sig . f . Right
+  return (sig,bt0,bt1)
+
 {-# INLINE filterS #-}
-filterS :: ( Monad super, MonadIO super
+filterS :: ( Monad super, MonadIO super, MonadThrow super
            , Monad super', MonadIO super'
            )
-        => Signal self super event
+        => Signal' super event
         -> (event -> Maybe event')
-        -> super' ( Signal self super event'
-                  , Behavior self super event
+        -> super' ( Signal' super event'
+                  , Behavior' super event
                   )
 filterS sig f = do
-  sig' <- construct Nothing
+  sig' <- construct
   bt   <- behavior sig $ \e -> super $ forM_ (f e) (signal sig')
   return (sig',bt)
 
+{-# INLINE filter2S #-}
+filter2S :: ( Monad super, MonadIO super, MonadThrow super
+            , Monad super', MonadIO super'
+            )
+         => Signal' super event0
+         -> Signal' super event1
+         -> (Either event0 event1 -> Maybe event)
+         -> super' ( Signal' super event
+                   , Behavior' super event0
+                   , Behavior' super event1
+                   )
+filter2S sig0 sig1 f = do
+  sig <- construct
+  bt0 <- behavior sig0 $ \e -> super $ forM_ (f $ Left e) (signal sig)
+  bt1 <- behavior sig1 $ \e -> super $ forM_ (f $ Right e) (signal sig)
+  return (sig,bt0,bt1)
+
 {-# INLINE duplicate #-}
 duplicate :: (Monad super', MonadIO super')
-          => Behavior self super event
-          -> Signal self super event
+          => Behavior' super event
+          -> Signal' super event
           -> super' ()
-duplicate (Behavior s b) (Signal _ c_ bs_) = liftIO $ do
-  c <- atomicModifyIORef' c_ $ \c ->
-         let c' = c + 1
-         in c' `seq` (c',c)
-  atomicModifyIORef' bs_ $ \bs ->
-    let bs' = Map.insert c b bs
-    in bs' `seq` (bs',())
+duplicate (Behavior b) (Signal bs_) =
+  liftIO $
+    modifyIORef bs_ $ (++ [b])
 
-{-# INLINE removeFrom #-}
-removeFrom :: (Monad super', MonadIO super')
-           => Behavior self super event
-           -> Signal self super event
-           -> super' ()
-removeFrom (Behavior s_ b) from@(Signal _ _ bs_) = liftIO $ do
-  s <- readIORef s_
-  forM_ s $ \(c,sig) ->
-    when (sig == from) $
-      atomicModifyIORef' bs_ $ \bs ->
-        let bs' = Map.delete c bs
-        in bs' `seq` (bs',())
-
-{-# INLINE clear #-}
-clear :: (Monad super', MonadIO super')
-      => Signal self super e -> super' ()
-clear (Signal _ _ bs) = liftIO $ writeIORef bs Map.empty
-
+-- stop is a delayed effect that doesn't happen until the next event, but all
+-- internally maintained references are released; stopping an un-needed behavior
+-- can permit GC external to the behavior itself.
 {-# INLINE stop #-}
-stop :: (Monad super', MonadIO super')
-     => Behavior self super a -> super' ()
-stop (Behavior s_ b) = liftIO $ do
-  s <- readIORef s_
-  forM_ s unbind'
-  where
-    unbind' (c,Signal _ _ bs_) = atomicModifyIORef' bs_ $ \bs ->
-      let bs' = Map.delete c bs
-      in bs' `seq` (bs',())
+stop :: (Monad super, Monad super', MonadIO super')
+     => Behavior' super a -> super' ()
+stop (Behavior b_) =
+  liftIO $
+    atomicModifyIORef' b_ $ const (const end,())
 
-data Runnable self super where
-  Runnable :: IORef (Map.IntMap (IORef (event -> Narrative '[Event] (Narrative self super) ())))
-           -> Int
-           -> IORef (event -> Narrative '[Event] (Narrative self super) ())
-           -> Narrative '[Event] (Narrative self super) ()
-           -> Runnable self super
+data Runnable super where
+  Runnable :: IORef [(IORef (event -> Narrative '[Event] super ()))]
+           -> IORef (event -> Narrative '[Event] super ())
+           -> Narrative '[Event] super ()
+           -> Runnable super
 
 {-# INLINE signal #-}
-signal :: forall self super event.
-          (Monad super, MonadIO super)
-       => Signal self super event
+signal :: forall super event.
+          (Monad super, MonadIO super, MonadThrow super)
+       => Signal' super event
        -> event
-       -> Narrative self super ()
+       -> super ()
 signal sig e = do
-  let Signal cur _ bs_ = sig
+  let Signal bs_ = sig
   bs <- liftIO $ readIORef bs_
-  liftIO $ writeIORef cur $ Just e
-  seeded <- forM (Map.toList bs) $ \(c,f_) -> do
+  seeded <- forM bs $ \f_ -> do
     f <- liftIO $ readIORef f_
-    return $ Runnable bs_ c f_ (f e)
-  go seeded
+    return $ Runnable bs_ f_ (f e)
+  signal_ seeded
+
+{-# INLINE signal_ #-}
+signal_ :: forall super.
+           (Monad super, MonadIO super, MonadThrow super) 
+        => [Runnable super] -> super ()
+signal_ [] = return ()
+signal_ (r@(Runnable bs_ f_ f):rs) = start rs r
   where
-    go :: [Runnable self super] -> Narrative self super ()
-    go [] = return ()
-    go (r@(Runnable bs_ c f_ f):rs) = do
-      start r
-      go rs
+    start :: [Runnable super] -> Runnable super -> super ()
+    start rs (Runnable bs_ f_ f) = go' f
       where
-        start :: Runnable self super -> Narrative self super ()
-        start (Runnable bs_ c f_ f) = go' f
-          where
-            go' :: Narrative '[Event] (Narrative self super) () -> Narrative self super ()
-            go' (Return _)  = return ()
-            go' (Fail e)    = Fail e -- One behavior can clobber an entire process.
-            go' (Super sup) = sup >>= go'
-            go' (Say msg k) =
-              case prj msg of
-                ~(Just x) ->
-                  case x of
-                    Become f' x -> do
-                      liftIO $ writeIORef f_ $ unsafeCoerce f'
-                      go' (k x)
-                    Continue -> return ()
-                    End      ->
-                      liftIO $ atomicModifyIORef' bs_ $ \bs ->
-                        let bs' = Map.delete c bs
-                        in bs' `seq` (bs',())
-                    Subsignal sig' e' x -> do
-                      let Signal _ _ bs'_ = sig'
-                      bs' <- liftIO $ readIORef bs'_
-                      seeded <- forM (Map.toList bs') $ \(c',f'_) -> do
-                        f' <- liftIO $ readIORef f'_
-                        return (Runnable bs'_ c' f'_ (f' e'))
-                      go ((Runnable bs_ c f_ (k x)):rs ++ unsafeCoerce seeded)
+        go' :: Narrative '[Event] super ()
+            -> super ()
+        go' (Return _) = signal_ rs
+
+        -- One behavior can clobber an entire event;
+        -- this is expected behavior since a signal is
+        -- seen as a unification of possibly-multiple
+        -- seemingly disjoint processes. This is an
+        -- important point, however; when constructing
+        -- a behavior, keep in mind that it has effects
+        -- on the signal it is connected to, but /only/
+        -- through 'throwM'. This may also be used to
+        -- interesting effect; one may set up a behavior
+        -- that guarantees some predicate, i.e. if the
+        -- predicate does not succeed then the behavior
+        -- throws an exception and the rest of the
+        -- behaviors after that will not run; a security
+        -- mechanism.
+        go' (Fail e)    = throwM e
+
+        go' (Super sup) = sup >>= go'
+        go' (Say msg k) =
+          case prj msg of
+            ~(Just x) ->
+              case x of
+                Become f' x -> do
+                  liftIO $ writeIORef f_ $ unsafeCoerce f'
+                  go' (k x)
+                Continue -> signal_ rs
+                End -> liftIO $ do
+                  -- in case we arrived here through trigger, nullify the behavior.
+                  writeIORef f_ (const end)
+                  modifyIORef bs_ $ Prelude.filter (/= f_)
+                Subsignal sig' e' x -> do
+                  let Signal bs'_ = sig'
+                  bs' <- liftIO $ readIORef bs'_
+                  seeded <- forM bs' $ \f'_ -> do
+                    f' <- liftIO $ readIORef f'_
+                    return (Runnable bs'_ f'_ (f' e'))
+                  signal_ (((Runnable bs_ f_ (k x)) : rs) ++ unsafeCoerce seeded)
+
+{-# INLINE trigger #-}
+trigger :: (Monad super, MonadIO super)
+        => Behavior self super event
+        -> event
+        -> Narrative self super ()
+trigger (Behavior b_) e = do
+  b <- liftIO $ readIORef b_
+  bs_ <- liftIO $ newIORef []
+  signal_ [Runnable bs_ b_ (b e)]
 
 -- An abstract Signal queue. Useful for building event loops.
 -- Note that there is still a need to call unsafeCoerce on the
@@ -287,7 +361,7 @@ signal sig e = do
 -- programmer to know how to use this safely; single-responsibility
 -- for both injection and extraction with unified typing is required.
 data Signaling where
-    Signaling :: [e] -> Signal self super e -> Signaling
+    Signaling :: [e] -> Signal' super e -> Signaling
 data Signaled where
     Signaled :: Queue Signaling -> Signaled
 
@@ -304,7 +378,7 @@ constructAs :: ( Monad internal, MonadIO internal
                , Monad external, MonadIO external
                )
             => Signaled
-            -> Signal internalSelf internal (Narrative internalSelf internal ())
+            -> Signal' (Narrative internalSelf internal) (Narrative internalSelf internal ())
             -> Narrative internalSelf internal `As` external
 constructAs buf sig = As buf $ \nar -> liftIO $ do
   p <- newPromiseIO
@@ -376,14 +450,14 @@ instance Exception DriverStopped
 {-# INLINE buffer #-}
 buffer :: (Monad super', MonadIO super')
               => Signaled
-              -> Signal self super e
+              -> Signal' super e
               -> e
-              -> Narrative self' super' ()
+              -> super' ()
 buffer buf sig e = liftIO $ bufferIO buf sig e
 
 {-# INLINE bufferIO #-}
 bufferIO :: Signaled
-                -> Signal self super e
+                -> Signal' super e
                 -> e
                 -> IO ()
 bufferIO (Signaled gb) sig e = arriveIO gb $ Signaling [e] sig

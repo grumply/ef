@@ -39,6 +39,7 @@ library
                      , Ef.Writer
                      , System.Random.Shuffle
 
+                     , Ef.Event.ST
                      , Ef.Base
   -- other-modules:
   -- other-extensions:

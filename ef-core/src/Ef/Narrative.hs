@@ -16,18 +16,22 @@
 {-# LANGUAGE UndecidableInstances #-}
 module Ef.Narrative
      ( Narrative(..)
+     , Arrative(..)
      , type (<:)
      , type (:>)
      , self
      , super
      , transform
      , tryAny
+     , mapException
+     , forException
      , observe
      , unsafeHoist
      , Supertype
      , Subtype
      , Can(..)
      , Upcast(..)
+     , module Control.Arrow
      ) where
 
 
@@ -36,6 +40,8 @@ import Ef.Messages
 import Ef.Type.Nat
 
 import Control.Applicative
+import Control.Arrow
+import Control.Category
 import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Trans.Class
@@ -45,6 +51,8 @@ import Control.Monad.Except (MonadError(..))
 import Control.Monad.Reader (MonadReader(..))
 import Control.Monad.State (MonadState(..))
 import Control.Monad.Writer (MonadWriter(..))
+
+import Prelude hiding (id,(.))
 
 import Data.IORef
 
@@ -62,6 +70,39 @@ data Narrative self super result
     | Return result
 
     | Fail SomeException
+
+newtype Arrative self super a b = Arrative { runArrative :: a -> Narrative self super b }
+instance Monad super => Category (Arrative self super) where
+  id = Arrative return
+  (Arrative f) . (Arrative g) = Arrative (\b -> g b >>= f)
+
+instance Monad super => Arrow (Arrative self super) where
+  arr f = Arrative (return . f)
+  first (Arrative f) = Arrative (\ ~(b,d) -> f b >>= \c -> return (c,d))
+  second (Arrative f) = Arrative  (\ ~(d,b) -> f b >>= \c -> return (d,c))
+
+instance MonadPlus super => ArrowZero (Arrative self super) where
+  zeroArrow = Arrative (\_ -> mzero)
+
+instance MonadPlus super => ArrowPlus (Arrative self super) where
+  Arrative f <+> Arrative g = Arrative (\x -> f x `mplus` g x)
+
+instance Monad super => ArrowChoice (Arrative self super) where
+  left f = f +++ arr id
+  right f = arr id +++ f
+  f +++ g = (f >>> arr Left) ||| (g >>> arr Right)
+  Arrative f ||| Arrative g = Arrative (either f g)
+
+instance Monad super => ArrowApply (Arrative self super) where
+  app = Arrative (\(Arrative f,x) -> f x)
+
+-- not possible; >>= is strict since it inspects shape, right?
+-- instance MonadFix m => ArrowLoop (Kleisli m) where
+--      loop (Kleisli f) = Kleisli (liftM fst . mfix . f')
+--        where f' x y = f (x, snd y)
+
+instance Functor super => Functor (Arrative self super a) where
+  fmap f (Arrative n) = Arrative (fmap (fmap f) n)
 
 instance ( Upcast (Messages small) (Messages large)
          , Functor super
@@ -218,9 +259,19 @@ tryAny :: ( Monad super
           )
        => Narrative self super a
        -> Narrative self super (Either SomeException a)
-
 tryAny = try
 
+mapException :: (Monad super, Exception e, Exception e')
+             => (e -> e')
+             -> Narrative self super a
+             -> Narrative self super a
+mapException f n = handle (\e -> throwM (f e)) n
+
+forException  :: (Monad super, Exception e, Exception e')
+             => Narrative self super a
+             -> (e -> e')
+             -> Narrative self super a
+forException = flip mapException
 
 data Restore m = Unmasked | Masked (forall x. m x -> m x)
 
@@ -303,7 +354,7 @@ type family (<:) (messages' :: [* -> *]) messages where
 
     (message ': messages') <: messages =
         ( Can' message messages (Offset message messages)
-        , messages' <: messages 
+        , messages' <: messages
         )
 
 

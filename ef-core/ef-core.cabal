@@ -1,33 +1,41 @@
 
 name:                ef-core
 version:             1.6.0.0
-synopsis:            
--- description:         
+synopsis:
+-- description:
 homepage:            ef-lang.org
 license:             BSD3
 license-file:        LICENSE
 author:              S. M. Hickman
 maintainer:          sean@grump.ly
--- copyright:           
+-- copyright:
 category:            Development, Language
 build-type:          Simple
--- extra-source-files:  
+-- extra-source-files:
 cabal-version:       >=1.10
-                     
+
 library
   exposed-modules:
                   Ef
                   Ef.Narrative
                   Ef.Type.Set
-                  Ef.Type.Nat 
+                  Ef.Type.Nat
                   Ef.Traits
                   Ef.Messages
                   Ef.Ma
                   Ef.Object
                   Ef.Codensity
+                  Ef.Machine
 
-  -- other-modules:       
-  -- other-extensions:    
-  build-depends:       base >=4.8 && <4.10, deepseq >= 1.4.1.1, exceptions >= 0.8 && < 0.9, transformers >= 0.4 && < 0.5, mtl >= 2.2 && < 2.3, mmorph
+  -- other-modules:
+  -- other-extensions:
+  build-depends:       base >=4.8 && <4.10
+                     , deepseq >= 1.4.1.1
+                    , exceptions >= 0.8 && < 0.9
+                    , transformers >= 0.4 && < 0.5
+                    , mtl >= 2.2 && < 2.3
+                    , mmorph
+                    , comonad
+                    , free
   hs-source-dirs:      src
   default-language:    Haskell2010
