@@ -16,7 +16,6 @@
 {-# LANGUAGE UndecidableInstances #-}
 module Ef.Narrative
      ( Narrative(..)
-     , Arrative(..)
      , type (<:)
      , type (:>)
      , self
@@ -31,10 +30,14 @@ module Ef.Narrative
      , Subtype
      , Can(..)
      , Upcast(..)
-     , module Control.Arrow
+
+     , Arrative(..)
+     , art
+     , getA
+     , localA
+     , constA
+     , voidA
      ) where
-
-
 
 import Ef.Messages
 import Ef.Type.Nat
@@ -44,6 +47,7 @@ import Control.Arrow
 import Control.Category
 import Control.Monad
 import Control.Monad.Catch
+import Control.Monad.Fix
 import Control.Monad.Trans.Class
 import Control.Monad.IO.Class
 import Control.Monad.Morph
@@ -71,39 +75,6 @@ data Narrative self super result
 
     | Fail SomeException
 
-newtype Arrative self super a b = Arrative { runArrative :: a -> Narrative self super b }
-instance Monad super => Category (Arrative self super) where
-  id = Arrative return
-  (Arrative f) . (Arrative g) = Arrative (\b -> g b >>= f)
-
-instance Monad super => Arrow (Arrative self super) where
-  arr f = Arrative (return . f)
-  first (Arrative f) = Arrative (\ ~(b,d) -> f b >>= \c -> return (c,d))
-  second (Arrative f) = Arrative  (\ ~(d,b) -> f b >>= \c -> return (d,c))
-
-instance MonadPlus super => ArrowZero (Arrative self super) where
-  zeroArrow = Arrative (\_ -> mzero)
-
-instance MonadPlus super => ArrowPlus (Arrative self super) where
-  Arrative f <+> Arrative g = Arrative (\x -> f x `mplus` g x)
-
-instance Monad super => ArrowChoice (Arrative self super) where
-  left f = f +++ arr id
-  right f = arr id +++ f
-  f +++ g = (f >>> arr Left) ||| (g >>> arr Right)
-  Arrative f ||| Arrative g = Arrative (either f g)
-
-instance Monad super => ArrowApply (Arrative self super) where
-  app = Arrative (\(Arrative f,x) -> f x)
-
--- not possible; >>= is strict since it inspects shape, right?
--- instance MonadFix m => ArrowLoop (Kleisli m) where
---      loop (Kleisli f) = Kleisli (liftM fst . mfix . f')
---        where f' x y = f (x, snd y)
-
-instance Functor super => Functor (Arrative self super a) where
-  fmap f (Arrative n) = Arrative (fmap (fmap f) n)
-
 instance ( Upcast (Messages small) (Messages large)
          , Functor super
          )
@@ -123,10 +94,10 @@ instance ( Upcast (Messages small) (Messages large)
             Say (upcast message) (upcast . k)
 
 instance MonadTrans (Narrative self) where
-    lift = super
+    lift m = Super (fmap Return m)
 
 instance (Monad super, MonadIO super) => MonadIO (Narrative self super) where
-    liftIO m = Super (liftIO (m >>= \r -> return (Return r)))
+    liftIO m = Super (liftIO (fmap Return m))
 
 instance MonadState s super => MonadState s (Narrative self super) where
   get = lift get
@@ -309,13 +280,10 @@ instance (MonadMask super, MonadCatch (Narrative self super), MonadIO super, Mon
   mask = liftMask mask
   uninterruptibleMask = liftMask uninterruptibleMask
 
-super
-    :: Functor super
-    => super result
-    -> Narrative self super result
-
-super m =
-    Super (fmap Return m)
+-- Note super is strictly more powerful than lift; lift can be implemented in
+-- terms of super.
+super :: Functor super => super (Narrative self super result) -> Narrative self super result
+super = Super
 
 {-# INLINE [2] self #-}
 self
@@ -783,3 +751,138 @@ _transform (Transform t) =
     ;
 
   #-}
+
+localA :: b -> Arrative self super b r -> Arrative self super a r
+localA a (Arrative ar) = Arrative $ \_ -> ar a
+
+getA :: Monad super => Arrative self super b b
+getA = Arrative return
+
+-- Defined purely to avoid the existence of the invalid ArrowLoop instance.
+-- This implementation is equivalent to but strictly less generic than Kleisli.
+newtype Arrative self super a b = Arrative { runArrative :: a -> Narrative self super b }
+instance Monad super => Category (Arrative self super) where
+  id = Arrative return
+  (Arrative f) . (Arrative g) = Arrative (\b -> g b >>= f)
+
+instance Monad super => Arrow (Arrative self super) where
+  arr f = Arrative (return . f)
+  first (Arrative f) = Arrative (\ ~(b,d) -> f b >>= \c -> return (c,d))
+  second (Arrative f) = Arrative  (\ ~(d,b) -> f b >>= \c -> return (d,c))
+
+instance MonadPlus super => ArrowZero (Arrative self super) where
+  zeroArrow = Arrative (\_ -> mzero)
+
+instance MonadPlus super => ArrowPlus (Arrative self super) where
+  Arrative f <+> Arrative g = Arrative (\x -> f x `mplus` g x)
+
+instance Monad super => ArrowChoice (Arrative self super) where
+  left f = f +++ arr id
+  right f = arr id +++ f
+  f +++ g = (f >>> arr Left) ||| (g >>> arr Right)
+  Arrative f ||| Arrative g = Arrative (either f g)
+
+instance Monad super => ArrowApply (Arrative self super) where
+  app = Arrative (\(Arrative f,x) -> f x)
+
+-- The (* -> *) classes for Arrative are reader-style arrows.
+instance Functor super => Functor (Arrative self super a) where
+  fmap f (Arrative n) = Arrative (fmap (fmap f) n)
+
+instance Monad super => Applicative (Arrative self super a) where
+  pure x = Arrative (arr (const (return x)))
+  Arrative f <*> Arrative x = Arrative $ \r -> do
+    g <- f r
+    fmap g (x r)
+
+instance Monad super => Monad (Arrative self super a) where
+  (Arrative a) >>= f = Arrative $ \r -> do
+    x <- a r
+    let g = f x
+    runArrative g r
+
+instance MonadPlus super => Alternative (Arrative self super a) where
+  empty = zeroArrow
+  x <|> y = x <+> y
+
+instance MonadPlus super => MonadPlus (Arrative self super a) where
+  mzero = zeroArrow
+  x `mplus` y = x <+> y
+
+instance (Monad super, MonadIO super) => MonadIO (Arrative self super a) where
+  liftIO = constA . liftIO
+
+instance MonadState s super => MonadState s (Arrative self super a) where
+  get = constA get
+  put = constA . put
+  state = constA . state
+
+instance MonadReader r super => MonadReader r (Arrative self super a) where
+  ask = constA ask
+  local l (Arrative a) = Arrative $ local l . a
+  reader = constA . reader
+
+instance MonadWriter w super => MonadWriter w (Arrative self super a) where
+  writer = constA . writer
+  tell = constA . tell
+  listen (Arrative a) = Arrative $ listen . a
+  pass (Arrative a) = Arrative $ pass . a
+
+instance Monad super => MonadThrow (Arrative self super a) where
+  throwM = constA . throwM
+
+instance Monad super => MonadCatch (Arrative self super a) where
+  catch (Arrative a) f = Arrative $ \n ->
+    catch (a n) (\e -> runArrative (f e) n)
+
+instance (MonadError e super) => MonadError e (Arrative self super a) where
+  throwError = constA . throwError
+  catchError (Arrative a) f = Arrative $ \n ->
+    catchError (a n) (\e -> runArrative (f e) n)
+
+instance (MonadMask super, MonadCatch (Narrative self super), MonadIO super, Monad super) => MonadMask (Arrative self super a) where
+  -- mask :: ((forall x. Arrative self super a x -> Arrative self super a x) -> Arrative self super a b) -> Arrative self super a b
+  mask = liftMaskA mask
+  uninterruptibleMask = liftMaskA uninterruptibleMask
+
+
+liftMaskA :: forall super self a r. (MonadIO super, MonadCatch super)
+         => (forall s . ((forall x . super x -> super x) -> super s) -> super s)
+         -> ((forall x . Arrative self super a x -> Arrative self super a x)
+              -> Arrative self super a r)
+         -> Arrative self super a r
+liftMaskA maskVariant k = Arrative $ \a -> do
+  ioref <- liftIO $ newIORef Unmasked
+  let loop :: Arrative self super a r -> Arrative self super a r
+      loop n = Arrative $ \a ->
+        case runArrative n a of
+          Return r -> Return r
+          Fail e -> Fail e
+          Super sup -> Super $ maskVariant $ \unmaskVariant -> do
+            liftIO $ writeIORef ioref $ Masked unmaskVariant
+            sup >>= chunk . constA >>= return . flip runArrative a . loop
+          Say msg k -> Say msg (flip runArrative a . loop . constA . k)
+      unmask :: forall q. Arrative self super a q -> Arrative self super a q
+      unmask n = Arrative $ \a ->
+        case runArrative n a of
+          Return r -> Return r
+          Fail e -> Fail e
+          Super sup -> Super $ do
+            Masked unmaskVariant <- liftIO $ readIORef ioref
+            unmaskVariant (sup >>= chunk . constA >>= return . flip runArrative a . unmask)
+          Say msg k -> Say msg (flip runArrative a . unmask . constA . k)
+      chunk :: forall s. Arrative self super a s -> super (Arrative self super a s)
+      chunk ar =
+        case runArrative ar a of
+          (Super sup) -> sup >>= chunk . constA
+          s           -> return (constA s)
+  runArrative (loop $ k unmask) a
+
+art :: (Monad super) => (a -> Narrative self super b) -> Arrative self super a b
+art = Arrative
+
+constA :: (Monad super) => Narrative self super b -> Arrative self super a b
+constA = Arrative . const
+
+voidA :: (Monad super) => Arrative self super a ()
+voidA = constA (return ())

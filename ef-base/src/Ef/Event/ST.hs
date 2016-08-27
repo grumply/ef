@@ -14,8 +14,6 @@ import Unsafe.Coerce
 import Data.STRef.Strict
 import Control.Monad.ST
 
-import qualified Data.Sequence as Seq
-
 data Event k where
   Become :: (event -> Narrative '[Event] (ST s) ())
          -> k
@@ -63,7 +61,7 @@ construct = do
 -- Slightly more specific than necessary to avoid required type signatures.
 runner :: ST s (Signal' s (ST s ()))
 runner = do
-  bhvr <- newSTRef super
+  bhvr <- newSTRef lift
   behaviors <- newSTRef [bhvr]
   return $ Signal behaviors
 
@@ -83,8 +81,8 @@ mergeS :: Signal' s event
                )
 mergeS sig0 sig1 = do
   sig <- construct
-  bt0 <- behavior sig0 $ super . signal sig
-  bt1 <- behavior sig1 $ super . signal sig
+  bt0 <- behavior sig0 $ lift . signal sig
+  bt1 <- behavior sig1 $ lift . signal sig
   return (sig,bt0,bt1)
 
 zipS :: Signal' s event
@@ -107,10 +105,10 @@ zipWithS f sig0@(Signal bs0) sig1@(Signal bs1) = do
   sig <- construct
   c0 <- newSTRef Nothing
   c1 <- newSTRef Nothing
-  bt0 <- behavior sig0 $ \e0 -> super $ do
+  bt0 <- behavior sig0 $ \e0 -> lift $ do
     mc1 <- readSTRef c1
     signal sig $ f (Just e0) mc1
-  bt1 <- behavior sig1 $ \e1 -> super $ do
+  bt1 <- behavior sig1 $ \e1 -> lift $ do
     mc0 <- readSTRef c0
     signal sig $ f mc0 (Just e1)
   return (sig,bt0,bt1)
@@ -122,7 +120,7 @@ mapS :: Signal' s event
              )
 mapS sig f = do
   sig' <- construct
-  bt   <- behavior sig $ super . signal sig' . f
+  bt   <- behavior sig $ lift . signal sig' . f
   return (sig',bt)
 
 map2S :: Signal' s event0
@@ -134,8 +132,8 @@ map2S :: Signal' s event0
               )
 map2S sig0 sig1 f = do
   sig <- construct
-  bt0 <- behavior sig0 $ super . signal sig . f . Left
-  bt1 <- behavior sig1 $ super . signal sig . f . Right
+  bt0 <- behavior sig0 $ lift . signal sig . f . Left
+  bt1 <- behavior sig1 $ lift . signal sig . f . Right
   return (sig,bt0,bt1)
 
 filterS :: Signal' s event
@@ -145,7 +143,7 @@ filterS :: Signal' s event
                 )
 filterS sig f = do
   sig' <- construct
-  bt   <- behavior sig $ \e -> super $ forM_ (f e) (signal sig')
+  bt   <- behavior sig $ \e -> lift $ forM_ (f e) (signal sig')
   return (sig',bt)
 
 filter2S :: Signal' s event0
@@ -157,8 +155,8 @@ filter2S :: Signal' s event0
                  )
 filter2S sig0 sig1 f = do
   sig <- construct
-  bt0 <- behavior sig0 $ \e -> super $ forM_ (f $ Left e) (signal sig)
-  bt1 <- behavior sig1 $ \e -> super $ forM_ (f $ Right e) (signal sig)
+  bt0 <- behavior sig0 $ \e -> lift $ forM_ (f $ Left e) (signal sig)
+  bt1 <- behavior sig1 $ \e -> lift $ forM_ (f $ Right e) (signal sig)
   return (sig,bt0,bt1)
 
 duplicate :: Behavior' s event

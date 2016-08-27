@@ -15,8 +15,6 @@ import Unsafe.Coerce
 
 import Control.Exception (BlockedIndefinitelyOnSTM(..))
 
-import qualified Data.Sequence as Seq
-
 -- A highly simplified implementation of reactive programming; behaviors
 -- are in an Event monad that permits behavior self-modification including
 -- short-circuiting, exit, and switching as well as secondary signaling.
@@ -91,7 +89,7 @@ runner :: forall self super super'.
           (Monad super, MonadIO super, Monad super')
        => super (Signal' super' (super' ()))
 runner = liftIO $ do
-  bhvr <- newIORef super
+  bhvr <- newIORef lift
   behaviors <- newIORef $ [bhvr]
   return $ Signal behaviors
 
@@ -117,8 +115,8 @@ mergeS :: ( Monad super, MonadIO super, MonadThrow super
                  )
 mergeS sig0 sig1 = do
   sig <- construct
-  bt0 <- behavior sig0 $ super . signal sig
-  bt1 <- behavior sig1 $ super . signal sig
+  bt0 <- behavior sig0 $ lift . signal sig
+  bt1 <- behavior sig1 $ lift . signal sig
   return (sig,bt0,bt1)
 
 {-# INLINE zipS #-}
@@ -158,14 +156,14 @@ zipWithS f sig0@(Signal bs0) sig1@(Signal bs1) = do
       writeIORef wc0_ (Just we0)
       wc1 <- readIORef wc1_
       join <$> forM wc1 deRefWeak
-    super $ signal sig $ f (Just e0) mc1
+    lift $ signal sig $ f (Just e0) mc1
   bt1 <- behavior sig1 $ \e1 -> do
     mc0 <- liftIO $ do
       we1 <- mkWeak sig1 e1 $ Just clear_wc1_
       writeIORef wc1_ (Just we1)
       wc0 <- readIORef wc0_
       join <$> forM wc0 deRefWeak
-    super $ signal sig $ f mc0 (Just e1)
+    lift $ signal sig $ f mc0 (Just e1)
   return (sig,bt0,bt1)
 
 -- holds onto old value references even if a signal falls out of scope.
@@ -186,10 +184,10 @@ zipWithS' f sig0@(Signal bs0) sig1@(Signal bs1) = do
   c1 <- liftIO $ newIORef Nothing
   bt0 <- behavior sig0 $ \e0 -> do
     mc1 <- liftIO $ readIORef c1
-    super $ signal sig $ f (Just e0) mc1
+    lift $ signal sig $ f (Just e0) mc1
   bt1 <- behavior sig1 $ \e1 -> do
     mc0 <- liftIO $ readIORef c0
-    super $ signal sig $ f mc0 (Just e1)
+    lift $ signal sig $ f mc0 (Just e1)
   return (sig,bt0,bt1)
 
 {-# INLINE mapS #-}
@@ -203,7 +201,7 @@ mapS :: ( Monad super, MonadIO super, MonadThrow super
                )
 mapS sig f = do
   sig' <- construct
-  bt   <- behavior sig $ super . signal sig' . f
+  bt   <- behavior sig $ lift . signal sig' . f
   return (sig',bt)
 
 {-# INLINE map2S #-}
@@ -219,8 +217,8 @@ map2S :: ( Monad super, MonadIO super, MonadThrow super
                 )
 map2S sig0 sig1 f = do
   sig <- construct
-  bt0 <- behavior sig0 $ super . signal sig . f . Left
-  bt1 <- behavior sig1 $ super . signal sig . f . Right
+  bt0 <- behavior sig0 $ lift . signal sig . f . Left
+  bt1 <- behavior sig1 $ lift . signal sig . f . Right
   return (sig,bt0,bt1)
 
 {-# INLINE filterS #-}
@@ -234,7 +232,7 @@ filterS :: ( Monad super, MonadIO super, MonadThrow super
                   )
 filterS sig f = do
   sig' <- construct
-  bt   <- behavior sig $ \e -> super $ forM_ (f e) (signal sig')
+  bt   <- behavior sig $ \e -> lift $ forM_ (f e) (signal sig')
   return (sig',bt)
 
 {-# INLINE filter2S #-}
@@ -250,8 +248,8 @@ filter2S :: ( Monad super, MonadIO super, MonadThrow super
                    )
 filter2S sig0 sig1 f = do
   sig <- construct
-  bt0 <- behavior sig0 $ \e -> super $ forM_ (f $ Left e) (signal sig)
-  bt1 <- behavior sig1 $ \e -> super $ forM_ (f $ Right e) (signal sig)
+  bt0 <- behavior sig0 $ \e -> lift $ forM_ (f $ Left e) (signal sig)
+  bt1 <- behavior sig1 $ \e -> lift $ forM_ (f $ Right e) (signal sig)
   return (sig,bt0,bt1)
 
 {-# INLINE duplicate #-}
@@ -259,9 +257,7 @@ duplicate :: (Monad super', MonadIO super')
           => Behavior' super event
           -> Signal' super event
           -> super' ()
-duplicate (Behavior b) (Signal bs_) =
-  liftIO $
-    modifyIORef bs_ $ (++ [b])
+duplicate (Behavior b) (Signal bs_) = liftIO $ modifyIORef bs_ (++ [b])
 
 -- stop is a delayed effect that doesn't happen until the next event, but all
 -- internally maintained references are released; stopping an un-needed behavior
@@ -269,9 +265,7 @@ duplicate (Behavior b) (Signal bs_) =
 {-# INLINE stop #-}
 stop :: (Monad super, Monad super', MonadIO super')
      => Behavior' super a -> super' ()
-stop (Behavior b_) =
-  liftIO $
-    atomicModifyIORef' b_ $ const (const end,())
+stop (Behavior b_) = liftIO $ atomicModifyIORef' b_ $ const (const end,())
 
 data Runnable super where
   Runnable :: IORef [(IORef (event -> Narrative '[Event] super ()))]
@@ -295,7 +289,7 @@ signal sig e = do
 
 {-# INLINE signal_ #-}
 signal_ :: forall super.
-           (Monad super, MonadIO super, MonadThrow super) 
+           (Monad super, MonadIO super, MonadThrow super)
         => [Runnable super] -> super ()
 signal_ [] = return ()
 signal_ (r@(Runnable bs_ f_ f):rs) = start rs r
