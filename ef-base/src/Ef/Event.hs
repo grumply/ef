@@ -129,7 +129,7 @@ zipS :: ( Monad super, MonadIO super, MonadThrow super
                , Behavior' super event
                , Behavior' super event'
                )
-zipS = zipWithS (,)
+zipS = zipWithS (\x y -> return (x,y))
 
 -- events are seen as transient in zipWithS; it does not hold onto previous
 -- values if a signal falls out of scope.
@@ -137,7 +137,7 @@ zipS = zipWithS (,)
 zipWithS :: ( Monad super, MonadIO super, MonadThrow super
             , Monad super', MonadIO super'
             )
-         => (Maybe event -> Maybe event' -> x)
+         => (Maybe event -> Maybe event' -> super x)
          -> Signal' super event
          -> Signal' super event'
          -> super' ( Signal' super x
@@ -156,14 +156,18 @@ zipWithS f sig0@(Signal bs0) sig1@(Signal bs1) = do
       writeIORef wc0_ (Just we0)
       wc1 <- readIORef wc1_
       join <$> forM wc1 deRefWeak
-    lift $ signal sig $ f (Just e0) mc1
+    lift $ do
+      e' <- f (Just e0) mc1
+      signal sig e'
   bt1 <- behavior sig1 $ \e1 -> do
     mc0 <- liftIO $ do
       we1 <- mkWeak sig1 e1 $ Just clear_wc1_
       writeIORef wc1_ (Just we1)
       wc0 <- readIORef wc0_
       join <$> forM wc0 deRefWeak
-    lift $ signal sig $ f mc0 (Just e1)
+    lift $ do
+      e' <- f mc0 (Just e1)
+      signal sig e'
   return (sig,bt0,bt1)
 
 -- holds onto old value references even if a signal falls out of scope.
@@ -171,7 +175,7 @@ zipWithS f sig0@(Signal bs0) sig1@(Signal bs1) = do
 zipWithS' :: ( Monad super, MonadIO super, MonadThrow super
             , Monad super', MonadIO super'
             )
-         => (Maybe event -> Maybe event' -> x)
+         => (Maybe event -> Maybe event' -> super x)
          -> Signal' super event
          -> Signal' super event'
          -> super' ( Signal' super x
@@ -184,10 +188,14 @@ zipWithS' f sig0@(Signal bs0) sig1@(Signal bs1) = do
   c1 <- liftIO $ newIORef Nothing
   bt0 <- behavior sig0 $ \e0 -> do
     mc1 <- liftIO $ readIORef c1
-    lift $ signal sig $ f (Just e0) mc1
+    lift $ do
+      e' <- f (Just e0) mc1
+      signal sig e'
   bt1 <- behavior sig1 $ \e1 -> do
     mc0 <- liftIO $ readIORef c0
-    lift $ signal sig $ f mc0 (Just e1)
+    lift $ do
+      e' <- f mc0 (Just e1)
+      signal sig e'
   return (sig,bt0,bt1)
 
 {-# INLINE mapS #-}
@@ -195,13 +203,15 @@ mapS :: ( Monad super, MonadIO super, MonadThrow super
         , Monad super', MonadIO super'
         )
      => Signal' super event
-     -> (event -> event')
+     -> (event -> super event')
      -> super' ( Signal' super event'
                , Behavior' super event
                )
 mapS sig f = do
   sig' <- construct
-  bt   <- behavior sig $ lift . signal sig' . f
+  bt   <- behavior sig $ \e -> lift $ do
+            e' <- f e
+            signal sig' e'
   return (sig',bt)
 
 {-# INLINE map2S #-}
@@ -210,15 +220,19 @@ map2S :: ( Monad super, MonadIO super, MonadThrow super
          )
       => Signal' super event0
       -> Signal' super event1
-      -> (Either event0 event1 -> event2)
+      -> (Either event0 event1 -> super event2)
       -> super' ( Signal' super event2
                 , Behavior' super event0
                 , Behavior' super event1
                 )
 map2S sig0 sig1 f = do
   sig <- construct
-  bt0 <- behavior sig0 $ lift . signal sig . f . Left
-  bt1 <- behavior sig1 $ lift . signal sig . f . Right
+  bt0 <- behavior sig0 $ \e0 -> lift $ do
+           e0' <- f $ Left e0
+           signal sig e0'
+  bt1 <- behavior sig1 $ \e1 -> lift $ do
+           e1' <- f $ Right e1
+           signal sig e1'
   return (sig,bt0,bt1)
 
 {-# INLINE filterS #-}
@@ -226,13 +240,15 @@ filterS :: ( Monad super, MonadIO super, MonadThrow super
            , Monad super', MonadIO super'
            )
         => Signal' super event
-        -> (event -> Maybe event')
+        -> (event -> super (Maybe event'))
         -> super' ( Signal' super event'
                   , Behavior' super event
                   )
 filterS sig f = do
   sig' <- construct
-  bt   <- behavior sig $ \e -> lift $ forM_ (f e) (signal sig')
+  bt   <- behavior sig $ \e -> lift $ do
+            me' <- f e
+            forM_ me' (signal sig')
   return (sig',bt)
 
 {-# INLINE filter2S #-}
@@ -241,15 +257,19 @@ filter2S :: ( Monad super, MonadIO super, MonadThrow super
             )
          => Signal' super event0
          -> Signal' super event1
-         -> (Either event0 event1 -> Maybe event)
+         -> (Either event0 event1 -> super (Maybe event))
          -> super' ( Signal' super event
                    , Behavior' super event0
                    , Behavior' super event1
                    )
 filter2S sig0 sig1 f = do
   sig <- construct
-  bt0 <- behavior sig0 $ \e -> lift $ forM_ (f $ Left e) (signal sig)
-  bt1 <- behavior sig1 $ \e -> lift $ forM_ (f $ Right e) (signal sig)
+  bt0 <- behavior sig0 $ \e -> lift $ do
+           me' <- f $ Left e
+           forM_ me' (signal sig)
+  bt1 <- behavior sig1 $ \e -> lift $ do
+           me' <- f $ Right e
+           forM_ me' (signal sig)
   return (sig,bt0,bt1)
 
 {-# INLINE duplicate #-}
