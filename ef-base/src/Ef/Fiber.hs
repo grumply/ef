@@ -5,6 +5,7 @@ module Ef.Fiber (fiber, fibers, Status(..), Operation(..), Ops(..), Threader(..)
 import Ef
 import Ef.Narrative
 
+import Control.Lens (view,set)
 import Data.IORef
 import Unsafe.Coerce
 
@@ -47,9 +48,9 @@ fibers :: (Monad super, '[Fiber] <. traits)
        => Trait Fiber traits super
 fibers =
     Fiber 0 $ \fs ->
-        let Fiber i k = view fs
+        let Fiber i k = view trait fs
             i' = succ i
-        in i' `seq` pure $ fs .= Fiber i' k
+        in i' `seq` pure $ set trait (Fiber i' k) fs
 
 data Threader self super =
     Threader
@@ -89,7 +90,7 @@ data Threader self super =
 --        notify 1
 --        ..
 --
---    thread2 thread1Status _ = go 
+--    thread2 thread1Status _ = go
 --        where
 --            go = do
 --                status <- query thread1Status

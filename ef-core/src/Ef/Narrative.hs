@@ -9,7 +9,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE IncoherentInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE ScopedTypeVariables #-}

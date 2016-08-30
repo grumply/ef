@@ -9,6 +9,7 @@ module Ef.Manage
 import Ef
 
 import Control.Arrow
+import Control.Lens (view,set)
 import Data.Either
 import Unsafe.Coerce
 
@@ -43,9 +44,9 @@ instance Ma Manage Manage where
 manages :: (Monad super, '[Manage] <. traits)
         => Trait Manage traits super
 manages = Manage 0 pure $ \fs ->
-    let Manage i non me = view fs
+    let Manage i non me = view trait fs
         i' = succ i
-    in i' `seq` pure $ fs .= Manage i' non me
+    in i' `seq` pure $ set trait (Manage i' non me) fs
 {-# INLINE manages #-}
 
 data Manager self super =

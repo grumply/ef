@@ -2,6 +2,7 @@ module Ef.Writer (Writer, writerFrom, writer, noted, tell) where
 
 import Ef
 
+import Control.Lens
 import Data.Monoid
 
 data Writer r k
@@ -15,8 +16,8 @@ writerFrom :: (Monad super, '[Writer w] <. traits)
            => w -> (w -> w -> w) -> Trait (Writer w) traits super
 writerFrom w0 f =
     Writer w0 $ \w' fs ->
-        let Writer w k = view fs
-        in pure $ fs .= Writer (f w w') k
+        let Writer w k = view trait fs
+        in pure $ set trait (Writer (f w w') k) fs
 {-# INLINE writerFrom #-}
 
 writer :: (Monad super, '[Writer w] <. traits, Monoid w)
@@ -24,10 +25,10 @@ writer :: (Monad super, '[Writer w] <. traits, Monoid w)
 writer = writerFrom mempty (<>)
 {-# INLINE writer #-}
 
-noted :: ('[Writer w] <. methods)
+noted :: (Monad super, '[Writer w] <. methods)
       => Object methods super -> w
 noted fs =
-  let Writer w _ = view fs
+  let Writer w _ = view trait fs
   in w
 {-# INLINE noted #-}
 

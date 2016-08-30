@@ -2,6 +2,7 @@ module Ef.Get (Get, get, introspect) where
 
 import Ef
 
+import Control.Lens
 import Unsafe.Coerce
 
 data Get k where
@@ -21,16 +22,16 @@ get = Get (undefined,reifier) resetter pure
   where
 
     resetter fs =
-        case view fs of
+        case view trait fs of
 
             Get (_,reifies) reset gets ->
-                pure $ fs .= Get (undefined,reifies) reset gets
+                pure $ set trait (Get (undefined,reifies) reset gets) fs
 
     reifier fs =
-        case view fs of
+        case view trait fs of
 
             Get _ reset gets ->
-                pure $ fs .= Get (fs,reifier) reset gets
+                pure $ set trait (Get (fs,reifier) reset gets) fs
 {-# INLINE get #-}
 
 introspect :: (Monad super, '[Get] <: self)

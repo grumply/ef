@@ -131,8 +131,6 @@ zipS :: ( Monad super, MonadIO super, MonadThrow super
                )
 zipS = zipWithS (\x y -> return (x,y))
 
--- events are seen as transient in zipWithS; it does not hold onto previous
--- values if a signal falls out of scope.
 {-# INLINE zipWithS #-}
 zipWithS :: ( Monad super, MonadIO super, MonadThrow super
             , Monad super', MonadIO super'
@@ -145,44 +143,6 @@ zipWithS :: ( Monad super, MonadIO super, MonadThrow super
                    , Behavior' super event'
                    )
 zipWithS f sig0@(Signal bs0) sig1@(Signal bs1) = do
-  sig <- construct
-  wc0_ <- liftIO $ newIORef Nothing
-  let clear_wc0_ = liftIO $ writeIORef wc0_ Nothing
-  wc1_ <- liftIO $ newIORef Nothing
-  let clear_wc1_ = liftIO $ writeIORef wc1_ Nothing
-  bt0 <- behavior sig0 $ \e0 -> do
-    mc1 <- liftIO $ do
-      we0 <- mkWeak sig0 e0 $ Just clear_wc0_
-      writeIORef wc0_ (Just we0)
-      wc1 <- readIORef wc1_
-      join <$> forM wc1 deRefWeak
-    lift $ do
-      e' <- f (Just e0) mc1
-      signal sig e'
-  bt1 <- behavior sig1 $ \e1 -> do
-    mc0 <- liftIO $ do
-      we1 <- mkWeak sig1 e1 $ Just clear_wc1_
-      writeIORef wc1_ (Just we1)
-      wc0 <- readIORef wc0_
-      join <$> forM wc0 deRefWeak
-    lift $ do
-      e' <- f mc0 (Just e1)
-      signal sig e'
-  return (sig,bt0,bt1)
-
--- holds onto old value references even if a signal falls out of scope.
-{-# INLINE zipWithS' #-}
-zipWithS' :: ( Monad super, MonadIO super, MonadThrow super
-            , Monad super', MonadIO super'
-            )
-         => (Maybe event -> Maybe event' -> super x)
-         -> Signal' super event
-         -> Signal' super event'
-         -> super' ( Signal' super x
-                   , Behavior' super event
-                   , Behavior' super event'
-                   )
-zipWithS' f sig0@(Signal bs0) sig1@(Signal bs1) = do
   sig <- construct
   c0 <- liftIO $ newIORef Nothing
   c1 <- liftIO $ newIORef Nothing

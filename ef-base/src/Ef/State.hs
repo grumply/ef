@@ -2,6 +2,8 @@ module Ef.State (State(..),state,get,put,modify,lput,lmodify) where
 
 import Ef
 
+import Control.Lens hiding (Strict)
+
 data Eagerness = NonStrict | Strict
 
 data State s k
@@ -30,7 +32,7 @@ instance Ma (State s) (State s) where
 state :: forall self st super traits.
          (Monad super, '[State st] <. traits)
       => st -> Trait (State st) traits super
-state initial = State initial return $! \new fs -> return $! (fs .=) $! state new
+state initial = State initial return $! \new -> pure . set trait (state new)
 {-# INLINE state #-}
 
 get = self (Get id)

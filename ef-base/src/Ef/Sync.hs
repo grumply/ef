@@ -62,6 +62,7 @@ module Ef.Sync
 import Ef
 
 import Control.Applicative
+import Control.Lens (view,set)
 import Control.Monad
 
 import Unsafe.Coerce
@@ -78,9 +79,9 @@ data Sync k
 sync :: (Monad super, '[Sync] <. traits)
      => Trait Sync traits super
 sync = Sync 0 $ \fs ->
-    let Sync n k = view fs
+    let Sync n k = view trait fs
         n' = succ n
-    in n' `seq` pure $ fs .= Sync n' k
+    in n' `seq` pure $ set trait (Sync n' k) fs
 {-# INLINE sync #-}
 
 freshScope :: (Monad super, '[Sync] <: self) => Narrative self super Int

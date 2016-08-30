@@ -23,22 +23,15 @@ module Ef.Object
     , Traits(..)
     , Object(..)
     , (*:*)
-    , view
-    , view2
-    , view3
-    , view4
-    , view5
-    , view6
-    -- , view7
-    -- , view8
-    , (.=)
+    , singleton
+    , trait
     ) where
 
 import Ef.Type.Set
 import Ef.Traits
 
 import Ef.Type.Nat
-import Control.DeepSeq
+import Data.Coerce
 
 type Trait trait traits super =
     trait (Method traits super)
@@ -74,9 +67,6 @@ newtype Object traits super =
             deconstruct
                 :: Traits traits (Object traits super -> super (Object traits super))
           }
-
-instance (NFData (Traits traits (Object traits super -> super (Object traits super)))) => NFData (Object traits super) where
-    rnf (Object traits) = rnf traits
 
 instance (Eq (Traits traits (Object traits super -> super (Object traits super))))
         => Eq (Object traits super)
@@ -114,147 +104,11 @@ infixr 6 *:*
 
 (*:*) = Trait
 
+singleton :: Trait trait '[trait] super -> Object '[trait] super
+singleton t = coerce $ t *:* Empty
 
-
-view
-    :: Has trait traits
-    => Object traits super
-    -> Trait trait traits super
-
-view =
-    pull . deconstruct
-
-
-
-view2
-    :: (traits .> '[trait1,trait2])
-    => Object traits super
-    -> ( Trait trait1 traits super
-       , Trait trait2 traits super
-       )
-view2 obj =
-    (view obj,view obj)
-
-
-
-view3
-    :: (traits .> '[trait1,trait2,trait3])
-    => Object traits super
-    -> ( Trait trait1 traits super
-       , Trait trait2 traits super
-       , Trait trait3 traits super
-       )
-view3 obj =
-    (view obj,view obj,view obj)
-
-
-
-
-view4
-    :: (traits .> '[trait1,trait2,trait3,trait4])
-    => Object traits super
-    -> ( Trait trait1 traits super
-       , Trait trait2 traits super
-       , Trait trait3 traits super
-       , Trait trait4 traits super
-       )
-view4 obj =
-    (view obj,view obj,view obj,view obj)
-
-
-
-
-view5
-    :: ( traits .>
-            '[trait1,trait2,trait3,trait4
-             ,trait5]
-       )
-    => Object traits super
-    -> ( Trait trait1 traits super
-       , Trait trait2 traits super
-       , Trait trait3 traits super
-       , Trait trait4 traits super
-       , Trait trait5 traits super
-       )
-view5 obj =
-    (view obj,view obj,view obj,view obj,view obj)
-
-
-
-view6
-    :: ( traits .>
-            '[trait1,trait2,trait3,trait4
-             ,trait5,trait6]
-       )
-    => Object traits super
-    -> ( Trait trait1 traits super
-       , Trait trait2 traits super
-       , Trait trait3 traits super
-       , Trait trait4 traits super
-       , Trait trait5 traits super
-       , Trait trait6 traits super
-       )
-view6 obj =
-    (view obj,view obj,view obj,view obj,view obj,view obj)
-
-
--- fails ghc-8 with a solveWanteds: too many iteractions (limit = 4)
--- I've never actually drawn more than 3 traits from an object at a time
--- and I always use explicit `view`s rather than `viewN`s
-
--- view7
---     :: ( traits .>
---             '[trait1,trait2,trait3,trait4
---              ,trait5,trait6,trait7]
---        )
---     => Object traits super
---     -> ( Trait trait1 traits super
---        , Trait trait2 traits super
---        , Trait trait3 traits super
---        , Trait trait4 traits super
---        , Trait trait5 traits super
---        , Trait trait6 traits super
---        , Trait trait7 traits super
---        )
--- view7 obj =
---     (view obj,view obj,view obj,view obj,view obj,view obj,view obj)
-
-
-
--- view8
---     :: ( traits .>
---             '[trait1,trait2,trait3,trait4
---              ,trait5,trait6,trait7,trait8]
---        )
---     => Object traits super
---     -> ( Trait trait1 traits super
---        , Trait trait2 traits super
---        , Trait trait3 traits super
---        , Trait trait4 traits super
---        , Trait trait5 traits super
---        , Trait trait6 traits super
---        , Trait trait7 traits super
---        , Trait trait8 traits super
---        )
--- view8 obj =
---     (view obj,view obj,view obj,view obj,view obj,view obj,view obj,view obj)
-
-
-
-infixl 5 .=
-
-(.=)
-    :: ( Has trait traits
-       , Monad super
-       )
-    => Object traits super
-    -> Trait trait traits super
-    -> Object traits super
-
-is .= x =
-    let
-        deconstructed =
-            deconstruct is
-
-    in
-      Object (push x deconstructed)
+trait :: (Has trait traits, Monad super, Functor f)
+      => (Trait trait traits super -> f (Trait trait traits super))
+      -> Object traits super
+      -> f (Object traits super)
+trait f obj = fmap (\t -> coerce $ push t (coerce obj)) (f (pull $ coerce obj))

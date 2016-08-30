@@ -7,6 +7,7 @@ module Ef.Guard
 
 import Ef
 
+import Control.Lens (view,set)
 import Data.Foldable
 import Unsafe.Coerce
 
@@ -28,8 +29,8 @@ guard :: (Monad super, '[Guard] <. traits)
       => Trait Guard traits super
 guard =
     Guard 0 $ \fs ->
-        let Guard i k = view fs
-        in return $ fs .= Guard (succ i) k
+        let Guard i k = view trait fs
+        in return $ set trait (Guard (succ i) k) fs
 {-# INLINE guard #-}
 
 guards :: (Monad super, '[Guard] <: self)
