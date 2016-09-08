@@ -9,32 +9,32 @@ module Data.Queue
 
 import Ef
 
-import Control.Concurrent.STM
+import Control.Concurrent
 
 import Data.Foldable as F
 
-data Queue a = Queue (TMVar [a])
+data Queue a = Queue (MVar [a])
 
 newQueueIO :: IO (Queue a)
-newQueueIO = Queue <$> newEmptyTMVarIO
+newQueueIO = Queue <$> newEmptyMVar
 
 arriveIO :: Queue a -> a -> IO ()
-arriveIO (Queue q) a = atomically $ do
-  mq_ <- tryTakeTMVar q
+arriveIO (Queue q) a = do
+  mq_ <- tryTakeMVar q
   case mq_ of
-      Just q_ -> putTMVar q (a:q_)
-      Nothing -> putTMVar q [a]
+      Just q_ -> putMVar q (a:q_)
+      Nothing -> putMVar q [a]
 
 arriveManyIO :: Foldable f => Queue a -> f a -> IO ()
-arriveManyIO (Queue q) (F.toList -> as) = atomically $ do
-  mq_ <- tryTakeTMVar q
+arriveManyIO (Queue q) (F.toList -> as) = do
+  mq_ <- tryTakeMVar q
   case mq_ of
-      Just q_ -> putTMVar q ((reverse as) ++ q_)
-      Nothing -> putTMVar q (reverse as)
+      Just q_ -> putMVar q ((reverse as) ++ q_)
+      Nothing -> putMVar q (reverse as)
 
 collectIO :: Queue a -> IO [a]
-collectIO (Queue q) = atomically $ do
-    q_ <- takeTMVar q
+collectIO (Queue q) = do
+    q_ <- takeMVar q
     return $ reverse q_
 
 newQueue :: (Monad super, MonadIO super)
