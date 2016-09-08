@@ -77,8 +77,8 @@ _delta
 _delta object = go
   where
     go (Say symbol k) =
-        let !(method,b) = ma (,) (deconstruct object) symbol
-        in do !object' <- method object
+        let ~(method,b) = ma (,) (deconstruct object) symbol
+        in do object' <- method object
               _delta object' (k b)
 
     go (Fail e) =

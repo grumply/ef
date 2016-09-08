@@ -2,9 +2,6 @@ module Ef.Var
     ( Var(..)
     , var
     , var'
-
-    , Eagerness(..)
-    , stateful
     ) where
 
 import Ef.Narrative

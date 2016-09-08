@@ -32,7 +32,7 @@ instance Ma (State s) (State s) where
 state :: forall self st super traits.
          (Monad super, '[State st] <. traits)
       => st -> Trait (State st) traits super
-state initial = State initial return $! \new -> pure . set trait (state new)
+state initial = State initial return $ \new fs -> pure $ set trait (state new) fs
 {-# INLINE state #-}
 
 get = self (Get id)
