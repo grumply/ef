@@ -23,6 +23,8 @@ library
                      , Ef.Exit
                      , Ef.Sync
                      , Ef.Bidir
+                     , Ef.Pipes
+                     , Ef.Pipes.Parse
                      , Ef.Fork
                      , Data.Promise
                      , Data.Queue
