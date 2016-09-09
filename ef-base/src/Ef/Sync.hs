@@ -514,20 +514,39 @@ pushRewrite
 pushRewrite rewriteScope up dn fb0 p0 =
     let upstream = runSynchronized p0 (unsafeCoerce up) (unsafeCoerce dn)
         downstream b = runSynchronized (fb0 b) (unsafeCoerce up) (unsafeCoerce dn)
-    in go downstream upstream
+    in goLeft downstream upstream
   where
-
-    check cs i s = if cs == rewriteScope then s else i
-
-    go fx =
-      transform $ \message k ->
-          let ignore = Say message (go fx . k)
+    goLeft fb =
+      transform goLeft'
+      where
+        goLeft' :: forall x. Messages self x -> (x -> Narrative self super r) -> Narrative self super r
+        goLeft' message k =
+          let ignore = Say message (transform goLeft' . k)
           in case prj message of
-                Just (Respond currentScope b _) ->
-                    check currentScope ignore $ unsafeCoerce go k (fx (unsafeCoerce b))
-                Just (Request currentScope b' _) ->
-                    check currentScope ignore $ unsafeCoerce go k (fx (unsafeCoerce b'))
-                _ -> ignore
+              Just x ->
+                case x of
+                  Respond scope b _ ->
+                    if scope == rewriteScope
+                    then goRight (unsafeCoerce k) (fb (unsafeCoerce b))
+                    else ignore
+                  _ -> ignore
+              _ -> ignore
+
+    goRight b'p =
+      transform goRight'
+      where
+        goRight' :: forall x. Messages self x -> (x -> Narrative self super r) -> Narrative self super r
+        goRight' message k =
+          let ignore = Say message ( transform goRight' . k)
+          in case prj message of
+              Just x  ->
+                case x of
+                  Request scope b' _ ->
+                    if scope == rewriteScope
+                    then goLeft (unsafeCoerce k) (b'p (unsafeCoerce b'))
+                    else ignore
+                  _ -> ignore
+              _ -> ignore
 
 infixl 8 <~<
 (<~<) :: ('[Sync] <: self, Monad super)
@@ -578,19 +597,38 @@ pullRewrite
 pullRewrite rewriteScope up dn fb' p =
     let upstream b' = runSynchronized (fb' b') (unsafeCoerce up) (unsafeCoerce dn)
         downstream = runSynchronized p (unsafeCoerce up) (unsafeCoerce dn)
-    in go upstream downstream
+    in goRight upstream downstream
   where
-
-    check cs i s = if cs == rewriteScope then s else i
-
-    go fx =
-      transform $ \message k ->
-          let ignore = Say message (go fx . k)
+    goRight fb'' =
+      transform goRight'
+      where
+        goRight' :: forall x. Messages self x -> (x -> Narrative self super r) -> Narrative self super r
+        goRight' message k =
+          let ignore = Say message (transform goRight' . k)
           in case prj message of
-                Just (Respond currentScope b _) ->
-                    check currentScope ignore $ unsafeCoerce go k (fx (unsafeCoerce b))
-                Just (Request currentScope b' _) ->
-                    check currentScope ignore $ unsafeCoerce go k (fx (unsafeCoerce b'))
+              Just x ->
+                case x of
+                  Request scope b' _ ->
+                    if scope == rewriteScope
+                    then goLeft (unsafeCoerce k) (fb'' (unsafeCoerce b'))
+                    else ignore
+                  _ -> ignore
+              _ -> ignore
+
+    goLeft bp =
+      transform goLeft'
+      where
+        goLeft' :: forall x. Messages self x -> (x -> Narrative self super r) -> Narrative self super r
+        goLeft' message k' =
+            let ignore = Say message (transform goLeft' . k')
+            in case prj message of
+                Just x ->
+                  case x of
+                    Respond scope b _ ->
+                      if scope == rewriteScope
+                      then goRight (unsafeCoerce k') (bp (unsafeCoerce b))
+                      else ignore
+                    _ -> ignore
                 _ -> ignore
 
 infixl 7 >->

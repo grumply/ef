@@ -462,15 +462,35 @@ pushRewrite
 pushRewrite up dn fb0 p0 =
     let upstream = runBi p0 (unsafeCoerce up) (unsafeCoerce dn)
         downstream b = runBi (fb0 b) (unsafeCoerce up) (unsafeCoerce dn)
-    in go downstream upstream
+    in goLeft downstream upstream
   where
+    goLeft fb =
+      transform goLeft'
+      where
+        goLeft' :: forall x. Messages self x -> (x -> Narrative self super r) -> Narrative self super r
+        goLeft' message k =
+          let ignore = Say message (transform goLeft' . k)
+          in case prj message of
+              Just x ->
+                case x of
+                  Respond b _ ->
+                    goRight (unsafeCoerce k) (fb (unsafeCoerce b))
+                  _ -> ignore
+              _ -> ignore
 
-    go fx =
-      transform $ \message k ->
-          case prj message of
-              Just (Respond b _) -> unsafeCoerce go k (fx $ unsafeCoerce b)
-              Just (Request b' _) -> unsafeCoerce go k (fx $ unsafeCoerce b')
-              _ -> Say message (go fx . k)
+    goRight b'p =
+      transform goRight'
+      where
+        goRight' :: forall x. Messages self x -> (x -> Narrative self super r) -> Narrative self super r
+        goRight' message k =
+          let ignore = Say message ( transform goRight' . k)
+          in case prj message of
+              Just x  ->
+                case x of
+                  Request b' _ ->
+                    goLeft (unsafeCoerce k) (b'p (unsafeCoerce b'))
+                  _ -> ignore
+              _ -> ignore
 
 infixl 8 <~<
 (<~<) :: ('[Bidir] <: self, Monad super)
@@ -518,14 +538,35 @@ pullRewrite
 pullRewrite up dn fb' p =
     let upstream b' = runBi (fb' b') (unsafeCoerce up) (unsafeCoerce dn)
         downstream = runBi p (unsafeCoerce up) (unsafeCoerce dn)
-    in go upstream downstream
+    in goRight upstream downstream
   where
-    go fx = transform $ \message k ->
-      case prj message of
-          Just (Respond b _) -> unsafeCoerce go k (fx $ unsafeCoerce b)
-          Just (Request b' _) -> unsafeCoerce go k (fx $ unsafeCoerce b')
-          _ -> Say message (go fx . k)
+    goRight fb'' =
+      transform goRight'
+      where
+        goRight' :: forall x. Messages self x -> (x -> Narrative self super r) -> Narrative self super r
+        goRight' message k =
+          let ignore = Say message (transform goRight' . k)
+          in case prj message of
+              Just x ->
+                case x of
+                  Request b' _ ->
+                    goLeft (unsafeCoerce k) (fb'' (unsafeCoerce b'))
+                  _ -> ignore
+              _ -> ignore
 
+    goLeft bp =
+      transform goLeft'
+      where
+        goLeft' :: forall x. Messages self x -> (x -> Narrative self super r) -> Narrative self super r
+        goLeft' message k' =
+            let ignore = Say message (transform goLeft' . k')
+            in case prj message of
+                Just x ->
+                  case x of
+                    Respond b _ ->
+                      goRight (unsafeCoerce k') (bp (unsafeCoerce b))
+                    _ -> ignore
+                _ -> ignore
 
 infixl 7 >->
 (>->) :: ('[Bidir] <: self, Monad super)
