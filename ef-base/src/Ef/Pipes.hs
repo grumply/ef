@@ -2,6 +2,7 @@
 {-# language GeneralizedNewtypeDeriving #-}
 module Ef.Pipes
     ( pipes
+    , Pipes(..)
 
     , Effect
     , Effect'

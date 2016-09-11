@@ -64,6 +64,22 @@ data Signal' super event
         (IORef [IORef (event -> Narrative '[Event] super ())])
     deriving Eq
 
+{-# INLINE behaviorCount #-}
+behaviorCount :: (Monad super', MonadIO super')
+              => Signal' super event
+              -> super' Int
+behaviorCount (Signal bs_) = do
+  bs <- liftIO $ readIORef bs_
+  return $ length bs
+
+{-# INLINE nullSignal #-}
+nullSignal :: (Monad super', MonadIO super')
+           => Signal' super event
+           -> super' Bool
+nullSignal (Signal bs_) = do
+  bs <- liftIO $ readIORef bs_
+  return (null bs)
+
 type Behavior self super event = Behavior' (Narrative self super) event
 
 data Behavior' super event

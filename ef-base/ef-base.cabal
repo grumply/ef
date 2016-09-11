@@ -25,6 +25,7 @@ library
                      , Ef.Bidir
                      , Ef.Pipes
                      , Ef.Pipes.Parse
+                     , Ef.Pipes.Group
                      , Ef.Fork
                      , Data.Promise
                      , Data.Queue
