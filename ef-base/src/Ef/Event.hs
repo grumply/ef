@@ -322,17 +322,20 @@ signal_ (r@(Runnable bs_ f_ f):rs) = start rs r
                   liftIO $ writeIORef f_ $ unsafeCoerce f'
                   go' (k x)
                 Continue -> signal_ rs
-                End -> liftIO $ do
+                End -> do
                   -- in case we arrived here through trigger, nullify the behavior.
-                  writeIORef f_ (const end)
-                  modifyIORef bs_ $ Prelude.filter (/= f_)
+                  liftIO $ do
+                    writeIORef f_ (const end)
+                    modifyIORef bs_ $ Prelude.filter (/= f_)
+                  signal_ rs
                 Subsignal sig' e' x -> do
                   let Signal bs'_ = sig'
-                  bs' <- liftIO $ readIORef bs'_
-                  seeded <- forM bs' $ \f'_ -> do
-                    f' <- liftIO $ readIORef f'_
-                    return (Runnable bs'_ f'_ (f' e'))
-                  signal_ (((Runnable bs_ f_ (k x)) : rs) ++ unsafeCoerce seeded)
+                  seeded <- liftIO $ do
+                    bs' <- readIORef bs'_
+                    forM bs' $ \f'_ -> do
+                      f' <- readIORef f'_
+                      return (Runnable bs'_ f'_ (f' e'))
+                  signal_ ((Runnable bs_ f_ (k x) : rs) ++ unsafeCoerce seeded)
 
 {-# INLINE trigger #-}
 trigger :: (Monad super, MonadIO super)
