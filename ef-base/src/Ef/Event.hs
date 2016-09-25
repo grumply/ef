@@ -405,6 +405,10 @@ subpublish (Periodical cur_ sig) ev = do
   liftIO $ writeIORef cur_ (Just ev)
   subsignal sig ev
 
+periodicalCurrent :: (Monad super, MonadIO super)
+                  => Periodical' super event -> super (Maybe event)
+periodicalCurrent (Periodical me_ _) = liftIO (readIORef me_)
+
 data Syndicated event where
   Syndicated :: Periodical' super event -> Signaled -> Syndicated event
 
@@ -440,9 +444,12 @@ syndicate (Network mcur_ sd_) ev = liftIO $ do
     writeIORef cur_ (Just ev)
     bufferIO sigd sig ev
 
+networkCurrent :: (Monad super, MonadIO super) => Network event -> super (Maybe event)
+networkCurrent (Network me_ _) = liftIO $ readIORef me_
+
 joinNetwork :: (Monad super, MonadIO super)
             => Network event -> Periodical' super' event -> Signaled -> super ()
-joinNetwork (Network mcur_ sd_) pl sg =
+joinNetwork (Network mcur_ sd_) pl sg = do
   liftIO $ modifyIORef sd_ $ \sd -> sd ++ [Syndicated pl sg]
 
 joinNetwork' :: (Monad super, MonadIO super)
