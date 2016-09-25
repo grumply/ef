@@ -338,14 +338,133 @@ signal_ (r@(Runnable bs_ f_ f):rs) = start rs r
                   signal_ ((Runnable bs_ f_ (k x) : rs) ++ unsafeCoerce seeded)
 
 {-# INLINE trigger #-}
-trigger :: (Monad super, MonadIO super)
-        => Behavior self super event
+trigger :: (Monad super, MonadIO super, MonadThrow super)
+        => Behavior' super event
         -> event
-        -> Narrative self super ()
+        -> super ()
 trigger (Behavior b_) e = do
   b <- liftIO $ readIORef b_
   bs_ <- liftIO $ newIORef []
   signal_ [Runnable bs_ b_ (b e)]
+
+data Periodical' super event
+  = Periodical (IORef (Maybe event)) (Signal' super event)
+  deriving Eq
+
+type Periodical self super event = Periodical' (Narrative self super) event
+
+type Subscription' super event = Behavior' super event
+
+type Subscription self super event = Behavior self super event
+
+periodical :: (Monad super, MonadIO super)
+             => super (Periodical' super' event)
+periodical = do
+  sig <- construct
+  cur_ <- liftIO $ newIORef Nothing
+  return $ Periodical cur_ sig
+
+periodical' :: (Monad super, MonadIO super)
+             => event -> super (Periodical' super' event)
+periodical' ev = do
+  sig <- construct
+  cur_ <- liftIO $ newIORef (Just ev)
+  return $ Periodical cur_ sig
+
+subscribe :: (Monad super', MonadIO super')
+          => Periodical' super event
+          -> (event -> Narrative '[Event] super ())
+          -> super' (Subscription' super event)
+subscribe (Periodical _ sig) f = behavior sig f
+
+-- like subscribe, but immediately trigger the behavior with the current value
+subscribe' :: (Monad super, MonadIO super, MonadThrow super)
+           => Periodical' super event
+           -> (event -> Narrative '[Event] super ())
+           -> super (Subscription' super event,Bool)
+subscribe' (Periodical cur_ sig) f = do
+  bt <- behavior sig f
+  mcur <- liftIO $ readIORef cur_
+  case mcur of
+    Nothing -> return (bt,False)
+    Just cur -> do
+      trigger bt cur
+      return (bt,True)
+
+publish :: (Monad super, MonadIO super, MonadThrow super)
+        => Periodical' super event
+        -> event
+        -> super ()
+publish (Periodical cur_ sig) ev = do
+  liftIO $ writeIORef cur_ (Just ev)
+  signal sig ev
+
+subpublish :: (Monad super, MonadIO super, MonadThrow super)
+           => Periodical' super event -> event -> Narrative '[Event] super ()
+subpublish (Periodical cur_ sig) ev = do
+  liftIO $ writeIORef cur_ (Just ev)
+  subsignal sig ev
+
+data Syndicated event where
+  Syndicated :: Periodical' super event -> Signaled -> Syndicated event
+
+-- syndicated periodical network; periodicals that share a common event;
+-- event propagation network for concurrent dispatch
+data Network event
+  = Network (IORef (Maybe event)) (IORef [Syndicated event])
+  deriving Eq
+
+-- create a new syndication network
+network :: (Monad super, MonadIO super)
+        => super (Network event)
+network = liftIO $ do
+  mcur <- newIORef Nothing
+  sd <- newIORef []
+  return $ Network mcur sd
+
+-- create a new syndication network
+network' :: (Monad super, MonadIO super)
+        => event -> super (Network event)
+network' ev = liftIO $ do
+  mcur <- newIORef (Just ev)
+  sd <- newIORef []
+  return $ Network mcur sd
+
+-- syndicate an event across multiple periodicals in a network
+syndicate :: (Monad super, MonadIO super)
+          => Network event -> event -> super ()
+syndicate (Network mcur_ sd_) ev = liftIO $ do
+  writeIORef mcur_ (Just ev)
+  sds <- readIORef sd_
+  forM_ sds $ \(Syndicated (Periodical cur_ sig) sigd) -> do
+    writeIORef cur_ (Just ev)
+    bufferIO sigd sig ev
+
+joinNetwork :: (Monad super, MonadIO super)
+            => Network event -> Periodical' super' event -> Signaled -> super ()
+joinNetwork (Network mcur_ sd_) pl sg =
+  liftIO $ modifyIORef sd_ $ \sd -> sd ++ [Syndicated pl sg]
+
+joinNetwork' :: (Monad super, MonadIO super)
+             => Network event -> Periodical' super' event -> Signaled -> super Bool
+joinNetwork' ntw@(Network mcur_ sd_) pl@(Periodical cur_ sig) sigd = liftIO $ do
+  modifyIORef sd_ $ \sd -> sd ++ [Syndicated pl sigd]
+  mcur <- readIORef mcur_
+  case mcur of
+    Nothing -> return False
+    Just cur -> do
+      writeIORef cur_ (Just cur)
+      bufferIO sigd sig cur
+      return True
+
+leaveNetwork :: (Monad super, MonadIO super)
+             => Network event -> Periodical' super' event -> super ()
+leaveNetwork (Network mcur_ sd_) pl =
+  liftIO $
+    -- let's hope this works.... if not, just create a counter token or make
+    -- Network (IORef [IORef (Maybe (Syndicated event))]) or something
+    modifyIORef sd_ $ \sd ->
+      filter (\(Syndicated pl' _) -> pl /= unsafeCoerce pl') sd
 
 -- An abstract Signal queue. Useful for building event loops.
 -- Note that there is still a need to call unsafeCoerce on the
@@ -424,9 +543,6 @@ driverPrintExceptions exceptionPrefix (Signaled buf) = go
 
     {-# INLINE go #-}
     go obj = do
-      -- re-feed loop to avoid strange stack behavior in browser with ghcjs
-      -- shouldn't affect ghc, I think. I assume this has something to do with
-      -- gc but I haven't looked.
       (obj',_) <- obj $. go'
       go obj'
       where
