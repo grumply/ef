@@ -371,6 +371,10 @@ periodical' ev = do
   cur_ <- liftIO $ newIORef (Just ev)
   return $ Periodical cur_ sig
 
+nullPeriodical :: (Monad super, MonadIO super)
+               => Periodical' super' event -> super Bool
+nullPeriodical (Periodical _ sig) = nullSignal sig
+
 subscribe :: (Monad super', MonadIO super')
           => Periodical' super event
           -> (event -> Narrative '[Event] super ())
@@ -433,6 +437,12 @@ network' ev = liftIO $ do
   mcur <- newIORef (Just ev)
   sd <- newIORef []
   return $ Network mcur sd
+
+nullNetwork :: (Monad super, MonadIO super)
+            => Network event -> super Bool
+nullNetwork (Network _ ss_)= liftIO $ do
+  ss <- readIORef ss_
+  return (null ss)
 
 -- syndicate an event across multiple periodicals in a network
 syndicate :: (Monad super, MonadIO super)
