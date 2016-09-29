@@ -29,11 +29,12 @@ library
 
   -- other-modules:
   -- other-extensions:
-  build-depends:       base >=4.8 && <4.10
+  build-depends:       base >=4.8
                      , deepseq >= 1.4.1.1
-                    , exceptions >= 0.8 && < 0.9
-                    , transformers >= 0.4 && < 0.5
-                    , mtl >= 2.2 && < 2.3
+                     , ghc-prim
+                    , exceptions >= 0.8
+                    , transformers >= 0.4
+                    , mtl >= 2.2
                     , mmorph
                     , comonad
                     , free

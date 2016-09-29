@@ -323,8 +323,8 @@ signal_ (r@(Runnable bs_ f_ f):rs) = start rs r
                   go' (k x)
                 Continue -> signal_ rs
                 End -> do
-                  -- in case we arrived here through trigger, nullify the behavior.
                   liftIO $ do
+                  -- in case we arrived here through trigger, nullify the behavior.
                     writeIORef f_ (const end)
                     modifyIORef bs_ $ Prelude.filter (/= f_)
                   signal_ rs
@@ -450,9 +450,13 @@ syndicate :: (Monad super, MonadIO super)
 syndicate (Network mcur_ sd_) ev = liftIO $ do
   writeIORef mcur_ (Just ev)
   sds <- readIORef sd_
-  forM_ sds $ \(Syndicated (Periodical cur_ sig) sigd) -> do
-    writeIORef cur_ (Just ev)
-    bufferIO sigd sig ev
+  case sds of
+    [] ->
+      return ()
+    xs ->
+      forM_ xs $ \(Syndicated (Periodical cur_ sig) sigd) -> do
+        writeIORef cur_ (Just ev)
+        bufferIO sigd sig ev
 
 networkCurrent :: (Monad super, MonadIO super) => Network event -> super (Maybe event)
 networkCurrent (Network me_ _) = liftIO $ readIORef me_

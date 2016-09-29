@@ -13,6 +13,7 @@
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# language ViewPatterns #-}
 module Ef.Narrative
      ( Narrative(..)
      , type (<:)
@@ -60,6 +61,8 @@ import Prelude hiding (id,(.))
 import Data.IORef
 
 import GHC.Generics
+
+import GHC.Magic
 
 data Narrative self super result
     = forall intermediate.
@@ -281,14 +284,15 @@ instance (MonadMask super, MonadCatch (Narrative self super), MonadIO super, Mon
 
 -- Note super is strictly more powerful than lift; lift can be implemented in
 -- terms of super.
+{-# INLNE CONLIKE [2] super #-}
 super :: Functor super => super (Narrative self super result) -> Narrative self super result
 super = Super
 
-{-# INLINE [2] self #-}
+{-# INLINE CONLIKE [2] self #-}
 self
     :: (Monad super, '[message] <: self)
     => message result -> Narrative self super result
-self message = Say (inj message) return
+self message = Say (inj message) Return
 
 {-# RULES
   "self/bind" [~3] forall m k. self m >>= k = Say (inj m) k;
@@ -407,7 +411,7 @@ instance Monad super
     => Monad (Narrative self super)
   where
 
-    {-# INLINE return #-}
+    {-# INLINE CONLIKE return #-}
     return =
         Return
 
@@ -434,7 +438,7 @@ p0 `_bind` f =
         Fail e
 
     go (Say message k) =
-        Say message (go . k)
+        Say message (go . oneShot k)
 
     go (Return res) =
         f res
@@ -453,13 +457,13 @@ p0 `_bind` f =
     "_bind (Say message k) f"
         forall message k f .
             _bind (Say message k) f =
-                Say message (\a -> _bind (k a) f)
+                Say message $ oneShot (\a -> _bind (k a) f)
     ;
 
     "_bind (Super m) f"
         forall m f .
             _bind (Super m) f =
-                Super (m >>= \p -> return (_bind p f))
+                Super (m >>= oneShot (\p -> return (_bind p f)))
     ;
 
     "_bind (Return result) f"
@@ -485,7 +489,7 @@ p0 `_then` f =
         Fail e
 
     go (Say message k) =
-        Say message (go . k)
+        Say message (go . oneShot k)
 
     go (Return res) =
         f
@@ -504,13 +508,13 @@ p0 `_then` f =
     "_then (Say message k) f"
         forall message k f .
             _then (Say message k) f =
-                Say message (\a -> _then (k a) f)
+                Say message $ oneShot (\a -> _then (k a) f)
     ;
 
     "_then (Super m) f"
         forall m f .
             _then (Super m) f =
-                Super (m >>= \p -> return (_then p f))
+                Super (m >>= oneShot (\p -> return (_then p f)))
     ;
 
     "_then (Return result) f"
@@ -722,34 +726,6 @@ _transform (Transform t) =
 
         go (Return r) =
             Return r
-
-{-# RULES
-
-    "_transform t (Fail e) == Fail e"
-        forall t e.
-            _transform t (Fail e) =
-                Fail e
-    ;
-
-    "_transform t (Super sup) == Super (fmap (_transform t) sup)"
-        forall t sup.
-            _transform t (Super sup) =
-                Super (fmap (_transform t) sup)
-    ;
-
-    "_transform t (Return r) == Return r"
-        forall t r.
-            _transform t (Return r) =
-                Return r
-     ;
-
-    "_transform t (Say message k)"
-        forall t message k.
-            _transform t (Say message k) =
-                applyTransform t message k
-    ;
-
-  #-}
 
 localA :: b -> Arrative self super b r -> Arrative self super a r
 localA a (Arrative ar) = Arrative $ \_ -> ar a

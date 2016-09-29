@@ -96,6 +96,7 @@ instance Show (Traits traits (Object traits super -> super (Object traits super)
 
 infixr 6 *:*
 
+{-# INLINE (*:*) #-}
 (*:*)
     :: Denies trait traits
     => trait a
@@ -107,6 +108,7 @@ infixr 6 *:*
 singleton :: Trait trait '[trait] super -> Object '[trait] super
 singleton t = coerce $ t *:* Empty
 
+{-# INLINE trait #-}
 trait :: (Has trait traits, Monad super, Functor f)
       => (Trait trait traits super -> f (Trait trait traits super))
       -> Object traits super
