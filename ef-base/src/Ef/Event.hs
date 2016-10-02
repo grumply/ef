@@ -10,7 +10,7 @@ import Data.Promise
 import Control.Monad
 import Data.IORef
 import Data.List
-import System.Mem.Weak
+import Data.Maybe
 import Unsafe.Coerce
 
 import Control.Exception (BlockedIndefinitelyOnSTM(..))
@@ -348,7 +348,7 @@ trigger (Behavior b_) e = do
   signal_ [Runnable bs_ b_ (b e)]
 
 data Periodical' super event
-  = Periodical (IORef (Maybe event)) (Signal' super event)
+  = Periodical (IORef (Maybe (IORef (Maybe event),Signal' super event)))
   deriving Eq
 
 type Periodical self super event = Periodical' (Narrative self super) event
@@ -362,56 +362,87 @@ periodical :: (Monad super, MonadIO super)
 periodical = do
   sig <- construct
   cur_ <- liftIO $ newIORef Nothing
-  return $ Periodical cur_ sig
+  p <- liftIO $ newIORef (Just (cur_,sig))
+  return $ Periodical p
 
 periodical' :: (Monad super, MonadIO super)
              => event -> super (Periodical' super' event)
 periodical' ev = do
   sig <- construct
   cur_ <- liftIO $ newIORef (Just ev)
-  return $ Periodical cur_ sig
+  p <- liftIO $ newIORef (Just (cur_,sig))
+  return $ Periodical p
 
 nullPeriodical :: (Monad super, MonadIO super)
                => Periodical' super' event -> super Bool
-nullPeriodical (Periodical _ sig) = nullSignal sig
+nullPeriodical (Periodical p_) = do
+  mp <- liftIO $ readIORef p_
+  return $ isNothing mp
+
+emptyPeriodical :: (Monad super, MonadIO super)
+                => Periodical' super event -> super Bool
+emptyPeriodical (Periodical p_) = do
+  mp <- liftIO $ readIORef p_
+  maybe (return True) (nullSignal . snd) mp
 
 subscribe :: (Monad super', MonadIO super')
           => Periodical' super event
           -> (event -> Narrative '[Event] super ())
-          -> super' (Subscription' super event)
-subscribe (Periodical _ sig) f = behavior sig f
+          -> super' (Maybe (Subscription' super event))
+subscribe (Periodical p_) f = do
+  mp <- liftIO $ readIORef p_
+  forM mp $ \(_,sig) -> behavior sig f
 
 -- like subscribe, but immediately trigger the behavior with the current value
 subscribe' :: (Monad super, MonadIO super, MonadThrow super)
            => Periodical' super event
            -> (event -> Narrative '[Event] super ())
-           -> super (Subscription' super event,Bool)
-subscribe' (Periodical cur_ sig) f = do
-  bt <- behavior sig f
-  mcur <- liftIO $ readIORef cur_
-  case mcur of
-    Nothing -> return (bt,False)
-    Just cur -> do
-      trigger bt cur
-      return (bt,True)
+           -> super (Maybe (Subscription' super event,Bool))
+subscribe' (Periodical p_) f = do
+  mp <- liftIO $ readIORef p_
+  forM mp $ \(cur_,sig) -> do
+    bt <- behavior sig f
+    mcur <- liftIO $ readIORef cur_
+    case mcur of
+      Nothing -> return (bt,False)
+      Just cur -> do
+        trigger bt cur
+        return (bt,True)
 
 publish :: (Monad super, MonadIO super, MonadThrow super)
         => Periodical' super event
         -> event
-        -> super ()
-publish (Periodical cur_ sig) ev = do
-  liftIO $ writeIORef cur_ (Just ev)
-  signal sig ev
+        -> super Bool
+publish (Periodical p_) ev = do
+  mp <- liftIO $ readIORef p_
+  case mp of
+    Nothing -> return False
+    Just (cur_,sig) -> do
+      liftIO $ writeIORef cur_ (Just ev)
+      signal sig ev
+      return True
 
+-- subpublish in a multithreaded environment can cause desynchronization;
+-- the current value could be a value that has not yet been seen by the signal
+-- what is the solution?
 subpublish :: (Monad super, MonadIO super, MonadThrow super)
-           => Periodical' super event -> event -> Narrative '[Event] super ()
-subpublish (Periodical cur_ sig) ev = do
-  liftIO $ writeIORef cur_ (Just ev)
-  subsignal sig ev
+           => Periodical' super event -> event -> Narrative '[Event] super Bool
+subpublish (Periodical p_) ev = do
+  mp <- liftIO $ readIORef p_
+  case mp of
+    Nothing -> return False
+    Just (cur_,sig) -> do
+      liftIO $ writeIORef cur_ (Just ev)
+      subsignal sig ev
+      return True
 
 periodicalCurrent :: (Monad super, MonadIO super)
                   => Periodical' super event -> super (Maybe event)
-periodicalCurrent (Periodical me_ _) = liftIO (readIORef me_)
+periodicalCurrent (Periodical p_) = liftIO $ do
+  mp <- readIORef p_
+  case mp of
+    Just (cur_,_) -> readIORef cur_
+    _ -> return Nothing
 
 data Syndicated event where
   Syndicated :: Periodical' super event -> Signaled -> Syndicated event
@@ -453,10 +484,16 @@ syndicate (Network mcur_ sd_) ev = liftIO $ do
   case sds of
     [] ->
       return ()
-    xs ->
-      forM_ xs $ \(Syndicated (Periodical cur_ sig) sigd) -> do
-        writeIORef cur_ (Just ev)
-        bufferIO sigd sig ev
+    xs -> do
+      sds' <- forM xs $ \s@(Syndicated (Periodical p_) sigd) -> do
+        mp <- readIORef p_
+        case mp of
+          Nothing -> return Nothing
+          Just (cur_,sig) -> do
+            writeIORef cur_ (Just ev)
+            bufferIO sigd sig ev
+            return $ Just s
+      writeIORef sd_ $ catMaybes sds'
 
 networkCurrent :: (Monad super, MonadIO super) => Network event -> super (Maybe event)
 networkCurrent (Network me_ _) = liftIO $ readIORef me_
@@ -468,15 +505,19 @@ joinNetwork (Network mcur_ sd_) pl sg = do
 
 joinNetwork' :: (Monad super, MonadIO super)
              => Network event -> Periodical' super' event -> Signaled -> super Bool
-joinNetwork' ntw@(Network mcur_ sd_) pl@(Periodical cur_ sig) sigd = liftIO $ do
-  modifyIORef sd_ $ \sd -> sd ++ [Syndicated pl sigd]
-  mcur <- readIORef mcur_
-  case mcur of
+joinNetwork' ntw@(Network mcur_ sd_) pl@(Periodical p_) sigd = liftIO $ do
+  mp <- readIORef p_
+  case mp of
     Nothing -> return False
-    Just cur -> do
-      writeIORef cur_ (Just cur)
-      bufferIO sigd sig cur
-      return True
+    Just (cur_,sig) -> do
+      modifyIORef sd_ $ \sd -> sd ++ [Syndicated pl sigd]
+      mcur <- readIORef mcur_
+      case mcur of
+        Nothing -> return False
+        Just cur -> do
+          writeIORef cur_ (Just cur)
+          bufferIO sigd sig cur
+          return True
 
 leaveNetwork :: (Monad super, MonadIO super)
              => Network event -> Periodical' super' event -> super ()
