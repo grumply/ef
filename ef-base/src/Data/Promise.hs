@@ -38,7 +38,7 @@ newtype Promise result = Promise { getPromise :: MVar result }
     deriving (Eq)
 
 fake :: (Monad super, MonadIO super)
-     => a -> Narrative self super (Promise a)
+     => a -> super (Promise a)
 fake a = do
   p <- newPromise
   fulfill p a
@@ -52,7 +52,7 @@ fakeIO a = do
 
 -- | Construct a new un`fulfill`ed `Promise`.
 newPromise :: (Monad super, MonadIO super)
-           => Narrative self super (Promise result)
+           => super (Promise result)
 newPromise = liftIO newPromiseIO
 
 
@@ -60,21 +60,21 @@ newPromise = liftIO newPromiseIO
 -- `BlockedIndefinitelyOnMVar` into the `Narrative` if the underlying
 -- `demandIO` throws it when a `Promise` can never be `fulfill`ed.
 demand :: (Monad super, MonadIO super)
-       => Promise result -> Narrative self super result
+       => Promise result -> super result
 demand = liftIO . demandIO
 
 
 -- | Fulfill a `Promise`. Returns a Bool where False
 -- denotes that the `Promise` has already been fulfilled.
 fulfill :: (Monad super, MonadIO super)
-        => Promise result -> result -> Narrative self super Bool
+        => Promise result -> result -> super Bool
 fulfill = (liftIO .) . fulfillIO
 
 
 -- | Poll a `Promise` for the result of a `fulfill`. Does not block but instead
 -- returns False if the `Promise` has already been `fulfill`ed.
 fulfilled :: (Monad super, MonadIO super)
-          => Promise result -> Narrative self super Bool
+          => Promise result -> super Bool
 fulfilled = liftIO . fulfilledIO
 
 
