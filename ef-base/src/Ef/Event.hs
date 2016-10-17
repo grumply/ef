@@ -7,6 +7,7 @@ import Ef.Narrative
 import Data.Queue
 import Data.Promise
 
+import Control.Concurrent
 import Control.Monad
 import Data.IORef
 import Data.List
@@ -17,14 +18,23 @@ import Control.Exception (BlockedIndefinitelyOnSTM(..))
 
 -- A highly simplified implementation of reactive programming; behaviors
 -- are in an Event monad that permits behavior self-modification including
--- short-circuiting, exit, and switching as well as secondary signaling.
--- Signals are a sequence of mutable behaviors. Signals do not hold on
--- to old values to improve GC. Behaviors are the mutable references that
--- are stored in the Signal; they do not hold onto the Signal itself to
--- improve GC. When combining signals, a weak reference is created to hold
--- the latest values. The weak references is keyed on the upstream signal.
--- Subsignal/secondary signaling tries to be productive in that events are
--- run breadth first rather than depth first.
+-- short-circuiting, exit, and switching. Signals are a sequence of mutable
+-- behaviors.
+
+-- NOTE: To avoid bugs, do not share signals, networks, or periodicals
+--       across thread boundaries. Signaling/syndicating/publishing,
+--       respectively, should be managed by the context in which the
+--       event primitive was created. Similarly, adding
+--       behaviors/periodicals/subscriptions, respectively, should be
+--       done in a synchronous context in which the event primitive was
+--       created. This doesn't seem to be a difficult problem to avoid when
+--       using threaded contexts run in event loops with Signaling/Signaled.
+--       The issue, ultimately, is the use of IORefs rather than MVars;
+--       when one thread is signaling/syndicating/publishing to a large
+--       set of behaviors/periodicals/subscriptions and another thread is
+--       trying to add a behavior/periodical/subscription, the addition
+--       might fail silently when the message dispatch has finished and
+--       the resultant modified behaviors are overwritten.
 
 data Event k where
   Become :: (event -> Narrative '[Event] super ())
@@ -34,11 +44,6 @@ data Event k where
   Continue :: Event k
 
   End :: Event k
-
-  Subsignal :: Signal' super event'
-            -> event'
-            -> k
-            -> Event k
 
 become :: Monad super
       => (event -> Narrative '[Event] super ())
@@ -51,14 +56,15 @@ continue = self Continue
 end :: Monad super => Narrative '[Event] super a
 end = self End
 
-subsignal :: Monad super
-          => Signal' super event
-          -> event
-          -> Narrative '[Event] super ()
-subsignal sig e = self $ Subsignal sig e ()
-
 type Signal self super event = Signal' (Narrative self super) event
 
+-- NOTE: Because this is implemented as IORef, it is not thread safe;
+--       as long as Signals are maintained by a synchronous context
+--       they can be assumed safe - as soon as a Signal crosses a
+--       thread context boundary, safety is thrown out the window, i.e.
+--       adding an event to a Signal could silently fail if the Signal
+--       is currently being 'siganl'ed. MVar will eventaully fix this
+--       at the cost of losing subsignal.
 data Signal' super event
     = Signal
         (IORef [IORef (event -> Narrative '[Event] super ())])
@@ -326,16 +332,9 @@ signal_ (r@(Runnable bs_ f_ f):rs) = start rs r
                   liftIO $ do
                   -- in case we arrived here through trigger, nullify the behavior.
                     writeIORef f_ (const end)
-                    modifyIORef bs_ $ Prelude.filter (/= f_)
+                    atomicModifyIORef' bs_ $ \bs ->
+                      (Prelude.filter (/= f_) bs,())
                   signal_ rs
-                Subsignal sig' e' x -> do
-                  let Signal bs'_ = sig'
-                  seeded <- liftIO $ do
-                    bs' <- readIORef bs'_
-                    forM bs' $ \f'_ -> do
-                      f' <- readIORef f'_
-                      return (Runnable bs'_ f'_ (f' e'))
-                  signal_ ((Runnable bs_ f_ (k x) : rs) ++ unsafeCoerce seeded)
 
 {-# INLINE trigger #-}
 trigger :: (Monad super, MonadIO super, MonadThrow super)
@@ -347,6 +346,14 @@ trigger (Behavior b_) e = do
   bs_ <- liftIO $ newIORef []
   signal_ [Runnable bs_ b_ (b e)]
 
+
+-- NOTE: Because this is implemented as IORef, it is not thread safe;
+--       as long as Periodicals are maintained by a synchronous context
+--       they can be assumed safe - as soon as a Periodical crosses a
+--       thread context boundary, safety is thrown out the window, i.e.
+--       adding a subscription to a Periodical could silently fail if the
+--       periodical is currently being published. MVar will eventually
+--       fix this at the cost of losing subpublish.
 data Periodical' super event
   = Periodical (IORef (Maybe (IORef (Maybe event),Signal' super event)))
   deriving Eq
@@ -422,20 +429,6 @@ publish (Periodical p_) ev = do
       signal sig ev
       return True
 
--- subpublish in a multithreaded environment can cause desynchronization;
--- the current value could be a value that has not yet been seen by the signal
--- what is the solution?
-subpublish :: (Monad super, MonadIO super, MonadThrow super)
-           => Periodical' super event -> event -> Narrative '[Event] super Bool
-subpublish (Periodical p_) ev = do
-  mp <- liftIO $ readIORef p_
-  case mp of
-    Nothing -> return False
-    Just (cur_,sig) -> do
-      liftIO $ writeIORef cur_ (Just ev)
-      subsignal sig ev
-      return True
-
 periodicalCurrent :: (Monad super, MonadIO super)
                   => Periodical' super event -> super (Maybe event)
 periodicalCurrent (Periodical p_) = liftIO $ do
@@ -448,70 +441,70 @@ data Syndicated event where
   Syndicated :: Periodical' super event -> Signaled -> Syndicated event
 
 -- syndicated periodical network; periodicals that share a common event;
--- event propagation network for concurrent dispatch
+-- event propagation network for concurrent dispatch.
+-- NOTE: Suffer from the same desynchronization issues...
 data Network event
-  = Network (IORef (Maybe event)) (IORef [Syndicated event])
+  = Network (MVar (Maybe event,[Syndicated event]))
   deriving Eq
 
 -- create a new syndication network
 network :: (Monad super, MonadIO super)
         => super (Network event)
 network = liftIO $ do
-  mcur <- newIORef Nothing
-  sd <- newIORef []
-  return $ Network mcur sd
+  nw <- newMVar (Nothing,[])
+  return $ Network nw
 
 -- create a new syndication network
 network' :: (Monad super, MonadIO super)
         => event -> super (Network event)
 network' ev = liftIO $ do
-  mcur <- newIORef (Just ev)
-  sd <- newIORef []
-  return $ Network mcur sd
+  nw <- newMVar (Just ev,[])
+  return $ Network nw
 
 nullNetwork :: (Monad super, MonadIO super)
             => Network event -> super Bool
-nullNetwork (Network _ ss_)= liftIO $ do
-  ss <- readIORef ss_
+nullNetwork (Network nw)= liftIO $ do
+  (_,ss) <- readMVar nw
   return (null ss)
 
 -- syndicate an event across multiple periodicals in a network
 syndicate :: (Monad super, MonadIO super)
           => Network event -> event -> super ()
-syndicate (Network mcur_ sd_) ev = liftIO $ do
-  writeIORef mcur_ (Just ev)
-  sds <- readIORef sd_
-  case sds of
-    [] ->
-      return ()
-    xs -> do
-      sds' <- forM xs $ \s@(Syndicated (Periodical p_) sigd) -> do
-        mp <- readIORef p_
-        case mp of
-          Nothing -> return Nothing
-          Just (cur_,sig) -> do
-            writeIORef cur_ (Just ev)
-            bufferIO sigd sig ev
-            return $ Just s
-      writeIORef sd_ $ catMaybes sds'
+syndicate (Network nw) ev = liftIO $ do
+  -- garbage collect null periodicals and get the current set of
+  -- executable periodicals. The garbage collection is for periodical
+  -- that have been nullified but not removed via leaveNetwork. This is
+  -- useful for periodicals that are members of multiple networks.
+  ss <- modifyMVar nw $ \(_,xs) -> do
+    mss <- forM xs $ \s@(Syndicated (Periodical p_) sigd) -> do
+             mp <- readIORef p_
+             case mp of
+               Nothing -> return Nothing
+               Just _ -> return $ Just s
+    let ss' = catMaybes mss
+    return ((Just ev,ss'),ss')
+  forM_ ss $ \s@(Syndicated (Periodical p_) sigd) -> do
+    mp <- readIORef p_
+    forM_ mp $ \(cur_,sig) -> do
+      writeIORef cur_ (Just ev)
+      bufferIO sigd sig ev
 
 networkCurrent :: (Monad super, MonadIO super) => Network event -> super (Maybe event)
-networkCurrent (Network me_ _) = liftIO $ readIORef me_
+networkCurrent (Network nw) = liftIO $ fst <$> readMVar nw
 
 joinNetwork :: (Monad super, MonadIO super)
             => Network event -> Periodical' super' event -> Signaled -> super ()
-joinNetwork (Network mcur_ sd_) pl sg = do
-  liftIO $ modifyIORef sd_ $ \sd -> sd ++ [Syndicated pl sg]
+joinNetwork (Network nw) pl sg = do
+  liftIO $ modifyMVar nw $ \(ev,ss) -> return ((ev,ss ++ [Syndicated pl sg]),())
 
 joinNetwork' :: (Monad super, MonadIO super)
              => Network event -> Periodical' super' event -> Signaled -> super Bool
-joinNetwork' ntw@(Network mcur_ sd_) pl@(Periodical p_) sigd = liftIO $ do
+joinNetwork' ntw@(Network nw) pl@(Periodical p_) sigd = liftIO $ do
   mp <- readIORef p_
   case mp of
     Nothing -> return False
     Just (cur_,sig) -> do
-      modifyIORef sd_ $ \sd -> sd ++ [Syndicated pl sigd]
-      mcur <- readIORef mcur_
+      mcur <- modifyMVar nw $ \(ev,ss) -> return ((ev,ss ++ [Syndicated pl sigd]),ev)
       case mcur of
         Nothing -> return False
         Just cur -> do
@@ -521,12 +514,13 @@ joinNetwork' ntw@(Network mcur_ sd_) pl@(Periodical p_) sigd = liftIO $ do
 
 leaveNetwork :: (Monad super, MonadIO super)
              => Network event -> Periodical' super' event -> super ()
-leaveNetwork (Network mcur_ sd_) pl =
+leaveNetwork (Network nw) pl =
   liftIO $
     -- let's hope this works.... if not, just create a counter token or make
     -- Network (IORef [IORef (Maybe (Syndicated event))]) or something
-    modifyIORef sd_ $ \sd ->
-      filter (\(Syndicated pl' _) -> pl /= unsafeCoerce pl') sd
+    modifyMVar nw $ \(ev,ss) ->
+      let ss' = filter (\(Syndicated pl' _) -> pl /= unsafeCoerce pl') ss
+      in return ((ev,ss'),())
 
 -- An abstract Signal queue. Useful for building event loops.
 -- Note that there is still a need to call unsafeCoerce on the
