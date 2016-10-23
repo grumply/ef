@@ -284,7 +284,7 @@ instance (MonadMask super, MonadCatch (Narrative self super), MonadIO super, Mon
 
 -- Note super is strictly more powerful than lift; lift can be implemented in
 -- terms of super.
-{-# INLNE CONLIKE [2] super #-}
+{-# INLINE CONLIKE [2] super #-}
 super :: Functor super => super (Narrative self super result) -> Narrative self super result
 super = Super
 
