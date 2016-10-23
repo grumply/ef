@@ -549,7 +549,7 @@ constructAs :: ( Monad internal, MonadIO internal
             -> Signal' (Narrative internalSelf internal) (Narrative internalSelf internal ())
             -> Narrative internalSelf internal `As` external
 constructAs buf sig = As buf $ \nar -> liftIO $ do
-  p <- newPromise
+  p <- promise
   bufferIO buf sig $ nar >>= void . fulfill p
   return p
 
@@ -563,7 +563,7 @@ reconstructAs :: forall internal external external' super internalSelf.
 reconstructAs (As buf _) = do
   sig :: Signal internalSelf internal (Narrative internalSelf internal ()) <- runner
   return $ As buf $ \nar -> liftIO $ do
-    p <- newPromise
+    p <- promise
     bufferIO buf sig $ nar >>= void . fulfill p
     return p
 

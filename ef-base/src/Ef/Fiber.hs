@@ -1,5 +1,5 @@
 {-# LANGUAGE Trustworthy #-}
-module Ef.Fiber (fiber, fibers, Status(..), Operation(..), Ops(..), Threader(..))  where
+module Ef.Fiber (fiber, fibers, ThreadStatus(..), Operation(..), Ops(..), Threader(..))  where
 
 
 import Ef
@@ -9,18 +9,18 @@ import Control.Lens (view,set)
 import Data.IORef
 import Unsafe.Coerce
 
--- | Status represents the state of a thread of execution.
+-- | ThreadStatus represents the state of a thread of execution.
 -- The status may be updated during
-data Status status result
-    = Running (Maybe status)
-    | Failed SomeException
-    | Done result
+data ThreadStatus status result
+    = ThreadRunning (Maybe status)
+    | ThreadFailed SomeException
+    | ThreadDone result
 
 data Operation status result =
-    Operation (IORef (Status status result))
+    Operation (IORef (ThreadStatus status result))
 
 data Ops self super status result = Ops
-    { notify :: status -> Narrative self super ()
+    { inform :: status -> Narrative self super ()
     , supplement :: (Maybe status -> Maybe status) -> Narrative self super ()
     }
 
@@ -29,7 +29,7 @@ query
        , Monad super
        )
     => Operation status result
-    -> Narrative self super (Status status result)
+    -> Narrative self super (ThreadStatus status result)
 
 query (Operation op) =
     liftIO (readIORef op)
@@ -61,10 +61,10 @@ data Threader self super =
                  )
               -> Narrative self super (Operation status result)
 
-        , await
+        , wait
               :: forall status result.
                  Operation status result
-              -> Narrative self super (Status status result)
+              -> Narrative self super (ThreadStatus status result)
 
         , focus
               :: forall focusResult.
@@ -85,28 +85,28 @@ data Threader self super =
 --
 -- @
 --    thread1 Op{..} = do
---        notify 0
+--        inform 0
 --        ...
---        notify 1
+--        inform 1
 --        ..
 --
---    thread2 thread1Status _ = go
+--    thread2 thread1ThreadStatus _ = go
 --        where
 --            go = do
---                status <- query thread1Status
+--                status <- query thread1ThreadStatus
 --                case status of
---                    Running Nothing  -> ... -- hasn't started executing yet
---                    Running (Just n) -> ... -- executing in phase n
---                    Failed exc       -> ... -- failed with exc
---                    Done result      -> ... -- finished with result
+--                    ThreadRunning Nothing  -> ... -- hasn't started executing yet
+--                    ThreadRunning (Just n) -> ... -- executing in phase n
+--                    ThreadFailed exc       -> ... -- failed with exc
+--                    ThreadDone result      -> ... -- finished with result
 --
 --    fibers $ \Threader{..} -> do
 --        op1 <- fork thread1
 --        op2 <- fork (thread2 op1)
---        result <- await op2
+--        result <- wait op2
 --        case result of
---            Failed exception -> ...
---            Done result -> return result
+--            ThreadFailed exception -> ...
+--            ThreadDone result -> return result
 -- @
 --
 -- Note: I suggest not using this unless you absolutely know that you need it
@@ -159,29 +159,29 @@ fiber :: forall self super result.
        -> Narrative self super result
 fiber f =
   do scope <- self (FreshScope id)
-     let newOp = Operation <$> newIORef (Running Nothing)
+     let newOp = Operation <$> newIORef (ThreadRunning Nothing)
          root =
            f Threader {fork =
                         \p ->
                           let ops (Operation op) =
-                                Ops {notify =
+                                Ops {inform =
                                        \status ->
-                                         let running = Running (Just status)
+                                         let running = ThreadRunning (Just status)
                                          in liftIO (writeIORef op running)
                                     ,supplement =
                                        \supp ->
-                                         let modify (Running x) =
-                                               Running (supp x)
+                                         let modify (ThreadRunning x) =
+                                               ThreadRunning (supp x)
                                          in liftIO (modifyIORef op modify)}
-                              newOp = Operation <$> newIORef (Running Nothing)
+                              newOp = Operation <$> newIORef (ThreadRunning Nothing)
                           in do op <- liftIO newOp
                                 self (Fork scope op (p (ops op)))
-                     ,await =
+                     ,wait =
                         \(Operation op) ->
                           let awaiting =
                                 do status <- liftIO (readIORef op)
                                    case status of
-                                     Running _ ->
+                                     ThreadRunning _ ->
                                        do self (Yield scope)
                                           awaiting
                                      _ -> return status
@@ -215,18 +215,18 @@ fiber f =
     rewrite :: forall status.
                Int
             -> Operation status result
-            -> Running self super
+            -> ThreadRunning self super
             -> Narrative self super result
 
     rewrite scope (Operation rootOp) = withFibers (Threads [])
-      where withFibers :: Running self super
-                       -> Running self super
+      where withFibers :: ThreadRunning self super
+                       -> ThreadRunning self super
                        -> Narrative self super result
             withFibers (Threads []) (Threads []) =
-              do result <- liftIO (readIORef rootOp :: IO (Status status result))
+              do result <- liftIO (readIORef rootOp :: IO (ThreadStatus status result))
                  case result of
-                   Failed exception -> throwM exception
-                   ~(Done result) -> return result
+                   ThreadFailed exception -> throwM exception
+                   ~(ThreadDone result) -> return result
             withFibers (Threads acc) (Threads []) =
               withFibers (Threads [])
                          (Threads $ reverse acc)
@@ -235,14 +235,14 @@ fiber f =
               where go (Return result) =
                       let finish =
                             writeIORef operation
-                                       (Done result)
+                                       (ThreadDone result)
                       in do liftIO finish
                             withFibers (Threads acc)
                                        (Threads fibers)
                     go (Fail exception) =
                       let fail =
                             writeIORef operation
-                                       (Failed exception)
+                                       (ThreadFailed exception)
                       in do liftIO fail
                             withFibers (Threads acc)
                                        (Threads fibers)
@@ -294,7 +294,7 @@ fiber f =
                             withNew new (Fail exception) =
                               let fail =
                                     writeIORef operation
-                                               (Failed exception)
+                                               (ThreadFailed exception)
                               in do liftIO fail
                                     withFibers (Threads acc)
                                                (Threads $ new ++ fibers)
@@ -343,11 +343,11 @@ fiber f =
                                          do intermediate <- unsafeCoerce block
                                             k $ unsafeCoerce intermediate
                                        _ -> ignore
-data Running self super
+data ThreadRunning self super
     where
 
         Threads
-            :: [(Narrative self super threadResult, Operation threadStatus threadResult)]
-            -> Running self super
+            :: [(Narrative self super threadResult, Operation threadThreadStatus threadResult)]
+            -> ThreadRunning self super
 
 {-# INLINE fiber #-}

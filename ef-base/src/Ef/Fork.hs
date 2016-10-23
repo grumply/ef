@@ -28,7 +28,7 @@ forkWith
     -> Narrative messages' super' (ThreadRef traits super result)
 
 forkWith comp plan embedInIO = do
-    p <- liftIO newPromise
+    p <- liftIO promise
     let thread = embedInIO $ delta comp (try plan)
     tid <- liftIO $ mask $ \restore -> Control.Concurrent.forkIO $ do
                ea <- restore thread
@@ -48,7 +48,7 @@ forkOSWith
     -> Narrative messages' super' (ThreadRef traits super result)
 
 forkOSWith comp plan embedInIO = do
-    p <- liftIO newPromise
+    p <- liftIO promise
     let thread = embedInIO $ delta comp (try plan)
     tid <- liftIO $ mask $ \restore -> Control.Concurrent.forkOS $ do
                ea <- restore thread
@@ -68,7 +68,7 @@ forkOnWith
     -> (forall x. super x -> IO x)
     -> Narrative messages' super' (ThreadRef traits super result)
 forkOnWith n comp plan embedInIO = do
-    p <- liftIO newPromise
+    p <- liftIO promise
     let thread = embedInIO $ delta comp (try plan)
     tid <- liftIO $ mask $ \restore -> Control.Concurrent.forkOn n $ do
                ea <- restore thread
