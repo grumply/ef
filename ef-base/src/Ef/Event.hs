@@ -595,8 +595,12 @@ driver (Signaled buf) o = do
           where
 
             {-# INLINE go' #-}
+            -- if the buffer is nullified via killBuffer, a BlockedIndefinitelyOnSTM should eventually be thrown.
             go' = do
-              evss <- handle (\BlockedIndefinitelyOnSTM -> liftIO (writeIORef buf Nothing) >> throwM DriverStopped)
+              evss <- handle (\BlockedIndefinitelyOnSTM -> do
+                                 liftIO (writeIORef buf Nothing)
+                                 throwM DriverStopped
+                             )
                              (collect qs)
               forM_ evss $ \(Signaling evs s) ->
                 forM_ evs (signal $ unsafeCoerce s)
@@ -618,11 +622,17 @@ driverPrintExceptions exceptionPrefix (Signaled buf) o = do
           where
 
             {-# INLINE go' #-}
+            -- if the buffer is nullified via killBuffer, a BlockedIndefinitelyOnSTM should eventually be thrown.
             go' = do
-              evss <- handle (\BlockedIndefinitelyOnSTM -> liftIO (writeIORef buf Nothing) >> throwM DriverStopped)
+              evss <- handle (\BlockedIndefinitelyOnSTM -> do
+                                 liftIO (writeIORef buf Nothing)
+                                 throwM DriverStopped
+                             )
                              (collect qs)
               forM_ evss $ \(Signaling evs s) ->
-                forM_ evs (handle (\(e :: SomeException) -> liftIO $ putStrLn $ exceptionPrefix ++ ": " ++ show e)
+                forM_ evs (handle (\(e :: SomeException) -> liftIO $ putStrLn $
+                                      exceptionPrefix ++ ": " ++ show e
+                                  )
                                   . signal (unsafeCoerce s)
                           )
 
