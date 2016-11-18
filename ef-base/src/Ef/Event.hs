@@ -539,6 +539,15 @@ data As internal external
        , runAs :: forall a. internal a -> external (Promise a)
        }
 
+runAs_ :: Functor external => As internal external -> internal a -> external ()
+runAs_ as ia = void $ runAs as ia
+
+runAsIO :: (Monad super, MonadIO super) => As internal IO -> internal a -> super (Promise a)
+runAsIO as f = liftIO $ runAs as f
+
+runAsIO_ :: (Monad super, MonadIO super) => As internal IO -> internal a -> super ()
+runAsIO_ as f = void $ liftIO $ runAs as f
+
 -- Note that the `Signaled` passed to this method MUST be driven by
 -- a correctly witnessing object. It is only decoupled from `driver`
 -- for convenience to allow forked and unforked drivers. Be careful!

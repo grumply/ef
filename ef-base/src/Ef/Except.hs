@@ -62,7 +62,7 @@ catchChecked act =
     let proxy = Proxy :: Proxy e
     in catch (unthrow proxy act)
   where
-    unthrow :: forall proxy e x. proxy e -> (Throws e => x) -> x
+    unthrow :: forall proxy (e :: *) x. proxy e -> (Throws e => x) -> x
     unthrow _ = (unWrap :: Wrap (Catch e) x -> x)
               . (coerceWrap :: forall e. Wrap e x -> Wrap (Catch e) x)
               . (Wrap :: forall e. (Throws e => x) -> Wrap e x)
