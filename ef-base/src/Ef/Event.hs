@@ -67,7 +67,7 @@ type Signal self super event = Signal' (Narrative self super) event
 --       at the cost of losing subsignal.
 data Signal' super event
     = Signal
-        (IORef [IORef (event -> Narrative '[Event] super ())])
+        {-# UNPACK #-} !(IORef [IORef (event -> Narrative '[Event] super ())])
     deriving Eq
 
 {-# INLINE behaviorCount #-}
@@ -90,7 +90,7 @@ type Behavior self super event = Behavior' (Narrative self super) event
 
 data Behavior' super event
   = Behavior
-      (IORef (event -> Narrative '[Event] super ()))
+      {-# UNPACK #-} !(IORef (event -> Narrative '[Event] super ()))
   deriving Eq
 
 {-# INLINE construct #-}
@@ -270,8 +270,8 @@ stop :: (Monad super, Monad super', MonadIO super')
 stop (Behavior b_) = liftIO $ atomicModifyIORef' b_ $ const (const end,())
 
 data Runnable super where
-  Runnable :: IORef [(IORef (event -> Narrative '[Event] super ()))]
-           -> IORef (event -> Narrative '[Event] super ())
+  Runnable :: {-# UNPACK #-} !(IORef [(IORef (event -> Narrative '[Event] super ()))])
+           -> {-# UNPACK #-} !(IORef (event -> Narrative '[Event] super ()))
            -> Narrative '[Event] super ()
            -> Runnable super
 
@@ -354,7 +354,7 @@ trigger (Behavior b_) e = do
 --       periodical is currently being published. MVar will eventually
 --       fix this at the cost of losing subpublish.
 data Periodical' super event
-  = Periodical (IORef (Maybe (Signal' super event)))
+  = Periodical {-# UNPACK #-} !(IORef (Maybe (Signal' super event)))
   deriving Eq
 
 type Periodical self super event = Periodical' (Narrative self super) event
@@ -530,9 +530,9 @@ leaveNetwork (Network nw) pl =
 -- programmer to know how to use this safely; single-responsibility
 -- for both injection and extraction with unified typing is required.
 data Signaling where
-    Signaling :: [e] -> Signal' super e -> Signaling
+    Signaling :: [e] -> {-# UNPACK #-} !(Signal' super e) -> Signaling
 data Signaled where
-    Signaled :: IORef (Maybe (Queue Signaling)) -> Signaled
+    Signaled :: {-# UNPACK #-} !(IORef (Maybe (Queue Signaling))) -> Signaled
 
 data As internal external
   = As { signaledAs :: Signaled
@@ -597,13 +597,12 @@ driver (Signaled buf) o = do
             {-# INLINE go' #-}
             -- if the buffer is nullified via killBuffer, a BlockedIndefinitelyOnSTM should eventually be thrown.
             go' = do
-              evss <- handle (\BlockedIndefinitelyOnSTM -> do
-                                 liftIO (writeIORef buf Nothing)
-                                 throwM DriverStopped
-                             )
-                             (collect qs)
-              forM_ evss $ \(Signaling evs s) ->
-                forM_ evs (signal $ unsafeCoerce s)
+              Signaling evs s <- handle (\BlockedIndefinitelyOnSTM -> do
+                                            liftIO (writeIORef buf Nothing)
+                                            throwM DriverStopped
+                                        )
+                                        (collect qs)
+              forM_ evs (signal $ unsafeCoerce s)
 
 driverPrintExceptions :: (Monad super, MonadIO super, MonadThrow super, Ma (Traits traits) (Messages self))
                       => String -> Signaled -> Object traits super -> super ()
@@ -624,20 +623,50 @@ driverPrintExceptions exceptionPrefix (Signaled buf) o = do
             {-# INLINE go' #-}
             -- if the buffer is nullified via killBuffer, a BlockedIndefinitelyOnSTM should eventually be thrown.
             go' = do
-              evss <- handle (\BlockedIndefinitelyOnSTM -> do
-                                 liftIO (writeIORef buf Nothing)
-                                 throwM DriverStopped
-                             )
-                             (collect qs)
-              forM_ evss $ \(Signaling evs s) ->
-                forM_ evs (handle (\(e :: SomeException) -> liftIO $ putStrLn $
-                                      exceptionPrefix ++ ": " ++ show e
-                                  )
-                                  . signal (unsafeCoerce s)
-                          )
+              Signaling evs s <- handle (\(e :: SomeException) -> do
+                                            liftIO $ putStrLn $
+                                              exceptionPrefix ++ ": " ++ show e
+                                            liftIO (writeIORef buf Nothing)
+                                            throwM DriverStopped
+                                        )
+                                        (collect qs)
+              forM_ evs (signal $ unsafeCoerce s)
 
 data DriverStopped = DriverStopped deriving Show
 instance Exception DriverStopped
+
+driverPrintExceptionsNoStop :: (Monad super, MonadIO super, MonadThrow super, Ma (Traits traits) (Messages self))
+                            => String -> Signaled -> Object traits super -> super ()
+driverPrintExceptionsNoStop exceptionPrefix (Signaled buf) o = do
+  Just qs <- liftIO $ readIORef buf
+  start qs o
+  where
+    {-# INLINE start #-}
+    start qs = go
+      where
+
+        {-# INLINE go #-}
+        go obj = do
+          (obj',_) <- obj $. go'
+          go obj'
+          where
+
+            {-# INLINE go' #-}
+            -- if the buffer is nullified via killBuffer, a BlockedIndefinitelyOnSTM should eventually be thrown.
+            go' = do
+              Signaling evs s <- handle (\(e :: SomeException) -> do
+                                            liftIO $ putStrLn $
+                                              exceptionPrefix ++ ": " ++ show e
+                                            liftIO (writeIORef buf Nothing)
+                                            throwM DriverStopped
+                                        )
+                                        (collect qs)
+              handle (\(e :: SomeException) -> do
+                        liftIO $ putStrLn $
+                          exceptionPrefix ++ ": " ++ show e
+                        return ()
+                     )
+                     (forM_ evs (signal $ unsafeCoerce s))
 
 {-# INLINE buffer #-}
 buffer :: (Monad super', MonadIO super')
