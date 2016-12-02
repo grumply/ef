@@ -27,14 +27,14 @@ getProducer = project <$> get
 putProducer :: Monad m => Producer a m x -> Parser a m ()
 putProducer = put . Producing
 
-draw :: (Monad m, MonadIO m, MonadThrow m) => Parser a m (Maybe a)
+draw :: forall m a. (Monad m, MonadIO m, MonadThrow m) => Parser a m (Maybe a)
 draw = do
   p <- getProducer
   x <- lift (next p)
   case x of
     Left r -> do
       putProducer $ return r
-      return Nothing
+      return (Nothing :: Maybe a)
     Right (a,p') -> do
       putProducer p'
       return (Just a)
