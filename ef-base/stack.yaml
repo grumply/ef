@@ -1,5 +1,0 @@
-resolver: lts-6.4
-
-packages:
-- .
-- ../ef-core/

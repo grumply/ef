@@ -16,7 +16,7 @@ import Control.Comonad.Cofree
 -- a computer of said instructions into an infinite stream of steps of
 -- instructions and computers transformed by those instructions.
 
--- These are exceptionally useful for simulation.
+-- These are exceptionally useful for simulation and implemented nearly trivally.
 
 path :: (Monad super, Ma (Traits traits) (Messages self))
       => Object traits super
@@ -74,14 +74,3 @@ reseedNar :: (Monad super, MonadThrow super, Ma (Traits traits) (Messages self))
           -> Cofree super (Cofree super (Object traits super, Narrative self super a))
           -> Cofree super (Cofree super (Object traits super, Narrative self super a))
 reseedNar nar = fmap (swapNar nar)
-
-
---
--- branchObj :: (Monad super, MonadThrow super, Ma (Traits trait) (Messages self))
---           => Cofree super (Object traits super, Narrative self super a)
---           -> Object traits super
---           -> Path traits self super a
--- branchObj p obj =
---   extend
---     (\p -> )
---     (duplicate p)

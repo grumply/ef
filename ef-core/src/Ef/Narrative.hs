@@ -549,10 +549,11 @@ _mplus p0 p1 =
   where
 
     go (Super m) =
-        Super (fmap go m)
+        Super (fmap (\x -> _mplus x p1) m)
+        -- Super (m `mplus` (Super $ return p1))
 
     go (Say message k) =
-        Say message (go . k)
+        Say message ((\x -> _mplus x p1) . k)
 
     go (Fail _) =
         p1
