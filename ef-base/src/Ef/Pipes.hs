@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-inline-rule-shadowing -fno-warn-missing-methods #-}
 {-# language GeneralizedNewtypeDeriving #-}
+{-# language DeriveAnyClass #-}
 module Ef.Pipes
     ( pipes
     , Pipes(..)
