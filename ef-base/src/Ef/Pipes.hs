@@ -1,6 +1,8 @@
 {-# OPTIONS_GHC -fno-warn-inline-rule-shadowing -fno-warn-missing-methods #-}
-{-# language GeneralizedNewtypeDeriving #-}
+{-# language DeriveFunctor #-}
 {-# language DeriveAnyClass #-}
+{-# language GeneralizedNewtypeDeriving #-}
+{-# language StandaloneDeriving #-}
 module Ef.Pipes
     ( pipes
     , Pipes(..)
@@ -127,12 +129,22 @@ type Server' b' b super r = forall x' x. Proxy x' x b' b super r
 
 type Client' a' a super r = forall y' y. Proxy a' a y' y super r
 
-newtype Proxy a' a b' b super r =
-    Proxy
-        {
-          runProxy
-              :: Narrative '[Pipes] super r
-        } deriving (Monad, Functor, Applicative, MonadTrans, MonadCatch, MonadThrow, MonadMask, MonadIO)
+newtype Proxy (a' :: *) (a :: *) (b' :: *) (b :: *) (super :: * -> *) (r :: *) =
+    Proxy { runProxy :: Narrative '[Pipes] super r }
+instance Functor super => Functor (Proxy a' a b' b super) where
+  fmap f (Proxy p) = Proxy (fmap f p)
+instance Monad super => Applicative (Proxy a' a b' b super) where
+  pure = Proxy . pure
+  (<*>) f a = Proxy $ runProxy f <*> runProxy a
+instance Monad super => Monad (Proxy a' a b' b super) where
+  return = pure
+  (>>=) ma amb = Proxy $ runProxy ma >>= \a -> let mb = amb a in runProxy mb
+instance MonadTrans (Proxy a' a b' b) where
+  lift = Proxy . lift
+deriving instance (Monad super) => MonadCatch (Proxy a' a b' b super)
+deriving instance (Monad super) => MonadThrow (Proxy a' a b' b super)
+deriving instance (Monad super) => MonadMask (Proxy a' a b' b super)
+deriving instance (Monad super) => MonadIO (Proxy a' a b' b super)
 
 request a' = self (Request a' Return)
 respond b  = self (Respond b  Return)
