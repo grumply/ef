@@ -58,15 +58,27 @@ library
                        NoMonomorphismRestriction
                        ScopedTypeVariables
                        ExistentialQuantification
+  if (impl(ghcjs))
+    build-depends:       base >=4.8
+                      , ef-core >= 1.6
+                      , random >= 1.1
+                      , exceptions >= 0.8
+                      , transformers
+                      , lens
+                      , ghc-prim
+                      , mtl
+                      , stm >= 2.4
+  else
+    build-depends:       base >=4.8
+                      , ef-core >= 1.6
+                      , random >= 1.1
+                      , exceptions >= 0.8
+                      , transformers
+                      , lens
+                      , ghc-prim
+                      , mtl
+                      , stm >= 2.4
+                      , unagi-chan
 
-  build-depends:       base >=4.8
-                     , ef-core >= 1.6
-                     , random >= 1.1
-                     , stm >= 2.4
-                     , exceptions >= 0.8
-                     , transformers
-                     , lens
-                     , ghc-prim
-                     , mtl
   hs-source-dirs:      src
   default-language:    Haskell2010
