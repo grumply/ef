@@ -86,7 +86,7 @@ instance Functor Sync where
   fmap f (Respond i b b'k) = Respond i b (fmap f b'k)
 
 sync :: (Monad c, '[Sync] <. ts) => Sync (Action ts c)
-sync = Sync (0,\o -> let Module Sync {..} o = o
+sync = Sync (0,\o -> let Module Sync {..} _ = o
                      in pure $ Module (Sync { scopeCreator = first succ scopeCreator }) o
             )
 
