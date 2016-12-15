@@ -2,12 +2,11 @@ module Ef.Manage (manage, manages, Manager(..), Token, Manage)
        where
 
 import Ef
-import Control.Arrow
-import Control.Lens (view, set)
+import Data.Bifunctor
 import Data.Either
 import Unsafe.Coerce
 
-newtype Token a = Token Int
+newtype Token = Token Int
 
 data Manage k where
   Manage :: Int -> k -> k -> Manage k
@@ -15,12 +14,21 @@ data Manage k where
   Allocate ::
     Int ->
       Code ms c a ->
-        (a -> Code ms c ()) -> ((a, Token a) -> k) -> Manage k
+        (a -> Code ms c ()) -> ((a, Token) -> k) -> Manage k
   Register ::
-    Int -> Token a -> Code ms c () -> k -> Manage k
-  Unregister :: Int -> Token a -> k -> Manage k
-  Deallocate :: Token a -> k -> Manage k
+    Int -> Token -> Code ms c () -> k -> Manage k
+  Unregister :: Int -> Token -> k -> Manage k
+  Deallocate :: Token -> k -> Manage k
   Finish :: Int -> a -> Manage k
+
+instance Functor Manage where
+  fmap f (Manage i k k') = Manage i (f k) (f k')
+  fmap f (FreshSelf ik) = FreshSelf (fmap f ik)
+  fmap f (Allocate i ca acu atak) = Allocate i ca acu (fmap f atak)
+  fmap f (Register i t c k) = Register i t c (f k)
+  fmap f (Unregister i t k) = Unregister i t (f k)
+  fmap f (Deallocate t k) = Deallocate t (f k)
+  fmap f (Finish i a) = Finish i a
 
 instance Delta Manage Manage where
     -- needed to let Deallocation cross manager scopes
@@ -28,33 +36,33 @@ instance Delta Manage Manage where
     delta eval (Manage i k _) (FreshSelf ik) = eval k (ik i)
 
 manages :: (Monad c, '[Manage] <. ts) => Manage (Action ts c)
-manages = Manage 0 pure $ \o ->
-  let Module (Manage i non me) o = o
+manages = flip (Manage 0) pure $ \o ->
+  let Module (Manage i non me) _ = o
       !i' = succ i
   in pure $ Module (Manage i' non me) o
 
 {-# INLINE manages #-}
 
-data Manager self super = Manager
+data Manager ms c = Manager
     {
       -- | allocate a resource with a given cleanup method to be performed
       -- when the managed scope returns or when triggered via
       -- deallocate/unregister.
-      allocate :: forall resource. Code ms c resource -> (resource -> Code ms c ()) -> Code ms c (resource, Token resource)
+      allocate :: forall resource. Code ms c resource -> (resource -> Code ms c ()) -> Code ms c (resource, Token)
     ,
       -- | deallocate a resource by invoking the `Token`'s registered
       -- actions across all nested managed scopes for which the
       -- resource is registered.
-      deallocate :: forall resource. Token resource -> Code ms c ()
+      deallocate :: Token -> Code ms c ()
     ,
       -- | register a resource with this manager with a given cleanup action
       -- to be performed when deallocate is called or the managed scope
       -- returns. Resources may have multiple actions registered.
-      register :: forall resource. Token resource -> Code ms c () -> Code ms c ()
+      register :: Token -> Code ms c () -> Code ms c ()
     ,
       -- | unregister a resource within this manager's context without
       -- calling the associated cleanup actions.
-      unregister :: forall resource. Token resource -> Code ms c ()
+      unregister :: Token -> Code ms c ()
     }
 
 -- Simple Example:
@@ -72,13 +80,13 @@ data Manager self super = Manager
 -- of the nesting scopes.
 manage :: ('[Manage] <: ms, Monad c) => (Manager ms c -> Code ms c r) -> Code ms c r
 manage f = do
-  scope <- Send (FreshSelf id)
+  scope <- Send (FreshSelf Return)
   rewrite scope [] $
       (f Manager
-          { allocate = \create onEnd -> Send (Allocate scope create onEnd id)
-          , deallocate = \token -> Send (Deallocate token ())
-          , register = \token onEnd -> Send (Register scope token onEnd ())
-          , unregister = \token -> Send (Unregister scope token ())
+          { allocate = \create onEnd -> Send (Allocate scope create onEnd Return)
+          , deallocate = \token -> Send (Deallocate token (Return ()))
+          , register = \token onEnd -> Send (Register scope token onEnd (Return ()))
+          , unregister = \token -> Send (Unregister scope token (Return ()))
           }
       ) >>= (Send . Finish scope)
 
@@ -96,7 +104,7 @@ rewrite rewriteSelf = withStore
                 () <- x
                 cleanup' xs
         go
-            :: Messages ms x
+            :: Messages ms (Code ms c r)
             -> Code ms c r
         go message =
             let check currentSelf selfd =
@@ -108,12 +116,10 @@ rewrite rewriteSelf = withStore
                    Just x ->
                        case x of
                            Finish scope result ->
-                               check
-                                   scope
-                                   (cleanup (unsafeCoerce result) store)
-                           Allocate currentScope create finalize _ ->
+                               check scope (cleanup (unsafeCoerce result) store)
+                           Allocate currentScope create finalize k ->
                                check currentScope $
-                               do n <- self (FreshSelf id)
+                               do n <- Send (FreshSelf Return)
                                   a <- unsafeCoerce create
                                   let t = Token n
                                       result = unsafeCoerce (a, t)
@@ -121,7 +127,7 @@ rewrite rewriteSelf = withStore
                                       newStore = (n, cleanup) : store
                                       continue = k result
                                   withStore newStore continue
-                           Deallocate (Token t) _ ->
+                           Deallocate (Token t) k ->
                                let extract =
                                        compose . partitionEithers . map match
                                    compose = second sequence_
@@ -130,22 +136,19 @@ rewrite rewriteSelf = withStore
                                      | otherwise =
                                          Left (storedToken, cleanupAction)
                                    (newStore,cleanup) = extract store
-                                   continue b = cleanup >> k b
-                               in Say message (withStore newStore . continue)
-                           Register currentScope (Token t) finalize _ ->
+                                   continue = cleanup >> k
+                               in withStore newStore continue
+                           Register currentScope (Token t) finalize k ->
                                check currentScope $
                                let result = unsafeCoerce ()
                                    cleanup = unsafeCoerce (t, finalize)
                                    newStore = cleanup : store
-                                   continue = k result
-                               in withStore newStore continue
-                           Unregister currentScope (Token t) _ ->
+                               in withStore newStore k
+                           Unregister currentScope (Token t) k ->
                                let mismatch = (/= t) . fst
                                    newStore = filter mismatch store
                                    result = unsafeCoerce ()
-                                   continue = k result
-                               in check currentScope $
-                                  withStore newStore continue
+                               in check currentScope $ withStore newStore k
                            _ -> ignore
                    _ -> ignore
 
