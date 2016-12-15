@@ -3,7 +3,7 @@ module Ef.Exit (enter) where
 import Ef
 import Ef.Sync
 
-exiting :: (Monad c, '[Sync] <: ms) => ((a' -> Code ms c a) -> Code ms c result) -> Synchronized a' a b' b ms c result
+exiting :: (Monad c, '[Sync] <: ms) => ((a' -> Code ms c a) -> Code ms c r) -> Synchronized a' a b' b ms c r
 exiting computation = synchronized $ \up _ -> computation up
 
 -- | Scope a short-circuit continuation.
@@ -11,8 +11,8 @@ exiting computation = synchronized $ \up _ -> computation up
 -- @
 --     enter $ \exit -> do
 --         ...
---         when _ (exit result)
+--         when _ (exit r)
 --         ...
 -- @
-enter :: (Monad c, '[Sync] <: ms) => ((result -> Code ms c b) -> Code ms c result) -> Code ms c result
+enter :: (Monad c, '[Sync] <: ms) => ((r -> Code ms c b) -> Code ms c r) -> Code ms c r
 enter computation = runSync (return +>> exiting computation)

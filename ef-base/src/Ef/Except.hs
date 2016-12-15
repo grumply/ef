@@ -1,6 +1,5 @@
 {-# LANGUAGE IncoherentInstances #-}
 {-# LANGUAGE RoleAnnotations #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 module Ef.Except
      ( Except(..)
      , Throws
@@ -12,21 +11,18 @@ module Ef.Except
      ) where
 
 import Ef
-
 import Control.Exception (SomeException,Exception(..))
-
 import Data.Coerce
-import Data.Proxy
 
 data Except k
   = Except (SomeException -> k)
-  | Throw SomeException k
+  | Throw SomeException
+  deriving Functor
 
-instance Ma Except Except where
-    ma use (Except k) (Throw e k') = use (k e) k'
+instance Delta Except Except where
+  delta eval (Except k) (Throw e) = eval (k e) undefined
 
-excepts :: (Monad super, '[Except] .> traits)
-        => Trait Except traits super
+excepts :: (Monad c, '[Except] .> ts) => Except (Action ts c)
 excepts =
     let uncaught err = "Impossible uncaught checked exception: " ++ show err
     in Except (error . uncaught)
@@ -38,30 +34,36 @@ type role Throws representational
 newtype Catch e = Catch e
 instance Throws (Catch e)
 
-newtype Wrap e a =
-    Wrap { unWrap :: Throws e => a }
+newtype Wrap e a = Wrap { unWrap :: Throws e => a }
 
 -- | throw a checked exception; the exception must be caught via `catchChecked`
--- before the `Narrative` can be sent to an `Object`.
+-- before the `Code` can be sent to an `Object`.
 throwChecked
-    :: (Monad super, '[Except] <: self, Exception e)
-    => e -> (Throws e => Narrative self super a)
+    :: (Monad c, '[Except] <: ms, Exception e)
+    => e -> (Throws e => Code ms c a)
 throwChecked e =
     let exception = toException e
-    in self (Throw exception undefined)
+    in Send (Throw exception)
 
 -- | catch a chcked exception created via `throwChecked`; this method must be called
--- on a `Narrative` carrying a (Throws _ =>) context before it may be sent to an `Object`.
+-- on a `Code` carrying a (Throws _ =>) context before it may be sent to an `Object`.
 catchChecked
-    :: forall e self super result.
-       (Monad super, '[Except] <: self, Exception e)
-    => (Throws e => Narrative self super result)
-    -> (e -> Narrative self super result)
-    -> Narrative self super result
-catchChecked act =
+    :: forall e ms c r.
+       (Monad c, '[Except] <: ms, Exception e)
+    => (Throws e => Code ms c r)
+    -> (e -> Code ms c r)
+    -> Code ms c r
+catchChecked act c =
     let proxy = Proxy :: Proxy e
-    in catch (unthrow proxy act)
+    in transform id go (unthrow proxy act)
   where
+    go m =
+      case prj m of
+        Just (Throw se) ->
+          case fromException se of
+            Just e -> c e
+            _ -> Do (fmap (transform id go) m)
+        _ -> Do (fmap (transform id go) m)
     unthrow :: forall proxy (e :: *) x. proxy e -> (Throws e => x) -> x
     unthrow _ = (unWrap :: Wrap (Catch e) x -> x)
               . (coerceWrap :: forall e. Wrap e x -> Wrap (Catch e) x)
@@ -71,17 +73,17 @@ catchChecked act =
     coerceWrap = coerce
 
 -- | similar to `catchChecked` but doesn't handle the exception and instead
--- lifts it into an `Either` sum with the `Narratives` expected result.
+-- lifts it into an `Either` sum with the `Codes` expected r.
 tryChecked
-    :: (Monad super, '[Except] <: self, Exception e)
-    => (Throws e => Narrative self super result)
-    -> Narrative self super (Either e result)
+    :: (Monad c, '[Except] <: ms, Exception e)
+    => (Throws e => Code ms c r)
+    -> Code ms c (Either e r)
 tryChecked a = catchChecked (Right <$> a) (return . Left)
 
 -- | cast a checked exception to another type
 mapChecked
-    :: (Monad super, '[Except] <: self, Exception e, Exception e')
+    :: (Monad c, '[Except] <: ms, Exception e, Exception e')
     => (e -> e')
-    -> (Throws e => Narrative self super a)
-    -> (Throws e' => Narrative self super a)
+    -> (Throws e => Code ms c a)
+    -> (Throws e' => Code ms c a)
 mapChecked f p = catchChecked p (throwChecked . f)
