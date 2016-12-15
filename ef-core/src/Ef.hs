@@ -1,4 +1,3 @@
-{-# language TupleSections, ViewPatterns, PatternSynonyms, DeriveFunctor, OverlappingInstances #-}
 module Ef (module Ef, module Export) where
 
 import Control.Applicative as Export
@@ -16,6 +15,7 @@ import Ef.Type.Bool as Export
 import Ef.Type.Nat as Export
 import Ef.Type.List as Export
 import Ef.Type.Set as Export
+
 -- To fully understand the language, read the first 200 lines.
 
 data Modules (ts :: [* -> *]) (x :: *) where
@@ -28,12 +28,12 @@ data Messages ms a where
 
 newtype Object ts c = Object { deconstruct :: Modules ts (Action ts c) }
 
-type Code (ms :: [* -> *]) (c :: * -> *) (a :: *) = Narrative (Messages ms) c a
-
 data Narrative (f :: * -> *) c a where
-  Do   :: f (Narrative f c a) -> Narrative f c a
-  Lift :: c (Narrative f c a) -> Narrative f c a
-  Return  :: a -> Narrative f c a
+  Do     :: f (Narrative f c a) -> Narrative f c a
+  Lift   :: c (Narrative f c a) -> Narrative f c a
+  Return ::                  a  -> Narrative f c a
+
+type Code (ms :: [* -> *]) (c :: * -> *) (a :: *) = Narrative (Messages ms) c a
 
 viewMsg :: (Can' ms m (Offset ms m)) => Code ms c a -> Maybe (m (Code ms c a))
 viewMsg (Do m) = prj m

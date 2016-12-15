@@ -41,6 +41,9 @@ executable ef-test
                       NoMonoLocalBinds 
                       InstanceSigs 
                       BangPatterns 
+                      ViewPatterns
+                      PatternSynonyms
+                      DeriveFunctor
   build-depends:      base >=4.8
                     , comonad
                     , free
@@ -71,6 +74,9 @@ library
                       NoMonoLocalBinds 
                       InstanceSigs 
                       BangPatterns 
+                      ViewPatterns
+                      PatternSynonyms
+                      DeriveFunctor
   -- other-modules:
   -- other-extensions:
   build-depends:       base >=4.8
