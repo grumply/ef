@@ -3,43 +3,42 @@
 {-# language DeriveAnyClass #-}
 {-# language GeneralizedNewtypeDeriving #-}
 {-# language StandaloneDeriving #-}
+{-# language InstanceSigs #-}
 module Ef.Pipes
-    ( pipes
-    , Pipes(..)
+    ( Pipes(..)
 
     , Effect
     , Effect'
     , runEffect
 
+    -- , request
+    -- , respond
+    -- , yield
+    -- , await
+
+
+    , Producer
+    , Producer'
+
+    , Consumer
+    , Consumer'
+
+    , Pipe
+
+    , Client
+    , Client'
+
+    , Server
+    , Server'
+
     , request
     , respond
     , yield
     , await
-
-    , Proxy(..)
-    , proxy
-
-    , Producer
-    , Producer'
-    , producer
-
-    , Consumer
-    , Consumer'
-    , consumer
-
-    , Pipe
-    , pipe
-
-    , Client
-    , Client'
-    , client
-
-    , Server
-    , Server'
-    , server
+    , pull
+    , push
 
     , X
-    , closed
 
     , (<\\)
     , (\<\)
@@ -77,276 +76,174 @@ module Ef.Pipes
     , discard
     ) where
 
-import Ef hiding (catch)
-import qualified Ef
-
-import Control.Applicative
-import qualified Control.Exception as Exc
-import Control.Monad
+import Ef hiding (Proxy,pull,push)
 import Data.Foldable as F
+
 import Unsafe.Coerce
 
+data Pipes a' a b' b k
+  = Request a' (a -> k)
+  | Respond b  (b' -> k)
+  deriving Functor
 
-
-data Pipes k
-  = Pipes
-  | forall a' a super r. Request a' (a -> Narrative '[Pipes] super r)
-  | forall b b' super r. Respond b  (b' -> Narrative '[Pipes] super r)
-
-instance Ma Pipes Pipes
+instance Delta (Pipes a' a b' b) (Pipes a' a b' b)
 
 newtype X = X X
 
-closed (X x) = closed x
+-- pipes :: Monad c => Pipes a' a b' b (Action '[Pipes a' a b' b] c)
+-- pipes = undefined
 
-pipes :: Monad super => Trait Pipes '[Pipes] super
-pipes = Pipes
+runEffect :: Monad c => Effect c r -> c r
+runEffect = go
+  where
+    go (Lift c) = c >>= go
+    go (Do f) = error "Uh-oh"
+    go (Return a) = return a
 
-runEffect :: (Monad super, MonadThrow super) => Effect super r -> super r
-runEffect e = do
-  (_,r) <- Object (pipes *:* Empty) $. runProxy e
-  return r
+type Effect super r = Narrative (Pipes X () () X) super r
 
-type Effect super r = Proxy X () () X super r
+type Producer b super r = Narrative (Pipes X () () b) super r
 
-type Producer b super r = Proxy X () () b super r
+type Consumer a super r = Narrative (Pipes () a () X) super r
 
-type Consumer a super r = Proxy () a () X super r
+type Pipe a b super r = Narrative (Pipes () a () b) super r
 
-type Pipe a b super r = Proxy () a () b super r
+type Client a' a super r = Narrative (Pipes a' a () X) super r
 
-type Client a' a super r = Proxy a' a () X super r
+type Server b' b super r = Narrative (Pipes X () b' b) super r
 
-type Server b' b super r = Proxy X () b' b super r
+type Effect' super r = forall x' x y' y. Narrative (Pipes x' x y' y) super r
 
-type Effect' super r = forall x' x y' y. Proxy x' x y' y super r
+type Producer' b super r = forall x' x. Narrative (Pipes x' x () b) super r
 
-type Producer' b super r = forall x' x. Proxy x' x () b super r
-
-type Consumer' a super r = forall y' y. Proxy () a y' y super r
+type Consumer' a super r = forall y' y. Narrative (Pipes () a y' y) super r
 
 type Server' b' b super r = forall x' x. Proxy x' x b' b super r
 
-type Client' a' a super r = forall y' y. Proxy a' a y' y super r
+type Client' a' a super r = forall y' y. Narrative (Pipes a' a y' y) super r
 
-newtype Proxy (a' :: *) (a :: *) (b' :: *) (b :: *) (super :: * -> *) (r :: *) =
-    Proxy { runProxy :: Narrative '[Pipes] super r }
-instance Functor super => Functor (Proxy a' a b' b super) where
-  fmap f (Proxy p) = Proxy (fmap f p)
-instance Monad super => Applicative (Proxy a' a b' b super) where
-  pure = Proxy . pure
-  (<*>) f a = Proxy $ runProxy f <*> runProxy a
-instance Monad super => Monad (Proxy a' a b' b super) where
-  return = pure
-  (>>=) ma amb = Proxy $ runProxy ma >>= \a -> let mb = amb a in runProxy mb
-instance MonadTrans (Proxy a' a b' b) where
-  lift = Proxy . lift
-deriving instance (Monad super) => MonadCatch (Proxy a' a b' b super)
-deriving instance (Monad super) => MonadThrow (Proxy a' a b' b super)
-deriving instance (Monad super) => MonadMask (Proxy a' a b' b super)
-deriving instance (Monad super) => MonadIO (Proxy a' a b' b super)
+type Proxy a' a b' b super r = Narrative (Pipes a' a b' b) super r
 
-request a' = self (Request a' Return)
-respond b  = self (Respond b  Return)
+request :: forall a' a y' y super. Monad super => a' -> Proxy a' a y' y super a
+request a' = Do (Request a' Return)
+
+respond :: forall a' a x' x super. Monad super => a -> Proxy x' x a' a super a'
+respond b = Do (Respond b Return)
+
+yield :: Monad super => a -> Producer' a super ()
 yield = respond
+
+await :: Monad super => Consumer' a super a
 await = request ()
 
-proxy
-    :: forall a a' b b' super r.
-       Monad super
-    => ((a' -> Narrative '[Pipes] super a) -> (b -> Narrative '[Pipes] super b') -> Narrative '[Pipes] super r)
-    -> Proxy a' a b' b super r
-proxy f = Proxy $ f request respond
+pull :: Monad super => a' -> Proxy a' a a' a super r
+pull = go
+  where
+    go a' = Do (Request a' (\a -> Do (Respond a go)))
 
-producer
-    :: forall super b r.
-       Monad super
-    => ((b -> Narrative '[Pipes] super ()) -> Narrative '[Pipes] super r)
-    -> Producer' b super r
-producer f = Proxy $ f respond
+push :: Monad m => a -> Proxy a' a a' a m r
+push = go
+  where
+    go a = Do (Respond a (\a' -> Do (Request a' go)))
 
-consumer
-    :: forall super a r.
-       Monad super
-    => (Narrative '[Pipes] super a -> Narrative '[Pipes] super r)
-    -> Consumer' a super r
-consumer f =
-    Proxy $ f (request ())
-
-pipe
-    :: forall super a b r.
-       Monad super
-    => (Narrative '[Pipes] super a -> (b -> Narrative '[Pipes] super ()) -> Narrative '[Pipes] super r)
-    -> Pipe a b super r
-pipe f = Proxy $ f (request ()) respond
-
-server
-    :: forall super b' b r.
-       Monad super
-    => ((b -> Narrative '[Pipes] super b') -> Narrative '[Pipes] super r)
-    -> Server' b' b super r
-server f = Proxy $ f respond
-
-client
-    :: forall super a' a r.
-       Monad super
-    => ((a' -> Narrative '[Pipes] super a) -> Narrative '[Pipes] super r)
-    -> Client' a' a super r
-client f = Proxy $ f request
+closed :: X -> a
+closed (X x) = closed x
 
 --------------------------------------------------------------------------------
 -- ListT
 
-newtype ListT super a =
-    Select
-        { enumerate
-              :: Producer a super ()
-        }
+newtype ListT super a = Select { enumerate :: Producer a super () }
 
-instance Monad super => Functor (ListT super)
-  where
+instance Monad super => Functor (ListT super) where
+  fmap f p = Select (for (enumerate p) (\a -> yield (f a)))
 
-    fmap f (Select p) =
-        Select (p //> (producer . flip id . f))
+instance Monad super => Applicative (ListT super) where
+  pure a = Select (yield a)
+  mf <*> mx = Select (
+    for (enumerate mf) (\f ->
+      for (enumerate mx) (\x ->
+        yield (f x))))
 
-instance Monad super => Applicative (ListT super)
-  where
+instance Monad super => Monad (ListT super) where
+  return a = Select (yield a)
+  m >>= f = Select $ for (enumerate m) (enumerate . f)
+  fail _ = mzero
 
-    pure a = Select (producer ($ a))
+instance Monad super => Alternative (ListT super) where
+  empty = Select (return ())
+  p1 <|> p2 =
+    Select $ do
+      enumerate p1
+      enumerate p2
 
-    mf <*> mx =
-        let produce f x = producer ($ f x)
-        in Select
-              $ for (enumerate mf)
-              $ for (enumerate mx)
-              . produce
+instance Monad super => MonadPlus (ListT super) where
+  mzero = empty
+  mplus = (<|>)
 
-instance Monad super => Monad (ListT super)
-  where
+instance Monad super => Monoid (ListT super a) where
+  mempty = empty
+  mappend = (<|>)
 
-    return a =
-        let yields yield = yield a
-        in Select (producer yields)
-
-    m >>= f = Select $ for (enumerate m) (enumerate . f)
-
-    fail _ = mzero
-
-instance Monad super => Alternative (ListT super)
-  where
-
-    empty =
-        let ignore = const (return ())
-        in Select (producer ignore)
-
-    p1 <|> p2 =
-        Select $ proxy $ \up dn ->
-            let run xs = runProxy (enumerate xs)
-            in do run p1
-                  run p2
-
-instance Monad super => MonadPlus (ListT super)
-  where
-
-    mzero = empty
-
-    mplus = (<|>)
-
-instance Monad super => Monoid (ListT super a)
-  where
-
-    mempty = empty
-
-    mappend = (<|>)
-
-
-instance (Foldable m) => Foldable (ListT m) where
-    foldMap f = go . runProxy . enumerate
+instance (Foldable super) => Foldable (ListT super) where
+    foldMap :: forall a m. Monoid m => (a -> m) -> ListT super a -> m
+    foldMap f = go . enumerate
       where
+        go :: Producer a super () -> m
         go p =
           case p of
             Return _ -> mempty
-            Fail _ -> mempty
-            Super sup -> F.foldMap go sup
-            Say msg k ->
-              case prj msg of
-                ~(Just x) ->
-                  case x of
-                    Request v _  -> closed $ unsafeCoerce v
-                    Respond a fu -> f (unsafeCoerce a) `mappend` go (unsafeCoerce fu $ k $ unsafeCoerce ())
+            Lift sup -> F.foldMap go sup
+            Do (Respond a fu) -> f (unsafeCoerce a) `mappend` go (unsafeCoerce fu ())
     {-# INLINE foldMap #-}
 
 instance MonadTrans ListT where
-  lift m = Select (producer $ \yield -> do
-    a <- lift m
-    yield a
-    )
+  lift m = Select (lift m >>= yield)
 
 instance MonadIO m => MonadIO (ListT m) where
+  liftIO m = Select (lift (liftIO m) >>= yield)
 
-next :: (Monad super, MonadThrow super)
-     => Producer a super r -> super (Either r (a,Producer a super r))
-next = go . runProxy
+next :: forall a super r. Monad super => Producer a super r -> super (Either r (a,Producer a super r))
+next = go
   where
+    go :: Producer a super r -> super (Either r (a,Producer a super r))
     go p =
       case p of
         Return r -> return (Left r)
-        Super sup -> sup >>= go
-        Fail e -> throwM e
-        Say msg k ->
-          case prj msg of
-            ~(Just x) ->
-              case x of
-                Request x _ -> closed $ unsafeCoerce x
-                Respond a fu -> return (Right (unsafeCoerce a,Proxy $ unsafeCoerce fu $ k $ unsafeCoerce ()))
+        Lift sup -> sup >>= go
+        Do (Request x _) -> closed x
+        Do (Respond a fu) -> return (Right (unsafeCoerce a,unsafeCoerce fu ()))
 
-generate :: Monad super
-         => ListT super a -> Narrative '[Pipes] super ()
-generate l = runProxy (enumerate (l >> mzero))
+runListT :: Monad super => ListT super a -> super ()
+runListT l = runEffect (enumerate (l >> mzero))
 
-each :: (Monad super, MonadIO super, F.Foldable f)
-     => f a -> Producer' a super ()
-each xs =
-    let yields yield = F.foldr (\a p -> yield a >> p) (return ()) xs
-    in producer yields
+each :: (Monad super, F.Foldable f) => f a -> Producer' a super ()
+each xs = F.foldr (\a p -> yield a >> p) (return ()) xs
 
-discard :: Monad super => t -> Proxy a' a b' b super ()
-discard _ = proxy $ \_ _ -> return ()
+discard :: Monad super => t -> Narrative (Pipes a' a b' b) super ()
+discard _ = return ()
 
-every :: Monad super
-      => ListT super a -> Producer' a super ()
+every :: Monad super => ListT super a -> Producer' a super ()
 every it = discard >\\ enumerate it
 
 --------------------------------------------------------------------------------
 -- Respond; substitute yields
 
 cat :: Monad super => Pipe a a super r
-cat = pipe $ \await yield -> forever (await >>= yield)
+cat = forever (await >>= yield)
 
 infixl 3 //>
-(//>) :: Monad super
+(//>) :: forall x' x b' b a' c' c super. Monad super
       => Proxy x' x b' b super a'
       -> (b -> Proxy x' x c' c super b')
       -> Proxy x' x c' c super a'
-p0 //> fb = Proxy $ substituteResponds fb (runProxy p0)
-
-substituteResponds
-    :: forall super x' x c' c b' b a' .
-       Monad super
-    => (b -> Proxy x' x c' c super b')
-    -> Narrative '[Pipes] super a'
-    -> Narrative '[Pipes] super a'
-substituteResponds fb =
-    transform go
+p0 //> fb = go p0
   where
-
-    go :: forall z. Messages '[Pipes] z -> (z -> Narrative '[Pipes] super a') -> Narrative '[Pipes] super a'
-    go message k =
-        case prj message of
-            Just (Respond b _) -> do
-                res <- runProxy (fb (unsafeCoerce b))
-                transform go $ k (unsafeCoerce res)
-            _ -> Say message (transform go . k)
+    go p =
+      case p of
+        Lift m -> Lift (m >>= \p' -> return (p' //> fb))
+        Return r -> Return r
+        Do (Request x' fx) -> Do (Request x' (\x -> fx x //> fb))
+        Do (Respond b fb') -> fb b >>= \b' -> fb' b' //> fb
 
 for :: Monad super
     => Proxy x' x b' b super a'
@@ -389,37 +286,26 @@ infixr 4 />/
 (/>/) :: Monad super
       => (a -> Proxy x' x b' b super a')
       -> (b -> Proxy x' x c' c super b')
-      -> a
-      -> Proxy x' x c' c super a'
+      -> (a -> Proxy x' x c' c super a')
 (fa />/ fb) a = fa a //> fb
 
 --------------------------------------------------------------------------------
 -- Request; substitute awaits
 
 infixr 4 >\\
-(>\\) :: Monad super
+(>\\) :: forall b b' a a' y y' c super. Monad super
       => (b' -> Proxy a' a y' y super b)
       -> Proxy b' b y' y super c
       -> Proxy a' a y' y super c
-fb' >\\ p0 = Proxy $ substituteRequests fb' (runProxy p0)
-
-substituteRequests
-    :: forall super x' x c' c b' b a'.
-       Monad super
-    => (b -> Proxy x' x c' c super b')
-    -> Narrative '[Pipes] super a'
-    -> Narrative '[Pipes] super a'
-substituteRequests fb' =
-    transform go
+fb' >\\ p0 = go p0
   where
-
-    go :: forall z. Messages '[Pipes] z -> (z -> Narrative '[Pipes] super a') -> Narrative '[Pipes] super a'
-    go message k =
-        case prj message of
-            Just (Request b' _) -> do
-                res <- runProxy (fb' (unsafeCoerce b'))
-                transform go $ k (unsafeCoerce res)
-            _ -> Say message (transform go . k)
+    go :: Proxy b' b y' y super c -> Proxy a' a y' y super c
+    go p =
+      case p of
+        Lift       m   -> Lift (m >>= \p' -> return (go p'))
+        Return     a   -> Return a
+        Do (Request b' fb) -> fb' b' >>= \b -> go (fb b)
+        Do (Respond x fx') -> Do (Respond x (\x' -> go (fx' x')))
 
 infixr 5 /</
 (/</) :: Monad super
@@ -468,43 +354,12 @@ infixl 7 >>~
     => Proxy a' a b' b super r
     -> (b -> Proxy b' b c' c super r)
     -> Proxy a' a c' c super r
-p0 >>~ fb0 = Proxy $ pushRewrite fb0 p0
-
-pushRewrite
-    :: forall super r a' a b' b c' c.
-       Monad super
-    => (b -> Proxy b' b c' c super r)
-    -> Proxy a' a b' b super r
-    -> Narrative '[Pipes] super r
-pushRewrite fb0 p0 =
-    let upstream = runProxy p0
-        downstream b = runProxy (fb0 b)
-    in goLeft downstream upstream
-  where
-
-    goLeft fb =
-        transform goLeft'
-      where
-        goLeft' :: forall x. Messages '[Pipes] x -> (x -> Narrative '[Pipes] super r) -> Narrative '[Pipes] super r
-        goLeft' message k =
-          case prj message of
-            ~(Just x) ->
-              case x of
-                Respond b _ ->
-                  goRight (unsafeCoerce k) (fb (unsafeCoerce b))
-                _ -> Say message (transform goLeft' . k)
-
-    goRight b'p =
-        transform goRight'
-      where
-        goRight' :: forall x. Messages '[Pipes] x -> (x -> Narrative '[Pipes] super r) -> Narrative '[Pipes] super r
-        goRight' message k =
-          case prj message of
-            ~(Just x) ->
-              case x of
-                Request b' _ ->
-                   goLeft (unsafeCoerce k) (b'p (unsafeCoerce b'))
-                _ -> Say message (transform goRight' . k)
+p >>~ fb =
+  case p of
+    Do (Request a' fa) -> Do (Request a' (\a -> fa a >>~ fb))
+    Do (Respond b fb') -> fb' +>> fb b
+    Lift m -> Lift (m >>= \p' -> return (p' >>~ fb))
+    Return r -> Return r
 
 infixl 8 <~<
 (<~<) :: Monad super
@@ -533,45 +388,16 @@ k ~<< p = p >>~ k
 -- Pull; substitute requests with responds
 
 infixr 6 +>>
-(+>>) :: Monad super
+(+>>) :: forall a' a b' b c' c super r. Monad super
       => (b' -> Proxy a' a b' b super r)
       ->        Proxy b' b c' c super r
       ->        Proxy a' a c' c super r
-fb' +>> p0 = Proxy $ pullRewrite fb' p0
-
-pullRewrite
-    :: forall super a' a b' b c' c r.
-       Monad super
-    => (b' -> Proxy a' a b' b super r)
-    -> Proxy b' b c' c super r
-    -> Narrative '[Pipes] super r
-pullRewrite fb' p =
-    let upstream b' = runProxy (fb' b')
-        downstream = runProxy p
-    in goRight upstream downstream
-  where
-
-    goRight fb'' =
-        transform goRight'
-      where
-        goRight' :: forall x. Messages '[Pipes] x -> (x -> Narrative '[Pipes] super r) -> Narrative '[Pipes] super r
-        goRight' message k =
-          case prj message of
-            ~(Just x) ->
-              case x of
-                Request b' _ -> goLeft (unsafeCoerce k) (fb'' (unsafeCoerce b'))
-                _ -> Say message (transform goRight' . k)
-
-    goLeft bp =
-        transform goLeft'
-      where
-        goLeft' :: forall x. Messages '[Pipes] x -> (x -> Narrative '[Pipes] super r) -> Narrative '[Pipes] super r
-        goLeft' message k' =
-          case prj message of
-            ~(Just x) ->
-              case x of
-                Respond b _ -> goRight (unsafeCoerce k') (bp (unsafeCoerce b))
-                _ -> Say message (transform goLeft' . k')
+fb' +>> p =
+  case p of
+    Do (Request b' fb) -> fb' b' >>~ fb
+    Do (Respond c fc') -> Do (Respond c (\c' -> fb' +>> fc' c'))
+    Lift m -> Lift (m >>= \p' -> return (fb' +>> p'))
+    Return r -> Return r
 
 infixl 7 >->
 (>->) :: Monad super
@@ -612,12 +438,20 @@ p <<+ fb = fb +>> p
 
 {-# RULES
     "(p //> f) //> g" forall p f g . (p //> f) //> g = p //> (\x -> f x //> g)
+  ; "p //> respond" forall p . p //> respond = p
+  ; "respond x //> f" forall x f . respond x //>  f = f x
 
   ; "f >\\ (g >\\ p)" forall f g p . f >\\ (g >\\ p) = (\x -> f >\\ g x) >\\ p
+  ; "request >\\ p" forall p . request >\\ p = p
+  ; "f >\\ request x" forall f x . f >\\ request x = f x
 
   ; "(p >>~ f) >>~ g" forall p f g . (p >>~ f) >>~ g = p >>~ (\x -> f x >>~ g)
+  ; "p >>~ push" forall p . p >>~ push = p
+  ; "push x >>~ f" forall x f . push x >>~ f = f x
 
   ; "f +>> (g +>> p)" forall f g p . f +>> (g +>> p) = (\x -> f +>> g x) +>> p
+  ; "pull +>> p" forall p . pull +>> p = p
+  ; "f +>> pull x" forall f x . f +>> pull x = f x
 
   ; "for (for p f) g" forall p f g . for (for p f) g = for p (\a -> for (f a) g)
 
@@ -637,22 +471,76 @@ p <<+ fb = fb +>> p
 
   ; "cat >-> p" forall p . cat >-> p = p
 
+  ; "for p yield" forall p . for p yield = p
+
+  ; "for (yield x) f" forall x f . for (yield x) f = f x
+
+  ; "for cat f" forall f .
+        for cat f =
+            let go = do
+                    x <- await
+                    f x
+                    go
+            in  go
+
+  ; "await >~ p" forall p . await >~ p = p
+
+  ; "p >~ await" forall p . p >~ await = p
+
+  ; "m >~ cat" forall m .
+        m >~ cat =
+            let go = do
+                    x <- m
+                    yield x
+                    go
+            in  go
+
+  ; "p >-> cat" forall p . p >-> cat = p
+
+  ; "cat >-> p" forall p . cat >-> p = p
+
+  ; "_bind (Request a' k) f" forall a' k f .
+        (Do (Request a' k)) >>= f = Do (Request a' (\a  -> (k a) >>= f))
+  ; "_bind (Respond b  k) f" forall b  k f .
+        (Do (Respond b  k)) >>= f = Do (Respond b  (\b' -> (k b') >>= f));
+
+  ; "fb' >\\ (Do (Request b' fb))" forall fb' b' fb  .
+      fb' >\\ (Do (Request b' fb)) = fb' b' >>= \b -> fb' >\\ fb  b
+
+  ; "fb' >\\ (Do (Respond x fx'))" forall fb' x  fx'.
+      fb' >\\ (Do (Respond x fx')) = Do (Respond x (\x' -> fb' >\\ fx' x'))
+
+  ; "fb' >\\ (Lift m)" forall fb' m.
+      fb' >\\ (Lift m) = Lift (m >>= \p' -> return (fb' >\\ p'))
+
+  ; "fb' >\\ (Return a)" forall fb' a.
+      fb' >\\ (Return a) = Return a
+
+  ; "(Request x' fx ) //> fb" forall x' fx fb.
+        Do (Request x' fx ) //> fb = Do (Request x' (\x -> fx x //> fb))
+
+  ; "(Respond b fb') //> fb" forall b fb' fb .
+        Do (Respond b  fb') //> fb = fb b >>= \b' -> fb' b' //> fb
+
+  ; "(Lift m) //> fb" forall m fb.
+        (Lift m) //> fb = Lift (m >>= \p' -> return (p' //> fb))
+
+  ; "(Return a) //> fb" forall a fb.
+        (Return a) //> fb = Return a
+
   #-}
 
 
 {-# INLINE runEffect #-}
-{-# INLINE closed #-}
-{-# INLINE producer #-}
-{-# INLINE consumer #-}
-{-# INLINE pipe #-}
-{-# INLINE proxy #-}
-{-# INLINE server #-}
-{-# INLINE client #-}
 
-{-# INLINE substituteResponds #-}
-{-# INLINE substituteRequests #-}
-{-# INLINE pullRewrite #-}
-{-# INLINE pushRewrite #-}
+{-# INLINE request #-}
+{-# INLINE respond #-}
+{-# INLINE yield #-}
+{-# INLINE await #-}
+{-# INLINE pull #-}
+{-# INLINE push #-}
+
+{-# INLINE cat #-}
 
 {-# INLINE (//>) #-}
 {-# INLINE for #-}
@@ -681,7 +569,6 @@ p <<+ fb = fb +>> p
 {-# INLINE (>+>) #-}
 {-# INLINE (<<+) #-}
 
-{-# INLINE generate #-}
 {-# INLINE each #-}
 {-# INLINE discard #-}
 {-# INLINE every #-}

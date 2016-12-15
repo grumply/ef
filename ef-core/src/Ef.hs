@@ -1,252 +1,388 @@
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE ExplicitNamespaces #-}
-{-# language ViewPatterns #-}
-{-# language FlexibleInstances #-}
-{-# language UndecidableInstances #-}
-{-# OPTIONS_GHC -fno-warn-missing-methods -fno-warn-inline-rule-shadowing  #-}
-module Ef
-    ( module Core
-    , delta
-    , ($.)
-    , module Control.Monad.Catch
-    , module Control.Monad.IO.Class
-    , module Control.Monad.Trans.Class
-    , module Control.Monad.Fix
-    , Interpreter(..)
-    , interp
-    , runInterpreter
-    ) where
+{-# language TupleSections, ViewPatterns, PatternSynonyms, DeriveFunctor, OverlappingInstances #-}
+module Ef (module Ef, module Export) where
 
-import Ef.Type.Set as Core (type (/==),Union)
+import Control.Applicative as Export
+import Control.Monad as Export
+import Control.Monad.Codensity as Export
+import Control.Monad.Fix as Export
+import Control.Monad.Free as Export
+import Control.Monad.IO.Class as Export
+import Control.Monad.Trans.Class as Export
+import Control.Comonad
+import Control.Comonad.Cofree
 
-import Ef.Type.Nat as Core (Offset)
+import Data.Proxy as Export
+import Ef.Type.Bool as Export
+import Ef.Type.Nat as Export
+import Ef.Type.List as Export
+import Ef.Type.Set as Export
+-- To fully understand the language, read the first 200 lines.
 
-import Ef.Object as Core
-import Ef.Traits as Core
+data Modules (ts :: [* -> *]) (x :: *) where
+  Empty :: Modules '[] x
+  Mod :: t x -> Modules ts x -> Modules (t ': ts) x
 
-import Ef.Narrative as Core
-import Ef.Messages as Core
+data Messages ms a where
+  Other :: Messages ms' a -> Messages (m ': ms') a
+  Msg :: m a -> Messages (m ': ms') a
 
-import Ef.Machine as Core
+newtype Object ts c = Object { deconstruct :: Modules ts (Action ts c) }
 
-import Ef.Codensity as Core
+type Code (ms :: [* -> *]) (c :: * -> *) (a :: *) = Narrative (Messages ms) c a
 
-import Ef.Ma as Core
+data Narrative (f :: * -> *) c a where
+  Do   :: f (Narrative f c a) -> Narrative f c a
+  Lift :: c (Narrative f c a) -> Narrative f c a
+  Return  :: a -> Narrative f c a
 
-import Control.Monad.Catch
-import Control.Monad.IO.Class
-import Control.Monad.Trans.Class
+viewMsg :: (Can' ms m (Offset ms m)) => Code ms c a -> Maybe (m (Code ms c a))
+viewMsg (Do m) = prj m
+viewMsg _ = Nothing
 
-import Data.Coerce
+pattern Module x o <- (\o -> let x = pull (deconstruct o) in (x,o) -> (x,o)) where
+  Module x o = Object (push x (deconstruct o))
 
-import Control.Applicative
-import Control.Monad
-import Control.Monad.Fix
-import Control.Monad.State (MonadState(..))
-import Control.Monad.Reader (MonadReader(..))
+pattern Send x <- (viewMsg -> Just x) where
+  Send x = Do (inj x)
 
--- | Send a narrative to an object for invocation; returns a new, modified object
--- and a result.
---
--- >    (resultObj,result) <- delta obj narrative
-delta
-    :: ( (Traits traits) `Ma` (Messages messages)
-       , Monad super, MonadThrow super
-       )
-    => Object traits super
-    -> Narrative messages super result
-    -> super (Object traits super,result)
-delta = _delta
-{-# INLINE [2] delta #-}
+{-# INLINABLE super #-}
+super :: Monad c => c (Narrative f c a) -> Narrative f c a
+super = Lift
 
+instance (MonadIO c, Functor f) => MonadIO (Narrative f c) where
+  liftIO m = Lift (liftIO (fmap Return m))
 
-infixr 5 $.
--- | Synonym for 'delta'. Send a narrative to an object.
---
--- >    (resultObj,result) <- obj $. narrative
-($.)
-    :: ( (Traits traits) `Ma` (Messages messages)
-       , Monad super, MonadThrow super
-       )
-    => Object traits super
-    -> Narrative messages super result
-    -> super (Object traits super,result)
-($.) = _delta
-{-# INLINE [2] ($.) #-}
+instance MonadTrans (Narrative f) where
+  lift m = super (fmap Return m)
 
+instance Functor (Modules '[]) where
+  fmap _ _ = Empty
 
+instance (Functor t, Functor (Modules ts)) => Functor (Modules (t ': ts)) where
+  fmap f (Mod t ts) = Mod (fmap f t) (fmap f ts)
 
-_delta
-    :: ( (Traits traits) `Ma` (Messages messages)
-       , Monad super, MonadThrow super
-       )
-    => Object traits super
-    -> Narrative messages super result
-    -> super (Object traits super,result)
-_delta object = go
+instance Functor (Messages '[])
+
+instance (Functor (Messages ms), Functor m) => Functor (Messages (m ': ms)) where
+  fmap = _fmapMsg
+
+{-# NOINLINE [1] _fmapMsg #-}
+_fmapMsg :: forall a b m ms. (Functor m, Functor (Messages ms)) => (a -> b) -> Messages (m ': ms) a -> Messages (m ': ms) b
+_fmapMsg f = go
   where
-    go (Say symbol k) =
-        let ~(method,b) = ma (,) (coerce object) symbol
-        in do object' <- method object
-              _delta object' (k b)
-
-    go (Fail e) =
-        throwM e
-
-    go (Super m) = m >>= go
-
-    go (Return result) = pure (object,result)
-{-# NOINLINE [2] _delta #-}
-
+    go :: Messages (m ': ms) a -> Messages (m ': ms) b
+    go (Other ms) = Other (fmap f ms)
+    go (Msg m) = Msg (fmap f m)
 
 {-# RULES
-
-    "_delta obj (Fail e)"
-        forall obj e.
-            _delta obj (Fail e) =
-                throwM e
-
-    ;
-
-    "_delta obj (Super m)"
-        forall obj m.
-            _delta obj (Super m) =
-                m >>= _delta obj
-
-    ;
-
-    "_delta obj (Return result)"
-        forall obj result.
-            _delta obj (Return result) =
-                return (obj,result)
-
-    ;
-
-    "_delta obj (Say symbol k)"
-        forall obj symbol k.
-            _delta obj (Say symbol k) =
-                let
-                    ~(method,b) =
-                        ma (,) (coerce obj) symbol
-
-                in
-                    do
-                        object' <- method obj
-                        _delta object' (k b)
-
+  "fmap f (Other ms)" forall f ms. _fmapMsg f (Other ms) = Other (fmap f ms);
+  "fmap f (Msg m)" forall f m. _fmapMsg f (Msg m) = Msg (fmap f m);
   #-}
 
--- Partial saturation of delta can be used to create a threaded interpreter for
--- use with MonadFix. 'runTest' works as expected, returning 'b'!
---
--- > test :: Interpreter '[State Char] IO Char
--- > test = do
--- >   rec b <- return (succ a)
--- >       a <- interp get
--- >   return b
--- >
--- > runTest = runInterpreter (Object (state 'a' *:* Empty)) test
---
--- What's lost in the lifting to Interpreter is the ability to transform
--- a computation as it is running as well as many of the embedding classes
--- like MonadReader and MonadCatch. And it still lacks the ability to run
--- value-recursion inside another Narrative, i.e. super ~ Narrative ...
---
--- As a further example, note that this slight modification /does not work/
--- because the value of b can only be witnessed outside of the value recursion
--- block, just like in IO.
---
--- > test :: Interpreter '[State Char] IO Char
--- > test = do
--- >  rec b <- return $ succ a
--- >      a <- interp get
--- >      liftIO $ print a
--- >      liftIO $ print b -- indentation change here
--- > return b
--- >
--- > runTest = runInterpreter (Object (state 'a' *:* Empty)) test
---
--- So, ultimately, and as with IO, value recursion with Ef is most useful for
--- tying knots, i.e. recursive references.
+instance (Monad c, Functor f) => MonadFree f (Narrative f c) where
+  wrap = Do
 
-foldInterpreter :: (MonadFix super, Ma (Traits traits) (Messages self))
-       => (forall x. Narrative self super x -> super (Object traits super,x))
-       -> Interpreter self super a
-       -> super (Object traits super,a)
-foldInterpreter k e = interpret e k
+instance (Functor f, Monad c) => Functor (Narrative f c) where
+  fmap = _fmap
 
-data Interpreter self super a = Interpreter
-  { interpret :: forall traits.
-                  (MonadFix super, Ma (Traits traits) (Messages self))
-              => (forall x. Narrative self super x -> super (Object traits super,x))
-              -> super (Object traits super,a)
-  }
-
-instance Functor (Interpreter self super) where
-  fmap f (Interpreter k) = Interpreter $ \k' -> fmap (fmap f) (k k')
-
-instance (MonadThrow super) => Applicative (Interpreter self super) where
-  pure = return
+instance (Functor f, Monad c) => Applicative (Narrative f c) where
+  pure = Return
   (<*>) = ap
 
-instance (MonadThrow super) => Monad (Interpreter self super) where
+instance (Functor f, Monad c) => Monad (Narrative f c) where
+  return = Return
+  (>>=) = _bind
+
+{-# NOINLINE [1] _fmap #-}
+_fmap :: (Monad c, Functor f) => (a -> b) -> Narrative f c a -> Narrative f c b
+_fmap f = go where
+  go (Return a) = Return (f a)
+  go (Do m) = Do (fmap (fmap f) m)
+  go (Lift c) = Lift (fmap (fmap f) c)
+
+{-# NOINLINE [1] _bind #-}
+_bind :: (Monad c, Functor f) => Narrative f c a -> (a -> Narrative f c b) -> Narrative f c b
+_bind ma amb = go ma where
+  go (Do mu) = Do (fmap (>>= amb) mu)
+  go (Lift cma) = Lift (fmap (>>= amb) cma)
+  go (Return a) = amb a
+
+class Delta f g | f -> g, g -> f where
+  delta :: (a -> b -> r) -> f a -> g b -> r
+
+instance Delta ((->) a) ((,) a) where
+  delta u f (l,r) = u (f l) r
+
+instance Delta ((,) a) ((->) a) where
+  delta u (l,r) g = u r (g l)
+
+instance Delta (Modules '[]) (Messages '[]) where
+  delta u _ _ = u undefined undefined
+
+instance (t `Delta` m, Modules ts `Delta` Messages ms) => Delta (Modules (t ': ts)) (Messages (m ': ms)) where
+  delta u (Mod t _) (Msg m) = delta u t m
+  delta u (Mod _ ts) (Other ms) = delta u ts ms
+
+{-# INLINE runWith #-}
+runWith :: forall ts ms c a. ((Modules ts) `Delta` (Messages ms), Monad c) => Object ts c -> Code ms c a -> c (Object ts c,a)
+runWith object = go where
+  go (Do m) = do
+    let (method,cont) = delta (,) (deconstruct object) m
+    object' <- method object
+    runWith object' cont
+  go (Lift c) = c >>= go
+  go (Return a) = return (object,a)
+
+infixr 5 ! 
+{-# INLINABLE (!) #-}
+(!) :: ((Modules ts) `Delta` (Messages ms), Monad c) => Object ts c -> Code ms c a -> c (Object ts c,a)
+(!) = runWith
+
+type Mod t ts c = t (Action ts c)
+
+type Action ts c = Object ts c -> c (Object ts c)
+
+class Has (ts :: [* -> *]) (t :: * -> *) where
+  push :: t a -> Modules ts a -> Modules ts a
+  pull :: Modules ts a -> t a
+
+instance (i ~ Offset ts t, Has' ts t i) => Has ts t where
+  push = let i = Index :: Index i in push' i
+  pull = let i = Index :: Index i in pull' i
+
+class Has' (ts :: [* -> *]) (t :: * -> *) (n :: Nat) where
+  push' :: Index n -> t a -> Modules ts a -> Modules ts a
+  pull' :: Index n -> Modules ts a -> t a
+
+instance ts ~ (t ': xs) => Has' ts t 'Z where
+  push' _ t (Mod _ ts) = Mod t ts
+  pull' _   (Mod t _) = t
+
+instance (i ~ Offset ts t, Has' ts t i) => Has' (t' ': ts) t ('S n) where
+  push' _ t (Mod t' ts) = let i = Index :: Index i in Mod t' (push' i t ts)
+  pull' _   (Mod _ ts)  = let i = Index :: Index i in pull' i ts
+
+type ts .> ts' = ts' <. ts
+type family (<.) (ts :: [* -> *]) (ts' :: [* -> *]) where
+  (<.) (t ': '[]) ts' = (Has' ts' t (Offset ts' t))
+  (<.) (t ': ts) ts' = (Has' ts' t (Offset ts' t), ts <. ts')
+
+class Can ms m where
+  inj :: m a -> Messages ms a
+  prj :: Messages ms a -> Maybe (m a)
+
+instance (i ~ Offset ms m, Can' ms m i) => Can ms m where
+  inj = let i = Index :: Index i in inj' i
+  prj = let i = Index :: Index i in prj' i
+
+class Can' ms m (n :: Nat) where
+  inj' :: Index n -> m a -> Messages ms a
+  prj' :: Index n -> Messages ms a -> Maybe (m a)
+
+instance (i ~ Offset ms' m, Can' ms' m i) => Can' (m' ': ms') m ('S n) where
+  inj' _            = let i = Index :: Index i in Other . inj' i
+  prj' _ (Other ms) = let i = Index :: Index i in prj' i ms
+  prj' _ _          = Nothing
+
+instance (ms ~ (m ': ms')) => Can' ms m 'Z where
+  inj' _                   = Msg
+  prj' _ (Msg message) = Just message
+  prj' _ (Other _)     = Nothing
+
+type ms <: ms' = ms' :> ms
+type family (:>) ms ms' where
+  ms :> (m ': '[]) = (Can' ms m (Offset ms m), Functor (Messages ms))
+  ms :> (m ': ms') = (Can' ms m (Offset ms m), ms :> ms')
+
+infixr 6 *:*
+{-# INLINABLE (*:*) #-}
+(*:*) :: t a -> Modules ts a -> Modules (t ': ts) a
+(*:*) = Mod
+
+class Append ts ts' ts'' where
+  (*++*) :: (Appended ts ts' ~ ts'') => Modules ts a -> Modules ts' a -> Modules ts'' a
+
+instance (Appended ts ts' ~ ts'', Append ts ts' ts'') => Append (t ': ts) ts' (t ': ts'') where
+  (*++*) (Mod m ms) ys = m *:* (ms *++* ys)
+
+instance Append '[] ts ts where
+  (*++*) Empty ys = ys
+
+instance Append ts '[] ts where
+  (*++*) xs Empty = xs
+
+unit :: Proxy ()
+unit = Proxy
+
+--------------------------------------------------------------------------------
+
+data Component p ts c k where
+  Component :: Object ts c -> k -> (Object ts c -> k) -> Component p ts c k
+
+  GetComponent :: (Object ts c -> k) -> Component p ts c k
+  SetComponent :: Object ts c -> k -> Component p ts c k
+  deriving Functor
+
+create :: forall p ts ms ts' c.
+          (Applicative c, Delta (Modules ts) (Messages ms), '[Component p ts c] <. ts')
+       => Proxy p -> Object ts c -> (Proxy '(p,ts),Mod (Component p ts c) ts' c)
+create _ o = (Proxy,(fix $ \mk current -> Component current pure $ \new -> pure . Module (mk new)) o)
+
+instance Delta (Component p ts c) (Component p ts c) where
+  delta u (Component o t _) (GetComponent or) = u t (or o)
+  delta u (Component _ _ ot) (SetComponent o r) = u (ot o) r
+
+message :: forall p ms ms' ts c a.
+        (Functor (Messages ms'), Delta (Modules ts) (Messages ms), Monad c, '[Component p ts c] <: ms')
+     => Proxy '(p,ts) -> Code ms c a -> Code ms' c (Object ts c,Object ts c,a)
+message _ ma = do
+  o <- Do $ inj (GetComponent Return :: Component p ts c (Code ms' c (Object ts c)))
+  (o',a) <- Lift (runWith o ma >>= return . return)
+  Do $ inj (SetComponent o' (Return ()) :: Component p ts c (Code ms' c ()))
+  return (o,o',a)
+
+component :: forall p ms ts c. (Monad c, '[Component p ts c] <: ms) => Proxy '(p,ts) -> Code ms c (Object ts c)
+component _ = Do $ inj (GetComponent Return :: Component p ts c (Code ms c (Object ts c)))
+
+data Interpreter ts ms c a = Interpreter
+  { interpret :: (forall x. Code ms c x -> c (Object ts c,x)) -> c (Object ts c,a) }
+
+instance (Monad c, Functor (Messages ms)) => Functor (Interpreter ts ms c) where
+  fmap f (Interpreter k) = Interpreter $ \k' -> fmap (fmap f) (k k')
+
+instance (Monad c, Functor (Messages ms), Delta (Modules ts) (Messages ms)) => Applicative (Interpreter ts ms c) where
+  pure = pure
+  (<*>) = ap
+
+instance (Monad c, Functor (Messages ms), Delta (Modules ts) (Messages ms)) => Monad (Interpreter ts ms c) where
   return a = Interpreter $ \k -> k (return a)
-  (Interpreter k) >>= f = Interpreter $ \d -> do
-    (o,a) <- k d
-    let (Interpreter k') = f a
-    interpret (f a) (delta o)
+  (Interpreter k) >>= f = Interpreter $ \d -> k d >>= \(o,a) -> interpret (f a) (runWith o)
 
-instance (MonadThrow super, MonadPlus super)
-  => MonadPlus (Interpreter self super)
-  where
-    mzero = Interpreter $ \k -> k (super mzero)
-    mplus (Interpreter p0) (Interpreter p1) = Interpreter $ \k ->
-      (p0 k) `mplus` (p1 k)
+instance (Monad c, Functor (Messages ms), Delta (Modules ts) (Messages ms), MonadPlus c) => MonadPlus (Interpreter ts ms c) where
+  mzero = Interpreter $ \k -> k (Lift mzero)
+  mplus (Interpreter p0) (Interpreter p1) = Interpreter $ \k -> (p0 k) `mplus` (p1 k)
 
-instance (MonadThrow super, MonadPlus super)
-  => Alternative (Interpreter self super)
-  where
-    empty = mzero
-    (<|>) = mplus
+instance (Monad c, Functor (Messages ms), Delta (Modules ts) (Messages ms), MonadPlus c) => Alternative (Interpreter ts ms c) where
+  empty = mzero
+  (<|>) = mplus
 
-instance (MonadThrow super)
-  => MonadFix (Interpreter self super)
-  where
-    mfix f = Interpreter $ \d -> mfix (foldInterpreter d . f . snd)
+instance (Functor (Messages ms), Delta (Modules ts) (Messages ms), MonadFix c) => MonadFix (Interpreter ts ms c) where
+  mfix f = Interpreter $ \d -> mfix (\((_,x)) -> interpret (f x) d)
 
-instance (MonadThrow super, MonadIO super)
-  => MonadIO (Interpreter self super)
-  where
-    liftIO ioa = Interpreter $ \k -> k (liftIO ioa)
-
-instance MonadTrans (Interpreter self) where
-  lift m = Interpreter $ \k -> k (lift m)
-
-interp :: Narrative self super a -> Interpreter self super a
+{-# INLINE interp #-}
+interp :: Code ms c a -> Interpreter ts ms c a
 interp n = Interpreter $ \k -> k n
 
-runInterpreter :: ( MonadFix super
-                  , MonadThrow super
-                  , Ma (Traits traits) (Messages self)
-                  )
-                => Object traits super
-                -> Interpreter self super a
-                -> super (Object traits super,a)
-runInterpreter o (Interpreter k) = k (delta o)
+infixr 5 !#
+{-# INLINE (!#) #-}
+(!#) :: (MonadFix c, Delta (Modules ts) (Messages ms)) => Object ts c -> Interpreter ts ms c a -> c (Object ts c,a)
+(!#) o i = interpret i (runWith o)
 
--- Interestingly, it seems impossible to implement MFunctor since the object
--- being held inside a call to `delta` in the interpreter maintains a reference
--- to super that cannot be transformed since access to the structure of the object
--- is implicitly limited by the structure and interaction of the methods it
--- composes. If we were to remove the access to super from objects, we would lose
--- the ability to modularize effects at runtime, i.e. you couldn't swap out one
--- method that writes to disk with another that serializes over the wire; they
--- would be forced to be implemented separately and concretely if encapsulation
--- were to be maintained when using objects in a more OOP-style. More seriously,
--- some of the benefits of nested simulation would be lost.
+instance (MonadPlus c, Functor f) => MonadPlus (Narrative f c) where
+  mzero = super mzero
+  mplus = _mplus
+
+instance (MonadPlus c, Functor f) => Alternative (Narrative f c) where
+  empty = mzero
+  (<|>) = _mplus
+
+{-# NOINLINE [1] _mplus #-}
+_mplus :: (MonadPlus c, Functor f) => Narrative f c r -> Narrative f c r -> Narrative f c r
+_mplus p0 p1 = go p0
+  where
+    go (Lift m) = Lift (fmap (\x -> mplus x p1) m)
+    go (Do m) = Do (fmap (\x -> mplus x p1) m)
+    go result = result
+
+instance (Monad c, Functor f, Monoid r) => Monoid (Narrative f c r) where
+  mempty = pure mempty
+  mappend = _mappend
+
+{-# NOINLINE [1] _mappend #-}
+_mappend :: (Monad c, Functor f, Monoid r) => Narrative f c r -> Narrative f c r -> Narrative f c r
+_mappend p0 p1 = go p0
+  where
+    go (Return r) = fmap (mappend r) p1
+    go (Lift c) = Lift (fmap go c)
+    go (Do m) = Do (fmap go m)
+
+type Path ts ms c a = Cofree c (Object ts c,Code ms c a)
+
+lay :: (Monad c, Delta (Modules ts) (Messages ms)) => Object ts c -> Code ms c a -> Path ts ms c a
+lay obj nar = coiter (uncurry lay) (obj,nar)
+  where
+  lay o = go
+    where
+      go (Do m) =
+        let (method,b) = delta (,) (deconstruct o) m
+        in method o >>= \o' -> return (o',b)
+      go (Lift m) = m >>= \c -> return (o,c)
+      go done = return (o,done)
+
+walk :: (Monad c, Delta (Modules ts) (Messages ms)) => Path ts ms c a -> c (Object ts c,a)
+walk = step
+  where
+    step machine = do
+      next <- unwrap machine
+      let (obj,c) = extract next
+      case c of
+        (Return r) -> return (obj,r)
+        _          -> step next
+
+type family Reinjectable m ms ms' where
+  Reinjectable m ms '[] = (Functor (Messages ms))
+  Reinjectable m ms (m ': ms') = Reinjectable m ms ms'
+  Reinjectable m ms (m' ': ms') = (Can' ms m' (Offset ms m'), Reinjectable m ms ms')
+
+type Subtract m ms ms' = ('[m] <: ms, Removed ms m ~ ms', Reinjectable m ms ms')
+
+transform :: Monad c => (r -> a) -> (Messages ms (Code ms c r) -> Code ms' c a) -> Code ms c r -> Code ms' c a
+transform = _transform
+
+{-# NOINLINE [1] _transform #-}
+_transform :: Monad c => (r -> a) -> (Messages ms (Code ms c r) -> Code ms' c a) -> Code ms c r -> Code ms' c a
+_transform f t = go
+  where
+    go (Do m) = t m
+    go (Lift sup) = Lift (fmap go sup)
+    go (Return r) = Return (f r)
+
+{-# RULES
+    "(Do m) >>= f"     forall m f. _bind (Do m) f     = Do (fmap (\a -> _bind a f) m);
+    "(Lift c) >>= f"   forall c f. _bind (Lift c) f   = Lift (c >>= \a -> return (_bind a f));
+    "(Return r) >>= f" forall r f. _bind (Return r) f = f r;
+
+    "fmap f (Do m k)"   forall m f. _fmap f (Do m)     = Do (fmap (_fmap f) m);
+    "fmap f (Lift c)"   forall c f. _fmap f (Lift c)   = Lift (fmap (_fmap f) c);
+    "fmap f (Return r)" forall r f. _fmap f (Return r) = Return (f r);
+
+    "_mplus (Lift sup) r"     forall c r.   _mplus (Lift c) r     = Lift (fmap (\x -> _mplus x r) c);
+    "_mplus (Return res) r"   forall r res. _mplus (Return res) r = Return res;
+    "_mplus (Do message k) f" forall r m.   _mplus (Do m) r       = Do (fmap (\x -> _mplus x r) m);
+
+    "_mappend (Lift c) r"     forall c r.   _mappend (Lift c) r     = Lift (fmap (\x -> _mappend x r) c);
+    "_mappend (Return res) r" forall r res. _mappend (Return res) r = fmap (mappend res) r;
+    "_mappend (Do m k) f"     forall r m.   _mappend (Do m) r       = Do (fmap (\x -> _mappend x r) m);
+
+    "_transform f (Do m k)"   forall f g m. _transform f g (Do m)     = g m;
+    "_transform f (Lift c)"   forall f g c. _transform f g (Lift c)   = Lift (fmap (_transform f g) c);
+    "_transform f (Return r)" forall f g r. _transform f g (Return r) = Return (f r);
+  #-}
+
+{- for reference
+swapObj :: (Monad c, Delta (Modules ts) (Messages ms)) => Object ts c -> Cofree c (Object ts c, Code ms c a) -> Cofree c (Object ts c, Code ms c a)
+swapObj obj = path obj . snd . extract
+
+swapCode :: (Monad c, Delta (Modules ts) (Messages ms)) => Code ms c a -> Cofree c (Object ts c, Code ms c a) -> Cofree c (Object ts c, Code ms c a)
+swapCode code = flip path code . fst . extract
+
+branch :: (Monad c, Delta (Modules ts) (Messages ms)) => Cofree c (Object ts c, Code ms c a) -> Cofree c (Cofree c (Object ts c, Code ms c a))
+branch = duplicate
+
+reseedObj :: (Monad c, Delta (Modules ts) (Messages ms)) => Object ts c -> Cofree c (Cofree c (Object ts c, Code ms c a)) -> Cofree c (Cofree c (Object ts c, Code ms c a))
+reseedObj obj = fmap (swapObj obj)
+
+reseedCode :: (Monad c, Delta (Modules ts) (Messages ms)) => Code ms c a -> Cofree c (Cofree c (Object ts c, Code ms c a)) -> Cofree c (Cofree c (Object ts c, Code ms c a))
+reseedCode code = fmap (swapCode code)
+
+-}

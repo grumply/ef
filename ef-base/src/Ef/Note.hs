@@ -1,205 +1,97 @@
-module Ef.Note
-    ( Book(..)
-    , notate
+module Ef.Note (Book(..), notate) where
 
-    , notated
-    ) where
-
-
-
-import Ef.Narrative
+import Ef
 import Ef.Sync
-
-import Control.Monad
-
 import Data.Monoid
-
 import Prelude hiding (log)
 
+data NoteTaking ns where
+  Write :: ns -> NoteTaking ns
+  Watch :: NoteTaking ns
+  Finish :: NoteTaking ns
 
-data Action notes
-    where
+data Book ns ms c = Book
+  { write :: ns -> Code ms c ()
+  , watch :: forall r. Code ms c r -> Code ms c (r, ns)
+  , condense :: forall r. Code ms c (r, ns -> ns) -> Code ms c r
+  , watches :: forall r b. (ns -> b) -> Code ms c r -> Code ms c (r, b)
+  , edit :: forall r. (ns -> ns) -> Code ms c r -> Code ms c r
+  }
 
-        Write
-            :: notes
-            -> Action notes
-
-        Watch
-            :: Action notes
-
-        Finish
-            :: Action notes
-
-
-
-data Book notes self super =
-    Book
-        {
-          write
-              :: notes
-              -> Narrative self super ()
-
-        , watch
-              :: forall result.
-                 Narrative self super result
-              -> Narrative self super (result,notes)
-
-        , condense
-              :: forall result.
-                 Narrative self super (result,notes -> notes)
-              -> Narrative self super result
-
-        , watches
-              :: forall result b.
-                 (notes -> b)
-              -> Narrative self super result
-              -> Narrative self super (result,b)
-
-        , edit
-              :: forall result.
-                 (notes -> notes)
-              -> Narrative self super result
-              -> Narrative self super result
-
-       }
-
-
-
-notated
-    :: ('[Sync] <: self, Monad super)
-    => (Book notes self super -> Narrative self super result)
-    -> Synchronized (Action notes) notes () X self super (result,notes)
-
+notated :: ('[Sync] <: ms, Monad c) => (Book ns ms c -> Code ms c r) -> Synchronized (NoteTaking ns) ns () X ms c (r, ns)
 notated computation =
-    let
-        notationInterface up =
-            Book
-                {
-                  write =
-                      \notes ->
-                          do
-                              _ <- up (Write notes)
+    let notationInterface up =
+          Book
+            { write = \ns ->
+                           do _ <- up (Write ns)
                               return ()
+            , watch = \passage ->
+                           do _ <- up Watch
+                              r <- passage
+                              ns <- up Finish
+                              _ <- up (Write ns)
+                              return (r, ns)
+            , condense = \passage ->
+                              do _ <- up Watch
+                                 (r,mod) <- passage
+                                 ns <- up Finish
+                                 let new = mod ns
+                                 _ <- up (Write new)
+                                 return r
+            , watches = \view passage ->
+                             do _ <- up Watch
+                                r <- passage
+                                ns <- up Finish
+                                let b = view ns
+                                return (r, b)
+            , edit = \change passage ->
+                          do _ <- up Watch
+                             r <- passage
+                             ns <- up Finish
+                             let changed = change ns
+                             _ <- up (Write changed)
+                             return r
+            }
+    in synchronized $
+         \up _ -> do
+           r <- computation (notationInterface up)
+           ns <- up Finish
+           return (r, ns)
 
-                , watch =
-                      \passage ->
-                          do
-                              _ <- up Watch
-                              result <- passage
-                              notes <- up Finish
-                              _ <- up (Write notes)
-                              return (result,notes)
-
-                , condense =
-                      \passage ->
-                          do
-                              _ <- up Watch
-                              (result,mod) <- passage
-                              notes <- up Finish
-                              let
-                                  new = mod notes
-
-                              _ <- up (Write new)
-                              return result
-
-                , watches =
-                      \view passage ->
-                          do
-                              _ <- up Watch
-                              result <- passage
-                              notes <- up Finish
-                              let
-                                  b = view notes
-
-                              return (result,b)
-
-                , edit =
-                      \change passage ->
-                          do
-                              _ <- up Watch
-                              result <- passage
-                              notes <- up Finish
-                              let
-                                  changed = change notes
-
-                              _ <- up (Write changed)
-                              return result
-
-                }
-
-    in
-        synchronized $ \up _ ->
-            do
-                result <- computation (notationInterface up)
-                notes <- up Finish
-                return (result,notes)
-
-
-
-notate
-    :: ( '[Sync] <: self
-       , Monad super
-       , Monoid notes
-       )
-    => (Book notes self super -> Narrative self super result)
-    -> Narrative self super (result,notes)
-
-notate computation =
-    runSync (serve +>> notated computation)
-    where
-
-        serve firstRequest =
-            synchronized $ \_ dn ->
-                withRespond dn mempty firstRequest
-            where
-
-                withRespond respond =
-                    handle
-                    where
-
-                        handle current (Write notes) =
-                            do
-                                let
-                                    new = current <> notes
-
-                                next <- respond new
-                                handle new next
-
-                        handle current Finish =
-                            do
-                                next <- respond current
-                                handle current next -- won't actually happen
-
-                        handle current Watch =
-                            do
-                                let
-                                    new = mempty
-
-                                next <- respond new
-                                watching (handle current) new next
-                            where
-
-                                watching continue current Watch =
-                                    do
-                                        let
-                                            new = mempty
-
-                                        next <- respond new
-                                        watching (watching continue current) new next
-
-                                watching continue current (Write notes) =
-                                    do
-                                        let
-                                            new = current <> notes
-
-                                        next <- respond new
-                                        watching continue new next
-
-                                watching continue current Finish =
-                                    do
-                                        next <- respond current
-                                        continue next
-
+notate :: ('[Sync] <: ms, Monad c, Monoid ns) => (Book ns ms c -> Code ms c r) -> Code ms c (r, ns)
+notate computation = runSync (serve +>> notated computation)
+  where
+    serve firstRequest =
+        synchronized $
+        \_ dn ->
+             withRespond dn mempty firstRequest
+      where
+        withRespond respond = handle
+          where
+            handle current (Write ns) = do
+                let new = current <> ns
+                next <- respond new
+                handle new next
+            handle current Finish = do
+                next <- respond current
+                handle current next -- won't actually happen
+            handle current Watch = do
+                let new = mempty
+                next <- respond new
+                watching (handle current) new next
+              where
+                watching continue current Watch = do
+                    let new = mempty
+                    next <- respond new
+                    watching (watching continue current) new next
+                watching continue current (Write ns) = do
+                    let new = current <> ns
+                    next <- respond new
+                    watching continue new next
+                watching continue current Finish = do
+                    next <- respond current
+                    continue next
 
 {-# INLINE notated #-}
+
 {-# INLINE notate #-}

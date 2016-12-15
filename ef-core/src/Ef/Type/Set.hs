@@ -7,73 +7,30 @@
 {-# LANGUAGE UndecidableInstances #-}
 module Ef.Type.Set where
 
+import Ef.Type.Bool
+import GHC.TypeLits
 
-type family (:+:) a xs
-  where
+type family xs ∪ ys where
+    '[] ∪ ys = ys
+    '[x] ∪ (x ': xs) = x ': xs
+    '[x] ∪ (y ': xs) = y ': '[x] ∪ xs
+    (x ': xs) ∪ ys = '[x] ∪ (xs ∪ ys)
 
-    a :+: '[] =
-        '[a]
+type family (x :: k) ∈ (xs :: [k]) :: Bool where
+    x ∈ '[] = 'False
+    x ∈ (x ': xs) = 'True
+    x ∈ (y ': xs) = x ∈ xs
 
-    a :+: (a ': xs) =
-        (a ': xs)
+type family (x :: k) ≠ (y :: k) :: Bool where
+  x ≠ x = 'False
+  x ≠ y = 'True
 
-    a :+: (x ': xs) =
-        x ': a :+: xs
+type family (x :: k) ∉ (ys :: [k]) :: Bool where
+  x ∉ '[] = 'True
+  x ∉ (x ': ys) = 'False
+  x ∉ (y ': ys) = x ∉ ys
 
+type family (xs :: [k]) ⊆ (ys :: [k]) :: Bool where
+  '[] ⊆ ys = 'True
+  (x ': xs) ⊆ ys = And (x ∈ ys) (xs ⊆ ys)
 
-type xs ∪ ys = Union xs ys
-
-
-type family Union xs ys
-  where
-
-    Union '[] ys =
-        ys
-
-    Union (x ': xs) ys =
-        x :+: (xs ∪ ys)
-
-
-
-type family In (x :: k) (xs :: [k]) :: Bool
-  where
-
-    In x '[] =
-        'False
-
-    In x (x ': xs) =
-        'True
-
-    In x (y ': xs) =
-        In x xs
-
-
-
-type family (/==) (x :: k) (y :: k) :: Bool
-  where
-
-    (/==) x x =
-        'False
-
-    (/==) x y =
-        'True
-
-
-class Denies x (ys :: [* -> *])
-
-
-
-instance Denies (x :: k) '[]
-
-
-
-instance ( (/==) x y ~ 'True
-         , Denies x ys
-         )
-    => Denies x (y ': ys)
-
-instance ( (/==) x y ~ 'True
-         , Denies x ys
-         , Denies xs ys
-         )
-    => Denies (x ': xs) (y ': ys)

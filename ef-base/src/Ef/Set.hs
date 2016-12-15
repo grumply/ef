@@ -5,16 +5,16 @@ import Ef
 import Unsafe.Coerce
 
 data Set k where
-    Set :: (Object contexts environment -> k) -> Set k
-    Become :: Object traits super -> k -> Set k
+    Set :: (Object ts c -> k) -> Set k
+    Become_ :: Object ts c -> k -> Set k
 
-instance Ma Set Set where
-    ma use (Set ok) (Become o k) = use (ok (unsafeCoerce o)) k
+pattern Become o = Become_ o (Return ())
 
-set :: (Monad super, '[Set] <. traits)
-    => Trait Set traits super
+instance Delta Set Set where
+  delta eval (Set ok) (Become_ o k) = eval (ok (unsafeCoerce o)) k
+
+set :: (Monad c, '[Set] <. ts) => Set (Action ts c)
 set = Set (const . pure)
 
-become :: (Monad super, '[Set] <: self, Ma (Traits traits) (Messages self))
-       => Object traits super -> Narrative self super ()
-become = self . flip Become ()
+become :: (Monad c, '[Set] <: ms, Delta (Modules ts) (Messages ms)) => Object ts c -> Code ms c ()
+become o = Send (Become o)

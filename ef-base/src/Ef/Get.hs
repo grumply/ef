@@ -1,45 +1,60 @@
 module Ef.Get (Get, get, introspect) where
 
 import Ef
-
-import Control.Lens
+import Data.Bifunctor
 import Unsafe.Coerce
 
 data Get k where
-    Get :: (Object methods super,k) -> k -> k -> Get k
-    Reset :: k -> Get k
-    Reify :: k -> Get k
-    View :: (Object gs m -> k)  -> Get k
+    Get
+      :: { reflection :: (Object ts c,k)
+         , resetter :: k
+         , reifier :: k
+         } -> Get k
 
-instance Ma Get Get where
-    ma use (Get _ _ k) (Reify k')    = use k k'
-    ma use (Get (o,k) _ _) (View ok) = use k (ok (unsafeCoerce o))
-    ma use (Get _ k _) (Reset k')    = use k k'
 
-get :: (Monad super, '[Get] <. traits)
-    => Trait Get traits super
-get = Get (undefined,reifier) resetter pure
+    Reset_
+      :: { reset :: k } -> Get k
+
+    Reify_
+      :: { reify :: k } -> Get k
+
+    View_
+      :: { view :: (Object gs m -> k) } -> Get k
+
+pattern Reset = Reset_ (Return ())
+pattern Reify = Reify_ (Return ())
+pattern View f = View_ f
+
+instance Delta Get Get where
+  delta eval Get {..} Reify_ {..} = eval reifier reify
+  delta eval Get {..} Reset_ {..} = eval resetter reset
+  delta eval Get {..} View_ {..} =
+    let (o,viewer) = reflection
+        self = unsafeCoerce o
+    in eval viewer (view self)
+
+get :: forall ts c. (Monad c, '[Get] <. ts) => Get (Action ts c)
+get = Get (undefined,reflector) resetter reifier
   where
+    reflector o =
+      let Module (g :: Get (Action ts c)) o = o
+      in case g of
+           Get {..} -> pure $ Module Get { reflection = (o,reflector), .. } o
 
-    resetter fs =
-        case view trait fs of
+    resetter o =
+      let Module (g :: Get (Action ts c)) o = o
+      in case g of
+           Get {..} -> pure $ Module Get { reflection = first (const undefined) reflection, .. } o
 
-            Get (_,reifies) reset gets ->
-                pure $ set trait (Get (undefined,reifies) reset gets) fs
-
-    reifier fs =
-        case view trait fs of
-
-            Get _ reset gets ->
-                pure $ set trait (Get (fs,reifier) reset gets) fs
+    reifier = pure
 {-# INLINE get #-}
 
-introspect :: (Monad super, '[Get] <: self)
-           => Narrative self super (Object methods super)
+introspect :: (Monad c, '[Get] <: ms, '[Get] <. ts, Delta (Modules ts) (Messages ms))
+           => Code ms c (Object ts c)
 introspect = do
     -- does the reset help the GC or is it unnecessary?
-    self (Reify ())
-    slf <- self (View id)
-    self (Reset ())
+    Send Reify
+    slf <- Send (View Return)
+    Send Reset
     return slf
 {-# INLINE introspect #-}

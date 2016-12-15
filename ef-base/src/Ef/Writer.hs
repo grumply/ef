@@ -1,38 +1,68 @@
-module Ef.Writer (Writer, writerFrom, writer, noted, tell) where
+module Ef.Writer
+  ( Writer, writerFromp, writerFrom, writerp, writer
+  , pattern TellP, pattern Tell
+  , notedp, noted
+  , tellp, tell
+  ) where
 
 import Ef
 
-import Control.Lens
 import Data.Monoid
 
-data Writer r k
-  = Writer r (r -> k)
-  | Tell r k
+data Writer p r k where
+  Writer
+    :: { _writer_proxy :: Proxy p
+       , written :: !r
+       , write :: r -> k
+       } -> Writer p r k
 
-instance Ma (Writer r) (Writer r) where
-    ma use (Writer _ rk) (Tell r k) = ma use rk (r,k)
 
-writerFrom :: (Monad super, '[Writer w] <. traits)
-           => w -> (w -> w -> w) -> Trait (Writer w) traits super
-writerFrom w0 f =
-    Writer w0 $ \w' fs ->
-        let Writer w k = view trait fs
-        in pure $ set trait (Writer (f w w') k) fs
-{-# INLINE writerFrom #-}
+  Tell_
+    :: { tell_writer_proxy :: Proxy p
+       , value :: r
+       , result :: k
+       } -> Writer p r k
 
-writer :: (Monad super, '[Writer w] <. traits, Monoid w)
-       => Trait (Writer w) traits super
-writer = writerFrom mempty (<>)
-{-# INLINE writer #-}
+  deriving Functor
 
-noted :: (Monad super, '[Writer w] <. methods)
-      => Object methods super -> w
-noted fs =
-  let Writer w _ = view trait fs
-  in w
-{-# INLINE noted #-}
+pattern TellP p n = Tell_ p n (Return ())
 
-tell :: (Monad super, '[Writer w] <: self)
-     => w -> Narrative self super ()
-tell w = self (Tell w ())
-{-# INLINE tell #-}
+pattern Tell n <- Tell_ (Proxy :: Proxy ()) n (Return ()) where
+  Tell n = Tell_ (Proxy :: Proxy ()) n (Return ())
+
+instance Delta (Writer p r) (Writer p r) where
+  delta eval Writer {..} Tell_ {..} = eval (write value) result
+
+writerFromp :: forall c p w ts. (Monad c, '[Writer p w] <. ts)
+            => Proxy p -> w -> (w -> w -> w) -> Writer p w (Action ts c)
+writerFromp p w0 f =
+  Writer p w0 $ \new o ->
+    let Module (Writer {..} :: Writer p w (Action ts c)) o = o
+    in return $ Module (Writer { written = f written new, .. }) o
+
+writerFrom :: (Monad c, '[Writer () w] <. ts)
+           => w -> (w -> w -> w) -> Writer () w (Action ts c)
+writerFrom = writerFromp unit
+
+writerp :: forall c p ts w. (Monad c, '[Writer p w] <. ts, Monoid w)
+        => Proxy p -> w -> Writer p w (Action ts c)
+writerp p w = writerFromp p w (<>)
+
+writer :: forall c ts w. (Monad c, '[Writer () w] <. ts, Monoid w)
+       => w -> Writer () w (Action ts c)
+writer w = writerp unit w
+
+notedp :: forall p c ts w. (Monad c, '[Writer p w] <. ts)
+       => Proxy p -> Object ts c -> w
+notedp _ (Module (Writer {..} :: Writer p w (Action ts c)) o) = written
+
+noted :: (Monad c, '[Writer () w] <. ts) => Object ts c -> w
+noted = notedp unit
+
+tellp :: forall p w ms c. (Monad c, '[Writer p w] <: ms)
+      => Proxy p -> w -> Code ms c ()
+tellp p = Send . TellP p
+
+tell :: (Monad c, '[Writer () w] <: ms)
+     => w -> Code ms c ()
+tell = Send . Tell

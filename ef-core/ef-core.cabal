@@ -14,29 +14,69 @@ build-type:          Simple
 -- extra-source-files:
 cabal-version:       >=1.10
 
-library
-  exposed-modules:
-                  Ef
-                  Ef.Narrative
-                  Ef.Type.Set
-                  Ef.Type.Nat
-                  Ef.Traits
-                  Ef.Messages
-                  Ef.Ma
-                  Ef.Object
-                  Ef.Codensity
-                  Ef.Machine
+executable ef-test
+  main-is:            Main.hs
+  other-modules:      Ef.Type.Set
+                      Ef.Type.Nat
+                      Ef.Type.Bool
+                      Ef.Type.List
+                      Ef
 
+  hs-source-dirs:     src
+  default-language:   Haskell2010
+  ghc-options:        -O2 -rtsopts
+  default-extensions: MultiParamTypeClasses
+                      GADTs 
+                      DataKinds 
+                      RankNTypes 
+                      TypeFamilies 
+                      TypeOperators 
+                      FlexibleContexts 
+                      FlexibleInstances 
+                      ScopedTypeVariables 
+                      UndecidableInstances 
+                      ConstraintKinds 
+                      PolyKinds 
+                      FunctionalDependencies 
+                      NoMonoLocalBinds 
+                      InstanceSigs 
+                      BangPatterns 
+  build-depends:      base >=4.8
+                    , comonad
+                    , free
+                    , kan-extensions
+                    , ef-core == 1.6.*
+                    , transformers
+
+library
+  exposed-modules: Ef.Type.Set
+                   Ef.Type.Nat
+                   Ef.Type.Bool
+                   Ef.Type.List
+                   Ef
+
+  default-extensions: MultiParamTypeClasses
+                      GADTs 
+                      DataKinds 
+                      RankNTypes 
+                      TypeFamilies 
+                      TypeOperators 
+                      FlexibleContexts 
+                      FlexibleInstances 
+                      ScopedTypeVariables 
+                      UndecidableInstances 
+                      ConstraintKinds 
+                      PolyKinds 
+                      FunctionalDependencies 
+                      NoMonoLocalBinds 
+                      InstanceSigs 
+                      BangPatterns 
   -- other-modules:
   -- other-extensions:
   build-depends:       base >=4.8
-                     , deepseq >= 1.4.1.1
-                     , ghc-prim
-                     , exceptions >= 0.8
-                     , transformers >= 0.4
-                     , mtl >= 2.2
-                     , mmorph
                      , comonad
                      , free
+                     , kan-extensions
+                     , transformers
   hs-source-dirs:      src
   default-language:    Haskell2010
