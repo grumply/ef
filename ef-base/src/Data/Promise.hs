@@ -48,7 +48,7 @@ module Data.Promise
 import Ef
 
 import Control.Concurrent
-import Control.Exception hiding (catch)
+import Control.Exception
 import Control.Monad
 
 import Data.IORef
@@ -117,18 +117,18 @@ promise = process
 -- | Await the result of a `Process`, blocking until it is completed or aborted.
 -- Lifts BlockedIndefinitelyOnMVar into the result if the procoess is never
 -- to be completed or aborted.
-await :: (Monad super, MonadIO super, MonadCatch super)
+await :: (Monad super, MonadIO super)
       => Process status result -> super (Either SomeException result)
 await Process {..} = do
-  (ls,res) <- catch (do { res <- liftIO $ readMVar processResult
-                        ; return (return (),res)
-                        }
-                    )
-    $ \biom@BlockedIndefinitelyOnMVar -> do
-        -- is this race-correct? I think it is implicitly race-correct since
+  (ls,res) <- liftIO $
+                catch (do { res <- readMVar processResult
+                          ; return (return (),res)
+                          }
+                      ) $ \biom@BlockedIndefinitelyOnMVar -> do
+        -- is this race-correct? I think it is implicitly since
         -- the existence of the BIOMVar implies a lack of threads with a
         -- fulfill/forsake call.
-        liftIO $ modifyMVar processListeners $ \(n,pls) -> do
+        modifyMVar processListeners $ \(n,pls) -> do
           let pls' = reverse $ map snd pls
               e = toException biom
               r = Aborted e
@@ -140,7 +140,7 @@ await Process {..} = do
 -- Casts the result to a Maybe by discarding the possible exception. Lifts
 -- BlockedIndefinitelyOnMVar into the Nothing case if the process is never
 -- to be completed or aborted.
-awaitMaybe :: (Monad super, MonadIO super, MonadCatch super)
+awaitMaybe :: (Monad super, MonadIO super)
             => Process status result -> super (Maybe result)
 awaitMaybe p = do
   esr <- await p
@@ -150,7 +150,7 @@ awaitMaybe p = do
 -- Lifts BlockedIndefinitelyOnMVar into the result if the promise is never
 -- to be fulfilled or forsaken. `demand` is simply a specialization of await
 -- from `Process` to `Promise`
-demand :: (Monad super, MonadIO super, MonadCatch super)
+demand :: (Monad super, MonadIO super)
        => Promise result -> super (Either SomeException result)
 demand = await
 
@@ -158,7 +158,7 @@ demand = await
 -- Casts the result to a Maybe by discarding the possible exception. Lifts
 -- BlockedIndefinitelyOnMVar into the Nothing case if the promise is never
 -- to be fulfilled or forsaken.
-demandMaybe :: (Monad super, MonadIO super, MonadCatch super)
+demandMaybe :: (Monad super, MonadIO super)
             => Promise result -> super (Maybe result)
 demandMaybe = awaitMaybe
 

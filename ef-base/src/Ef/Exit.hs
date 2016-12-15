@@ -1,14 +1,9 @@
-module Ef.Exit
-    ( enter
-    ) where
+module Ef.Exit (enter) where
 
-import Ef.Narrative
+import Ef
 import Ef.Sync
 
-exiting
-    :: (Monad super, '[Sync] <: self)
-    => ((a' -> Narrative self super a) -> Narrative self super result)
-    -> Synchronized a' a b' b self super result
+exiting :: (Monad c, '[Sync] <: ms) => ((a' -> Code ms c a) -> Code ms c result) -> Synchronized a' a b' b ms c result
 exiting computation = synchronized $ \up _ -> computation up
 
 -- | Scope a short-circuit continuation.
@@ -19,10 +14,5 @@ exiting computation = synchronized $ \up _ -> computation up
 --         when _ (exit result)
 --         ...
 -- @
-enter
-    :: (Monad super, '[Sync] <: self)
-    => (    (result -> Narrative self super b)
-         -> Narrative self super result
-       )
-    -> Narrative self super result
+enter :: (Monad c, '[Sync] <: ms) => ((result -> Code ms c b) -> Code ms c result) -> Code ms c result
 enter computation = runSync (return +>> exiting computation)

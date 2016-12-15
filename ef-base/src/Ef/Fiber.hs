@@ -1,85 +1,55 @@
 {-# LANGUAGE Trustworthy #-}
-module Ef.Fiber (fiber, fibers, ThreadStatus(..), Operation(..), Ops(..), Threader(..))  where
-
+module Ef.Fiber (fiber, fibers, ThreadS(..), Operation(..), Ops(..), Threader(..), query) where
 
 import Ef
-import Ef.Narrative
-
-import Control.Lens (view,set)
 import Data.IORef
 import Unsafe.Coerce
 
--- | ThreadStatus represents the state of a thread of execution.
--- The status may be updated during
-data ThreadStatus status result
-    = ThreadRunning (Maybe status)
-    | ThreadFailed SomeException
-    | ThreadDone result
+data ThreadS s r
+    = ThreadRunning (Maybe s)
+    | ThreadDone r
 
-data Operation status result =
-    Operation (IORef (ThreadStatus status result))
+data Operation s r =
+    Operation (IORef (ThreadS s r))
 
-data Ops self super status result = Ops
-    { inform :: status -> Narrative self super ()
-    , supplement :: (Maybe status -> Maybe status) -> Narrative self super ()
+data Ops ms c s r = Ops
+    { inform :: s -> Code ms c ()
+    , supplement :: (Maybe s -> Maybe s) -> Code ms c ()
     }
 
-query
-    :: ( MonadIO super
-       , Monad super
-       )
-    => Operation status result
-    -> Narrative self super (ThreadStatus status result)
-
-query (Operation op) =
-    liftIO (readIORef op)
+query :: (MonadIO c, Functor (Messages ms)) => Operation s r -> Code ms c (ThreadS s r)
+query (Operation op) = liftIO (readIORef op)
 
 data Fiber k
     = Fiber Int k
-    | forall self status super result. Fork Int (Operation status result) (Narrative self super result)
-    | Yield Int
-    | forall self super result. Focus Int (Narrative self super result)
+    | forall r c s ms. Fork Int (Operation s r) (Code ms c r) (Operation s r -> k)
+    | Yield Int k
+    | forall r c ms. Focus Int (Code ms c r) (r -> k)
     | FreshScope (Int -> k)
 
-instance Ma Fiber Fiber where
-    ma use (Fiber i k) (FreshScope ik) = use k (ik i)
+instance Functor Fiber where
+  fmap f (Fiber i k) = Fiber i (f k)
+  fmap f (Fork i o c k) = Fork i o c (fmap f k)
+  fmap f (Yield i k) = Yield i (f k)
+  fmap f (Focus i c k) = Focus i c (fmap f k)
+  fmap f (FreshScope ik) = FreshScope (fmap f ik)
 
-fibers :: (Monad super, '[Fiber] <. traits)
-       => Trait Fiber traits super
-fibers =
-    Fiber 0 $ \fs ->
-        let Fiber i k = view trait fs
-            i' = succ i
-        in i' `seq` pure $ set trait (Fiber i' k) fs
+instance Delta Fiber Fiber where
+  delta eval (Fiber i k) (FreshScope ik) = eval k (ik i)
 
-data Threader self super =
-    Threader
-        {
-          fork :: forall status result.
-                 (   Ops self super status result
-                  -> Narrative self super result
-                 )
-              -> Narrative self super (Operation status result)
+fibers :: (Monad c, '[Fiber] <. ts) => Fiber (Action ts c)
+fibers = Fiber 0 $ \o ->
+  let Module (Fiber i k) _ = o
+      !i' = succ i
+  in pure $ Module (Fiber i' k) o
 
-        , wait
-              :: forall status result.
-                 Operation status result
-              -> Narrative self super (ThreadStatus status result)
-
-        , focus
-              :: forall focusResult.
-                 Narrative self super focusResult
-              -> Narrative self super focusResult
-
-        , yield
-              :: Narrative self super ()
-
-        , chunk
-              :: forall chunkResult.
-                 Int
-              -> Narrative self super chunkResult
-              -> Narrative self super chunkResult
-        }
+data Threader ms c = Threader
+    { fork :: forall s r. (Ops ms c s r -> Code ms c r) -> Code ms c (Operation s r)
+    , wait :: forall s r. Operation s r -> Code ms c (ThreadS s r)
+    , focus :: forall focusR. Code ms c focusR -> Code ms c focusR
+    , yield :: Code ms c ()
+    , chunk :: forall chunkR. Int -> Code ms c chunkR -> Code ms c chunkR
+    }
 
 -- Example use of `fibers`:
 --
@@ -90,23 +60,20 @@ data Threader self super =
 --        inform 1
 --        ..
 --
---    thread2 thread1ThreadStatus _ = go
+--    thread2 thread1ThreadS _ = go
 --        where
 --            go = do
---                status <- query thread1ThreadStatus
---                case status of
+--                s <- query thread1ThreadS
+--                case s of
 --                    ThreadRunning Nothing  -> ... -- hasn't started executing yet
 --                    ThreadRunning (Just n) -> ... -- executing in phase n
---                    ThreadFailed exc       -> ... -- failed with exc
---                    ThreadDone result      -> ... -- finished with result
+--                    ThreadDone r      -> ... -- finished with r
 --
 --    fibers $ \Threader{..} -> do
 --        op1 <- fork thread1
 --        op2 <- fork (thread2 op1)
---        result <- wait op2
---        case result of
---            ThreadFailed exception -> ...
---            ThreadDone result -> return result
+--        ThreadDone r <- wait op2
+--        return r
 -- @
 --
 -- Note: I suggest not using this unless you absolutely know that you need it
@@ -136,7 +103,7 @@ data Threader self super =
 -- @
 --
 -- if the call to put happens to be preempted in both threads, one will likely
--- overwrite the results of the other. It is easy to remedy with a call to
+-- overwrite the result of the other. It is easy to remedy with a call to
 -- `focus`, which is similar to a call to atomic, like this:
 --
 -- @
@@ -150,204 +117,148 @@ data Threader self super =
 -- but it is easy to believe that your method won't need the call, which leads
 -- you into the trap. This issue becomes even more difficult if you nest calls
 -- to fiber and fork, in which case a call to the atomic primitive `focus` in
--- the n-th context is, interestingly, not atomic in the context of the n-1 call
--- to fiber.
+-- the n-th context is, interestingly, not atomic in the context of the n-m call
+-- to fiber for all m > 0.
 --
-fiber :: forall self super result.
-          ('[Fiber] <: self, Monad super, MonadIO super)
-       => (Threader self super -> Narrative self super result)
-       -> Narrative self super result
-fiber f =
-  do scope <- self (FreshScope id)
-     let newOp = Operation <$> newIORef (ThreadRunning Nothing)
-         root =
-           f Threader {fork =
-                        \p ->
-                          let ops (Operation op) =
-                                Ops {inform =
-                                       \status ->
-                                         let running = ThreadRunning (Just status)
-                                         in liftIO (writeIORef op running)
-                                    ,supplement =
-                                       \supp ->
-                                         let modify (ThreadRunning x) =
-                                               ThreadRunning (supp x)
-                                         in liftIO (modifyIORef op modify)}
-                              newOp = Operation <$> newIORef (ThreadRunning Nothing)
-                          in do op <- liftIO newOp
-                                self (Fork scope op (p (ops op)))
-                     ,wait =
-                        \(Operation op) ->
-                          let awaiting =
-                                do status <- liftIO (readIORef op)
-                                   case status of
-                                     ThreadRunning _ ->
-                                       do self (Yield scope)
-                                          awaiting
-                                     _ -> return status
-                          in awaiting
-                     ,focus = \block -> self (Focus scope block)
-                     ,yield = self (Yield scope)
-                     ,chunk =
-                        \chunking block ->
-                          let chunked = go chunking block
-                              focused = self (Focus scope chunked)
-                              go n (Return result) = Return result
-                              go n (Fail exception) = Fail exception
-                              go 1 (Super sup) =
-                                do self (Yield scope)
-                                   let restart = go chunking
-                                   Super (fmap restart sup)
-                              go n (Super sup) =
-                                let continue = go (n - 1)
-                                in Super (fmap continue sup)
-                              go 1 (Say symbol k) =
-                                do self (Yield scope)
-                                   Say symbol (go chunking . k)
-                              go n (Say symbol k) =
-                                let continue value = go newN (k value)
-                                    newN = n - 1
-                                in Say symbol continue
-                          in focused}
-     rootOp <- liftIO newOp
-     rewrite scope rootOp (Threads [(root,rootOp)])
-  where
-    rewrite :: forall status.
-               Int
-            -> Operation status result
-            -> ThreadRunning self super
-            -> Narrative self super result
+fiber :: forall ms c r. ('[Fiber] <: ms, MonadIO c) => (Threader ms c -> Code ms c r) -> Code ms c r
+fiber f = do
+    scope <- Send (FreshScope Return)
+    let newOp = Operation <$> newIORef (ThreadRunning Nothing)
+        root =
+          f Threader
+            { fork = \p ->
+                let ops (Operation op) =
+                        Ops
+                        { inform = \s ->
+                            let running = ThreadRunning (Just s)
+                            in liftIO (writeIORef op running)
+                        , supplement = \supp ->
+                            let modify (ThreadRunning x) = ThreadRunning (supp x)
+                            in liftIO (modifyIORef op modify)
+                        }
+                    newOp = Operation <$> newIORef (ThreadRunning Nothing)
+                in do op <- liftIO newOp
+                      Send (Fork scope op (p (ops op)) Return)
 
+            , wait = \(Operation op) ->
+                let awaiting = do
+                      s <- liftIO (readIORef op)
+                      case s of
+                        ThreadRunning _ -> do
+                            Send (Yield scope (Return ()))
+                            awaiting
+                        _ -> return s
+                in awaiting
+
+            , focus = \block -> Send (Focus scope block Return)
+
+            , yield = Send (Yield scope (Return ()))
+            , chunk = \chunking block ->
+                let chunked = go chunking block
+                    focused = Send (Focus scope chunked Return)
+                    go n (Return r) = Return r
+                    go 1 (Lift sup) = do
+                        Send (Yield scope (Return ()))
+                        let restart = go chunking
+                        Lift (fmap restart sup)
+                    go n (Lift sup) =
+                        let continue = go (n - 1)
+                        in Lift (fmap continue sup)
+                    go 1 (Do m) = do
+                        Send (Yield scope (Return ()))
+                        Do (fmap (go chunking) m)
+                    go n (Do m) =
+                        Do (fmap (go (n - 1)) m)
+                in focused
+            }
+    rootOp <- liftIO newOp
+    rewrite scope rootOp (Threads [(root, rootOp)])
+  where
+    rewrite
+        :: forall s.
+           Int
+        -> Operation s r
+        -> ThreadRunning ms c
+        -> Code ms c r
     rewrite scope (Operation rootOp) = withFibers (Threads [])
-      where withFibers :: ThreadRunning self super
-                       -> ThreadRunning self super
-                       -> Narrative self super result
-            withFibers (Threads []) (Threads []) =
-              do result <- liftIO (readIORef rootOp :: IO (ThreadStatus status result))
-                 case result of
-                   ThreadFailed exception -> throwM exception
-                   ~(ThreadDone result) -> return result
-            withFibers (Threads acc) (Threads []) =
-              withFibers (Threads [])
-                         (Threads $ reverse acc)
-            withFibers (Threads acc) (Threads ((fiber,op@(Operation operation)):fibers)) =
-              go fiber
-              where go (Return result) =
-                      let finish =
-                            writeIORef operation
-                                       (ThreadDone result)
-                      in do liftIO finish
-                            withFibers (Threads acc)
-                                       (Threads fibers)
-                    go (Fail exception) =
-                      let fail =
-                            writeIORef operation
-                                       (ThreadFailed exception)
-                      in do liftIO fail
-                            withFibers (Threads acc)
-                                       (Threads fibers)
-                    go (Super sup) = Super (fmap go sup)
-                    go (Say symbol k) =
-                      let check currentScope continue =
-                            if currentScope == scope
-                               then continue
-                               else ignore
-                          ignore =
-                            Say symbol $
-                            \intermediate ->
-                              let continue = k intermediate
-                                  ran = (continue,op)
-                                  newAcc = unsafeCoerce ran : acc
-                              in withFibers (Threads newAcc)
-                                            (Threads fibers)
-                      in case prj symbol of
+      where
+        withFibers
+            :: ThreadRunning ms c
+            -> ThreadRunning ms c
+            -> Code ms c r
+        withFibers (Threads []) (Threads []) = do
+            ThreadDone r <- liftIO (readIORef rootOp :: IO (ThreadS s r))
+            return r
+        withFibers (Threads acc) (Threads []) =
+            withFibers (Threads []) (Threads $ reverse acc)
+        withFibers (Threads acc) (Threads ((fiber,op@(Operation operation)):fibers)) =
+            go fiber
+          where
+            go (Return r) = do
+                let finish = writeIORef operation (ThreadDone r)
+                liftIO finish
+                withFibers (Threads acc) (Threads fibers)
+            go (Lift sup) = Lift (fmap go sup)
+            go (Do m) = do
+                let check currentScope continue = if currentScope == scope then continue else ignore
+                    ignore = Do $ flip fmap m $ \nxt ->
+                      let newAcc = unsafeCoerce (nxt,op) : acc
+                      in withFibers (Threads newAcc) (Threads fibers)
+                case prj m of
+                  Nothing -> ignore
+                  Just x ->
+                    case x of
+                      Fork currentScope childOp child k ->
+                        check currentScope $
+                          let newAcc = unsafeCoerce (k childOp, op) : acc
+                              newFibers = unsafeCoerce (child, childOp) : fibers
+                          in withFibers (Threads newAcc) (Threads newFibers)
+
+                      Yield currentScope k ->
+                        check currentScope $
+                          let newAcc = unsafeCoerce (k,op) : acc
+                          in withFibers (Threads newAcc) (Threads fibers)
+
+                      Focus currentScope block k -> check currentScope $ runFocus k (unsafeCoerce block)
+
+                      _ -> ignore
+            runFocus focusK = withNew []
+              where
+                withNew new (Return atomicR) =
+                    let newAcc = unsafeCoerce (focusK atomicR, op) : acc
+                    in withFibers (Threads newAcc) (Threads $ new ++ fibers)
+                withNew new (Lift sup) = Lift (fmap (withNew new) sup)
+                withNew new (Do m) =
+                    let check currentScope continue = if currentScope == scope then continue else ignore
+                        ignore = Do (fmap (withNew new) m)
+                    in case prj m of
                            Nothing -> ignore
                            Just x ->
-                             case x of
-                               Fork currentScope childOp child ->
-                                 check currentScope $
-                                 let newAcc =
-                                       unsafeCoerce (k $ unsafeCoerce childOp,op) :
-                                       acc
-                                     newFibers =
-                                       unsafeCoerce (child,childOp) : fibers
-                                 in withFibers (Threads newAcc)
-                                               (Threads newFibers)
-                               Yield currentScope ->
-                                 let newAcc =
-                                       unsafeCoerce (k $ unsafeCoerce (),op) : acc
-                                 in withFibers (Threads newAcc)
-                                               (Threads fibers)
-                               Focus currentScope block ->
-                                 check currentScope $
-                                 runFocus (unsafeCoerce k)
-                                          (unsafeCoerce block)
-                               _ -> ignore
-                    runFocus focusK = withNew []
-                      where withNew new (Return atomicResult) =
-                              let newAcc =
-                                    unsafeCoerce
-                                      (focusK $ unsafeCoerce atomicResult,op) :
-                                    acc
-                              in withFibers (Threads newAcc)
-                                            (Threads $ new ++ fibers)
-                            withNew new (Fail exception) =
-                              let fail =
-                                    writeIORef operation
-                                               (ThreadFailed exception)
-                              in do liftIO fail
-                                    withFibers (Threads acc)
-                                               (Threads $ new ++ fibers)
-                            withNew new (Super sup) =
-                              let continue = withNew new
-                              in Super (fmap continue sup)
-                            withNew new (Say symbol k) =
-                              let check currentScope continue =
-                                    if currentScope == scope
-                                       then continue
-                                       else ignore
-                                  ignore =
-                                    let continue intermediate =
-                                          withNew new (k intermediate)
-                                    in Say symbol continue
-                              in case prj symbol of
-                                   Nothing -> ignore
-                                   Just x ->
-                                     case x of
-                                       Fork currentScope childOp child ->
-                                         check currentScope $
-                                         let newNew =
-                                               unsafeCoerce (child,childOp) : new
-                                         in withNew newNew
-                                                    (k $ unsafeCoerce childOp)
-                                       Yield currentScope ->
-                                         check currentScope $
-                                         let continue =
-                                               self (Focus currentScope $
-                                                     k $ unsafeCoerce ())
-                                             refocus
-                                               :: forall threadResult.
-                                                  Narrative self super threadResult
-                                             refocus =
-                                               do focusResult <- continue
-                                                  unsafeCoerce $
-                                                    focusK $
-                                                    unsafeCoerce focusResult
-                                             newAcc =
-                                               unsafeCoerce (refocus,op) : acc
-                                         in withFibers (Threads newAcc)
-                                                       (Threads fibers)
-                                       Focus currentScope block ->
-                                         check currentScope $
-                                         withNew new $
-                                         do intermediate <- unsafeCoerce block
-                                            k $ unsafeCoerce intermediate
-                                       _ -> ignore
-data ThreadRunning self super
-    where
+                               case x of
+                                   Fork currentScope childOp child k ->
+                                       check currentScope $
+                                       let newNew = unsafeCoerce (child, childOp) : new
+                                       in withNew newNew (k childOp)
+                                   Yield currentScope k ->
+                                       check currentScope $
+                                       let continue = Send (Focus currentScope k Return) 
+                                           refocus :: forall threadR. Code ms c threadR
+                                           refocus = do
+                                               focusR <- continue
+                                               unsafeCoerce focusK focusR
+                                           newAcc = unsafeCoerce (refocus, op) : acc
+                                       in withFibers (Threads newAcc) (Threads fibers)
+                                   Focus currentScope block k ->
+                                     check currentScope $
+                                       withNew new $ do
+                                         intermediate <- unsafeCoerce block
+                                         k intermediate
+                                   _ -> ignore
 
-        Threads
-            :: [(Narrative self super threadResult, Operation threadThreadStatus threadResult)]
-            -> ThreadRunning self super
+data ThreadRunning ms c where
+        Threads ::
+          [(Code ms c threadR,
+            Operation threadThreadS threadR)]
+            -> ThreadRunning ms c
 
 {-# INLINE fiber #-}

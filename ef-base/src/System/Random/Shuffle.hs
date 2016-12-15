@@ -1,21 +1,8 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE FlexibleContexts #-}
-module System.Random.Shuffle
-    ( shuffle
-    , shuffleIO
-    ) where
+module System.Random.Shuffle (shuffle, shuffleIO) where
 
 import Ef
 
-import Data.Function
-    ( fix )
-
-import System.Random
-    ( RandomGen
-    , randomR
-    , newStdGen
-    )
-
+import System.Random (RandomGen, randomR, newStdGen)
 
 data Tree a where
     Leaf :: !a -> Tree a
@@ -28,8 +15,7 @@ shuffleIO xs = do
   let lngth = length xs
   return $ shuffle'_ xs lngth rng
 
-shuffle  :: (MonadIO super, Monad super)
-         => [a] -> Narrative self super [a]
+shuffle :: (MonadIO c) => [a] -> c [a]
 shuffle = liftIO . shuffleIO
 
 buildTree :: [a] -> Tree a
@@ -70,7 +56,7 @@ shuffle_ elements =
     extractTree n (Node c (Leaf l) r) =
       let (e, r') = extractTree (n - 1) r
       in (e, Node (c - 1) (Leaf l) r')
-         
+
     extractTree n (Node n' l (Leaf e))
         | n + 1 == n' = (e, l)
 
@@ -84,8 +70,6 @@ shuffle_ elements =
               in (e, Node (c - 1) l r')
 
     extractTree _ _ = error "[extractTree] impossible"
-
-
 
 shuffle'_ :: RandomGen gen => [a] -> Int -> gen -> [a]
 shuffle'_ elements len =
