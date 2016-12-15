@@ -1,89 +1,53 @@
-{-# LANGUAGE IncoherentInstances #-}
-{-# LANGUAGE RoleAnnotations #-}
 module Ef.Except
-     ( Except(..)
-     , Throws
+     ( Throws
      , throwChecked
      , catchChecked
+     , handleChecked
      , tryChecked
      , mapChecked
-     , excepts
+     , Exception(..)
      ) where
 
 import Ef
-import Control.Exception (SomeException,Exception(..))
-import Data.Coerce
+import Control.Exception (Exception(..))
 
-data Except k
-  = Except (SomeException -> k)
-  | Throw SomeException
+data Throws e k
+  = Throw e
   deriving Functor
 
-instance Delta Except Except where
-  delta eval (Except k) (Throw e) = eval (k e) undefined
+instance Delta (Throws e) (Throws e)
 
-excepts :: (Monad c, '[Except] .> ts) => Except (Action ts c)
-excepts =
-    let uncaught err = "Impossible uncaught checked exception: " ++ show err
-    in Except (error . uncaught)
-{-# INLINE excepts #-}
+throwChecked :: e -> Code (Throws e ': ms) c a
+throwChecked = Send . Throw
 
-class Throws e
-type role Throws representational
-
-newtype Catch e = Catch e
-instance Throws (Catch e)
-
-newtype Wrap e a = Wrap { unWrap :: Throws e => a }
-
--- | throw a checked exception; the exception must be caught via `catchChecked`
--- before the `Code` can be sent to an `Object`.
-throwChecked
-    :: (Monad c, '[Except] <: ms, Exception e)
-    => e -> (Throws e => Code ms c a)
-throwChecked e =
-    let exception = toException e
-    in Send (Throw exception)
-
--- | catch a chcked exception created via `throwChecked`; this method must be called
--- on a `Code` carrying a (Throws _ =>) context before it may be sent to an `Object`.
-catchChecked
-    :: forall e ms c r.
-       (Monad c, '[Except] <: ms, Exception e)
-    => (Throws e => Code ms c r)
-    -> (e -> Code ms c r)
-    -> Code ms c r
-catchChecked act c =
-    let proxy = Proxy :: Proxy e
-    in transform id go (unthrow proxy act)
+catchChecked :: forall ms c a e. (Monad c, Functor (Messages ms))
+             => Code (Throws e ': ms) c a -> (e -> Code ms c a) -> Code ms c a
+catchChecked act h = handleThrows act
   where
-    go m =
-      case prj m of
-        Just (Throw se) ->
-          case fromException se of
-            Just e -> c e
-            _ -> Do (fmap (transform id go) m)
-        _ -> Do (fmap (transform id go) m)
-    unthrow :: forall proxy (e :: *) x. proxy e -> (Throws e => x) -> x
-    unthrow _ = (unWrap :: Wrap (Catch e) x -> x)
-              . (coerceWrap :: forall e. Wrap e x -> Wrap (Catch e) x)
-              . (Wrap :: forall e. (Throws e => x) -> Wrap e x)
+    handleThrows :: Code (Throws e ': ms) c a -> Code ms c a
+    handleThrows = transform id go
+      where
+        go :: Messages (Throws e ': ms) (Code (Throws e ': ms) c a) -> Code ms c a
+        go m =
+          case prj m of
+            Just (Throw e) -> h e
+            _ ->
+              case m of
+                Other ms -> Do (fmap (transform id go) ms)
 
-    coerceWrap :: forall e x. Wrap e x -> Wrap (Catch e) x
-    coerceWrap = coerce
+handleChecked :: forall ms c a e. (Monad c, Functor (Messages ms))
+              => (e -> Code ms c a) -> Code (Throws e ': ms) c a -> Code ms c a
+handleChecked h act = catchChecked act h
 
--- | similar to `catchChecked` but doesn't handle the exception and instead
--- lifts it into an `Either` sum with the `Codes` expected r.
 tryChecked
-    :: (Monad c, '[Except] <: ms, Exception e)
-    => (Throws e => Code ms c r)
+    :: (Monad c, Functor (Messages ms))
+    => (Code (Throws e ': ms) c r)
     -> Code ms c (Either e r)
 tryChecked a = catchChecked (Right <$> a) (return . Left)
 
--- | cast a checked exception to another type
 mapChecked
-    :: (Monad c, '[Except] <: ms, Exception e, Exception e')
+    :: (Monad c, Exception e, Exception e', Functor (Messages ms))
     => (e -> e')
-    -> (Throws e => Code ms c a)
-    -> (Throws e' => Code ms c a)
+    -> (Code (Throws e ': Throws e' ': ms) c a)
+    -> (Code (Throws e' ': ms) c a)
 mapChecked f p = catchChecked p (throwChecked . f)

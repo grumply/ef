@@ -1,6 +1,6 @@
-module Ef.Guard (Guard, guard, Guards(..), guards) where
+module Ef.Guard (Guard, nondet, Guards(..), guards) where
 
-import Ef hiding (guard)
+import Ef
 import Data.Foldable
 
 data Guard k
@@ -23,12 +23,12 @@ data Guards ms c = Guards
     , cut :: forall b. Code ms c b
     }
 
-guard :: (Monad c, '[Guard] <. ts) => Guard (Action ts c)
-guard = Guard 0 $ \o ->
+nondet :: (Monad c, '[Guard] <. ts) => Guard (Action ts c)
+nondet = Guard 0 $ \o ->
   let Module (Guard i k) _ = o
       !i' = succ i
   in pure $ Module (Guard i' k) o
-{-# INLINE guard #-}
+{-# INLINE nondet #-}
 
 guards :: (Monad c, '[Guard] <: ms) => (Guards ms c -> Code ms c r) -> Code ms c (Maybe r)
 guards l = do

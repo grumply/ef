@@ -219,7 +219,7 @@ fiber f = do
                           let newAcc = unsafeCoerce (k,op) : acc
                           in withFibers (Threads newAcc) (Threads fibers)
 
-                      Focus currentScope block k -> check currentScope $ runFocus k (unsafeCoerce block)
+                      Focus currentScope block k -> check currentScope $ runFocus (unsafeCoerce k) (unsafeCoerce block)
 
                       _ -> ignore
             runFocus focusK = withNew []

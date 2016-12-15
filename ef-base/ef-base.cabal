@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                ef-base
-version:             0.12.0.0
+version:             2.0.0.0
 synopsis:            Base libraries to enable more convenient Ef development including mtl-style computation components.
 -- description:
 homepage:            ef-lang.org
@@ -36,6 +36,11 @@ executable ef-test
                       Ef.Guard
                       Ef.Generate
                       Ef.Fork
+                      Ef.Fiber
+                      Ef.Exit
+                      Ef.Except
+                      Ef.Event
+                      Ef.Base
   default-language:   Haskell2010
   ghc-options:        -O2 -rtsopts
   default-extensions: MultiParamTypeClasses
@@ -65,6 +70,8 @@ executable ef-test
                     , ef-core == 1.6.*
                     , transformers
                     , pipes
+                    , unagi-chan
+                    , random
 
 
 library
@@ -85,17 +92,14 @@ library
                      Ef.Guard
                      Ef.Generate
                      Ef.Fork
-                     --   Ef.Contract
-                     -- , Ef.Except
-                     -- , Ef.Exit
-                     -- , Ef.Bidir
+                     Ef.Fiber
+                     Ef.Exit
+                     Ef.Except
+                     Ef.Event
+                     Ef.Base
                      -- , Ef.Pipes.Parse
                      -- , Ef.Pipes.Group
-                     -- , Ef.Fiber
-                     -- , Ef.Event
-
                      -- , Ef.Event.ST
-                     -- , Ef.Base
   -- other-modules:
   -- other-extensions:
   default-extensions:  DataKinds
@@ -118,9 +122,6 @@ library
     build-depends:       base >=4.8
                       , ef-core >= 1.6
                       , random >= 1.1
-                      , exceptions >= 0.8
-                      , transformers
-                      , lens
                       , ghc-prim
                       , mtl
                       , stm >= 2.4
@@ -128,9 +129,6 @@ library
     build-depends:       base >=4.8
                       , ef-core >= 1.6
                       , random >= 1.1
-                      , exceptions >= 0.8
-                      , transformers
-                      , lens
                       , ghc-prim
                       , mtl
                       , stm >= 2.4

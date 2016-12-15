@@ -2,19 +2,18 @@
 module Ef.Event where
 
 import Ef
-import Ef.Narrative
 
 import Data.Queue
 import Data.Promise
 
 import Control.Concurrent
-import Control.Monad
+import Control.Exception
 import Data.IORef
-import Data.List
 import Data.Maybe
 import Unsafe.Coerce
 
-import Control.Exception (BlockedIndefinitelyOnSTM(..))
+-- This module is simultaneously the most used and most despised. It will
+-- eventually disappear.
 
 -- A highly simplified implementation of reactive programming; behaviors
 -- are in an Event monad that permits behavior self-modification including
@@ -37,103 +36,101 @@ import Control.Exception (BlockedIndefinitelyOnSTM(..))
 --       the resultant modified behaviors are overwritten.
 
 data Event k where
-  Become :: (event -> Narrative '[Event] super ())
-         -> k
-         -> Event k
-
+  Become :: (e -> Code '[Event] c ()) -> k -> Event k
   Continue :: Event k
-
   End :: Event k
 
-become :: Monad super
-      => (event -> Narrative '[Event] super ())
-      -> Narrative '[Event] super ()
-become f = self $ Become f ()
+instance Functor Event where
+  fmap f (Become ec k) = Become ec (f k)
+  fmap f Continue = Continue
+  fmap f End = End
 
-continue :: Monad super => Narrative '[Event] super a
-continue = self Continue
+become :: Monad c => (e -> Code '[Event] c ()) -> Code '[Event] c ()
+become f = Send $ Become f (Return ())
 
-end :: Monad super => Narrative '[Event] super a
-end = self End
+continue :: Monad c => Code '[Event] c a
+continue = Send Continue
 
-type Signal self super event = Signal' (Narrative self super) event
+end :: Monad c => Code '[Event] c a
+end = Send End
+
+type Signal ms c e = Signal' (Narrative (Messages ms) c) e
 
 -- NOTE: Because this is implemented as IORef, it is not thread safe;
 --       as long as Signals are maintained by a synchronous context
 --       they can be assumed safe - as soon as a Signal crosses a
 --       thread context boundary, safety is thrown out the window, i.e.
---       adding an event to a Signal could silently fail if the Signal
+--       adding an e to a Signal could silently fail if the Signal
 --       is currently being 'siganl'ed. MVar will eventaully fix this
 --       at the cost of losing subsignal.
-data Signal' super event
+data Signal' (c :: * -> *) (e :: *)
     = Signal
-        {-# UNPACK #-} !(IORef [IORef (event -> Narrative '[Event] super ())])
+        {-# UNPACK #-} !(IORef [IORef (e -> Code '[Event] c ())])
     deriving Eq
 
 {-# INLINE behaviorCount #-}
-behaviorCount :: (Monad super', MonadIO super')
-              => Signal' super event
-              -> super' Int
+behaviorCount :: (MonadIO c')
+              => Signal' c e
+              -> c' Int
 behaviorCount (Signal bs_) = do
   bs <- liftIO $ readIORef bs_
   return $ length bs
 
 {-# INLINE nullSignal #-}
-nullSignal :: (Monad super', MonadIO super')
-           => Signal' super event
-           -> super' Bool
+nullSignal :: (MonadIO c')
+           => Signal' c e
+           -> c' Bool
 nullSignal (Signal bs_) = do
   bs <- liftIO $ readIORef bs_
   return (null bs)
 
-type Behavior self super event = Behavior' (Narrative self super) event
+type Behavior ms c e = Behavior' (Narrative (Messages ms) c) e
 
-data Behavior' super event
+data Behavior' c e
   = Behavior
-      {-# UNPACK #-} !(IORef (event -> Narrative '[Event] super ()))
+      {-# UNPACK #-} !(IORef (e -> Code '[Event] c ()))
   deriving Eq
 
 {-# INLINE construct #-}
-construct :: (Monad super', MonadIO super')
-          => super' (Signal' super event)
+construct :: (MonadIO c')
+          => c' (Signal' c e)
 construct = liftIO $ do
   behaviors <- newIORef []
   return $ Signal behaviors
 
 {-# INLINE constructSelf #-}
-constructSelf :: (Monad super, MonadIO super)
-              => Narrative self super (Signal self super event)
+constructSelf :: (MonadIO c, Functor (Messages ms)) => Code ms c (Signal ms c e)
 constructSelf = construct
 
 -- Slightly more specific than necessary to avoid required type signatures.
 {-# INLINE runner #-}
-runner :: forall self super super'.
-          (Monad super, MonadIO super, Monad super')
-       => super (Signal' super' (super' ()))
+runner :: forall ms c c'.
+          (MonadIO c, Monad c')
+       => c (Signal' c' (c' ()))
 runner = liftIO $ do
   bhvr <- newIORef lift
   behaviors <- newIORef $ [bhvr]
   return $ Signal behaviors
 
 {-# INLINE behavior #-}
-behavior :: (Monad super', MonadIO super')
-         => Signal' super event
-         -> (event -> Narrative '[Event] super ())
-         -> super' (Behavior' super event)
+behavior :: (MonadIO c')
+         => Signal' c e
+         -> (e -> Code '[Event] c ())
+         -> c' (Behavior' c e)
 behavior sig@(Signal behaviors) newBehavior = liftIO $ do
   b <- newIORef newBehavior
   modifyIORef behaviors (++ [b])
   return (Behavior b)
 
 {-# INLINE mergeS #-}
-mergeS :: ( Monad super, MonadIO super, MonadThrow super
-          , Monad super', MonadIO super'
+mergeS :: ( MonadIO c
+          , MonadIO c'
           )
-       => Signal' super event
-       -> Signal' super event
-       -> super' ( Signal' super event
-                 , Behavior' super event
-                 , Behavior' super event
+       => Signal' c e
+       -> Signal' c e
+       -> c' ( Signal' c e
+                 , Behavior' c e
+                 , Behavior' c e
                  )
 mergeS sig0 sig1 = do
   sig <- construct
@@ -142,27 +139,27 @@ mergeS sig0 sig1 = do
   return (sig,bt0,bt1)
 
 {-# INLINE zipS #-}
-zipS :: ( Monad super, MonadIO super, MonadThrow super
-        , Monad super', MonadIO super'
+zipS :: ( MonadIO c
+        , MonadIO c'
         )
-     => Signal' super event
-     -> Signal' super event'
-     -> super' ( Signal' super (Maybe event,Maybe event')
-               , Behavior' super event
-               , Behavior' super event'
-               )
+     => Signal' c e
+     -> Signal' c e'
+     -> c' ( Signal' c (Maybe e,Maybe e')
+           , Behavior' c e
+           , Behavior' c e'
+           )
 zipS = zipWithS (\x y -> return (x,y))
 
 {-# INLINE zipWithS #-}
-zipWithS :: ( Monad super, MonadIO super, MonadThrow super
-            , Monad super', MonadIO super'
+zipWithS :: ( MonadIO c
+            , MonadIO c'
             )
-         => (Maybe event -> Maybe event' -> super x)
-         -> Signal' super event
-         -> Signal' super event'
-         -> super' ( Signal' super x
-                   , Behavior' super event
-                   , Behavior' super event'
+         => (Maybe e -> Maybe e' -> c x)
+         -> Signal' c e
+         -> Signal' c e'
+         -> c' ( Signal' c x
+                   , Behavior' c e
+                   , Behavior' c e'
                    )
 zipWithS f sig0@(Signal bs0) sig1@(Signal bs1) = do
   sig <- construct
@@ -181,14 +178,14 @@ zipWithS f sig0@(Signal bs0) sig1@(Signal bs1) = do
   return (sig,bt0,bt1)
 
 {-# INLINE mapS #-}
-mapS :: ( Monad super, MonadIO super, MonadThrow super
-        , Monad super', MonadIO super'
+mapS :: ( MonadIO c
+        , MonadIO c'
         )
-     => Signal' super event
-     -> (event -> super event')
-     -> super' ( Signal' super event'
-               , Behavior' super event
-               )
+     => Signal' c e
+     -> (e -> c e')
+     -> c' ( Signal' c e'
+           , Behavior' c e
+           )
 mapS sig f = do
   sig' <- construct
   bt   <- behavior sig $ \e -> lift $ do
@@ -197,16 +194,16 @@ mapS sig f = do
   return (sig',bt)
 
 {-# INLINE map2S #-}
-map2S :: ( Monad super, MonadIO super, MonadThrow super
-         , Monad super', MonadIO super'
+map2S :: ( MonadIO c
+         , MonadIO c'
          )
-      => Signal' super event0
-      -> Signal' super event1
-      -> (Either event0 event1 -> super event2)
-      -> super' ( Signal' super event2
-                , Behavior' super event0
-                , Behavior' super event1
-                )
+      => Signal' c e0
+      -> Signal' c e1
+      -> (Either e0 e1 -> c e2)
+      -> c' ( Signal' c e2
+            , Behavior' c e0
+            , Behavior' c e1
+            )
 map2S sig0 sig1 f = do
   sig <- construct
   bt0 <- behavior sig0 $ \e0 -> lift $ do
@@ -218,14 +215,14 @@ map2S sig0 sig1 f = do
   return (sig,bt0,bt1)
 
 {-# INLINE filterS #-}
-filterS :: ( Monad super, MonadIO super, MonadThrow super
-           , Monad super', MonadIO super'
+filterS :: ( MonadIO c
+           , MonadIO c'
            )
-        => Signal' super event
-        -> (event -> super (Maybe event'))
-        -> super' ( Signal' super event'
-                  , Behavior' super event
-                  )
+        => Signal' c e
+        -> (e -> c (Maybe e'))
+        -> c' ( Signal' c e'
+              , Behavior' c e
+              )
 filterS sig f = do
   sig' <- construct
   bt   <- behavior sig $ \e -> lift $ do
@@ -234,16 +231,16 @@ filterS sig f = do
   return (sig',bt)
 
 {-# INLINE filter2S #-}
-filter2S :: ( Monad super, MonadIO super, MonadThrow super
-            , Monad super', MonadIO super'
+filter2S :: ( MonadIO c
+            , MonadIO c'
             )
-         => Signal' super event0
-         -> Signal' super event1
-         -> (Either event0 event1 -> super (Maybe event))
-         -> super' ( Signal' super event
-                   , Behavior' super event0
-                   , Behavior' super event1
-                   )
+         => Signal' c e0
+         -> Signal' c e1
+         -> (Either e0 e1 -> c (Maybe e))
+         -> c' ( Signal' c e
+               , Behavior' c e0
+               , Behavior' c e1
+               )
 filter2S sig0 sig1 f = do
   sig <- construct
   bt0 <- behavior sig0 $ \e -> lift $ do
@@ -255,32 +252,32 @@ filter2S sig0 sig1 f = do
   return (sig,bt0,bt1)
 
 {-# INLINE duplicate #-}
-duplicate :: (Monad super', MonadIO super')
-          => Behavior' super event
-          -> Signal' super event
-          -> super' ()
+duplicate :: (MonadIO c')
+          => Behavior' c e
+          -> Signal' c e
+          -> c' ()
 duplicate (Behavior b) (Signal bs_) = liftIO $ modifyIORef bs_ (++ [b])
 
 -- stop is a delayed effect that doesn't happen until the next event, but all
 -- internally maintained references are released; stopping an un-needed behavior
--- can permit GC external to the behavior itself.
+-- can permit GC external to the behavior itms.
 {-# INLINE stop #-}
-stop :: (Monad super, Monad super', MonadIO super')
-     => Behavior' super a -> super' ()
+stop :: (Monad c, MonadIO c')
+     => Behavior' c a -> c' ()
 stop (Behavior b_) = liftIO $ atomicModifyIORef' b_ $ const (const end,())
 
-data Runnable super where
-  Runnable :: {-# UNPACK #-} !(IORef [(IORef (event -> Narrative '[Event] super ()))])
-           -> {-# UNPACK #-} !(IORef (event -> Narrative '[Event] super ()))
-           -> Narrative '[Event] super ()
-           -> Runnable super
+data Runnable c where
+  Runnable :: {-# UNPACK #-} !(IORef [(IORef (e -> Code '[Event] c ()))])
+           -> {-# UNPACK #-} !(IORef (e -> Code '[Event] c ()))
+           -> Code '[Event] c ()
+           -> Runnable c
 
 {-# INLINE signal #-}
-signal :: forall super event.
-          (Monad super, MonadIO super, MonadThrow super)
-       => Signal' super event
-       -> event
-       -> super ()
+signal :: forall c e.
+          (MonadIO c)
+       => Signal' c e
+       -> e
+       -> c ()
 signal sig e = do
   let Signal bs_ = sig
   bs <- liftIO $ readIORef bs_
@@ -290,43 +287,26 @@ signal sig e = do
   signal_ seeded
 
 {-# INLINE signal_ #-}
-signal_ :: forall super.
-           (Monad super, MonadIO super, MonadThrow super)
-        => [Runnable super] -> super ()
+signal_ :: forall c.
+           (MonadIO c)
+        => [Runnable c] -> c ()
 signal_ [] = return ()
 signal_ (r@(Runnable bs_ f_ f):rs) = start rs r
   where
-    start :: [Runnable super] -> Runnable super -> super ()
+    start :: [Runnable c] -> Runnable c -> c ()
     start rs (Runnable bs_ f_ f) = go' f
       where
-        go' :: Narrative '[Event] super ()
-            -> super ()
+        go' :: Code '[Event] c ()
+            -> c ()
         go' (Return _) = signal_ rs
-
-        -- One behavior can clobber an entire event;
-        -- this is expected behavior since a signal is
-        -- seen as a unification of possibly-multiple
-        -- seemingly disjoint processes. This is an
-        -- important point, however; when constructing
-        -- a behavior, keep in mind that it has effects
-        -- on the signal it is connected to, but /only/
-        -- through 'throwM'. This may also be used to
-        -- interesting effect; one may set up a behavior
-        -- that guarantees some predicate, i.e. if the
-        -- predicate does not succeed then the behavior
-        -- throws an exception and the rest of the
-        -- behaviors after that will not run; a security
-        -- mechanism.
-        go' (Fail e)    = throwM e
-
-        go' (Super sup) = sup >>= go'
-        go' (Say msg k) =
+        go' (Lift sup) = sup >>= go'
+        go' (Do msg) =
           case prj msg of
             ~(Just x) ->
               case x of
-                Become f' x -> do
+                Become f' k -> do
                   liftIO $ writeIORef f_ $ unsafeCoerce f'
-                  go' (k x)
+                  go' k
                 Continue -> signal_ rs
                 End -> do
                   liftIO $ do
@@ -337,10 +317,10 @@ signal_ (r@(Runnable bs_ f_ f):rs) = start rs r
                   signal_ rs
 
 {-# INLINE trigger #-}
-trigger :: (Monad super, MonadIO super, MonadThrow super)
-        => Behavior' super event
-        -> event
-        -> super ()
+trigger :: (MonadIO c)
+        => Behavior' c e
+        -> e
+        -> c ()
 trigger (Behavior b_) e = do
   b <- liftIO $ readIORef b_
   bs_ <- liftIO $ newIORef []
@@ -353,46 +333,46 @@ trigger (Behavior b_) e = do
 --       adding a subscription to a Periodical could silently fail if the
 --       periodical is currently being published. MVar will eventually
 --       fix this at the cost of losing subpublish.
-data Periodical' super event
-  = Periodical {-# UNPACK #-} !(IORef (Maybe (Signal' super event)))
+data Periodical' c e
+  = Periodical {-# UNPACK #-} !(IORef (Maybe (Signal' c e)))
   deriving Eq
 
-type Periodical self super event = Periodical' (Narrative self super) event
+type Periodical ms c e = Periodical' (Narrative (Messages ms) c) e
 
-type Subscription' super event = Behavior' super event
+type Subscription' c e = Behavior' c e
 
-type Subscription self super event = Behavior self super event
+type Subscription ms c e = Behavior ms c e
 
-periodical :: (Monad super, MonadIO super)
-             => super (Periodical' super' event)
+periodical :: (MonadIO c)
+             => c (Periodical' c' e)
 periodical = do
   sig <- construct
   p <- liftIO $ newIORef (Just sig)
   return $ Periodical p
 
-periodical' :: (Monad super, MonadIO super)
-             => event -> super (Periodical' super' event)
+periodical' :: (MonadIO c)
+             => e -> c (Periodical' c' e)
 periodical' ev = do
   sig <- construct
   p <- liftIO $ newIORef (Just sig)
   return $ Periodical p
 
-nullPeriodical :: (Monad super, MonadIO super)
-               => Periodical' super' event -> super Bool
+nullPeriodical :: (MonadIO c)
+               => Periodical' c' e -> c Bool
 nullPeriodical (Periodical p_) = do
   mp <- liftIO $ readIORef p_
   return $ isNothing mp
 
-emptyPeriodical :: (Monad super, MonadIO super)
-                => Periodical' super event -> super Bool
+emptyPeriodical :: (MonadIO c)
+                => Periodical' c e -> c Bool
 emptyPeriodical (Periodical p_) = do
   mp <- liftIO $ readIORef p_
   maybe (return True) nullSignal mp
 
-subscribe :: (Monad super', MonadIO super')
-          => Periodical' super event
-          -> (event -> Narrative '[Event] super ())
-          -> super' (Maybe (Subscription' super event))
+subscribe :: (MonadIO c')
+          => Periodical' c e
+          -> (e -> Code '[Event] c ())
+          -> c' (Maybe (Subscription' c e))
 subscribe (Periodical p_) f = do
   mp <- liftIO $ readIORef p_
   forM mp $ \sig -> behavior sig f
@@ -400,10 +380,10 @@ subscribe (Periodical p_) f = do
 -- Lost this to improve space performance of periodicals; they kept the last message around and
 -- prevented GC to be able to react to a current message/last message on subscription.
 -- -- like subscribe, but immediately trigger the behavior with the current value
--- subscribe' :: (Monad super, MonadIO super, MonadThrow super)
---            => Periodical' super event
---            -> (event -> Narrative '[Event] super ())
---            -> super (Maybe (Subscription' super event,Bool))
+-- subscribe' :: (MonadIO c)
+--            => Periodical' c e
+--            -> (e -> Code '[Event] c ())
+--            -> c (Maybe (Subscription' c event,Bool))
 -- subscribe' (Periodical p_) f = do
 --   mp <- liftIO $ readIORef p_
 --   forM mp $ \(cur_,sig) -> do
@@ -415,10 +395,10 @@ subscribe (Periodical p_) f = do
 --         trigger bt cur
 --         return (bt,True)
 
-publish :: (Monad super, MonadIO super, MonadThrow super)
-        => Periodical' super event
-        -> event
-        -> super Bool
+publish :: (MonadIO c)
+        => Periodical' c e
+        -> e
+        -> c Bool
 publish (Periodical p_) ev = do
   mp <- liftIO $ readIORef p_
   case mp of
@@ -429,47 +409,47 @@ publish (Periodical p_) ev = do
 
 -- Lost this to improve space performance of periodicals; it prevented GC of one message
 -- per periodical.
--- periodicalCurrent :: (Monad super, MonadIO super)
---                   => Periodical' super event -> super (Maybe event)
+-- periodicalCurrent :: (MonadIO c)
+--                   => Periodical' c e -> c (Maybe e)
 -- periodicalCurrent (Periodical p_) = liftIO $ do
 --   mp <- readIORef p_
 --   case mp of
 --     Just _ -> readIORef cur_
 --     _ -> return Nothing
 
-data Syndicated event where
-  Syndicated :: Periodical' super event -> Signaled -> Syndicated event
+data Syndicated e where
+  Syndicated :: Periodical' c e -> Signaled -> Syndicated e
 
 -- syndicated periodical network; periodicals that share a common event;
--- event propagation network for concurrent dispatch.
+-- e propagation network for concurrent dispatch.
 -- NOTE: Suffer from the same desynchronization issues...
-data Network event
-  = Network (MVar [Syndicated event])
+data Network e
+  = Network (MVar [Syndicated e])
   deriving Eq
 
 -- create a new syndication network
-network :: (Monad super, MonadIO super)
-        => super (Network event)
+network :: (MonadIO c)
+        => c (Network e)
 network = liftIO $ do
   nw <- newMVar []
   return $ Network nw
 
 -- create a new syndication network
-network' :: (Monad super, MonadIO super)
-        => event -> super (Network event)
+network' :: (MonadIO c)
+        => e -> c (Network e)
 network' ev = liftIO $ do
   nw <- newMVar []
   return $ Network nw
 
-nullNetwork :: (Monad super, MonadIO super)
-            => Network event -> super Bool
+nullNetwork :: (MonadIO c)
+            => Network e -> c Bool
 nullNetwork (Network nw) = liftIO $ do
   ss <- readMVar nw
   return (null ss)
 
--- syndicate an event across multiple periodicals in a network
-syndicate :: (Monad super, MonadIO super)
-          => Network event -> event -> super ()
+-- syndicate an e across multiple periodicals in a network
+syndicate :: (MonadIO c)
+          => Network e -> e -> c ()
 syndicate (Network nw) ev = liftIO $ do
   -- garbage collect null periodicals and get the current set of
   -- executable periodicals. The garbage collection is for periodical
@@ -489,17 +469,17 @@ syndicate (Network nw) ev = liftIO $ do
       buffer sigd sig ev
 
 -- Lost this to improve GC.
--- networkCurrent :: (Monad super, MonadIO super) => Network event -> super (Maybe event)
+-- networkCurrent :: (MonadIO c) => Network e -> c (Maybe e)
 -- networkCurrent (Network nw) = liftIO $ fst <$> readMVar nw
 
-joinNetwork :: (Monad super, MonadIO super)
-            => Network event -> Periodical' super' event -> Signaled -> super ()
+joinNetwork :: (MonadIO c)
+            => Network e -> Periodical' c' e -> Signaled -> c ()
 joinNetwork (Network nw) pl sg = do
   liftIO $ modifyMVar nw $ \ss -> return (ss ++ [Syndicated pl sg],())
 
 -- Lost this to improve GC.
--- joinNetwork' :: (Monad super, MonadIO super)
---              => Network event -> Periodical' super' event -> Signaled -> super Bool
+-- joinNetwork' :: (MonadIO c)
+--              => Network e -> Periodical' c' e -> Signaled -> c Bool
 -- joinNetwork' ntw@(Network nw) pl@(Periodical p_) sigd = liftIO $ do
 --   mp <- readIORef p_
 --   case mp of
@@ -513,24 +493,24 @@ joinNetwork (Network nw) pl sg = do
 --           bufferIO sigd sig cur
 --           return True
 
-leaveNetwork :: (Monad super, MonadIO super)
-             => Network event -> Periodical' super' event -> super ()
+leaveNetwork :: (MonadIO c)
+             => Network e -> Periodical' c' e -> c ()
 leaveNetwork (Network nw) pl =
   liftIO $
     -- let's hope this works.... if not, just create a counter token or make
-    -- Network (IORef [IORef (Maybe (Syndicated event))]) or something
+    -- Network (IORef [IORef (Maybe (Syndicated e))]) or something
     modifyMVar nw $ \ss ->
       let ss' = filter (\(Syndicated pl' _) -> pl /= unsafeCoerce pl') ss
       in return (ss',())
 
--- An abstract Signal queue. Useful for building event loops.
+-- An abstract Signal queue. Useful for building e loops.
 -- Note that there is still a need to call unsafeCoerce on the
--- Signal itself since this data type avoids having `self` and
--- `super` as type variables. It is the responsibility of the
+-- Signal itms since this data type avoids having `ms` and
+-- `c` as type variables. It is the responsibility of the
 -- programmer to know how to use this safely; single-responsibility
 -- for both injection and extraction with unified typing is required.
 data Signaling where
-    Signaling :: [e] -> {-# UNPACK #-} !(Signal' super e) -> Signaling
+    Signaling :: [e] -> {-# UNPACK #-} !(Signal' c e) -> Signaling
 data Signaled where
     Signaled :: {-# UNPACK #-} !(IORef (Maybe (Queue Signaling))) -> Signaled
 
@@ -542,152 +522,140 @@ data As internal external
 runAs_ :: Functor external => As internal external -> internal a -> external ()
 runAs_ as ia = void $ runAs as ia
 
-runAsIO :: (Monad super, MonadIO super) => As internal IO -> internal a -> super (Promise a)
+runAsIO :: (MonadIO c) => As internal IO -> internal a -> c (Promise a)
 runAsIO as f = liftIO $ runAs as f
 
-runAsIO_ :: (Monad super, MonadIO super) => As internal IO -> internal a -> super ()
+runAsIO_ :: (MonadIO c) => As internal IO -> internal a -> c ()
 runAsIO_ as f = void $ liftIO $ runAs as f
 
 -- Note that the `Signaled` passed to this method MUST be driven by
 -- a correctly witnessing object. It is only decoupled from `driver`
 -- for convenience to allow forked and unforked drivers. Be careful!
 {-# INLINE constructAs #-}
-constructAs :: ( Monad internal, MonadIO internal
-               , Monad external, MonadIO external
+constructAs :: ( MonadIO internal
+               , MonadIO external
+               , Functor (Messages internalMs)
                )
             => Signaled
-            -> Signal' (Narrative internalSelf internal) (Narrative internalSelf internal ())
-            -> Narrative internalSelf internal `As` external
+            -> Signal' (Narrative (Messages internalMs) internal) (Code internalMs internal ())
+            -> Narrative (Messages internalMs) internal `As` external
 constructAs buf sig = As buf $ \nar -> liftIO $ do
   p <- promise
   buffer buf sig $ nar >>= void . fulfill p
   return p
 
-reconstructAs :: forall internal external external' super internalSelf.
-                 ( Monad internal, MonadIO internal
-                 , Monad external, MonadIO external
-                 , Monad external', MonadIO external'
-                 , Monad super, MonadIO super
+reconstructAs :: forall internal external external' c internalMs.
+                 ( MonadIO internal
+                 , MonadIO external
+                 , MonadIO external'
+                 , MonadIO c
+                 , Functor (Messages internalMs)
                  )
-              => Narrative internalSelf internal `As` external -> super (Narrative internalSelf internal `As` external')
+              => Narrative (Messages internalMs) internal `As` external -> c (Narrative (Messages internalMs) internal `As` external')
 reconstructAs (As buf _) = do
-  sig :: Signal internalSelf internal (Narrative internalSelf internal ()) <- runner
+  sig :: Signal internalMs internal (Code internalMs internal ()) <- runner
   return $ As buf $ \nar -> liftIO $ do
     p <- promise
     buffer buf sig $ nar >>= void . fulfill p
     return p
 
 {-# INLINE newSignalBuffer #-}
-newSignalBuffer :: (Monad super, MonadIO super) => super Signaled
+newSignalBuffer :: (MonadIO c) => c Signaled
 newSignalBuffer = Signaled <$> liftIO (newIORef . Just =<< newQueue)
 
 {-# INLINE driver #-}
-driver :: (Monad super, MonadIO super, MonadThrow super, Ma (Traits traits) (Messages self))
-       => Signaled -> Object traits super -> super ()
+driver :: (MonadIO c, Functor (Messages ms), Delta (Modules ts) (Messages ms))
+       => Signaled -> Object ts c -> c ()
 driver (Signaled buf) o = do
   -- driver is the only place that will hold onto the (Queue Signaling); if the thread is stopped,
   -- which is the only expected time for a Signaled to be nullified, GC won't be prevented.
   Just qs <- liftIO $ readIORef buf
   start qs o
   where
-    {-# INLINE start #-}
     start qs = go
       where
 
-        {-# INLINE go #-}
         go obj = do
           -- re-feed loop to avoid strange stack behavior in browser with ghcjs
           -- shouldn't affect ghc, I think. I assume this has something to do with
           -- gc but I haven't looked.
-          (obj',_) <- obj $. go'
+          (obj',_) <- obj ! go'
           go obj'
           where
 
-            {-# INLINE go' #-}
             -- if the buffer is nullified via killBuffer, a BlockedIndefinitelyOnSTM should eventually be thrown.
-            go' = do
-              Signaling evs s <- handle (\BlockedIndefinitelyOnSTM -> do
-                                            liftIO (writeIORef buf Nothing)
-                                            throwM DriverStopped
-                                        )
-                                        (collect qs)
-              forM_ evs (signal $ unsafeCoerce s)
+            go' = liftIO $ do
+              ms <- handle (\BlockedIndefinitelyOnSTM -> liftIO (writeIORef buf Nothing) >> return Nothing)
+                           (Just <$> collect qs)
+              forM ms $ \(Signaling evs s) ->
+                forM_ evs (signal $ unsafeCoerce s)
 
-driverPrintExceptions :: (Monad super, MonadIO super, MonadThrow super, Ma (Traits traits) (Messages self))
-                      => String -> Signaled -> Object traits super -> super ()
+driverPrintExceptions :: (MonadIO c, Functor (Messages ms), Delta (Modules ts) (Messages ms))
+                      => String -> Signaled -> Object ts c -> c ()
 driverPrintExceptions exceptionPrefix (Signaled buf) o = do
   Just qs <- liftIO $ readIORef buf
   start qs o
   where
-    {-# INLINE start #-}
     start qs = go
       where
 
-        {-# INLINE go #-}
         go obj = do
-          (obj',_) <- obj $. go'
-          go obj'
+          (obj',r) <- obj ! go'
+          case r of
+            Nothing -> return ()
+            Just _  -> go obj'
           where
 
-            {-# INLINE go' #-}
             -- if the buffer is nullified via killBuffer, a BlockedIndefinitelyOnSTM should eventually be thrown.
-            go' = do
-              Signaling evs s <- handle (\(e :: SomeException) -> do
-                                            liftIO $ putStrLn $
-                                              exceptionPrefix ++ ": " ++ show e
-                                            liftIO (writeIORef buf Nothing)
-                                            throwM DriverStopped
-                                        )
-                                        (collect qs)
-              forM_ evs (signal $ unsafeCoerce s)
+            go' = liftIO $ do
+              ms <- handle (\(e :: SomeException) -> do
+                               putStrLn $ exceptionPrefix ++ ": " ++ show e
+                               writeIORef buf Nothing
+                               return Nothing
+                           )
+                           (Just <$> collect qs)
+              forM ms $ \(Signaling evs s) ->
+                forM_ evs (signal $ unsafeCoerce s)
 
 data DriverStopped = DriverStopped deriving Show
 instance Exception DriverStopped
 
-driverPrintExceptionsNoStop :: (Monad super, MonadIO super, MonadThrow super, Ma (Traits traits) (Messages self))
-                            => String -> Signaled -> Object traits super -> super ()
+driverPrintExceptionsNoStop :: (MonadIO c, Functor (Messages ms), Delta (Modules ts) (Messages ms))
+                            => String -> Signaled -> Object ts c -> c ()
 driverPrintExceptionsNoStop exceptionPrefix (Signaled buf) o = do
   Just qs <- liftIO $ readIORef buf
   start qs o
   where
-    {-# INLINE start #-}
     start qs = go
       where
 
-        {-# INLINE go #-}
         go obj = do
-          (obj',_) <- obj $. go'
+          (obj',_) <- obj ! go'
           go obj'
           where
 
-            {-# INLINE go' #-}
-            -- if the buffer is nullified via killBuffer, a BlockedIndefinitelyOnSTM should eventually be thrown.
-            go' = do
-              Signaling evs s <- handle (\(e :: SomeException) -> do
-                                            liftIO $ putStrLn $
-                                              exceptionPrefix ++ ": " ++ show e
-                                            liftIO (writeIORef buf Nothing)
-                                            throwM DriverStopped
-                                        )
-                                        (collect qs)
-              handle (\(e :: SomeException) -> do
-                        liftIO $ putStrLn $
-                          exceptionPrefix ++ ": " ++ show e
-                        return ()
-                     )
-                     (forM_ evs (signal $ unsafeCoerce s))
+            go' = liftIO $ do
+              ms <- handle (\(e :: SomeException) -> do
+                               putStrLn $ exceptionPrefix ++ ": " ++ show e
+                               writeIORef buf Nothing
+                               return Nothing
+                            )
+                            (Just <$> collect qs)
+              forM ms $ \(Signaling evs s) ->
+                handle (\(e :: SomeException) -> putStrLn $ exceptionPrefix ++ ": " ++ show e)
+                       (forM_ evs (signal $ unsafeCoerce s))
 
 {-# INLINE buffer #-}
-buffer :: (Monad super', MonadIO super')
+buffer :: (MonadIO c')
               => Signaled
-              -> Signal' super e
+              -> Signal' c e
               -> e
-              -> super' ()
+              -> c' ()
 buffer (Signaled buf) sig e = liftIO $ do
   mqs <- readIORef buf
   forM_ mqs $ \qs -> arrive qs $ Signaling [e] sig
 
-killBuffer :: (Monad super, MonadIO super)
+killBuffer :: (MonadIO c)
            => Signaled
-           -> super ()
+           -> c ()
 killBuffer (Signaled buf) = liftIO $ writeIORef buf Nothing
