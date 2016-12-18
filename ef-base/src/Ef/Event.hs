@@ -579,16 +579,16 @@ driver (Signaled buf) o = do
           -- re-feed loop to avoid strange stack behavior in browser with ghcjs
           -- shouldn't affect ghc, I think. I assume this has something to do with
           -- gc but I haven't looked.
-          (obj',_) <- obj ! go'
-          go obj'
+          (obj',r) <- obj ! go'
+          case r of
+            Nothing -> return ()
+            Just _  -> go obj'
           where
 
-            -- if the buffer is nullified via killBuffer, a BlockedIndefinitelyOnSTM should eventually be thrown.
-            go' = liftIO $ do
-              ms <- handle (\BlockedIndefinitelyOnSTM -> liftIO (writeIORef buf Nothing) >> return Nothing)
-                           (Just <$> collect qs)
-              forM ms $ \(Signaling evs s) ->
-                forM_ evs (signal $ unsafeCoerce s)
+            go' = do
+              ms <- liftIO $ handle (\(_ :: SomeException) -> liftIO (writeIORef buf Nothing) >> return Nothing)
+                                    (Just <$> collect qs)
+              forM ms $ \(Signaling evs s) -> forM_ evs (signal $ unsafeCoerce s)
 
 driverPrintExceptions :: (MonadIO c, Functor (Messages ms), Delta (Modules ts) (Messages ms))
                       => String -> Signaled -> Object ts c -> c ()
@@ -607,43 +607,18 @@ driverPrintExceptions exceptionPrefix (Signaled buf) o = do
           where
 
             -- if the buffer is nullified via killBuffer, a BlockedIndefinitelyOnSTM should eventually be thrown.
-            go' = liftIO $ do
-              ms <- handle (\(e :: SomeException) -> do
-                               putStrLn $ exceptionPrefix ++ ": " ++ show e
-                               writeIORef buf Nothing
-                               return Nothing
-                           )
-                           (Just <$> collect qs)
+            go' = do
+              ms <- liftIO $ handle (\(e :: SomeException) -> do
+                                        putStrLn $ exceptionPrefix ++ ": " ++ show e
+                                        writeIORef buf Nothing
+                                        return Nothing
+                                    )
+                                    (Just <$> collect qs)
               forM ms $ \(Signaling evs s) ->
                 forM_ evs (signal $ unsafeCoerce s)
 
 data DriverStopped = DriverStopped deriving Show
 instance Exception DriverStopped
-
-driverPrintExceptionsNoStop :: (MonadIO c, Functor (Messages ms), Delta (Modules ts) (Messages ms))
-                            => String -> Signaled -> Object ts c -> c ()
-driverPrintExceptionsNoStop exceptionPrefix (Signaled buf) o = do
-  Just qs <- liftIO $ readIORef buf
-  start qs o
-  where
-    start qs = go
-      where
-
-        go obj = do
-          (obj',_) <- obj ! go'
-          go obj'
-          where
-
-            go' = liftIO $ do
-              ms <- handle (\(e :: SomeException) -> do
-                               putStrLn $ exceptionPrefix ++ ": " ++ show e
-                               writeIORef buf Nothing
-                               return Nothing
-                            )
-                            (Just <$> collect qs)
-              forM ms $ \(Signaling evs s) ->
-                handle (\(e :: SomeException) -> putStrLn $ exceptionPrefix ++ ": " ++ show e)
-                       (forM_ evs (signal $ unsafeCoerce s))
 
 {-# INLINE buffer #-}
 buffer :: (MonadIO c')

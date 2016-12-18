@@ -1,3 +1,4 @@
+{-# language UndecidableInstances #-}
 module Ef.Generate (Generator(..), generate, each, discard, every) where
 
 import Ef

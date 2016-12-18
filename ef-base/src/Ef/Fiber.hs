@@ -1,5 +1,5 @@
 {-# LANGUAGE Trustworthy #-}
-module Ef.Fiber (fiber, fibers, ThreadS(..), Operation(..), Ops(..), Threader(..), query) where
+module Ef.Fiber (fiber, fibers, ThreadS(..), Operation(..), Ops(..), Threader(..), queryOp) where
 
 import Ef
 import Data.IORef
@@ -17,8 +17,8 @@ data Ops ms c s r = Ops
     , supplement :: (Maybe s -> Maybe s) -> Code ms c ()
     }
 
-query :: (MonadIO c, Functor (Messages ms)) => Operation s r -> Code ms c (ThreadS s r)
-query (Operation op) = liftIO (readIORef op)
+queryOp :: (MonadIO c, Functor (Messages ms)) => Operation s r -> Code ms c (ThreadS s r)
+queryOp (Operation op) = liftIO (readIORef op)
 
 data Fiber k
     = Fiber Int k

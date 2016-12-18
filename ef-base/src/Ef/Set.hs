@@ -8,6 +8,10 @@ data Set k where
     Set :: (Object ts c -> k) -> Set k
     Become_ :: Object ts c -> k -> Set k
 
+instance Functor Set where
+  fmap f (Set ok) = Set (fmap f ok)
+  fmap f (Become_ o k) = Become_ o (f k)
+
 pattern Become o = Become_ o (Return ())
 
 instance Delta Set Set where

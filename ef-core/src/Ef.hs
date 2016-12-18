@@ -16,6 +16,8 @@ import Ef.Type.Nat as Export
 import Ef.Type.List as Export
 import Ef.Type.Set as Export
 
+import Unsafe.Coerce
+
 -- To fully understand the language, read the first 200 lines.
 
 data Modules (ts :: [* -> *]) (x :: *) where
@@ -33,7 +35,7 @@ data Narrative (f :: * -> *) c a where
   Lift   :: c (Narrative f c a) -> Narrative f c a
   Return ::                  a  -> Narrative f c a
 
-type Code (ms :: [* -> *]) (c :: * -> *) (a :: *) = Narrative (Messages ms) c a
+type Code (ms :: [* -> *]) (c :: * -> *) = Narrative (Messages ms) c
 
 viewMsg :: (Can' ms m (Offset ms m)) => Code ms c a -> Maybe (m (Code ms c a))
 viewMsg (Do m) = prj m
@@ -189,10 +191,10 @@ instance (ms ~ (m ': ms')) => Can' ms m 'Z where
   prj' _ (Msg message) = Just message
   prj' _ (Other _)     = Nothing
 
-type ms <: ms' = ms' :> ms
-type family (:>) ms ms' where
-  ms :> (m ': '[]) = (Can' ms m (Offset ms m), Functor (Messages ms))
-  ms :> (m ': ms') = (Can' ms m (Offset ms m), ms :> ms')
+type ms :> ms' = ms' <: ms
+type family (<:) ms ms' where
+  '[] <: ms = (Functor (Messages ms))
+  (m ': ms') <: ms = (Can' ms m (Offset ms m), ms' <: ms)
 
 infixr 6 *:*
 {-# INLINABLE (*:*) #-}
@@ -216,33 +218,81 @@ unit = Proxy
 
 --------------------------------------------------------------------------------
 
-data Component p ts c k where
-  Component :: Object ts c -> k -> (Object ts c -> k) -> Component p ts c k
+data Child
+data Sibling
 
-  GetComponent :: (Object ts c -> k) -> Component p ts c k
-  SetComponent :: Object ts c -> k -> Component p ts c k
-  deriving Functor
+data Fundament rel p ts k where
+  Fundament :: Object ts c -> k -> (Object ts c -> k) -> Fundament rel p ts k
 
-create :: forall p ts ms ts' c.
-          (Applicative c, Delta (Modules ts) (Messages ms), '[Component p ts c] <. ts')
-       => Proxy p -> Object ts c -> (Proxy '(p,ts),Mod (Component p ts c) ts' c)
-create _ o = (Proxy,(fix $ \mk current -> Component current pure $ \new -> pure . Module (mk new)) o)
+  GetFundament :: (Object ts c -> k) -> Fundament rel p ts k
+  SetFundament :: Object ts c -> k -> Fundament rel p ts k
 
-instance Delta (Component p ts c) (Component p ts c) where
-  delta u (Component o t _) (GetComponent or) = u t (or o)
-  delta u (Component _ _ ot) (SetComponent o r) = u (ot o) r
+instance Functor (Fundament rel p ts) where
+  fmap f (Fundament o k ok) = Fundament o (f k) (fmap f ok)
+  fmap f (GetFundament ok) = GetFundament (fmap f ok)
+  fmap f (SetFundament o k) = SetFundament o (f k)
 
-message :: forall p ms ms' ts c a.
-        (Functor (Messages ms'), Delta (Modules ts) (Messages ms), Monad c, '[Component p ts c] <: ms')
-     => Proxy '(p,ts) -> Code ms c a -> Code ms' c (Object ts c,Object ts c,a)
-message _ ma = do
-  o <- Do $ inj (GetComponent Return :: Component p ts c (Code ms' c (Object ts c)))
-  (o',a) <- Lift (runWith o ma >>= return . return)
-  Do $ inj (SetComponent o' (Return ()) :: Component p ts c (Code ms' c ()))
+child :: forall p ms ms' ts ts' c.
+         ( Monad c
+         , Delta (Modules ts') (Messages ms')
+         , Delta (Modules ts) (Messages ms)
+         , '[Fundament Child p ts] <. ts'
+         )
+      => Proxy p
+      -> Object ts (Narrative (Messages ms') c)
+      -> (Proxy '(p,Child,ts),Mod (Fundament Child p ts) ts' c)
+child _ o = (Proxy,(fix $ \mk current -> Fundament current pure $ \new -> pure . Module (mk new)) o)
+
+sibling :: forall p ms ms' ts ts' c.
+           ( Monad c
+           , Delta (Modules ts') (Messages ms')
+           , Delta (Modules ts) (Messages ms)
+           , '[Fundament Sibling p ts] <. ts'
+           )
+        => Proxy p
+        -> Object ts c
+        -> (Proxy '(p,Sibling,ts),Mod (Fundament Sibling p ts) ts' c)
+sibling _ o = (Proxy,(fix $ \mk current -> Fundament current pure $ \new -> pure . Module (mk new)) o)
+
+instance Delta (Fundament rel p ts) (Fundament rel p ts) where
+  delta u (Fundament o t _) (GetFundament or) = u t (or (unsafeCoerce o))
+  delta u (Fundament _ _ ot) (SetFundament o r) = u (ot (unsafeCoerce o)) r
+
+tellChild :: forall p ms ms' ts c a.
+             ( Functor (Messages ms')
+             , Delta (Modules ts) (Messages ms)
+             , Monad c
+             , '[Fundament Child p ts] <: ms'
+             )
+          => Proxy '(p,Child,ts)
+          -> Code ms (Narrative (Messages ms') c) a
+          -> Code ms' c (Object ts (Narrative (Messages ms') c),Object ts (Narrative (Messages ms') c),a)
+tellChild _ ma = do
+  o <- Send (GetFundament Return :: Fundament Child p ts (Code ms' c (Object ts (Narrative (Messages ms') c))))
+  (o',a) <- o ! ma
+  Send (SetFundament o' (Return ()) :: Fundament Child p ts (Code ms' c ()))
   return (o,o',a)
 
-component :: forall p ms ts c. (Monad c, '[Component p ts c] <: ms) => Proxy '(p,ts) -> Code ms c (Object ts c)
-component _ = Do $ inj (GetComponent Return :: Component p ts c (Code ms c (Object ts c)))
+tellSib :: forall p ms ms' ts c a.
+            ( Functor (Messages ms')
+            , Delta (Modules ts) (Messages ms)
+            , Monad c
+            , '[Fundament Sibling p ts] <: ms'
+            )
+        => Proxy '(p,Sibling,ts)
+        -> Code ms c a
+        -> Code ms' c (Object ts c,Object ts c,a)
+tellSib _ ma = do
+  o <- Send (GetFundament Return :: Fundament Sibling p ts (Code ms' c (Object ts c)))
+  (o',a) <- Lift (runWith o ma >>= return . Return)
+  Send (SetFundament o' (Return ()) :: Fundament Sibling p ts (Code ms' c ()))
+  return (o,o',a)
+
+getChild :: forall p ms ts c. (Monad c, '[Fundament Child p ts] <: ms) => Proxy '(p,Sibling,ts) -> Code ms c (Object ts (Narrative (Messages ms) c))
+getChild _ = Send (GetFundament Return :: Fundament Child p ts (Code ms c (Object ts (Narrative (Messages ms) c))))
+
+getSib :: forall p ms ts c. (Monad c, '[Fundament Sibling p ts] <: ms) => Proxy '(p,Sibling,ts) -> Code ms c (Object ts c)
+getSib _ = Send (GetFundament Return :: Fundament Sibling p ts (Code ms c (Object ts c)))
 
 data Interpreter ts ms c a = Interpreter
   { interpret :: (forall x. Code ms c x -> c (Object ts c,x)) -> c (Object ts c,a) }

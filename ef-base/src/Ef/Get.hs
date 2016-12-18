@@ -21,6 +21,12 @@ data Get k where
     View_
       :: { view :: (Object gs m -> k) } -> Get k
 
+instance Functor Get where
+  fmap f Get {..} = Get (fmap f reflection) (f resetter) (f reifier)
+  fmap f Reset_ {..} = Reset_ (f reset)
+  fmap f Reify_ {..} = Reify_ (f reify)
+  fmap f View_ {..} = View_ (fmap f view)
+
 pattern Reset = Reset_ (Return ())
 pattern Reify = Reify_ (Return ())
 pattern View f = View_ f
