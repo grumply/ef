@@ -42,12 +42,11 @@ viewMsg (Do m) = prj m
 viewMsg _ = Nothing
 
 pattern Module x o <- (\o -> let x = pull (deconstruct o) in (x,o) -> (x,o)) where
-  Module x o = Object (push x (deconstruct o))
+  Module x o = Object $ push x $ deconstruct o
 
 pattern Send x <- (viewMsg -> Just x) where
   Send x = Do (inj x)
 
-{-# INLINABLE super #-}
 super :: Monad c => c (Narrative f c a) -> Narrative f c a
 super = Lift
 
@@ -55,7 +54,7 @@ instance (MonadIO c, Functor f) => MonadIO (Narrative f c) where
   liftIO m = Lift (liftIO (fmap Return m))
 
 instance MonadTrans (Narrative f) where
-  lift m = super (fmap Return m)
+  lift m = Lift (fmap Return m)
 
 instance Functor (Modules '[]) where
   fmap _ _ = Empty
@@ -125,7 +124,6 @@ instance (t `Delta` m, Modules ts `Delta` Messages ms) => Delta (Modules (t ': t
   delta u (Mod t _) (Msg m) = delta u t m
   delta u (Mod _ ts) (Other ms) = delta u ts ms
 
-{-# INLINE runWith #-}
 runWith :: forall ts ms c a. ((Modules ts) `Delta` (Messages ms), Monad c) => Object ts c -> Code ms c a -> c (Object ts c,a)
 runWith object = go where
   go (Do m) = do
@@ -135,8 +133,7 @@ runWith object = go where
   go (Lift c) = c >>= go
   go (Return a) = return (object,a)
 
-infixr 5 ! 
-{-# INLINABLE (!) #-}
+infixr 5 !
 (!) :: ((Modules ts) `Delta` (Messages ms), Monad c) => Object ts c -> Code ms c a -> c (Object ts c,a)
 (!) = runWith
 
@@ -197,7 +194,6 @@ type family (<:) ms ms' where
   (m ': ms') <: ms = (Can' ms m (Offset ms m), ms' <: ms)
 
 infixr 6 *:*
-{-# INLINABLE (*:*) #-}
 (*:*) :: t a -> Modules ts a -> Modules (t ': ts) a
 (*:*) = Mod
 
@@ -319,12 +315,10 @@ instance (Monad c, Functor (Messages ms), Delta (Modules ts) (Messages ms), Mona
 instance (Functor (Messages ms), Delta (Modules ts) (Messages ms), MonadFix c) => MonadFix (Interpreter ts ms c) where
   mfix f = Interpreter $ \d -> mfix (\((_,x)) -> interpret (f x) d)
 
-{-# INLINE interp #-}
 interp :: Code ms c a -> Interpreter ts ms c a
 interp n = Interpreter $ \k -> k n
 
 infixr 5 !#
-{-# INLINE (!#) #-}
 (!#) :: (MonadFix c, Delta (Modules ts) (Messages ms)) => Object ts c -> Interpreter ts ms c a -> c (Object ts c,a)
 (!#) o i = interpret i (runWith o)
 
@@ -399,7 +393,7 @@ _transform f t = go
 
 {-# RULES
     "(Do m) >>= f"     forall m f. _bind (Do m) f     = Do (fmap (\a -> _bind a f) m);
-    "(Lift c) >>= f"   forall c f. _bind (Lift c) f   = Lift (c >>= \a -> return (_bind a f));
+    "(Lift c) >>= f"   forall c f. _bind (Lift c) f   = Lift (fmap (\a -> _bind a f) c);
     "(Return r) >>= f" forall r f. _bind (Return r) f = f r;
 
     "fmap f (Do m k)"   forall m f. _fmap f (Do m)     = Do (fmap (_fmap f) m);

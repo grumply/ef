@@ -67,6 +67,7 @@ library
                       , ghc-prim
                       , mtl
                       , stm >= 2.4
+                      , ghcjs-base
   else
     build-depends:       base >=4.8
                       , ef-core >= 1.6

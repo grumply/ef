@@ -57,7 +57,7 @@ import Data.Unique
 data Status status result
   = Notify status
   | Aborted SomeException
-  | Done result
+  | Complete result
   deriving (Eq)
 
 instance Eq SomeException where
@@ -65,7 +65,7 @@ instance Eq SomeException where
 
 eitherToStatus :: Either SomeException result -> Status status result
 eitherToStatus (Left se) = Aborted se
-eitherToStatus (Right r) = Done r
+eitherToStatus (Right r) = Complete r
 
 -- | Promise represents a variable that:
 --
@@ -168,7 +168,7 @@ complete :: (Monad super, MonadIO super)
          => Process status result -> result -> super Bool
 complete (Process _ _ ls_ p) res = liftIO $ do
   (ls,r) <- modifyMVar ls_ $ \(_,pls) -> do
-    let r = Done res
+    let r = Complete res
     didPut <- tryPutMVar p (Right res)
     let ls = if didPut then
                 let pls' = reverse $ map snd pls
@@ -292,7 +292,7 @@ onComplete pr@(Process _ _ ls_ p) f =
       mres <- tryTakeMVar p
       let f' res =
             case res of
-              Done r -> f r
+              Complete r -> f r
               _ -> return ()
       case mres of
         Nothing -> do

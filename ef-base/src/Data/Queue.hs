@@ -22,7 +22,7 @@ data Queue a = Queue {-# UNPACK #-} !(TQueue a)
 #endif
   deriving Eq
 
-newQueue :: (Monad super, MonadIO super)
+newQueue :: (MonadIO super)
          => super (Queue a)
 #ifndef __GHCJS__
 newQueue = do
@@ -32,18 +32,17 @@ newQueue = do
 newQueue = liftIO $ Queue <$> newTQueueIO
 #endif
 
-arrive :: (Monad super, MonadIO super)
+arrive :: (MonadIO super)
        => Queue a -> a -> super ()
 #ifndef __GHCJS__
 arrive (Queue i o) a = liftIO $ writeChan i a
 #else
-arrive (Queue queue) a = liftIO $ atomically $ writeTQueue queue a
+arrive (Queue ch) a = liftIO $ atomically $ writeTQueue ch a
 #endif
 
-collect :: (Monad super, MonadIO super)
-        => Queue a -> super a
+collect :: (MonadIO super) => Queue a -> super a
 #ifndef __GHCJS__
 collect (Queue i o) = liftIO $ readChan o
 #else
-collect (Queue queue) = liftIO $ atomically $ readTQueue queue
+collect (Queue ch) = liftIO $ atomically $ readTQueue ch
 #endif
