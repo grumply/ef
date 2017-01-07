@@ -570,6 +570,7 @@ reconstructAs (As buf _) = do
 newSignalBuffer :: (MonadIO c) => c Signaled
 newSignalBuffer = Signaled <$> liftIO (newIORef . Just =<< newQueue)
 
+{-# SPECIALIZE driver :: (Functor (Messages ms), Delta (Modules ts) (Messages ms)) => Signaled -> Object ts IO -> IO () #-}
 driver :: (MonadIO c, Functor (Messages ms), Delta (Modules ts) (Messages ms))
        => Signaled -> Object ts c -> c ()
 driver (Signaled buf) o = do
@@ -586,6 +587,7 @@ driver (Signaled buf) o = do
               (o',_) <- o ! signal (unsafeCoerce s) e
               go o'
 
+{-# SPECIALIZE driverPrintExceptions :: (Functor (Messages ms), Delta (Modules ts) (Messages ms)) => String -> Signaled -> Object ts IO -> IO () #-}
 driverPrintExceptions :: (MonadIO c, Functor (Messages ms), Delta (Modules ts) (Messages ms))
                       => String -> Signaled -> Object ts c -> c ()
 driverPrintExceptions exceptionPrefix (Signaled buf) o = do
