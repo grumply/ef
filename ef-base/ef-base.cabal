@@ -61,20 +61,18 @@ library
                        RecordWildCards
                        InstanceSigs
   if (impl(ghcjs))
-    build-depends:       base >=4.8
+    build-depends:      base >=4.8
                       , ef-core >= 1.6
                       , random >= 1.1
                       , ghc-prim
                       , mtl
-                      , stm >= 2.4
                       , ghcjs-base
   else
-    build-depends:       base >=4.8
+    build-depends:      base >=4.8
                       , ef-core >= 1.6
                       , random >= 1.1
                       , ghc-prim
                       , mtl
-                      , stm >= 2.4
                       , unagi-chan
 
   hs-source-dirs:      src
