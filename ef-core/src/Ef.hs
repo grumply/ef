@@ -4,21 +4,33 @@ import Control.Applicative as Export
 import Control.Monad as Export
 import Control.Monad.Codensity as Export
 import Control.Monad.Fix as Export
-import Control.Monad.Free as Export
+import Control.Monad.Free as Export hiding (unfold,cutoff)
 import Control.Monad.IO.Class as Export
 import Control.Monad.Trans.Class as Export
+import Control.Monad.Reader.Class
+import Control.Monad.Writer.Class
+import Control.Monad.State.Class
+import Control.Monad.Error.Class
+import Control.Monad.Morph as Export
+import Control.Monad.Base as Export
+import Control.Monad.Trans.Resource
+import Control.Monad.Catch
+import Control.Monad.Trans.Control
 import Control.Comonad
 import Control.Comonad.Cofree
+import Control.Concurrent
 
+import Data.Data
+import Data.Functor.Compose
+import Data.Functor.Sum
 import Data.Proxy as Export
+import Data.Typeable
 import Ef.Type.Bool as Export
 import Ef.Type.Nat as Export
 import Ef.Type.List as Export
 import Ef.Type.Set as Export
 
 import Unsafe.Coerce
-
--- To fully understand the language, read the first 200 lines.
 
 data Modules (ts :: [* -> *]) (x :: *) where
   Empty :: Modules '[] x
@@ -31,9 +43,9 @@ data Messages ms a where
 newtype Object ts c = Object { deconstruct :: Modules ts (Action ts c) }
 
 data Narrative (f :: * -> *) c a where
-  Do     :: f (Narrative f c a) -> Narrative f c a
-  Lift   :: c (Narrative f c a) -> Narrative f c a
   Return ::                  a  -> Narrative f c a
+  Lift   :: c (Narrative f c a) -> Narrative f c a
+  Do     :: f (Narrative f c a) -> Narrative f c a
 
 type Code (ms :: [* -> *]) (c :: * -> *) = Narrative (Messages ms) c
 
@@ -47,14 +59,27 @@ pattern Module x o <- (\o -> let x = pull (deconstruct o) in (x,o) -> (x,o)) whe
 pattern Send x <- (viewMsg -> Just x) where
   Send x = Do (inj x)
 
+{-# NOINLINE [1] send #-}
+send :: (Functor f, Monad c) => f r -> Narrative f c r
+send fr = Do (fmap Return fr)
+
+{-# NOINLINE [1] super #-}
 super :: Monad c => c (Narrative f c a) -> Narrative f c a
 super = Lift
 
+deriving instance (Show a, Show (c (Narrative f c a)), Show (f (Narrative f c a))) => Show (Narrative f c a)
+deriving instance (Eq a, Eq (c (Narrative f c a)), Eq (f (Narrative f c a))) => Eq (Narrative f c a)
+deriving instance (Typeable f, Typeable c, Data a, Data (c (Narrative f c a)), Data (f (Narrative f c a))) => Data (Narrative f c a)
+
 instance (MonadIO c, Functor f) => MonadIO (Narrative f c) where
-  liftIO m = Lift (liftIO (fmap Return m))
+  liftIO = _liftIO
+
+{-# NOINLINE [1] _liftIO #-}
+_liftIO :: MonadIO c => IO a -> Narrative f c a
+_liftIO ioa = Lift (fmap Return (liftIO ioa))
 
 instance MonadTrans (Narrative f) where
-  lift m = Lift (fmap Return m)
+  lift ca = Lift (fmap Return ca)
 
 instance Functor (Modules '[]) where
   fmap _ _ = Empty
@@ -83,30 +108,127 @@ _fmapMsg f = go
 instance (Monad c, Functor f) => MonadFree f (Narrative f c) where
   wrap = Do
 
-instance (Functor f, Monad c) => Functor (Narrative f c) where
+instance (Functor f, Functor c) => Functor (Narrative f c) where
   fmap = _fmap
 
 instance (Functor f, Monad c) => Applicative (Narrative f c) where
-  pure = Return
+  pure a = buildn $ \r _ _ -> r a
   (<*>) = ap
 
 instance (Functor f, Monad c) => Monad (Narrative f c) where
-  return = Return
+  return a = buildn $ \r _ _ -> r a
+  {-# INLINE return #-}
   (>>=) = _bind
+  {-# INLINE (>>=) #-}
+  (>>) a b = _bind a (\_ -> b)
+  {-# INLINE (>>) #-}
+
+instance (MonadPlus c, Applicative f) => MonadPlus (Narrative f c) where
+  mzero = lift mzero
+  mplus = _mplus
+
+instance (Monad c, Applicative f) => Alternative (Narrative f c) where
+  empty = never
+  (<|>) =  zipsWith (liftA2 (,))
+
+instance (Monad c, Functor f, Monoid r) => Monoid (Narrative f c r) where
+  mempty = pure mempty
+  mappend = _mappend
+
+instance Functor f => MFunctor (Narrative f) where
+  hoist = _hoist
+
+instance Functor f => MMonad (Narrative f) where
+  embed = _embed
+
+instance (MonadBase b c, Functor f) => MonadBase b (Narrative f c) where
+  liftBase = Lift . fmap Return . liftBase
+
+instance (MonadThrow c, Functor f) => MonadThrow (Narrative f c) where
+  throwM = lift . throwM
+
+instance (MonadCatch c, Functor f) => MonadCatch (Narrative f c) where
+  catch = _catch
+
+instance (MonadResource c, Functor f) => MonadResource (Narrative f c) where
+  liftResourceT = lift . liftResourceT
+
+instance (MonadReader r c, Functor f) => MonadReader r (Narrative f c) where
+  ask = lift ask
+  local f = hoist (local f)
+
+instance (MonadState s c, Functor f) => MonadState s (Narrative f c) where
+  get = lift get
+  put = lift . put
+  state = lift . state
+
+instance (MonadError e c, Functor f) => MonadError e (Narrative f c) where
+  throwError = lift . throwError
+  catchError = _catchError
+
+{-# NOINLINE [1] _mappend #-}
+_mappend :: (Monad c, Functor f, Monoid r) => Narrative f c r -> Narrative f c r -> Narrative f c r
+_mappend p0 p1 = go p0
+  where
+    go (Return r) = fmap (mappend r) p1
+    go (Lift c) = Lift (fmap go c)
+    go (Do m) = Do (fmap go m)
 
 {-# NOINLINE [1] _fmap #-}
-_fmap :: (Monad c, Functor f) => (a -> b) -> Narrative f c a -> Narrative f c b
-_fmap f = go where
-  go (Return a) = Return (f a)
-  go (Do m) = Do (fmap (fmap f) m)
-  go (Lift c) = Lift (fmap (fmap f) c)
+_fmap :: (Functor f, Functor c) => (a -> b) -> Narrative f c a -> Narrative f c b
+_fmap f = go
+  where
+    go (Return a) = Return (f a)
+    go (Lift c) = Lift (fmap (fmap f) c)
+    go (Do m) = Do (fmap (fmap f) m)
 
 {-# NOINLINE [1] _bind #-}
 _bind :: (Monad c, Functor f) => Narrative f c a -> (a -> Narrative f c b) -> Narrative f c b
-_bind ma amb = go ma where
-  go (Do mu) = Do (fmap (>>= amb) mu)
-  go (Lift cma) = Lift (fmap (>>= amb) cma)
-  go (Return a) = amb a
+_bind ma amb = go ma
+  where
+    go (Return a) = amb a
+    go (Lift cma) = Lift (fmap (>>= amb) cma)
+    go (Do mu) = Do (fmap (>>= amb) mu)
+
+{-# NOINLINE [1] _mplus #-}
+_mplus :: (MonadPlus c, Applicative f) => Narrative f c r -> Narrative f c r -> Narrative f c r
+_mplus p0 p1 = go p0
+  where
+    go (Return r) = Return r
+    go (Lift m) = Lift (fmap (\x -> mplus x p1) m)
+    go (Do m) = Do (fmap (\x -> mplus x p1) m)
+
+{-# NOINLINE [1] _hoist #-}
+_hoist :: (Functor f, Functor c') => (c' (Narrative f c a) -> c (Narrative f c a)) -> Narrative f c' a -> Narrative f c a
+_hoist f = go
+  where
+    go (Return r) = Return r
+    go (Lift c) = Lift (f (fmap go c))
+    go (Do m) = Do (fmap go m)
+
+{-# NOINLINE [1] _embed #-}
+_embed :: (Monad c, Functor f) => (t (Narrative f t a) -> Narrative f c (Narrative f t a)) -> Narrative f t a -> Narrative f c a
+_embed f = go
+  where
+    go (Return r) = Return r
+    go (Lift c) = f c >>= go
+    go (Do m) = Do (fmap go m)
+
+{-# NOINLINE [1] _catch #-}
+_catch :: (Exception e, Functor f, MonadCatch c) => Narrative f c a -> (e -> Narrative f c a) -> Narrative f c a
+_catch n f = go n
+  where
+    go (Return r) = Return r
+    go (Lift c) = Lift (catch (c >>= return . go) (pure . f))
+    go (Do m) = Do (fmap go m)
+
+{-# NOINLINE [1] _catchError #-}
+_catchError :: (Functor f, MonadError e c) => Narrative f c a -> (e -> Narrative f c a) -> Narrative f c a
+_catchError n f = go n
+  where
+    go (Return r) = Return r
+    go (Lift c) = Lift $ catchError (fmap go c) (pure . f)
+    go (Do f) = Do (fmap go f)
 
 class Delta f g | f -> g, g -> f where
   delta :: (a -> b -> r) -> f a -> g b -> r
@@ -125,13 +247,14 @@ instance (t `Delta` m, Modules ts `Delta` Messages ms) => Delta (Modules (t ': t
   delta u (Mod _ ts) (Other ms) = delta u ts ms
 
 runWith :: forall ts ms c a. ((Modules ts) `Delta` (Messages ms), Monad c) => Object ts c -> Code ms c a -> c (Object ts c,a)
-runWith object = go where
-  go (Do m) = do
-    let (method,cont) = delta (,) (deconstruct object) m
-    object' <- method object
-    runWith object' cont
-  go (Lift c) = c >>= go
-  go (Return a) = return (object,a)
+runWith object = go
+  where
+    go (Return a) = return (object,a)
+    go (Lift c) = c >>= go
+    go (Do m) = do
+      let (method,cont) = delta (,) (deconstruct object) m
+      object' <- method object
+      runWith object' cont
 
 infixr 5 !
 (!) :: ((Modules ts) `Delta` (Messages ms), Monad c) => Object ts c -> Code ms c a -> c (Object ts c,a)
@@ -212,7 +335,7 @@ instance Append ts '[] ts where
 unit :: Proxy ()
 unit = Proxy
 
---------------------------------------------------------------------------------
+
 
 data Child
 data Sibling
@@ -322,34 +445,6 @@ infixr 5 !#
 (!#) :: (MonadFix c, Delta (Modules ts) (Messages ms)) => Object ts c -> Interpreter ts ms c a -> c (Object ts c,a)
 (!#) o i = interpret i (runWith o)
 
-instance (MonadPlus c, Functor f) => MonadPlus (Narrative f c) where
-  mzero = super mzero
-  mplus = _mplus
-
-instance (MonadPlus c, Functor f) => Alternative (Narrative f c) where
-  empty = mzero
-  (<|>) = _mplus
-
-{-# NOINLINE [1] _mplus #-}
-_mplus :: (MonadPlus c, Functor f) => Narrative f c r -> Narrative f c r -> Narrative f c r
-_mplus p0 p1 = go p0
-  where
-    go (Lift m) = Lift (fmap (\x -> mplus x p1) m)
-    go (Do m) = Do (fmap (\x -> mplus x p1) m)
-    go result = result
-
-instance (Monad c, Functor f, Monoid r) => Monoid (Narrative f c r) where
-  mempty = pure mempty
-  mappend = _mappend
-
-{-# NOINLINE [1] _mappend #-}
-_mappend :: (Monad c, Functor f, Monoid r) => Narrative f c r -> Narrative f c r -> Narrative f c r
-_mappend p0 p1 = go p0
-  where
-    go (Return r) = fmap (mappend r) p1
-    go (Lift c) = Lift (fmap go c)
-    go (Do m) = Do (fmap go m)
-
 type Path ts ms c a = Cofree c (Object ts c,Code ms c a)
 
 lay :: (Monad c, Delta (Modules ts) (Messages ms)) => Object ts c -> Code ms c a -> Path ts ms c a
@@ -361,7 +456,7 @@ lay obj nar = coiter (uncurry lay) (obj,nar)
         let (method,b) = delta (,) (deconstruct o) m
         in method o >>= \o' -> return (o',b)
       go (Lift m) = m >>= \c -> return (o,c)
-      go done = return (o,done)
+      go (Return r) = return (o,Return r)
 
 walk :: (Monad c, Delta (Modules ts) (Messages ms)) => Path ts ms c a -> c (Object ts c,a)
 walk = step
@@ -373,47 +468,181 @@ walk = step
         (Return r) -> return (obj,r)
         _          -> step next
 
-type family Reinjectable m ms ms' where
-  Reinjectable m ms '[] = (Functor (Messages ms))
-  Reinjectable m ms (m ': ms') = Reinjectable m ms ms'
-  Reinjectable m ms (m' ': ms') = (Can' ms m' (Offset ms m'), Reinjectable m ms ms')
 
-type Subtract m ms ms' = ('[m] <: ms, Removed ms m ~ ms', Reinjectable m ms ms')
+reduce :: (Monad c, Functor f) => Narrative f c a -> (f b -> b) -> (c b -> b) -> (a -> b) -> b
+reduce n d l r = foldn r l d n
 
-transform :: Monad c => (r -> a) -> (Messages ms (Code ms c r) -> Code ms' c a) -> Code ms c r -> Code ms' c a
-transform = _transform
-
-{-# NOINLINE [1] _transform #-}
-_transform :: Monad c => (r -> a) -> (Messages ms (Code ms c r) -> Code ms' c a) -> Code ms c r -> Code ms' c a
-_transform f t = go
+{-# INLINE [0] foldn #-}
+foldn :: (Functor f, Functor c) => (r -> b) -> (c b -> b) -> (f b -> b) -> Narrative f c r -> b
+foldn r l d = go
   where
-    go (Do m) = t m
-    go (Lift sup) = Lift (fmap go sup)
-    go (Return r) = Return (f r)
+    go (Return a) = r a
+    go (Lift c) = l (fmap go c)
+    go (Do m) = d (fmap go m)
+
+{-# INLINE [1] buildn #-}
+buildn :: (forall b. (r -> b) -> (c b -> b) -> (f b -> b) -> b) -> Narrative f c r
+buildn f = f Return Lift Do
+
+observe :: (Functor f, Monad c) => Narrative f c r -> Narrative f c r
+observe = Lift . foldn (return . Return) join (return . Do . fmap Lift)
+
+never :: (Monad c, Applicative f) => Narrative f c r
+never =  let loop = Lift $ return $ Do $ pure loop in loop
+
+uncons :: (Functor f, Monad c) => Narrative f c r -> c (Either r (f (Narrative f c r)))
+uncons = _uncons
+
+{-# NOINLINE [1] _uncons #-}
+_uncons :: (Functor f, Monad c) => Narrative f c r -> c (Either r (f (Narrative f c r)))
+_uncons (Return r) = return (Left r)
+_uncons (Lift m) = m >>= _uncons
+_uncons (Do fs) = return (Right fs)
+
+zipsWith :: (Monad c, Functor f, Functor g, Functor h)
+         => (forall x y . f x -> g y -> h (x,y))
+         -> Narrative f c a -> Narrative g c a -> Narrative h c a
+zipsWith = _zipsWith
+
+{-# NOINLINE [1] _zipsWith #-}
+_zipsWith :: (Monad c, Functor f, Functor l, Functor r)
+          => (l (Narrative l c a) -> r (Narrative r c a) -> f (Narrative l c a, Narrative r c a))
+          -> Narrative l c a
+          -> Narrative r c a
+          -> Narrative f c a
+_zipsWith f l r = Lift $ liftA2 (_zipsWithInternal f) (uncons l) (uncons r)
+
+{-# NOINLINE [1] _zipsWithInternal #-}
+_zipsWithInternal :: (Monad c, Functor f, Functor l, Functor r)
+                  => (l (Narrative l c a)
+                  -> r (Narrative r c a) -> f (Narrative l c a, Narrative r c a))
+                  -> Either a (l (Narrative l c a))
+                  -> Either a (r (Narrative r c a))
+                  -> Narrative f c a
+_zipsWithInternal f = go
+  where
+    go (Left l) _ = Return l
+    go _ (Left r) = Return r
+    go (Right l) (Right r) = Do (fmap (uncurry (_zipsWith f)) (f l r))
+
+zips :: (Monad c, Functor f, Functor g) => Narrative f c a -> Narrative g c a -> Narrative (Compose f g) c a
+zips = zipsWith (\f g -> Compose (fmap (\x -> fmap (\y -> (x,y)) g) f))
+
+unzips :: (Functor f, Functor g, Monad c) => Narrative (Compose f g) c r -> Narrative f (Narrative g c) r
+unzips n = reduce n (\(Compose fgn) -> Do (fmap (Lift . send) fgn)) (Lift . lift) return
+
+interleaves :: (Monad c, Applicative f) => Narrative f c a -> Narrative f c a -> Narrative f c a
+interleaves = zipsWith (liftA2 (,))
+
+cutoff :: (Functor f, Monad c) => Int -> Narrative f c r -> Narrative f c (Maybe r)
+cutoff = go
+  where
+    go 0 _ = return Nothing
+    go i n = do
+        e <- lift $ uncons n
+        case e of
+          Left r -> return (Just r)
+          Right n -> Do $ fmap (go (i-1)) n
+
+unfold :: (Functor f, Monad c) => (s -> c (Either r (f s))) -> s -> Narrative f c r
+unfold = _unfold
+
+{-# NOINLINE [1] _unfold #-}
+_unfold :: (Functor f, Monad c) => (s -> c (Either r (f s))) -> s -> Narrative f c r
+_unfold mk n = Lift $ mk n >>= return . either Return (Do . fmap (_unfold mk))
+
+iterTM :: (Functor f, Monad c, MonadTrans t, Monad (t c)) => (f (t c a) -> t c a) -> Narrative f c a -> t c a
+iterTM f n = reduce n f (join . lift) return
+
+iterT :: (Functor f, Monad c) => (f (c a) -> c a) -> Narrative f c a -> c a
+iterT f n = reduce n f join return
+
+distribute :: (Functor f, Monad c, MonadTrans t, MFunctor t, Monad (t (Narrative f c)))
+           => Narrative f (t c) r -> t (Narrative f c) r
+distribute = _distribute
+
+{-# NOINLINE [1] _distribute #-}
+_distribute :: (Functor f, Monad c, MonadTrans t, MFunctor t, Monad (t (Narrative f c)))
+            => Narrative f (t c) r -> t (Narrative f c) r
+_distribute = go
+  where
+    go (Return r) = lift (Return r)
+    go (Lift c) = hoist lift c >>= go
+    go (Do m) = join (lift (Do (fmap (Return . go) m)))
 
 {-# RULES
-    "(Do m) >>= f"     forall m f. _bind (Do m) f     = Do (fmap (\a -> _bind a f) m);
-    "(Lift c) >>= f"   forall c f. _bind (Lift c) f   = Lift (fmap (\a -> _bind a f) c);
-    "(Return r) >>= f" forall r f. _bind (Return r) f = f r;
+"foldn (Return r)" forall r l d a. foldn r l d (Return a) = r a
+"foldn (Lift c)"   forall r l d c. foldn r l d (Lift c)   = l (fmap (foldn r l d) c)
+"foldn (Do m)"     forall r l d m. foldn r l d (Do m)     = d (fmap (foldn r l d) m)
 
-    "fmap f (Do m k)"   forall m f. _fmap f (Do m)     = Do (fmap (_fmap f) m);
-    "fmap f (Lift c)"   forall c f. _fmap f (Lift c)   = Lift (fmap (_fmap f) c);
-    "fmap f (Return r)" forall r f. _fmap f (Return r) = Return (f r);
+"_bind (Return r)" forall r f. _bind (Return r) f = f r
+"_bind (Lift c)"   forall c f. _bind (Lift c) f   = Lift (fmap (\a -> _bind a f) c)
+"_bind (Do m)"     forall m f. _bind (Do m) f     = Do (fmap (\a -> _bind a f) m)
 
-    "_mplus (Lift sup) r"     forall c r.   _mplus (Lift c) r     = Lift (fmap (\x -> _mplus x r) c);
-    "_mplus (Return res) r"   forall r res. _mplus (Return res) r = Return res;
-    "_mplus (Do message k) f" forall r m.   _mplus (Do m) r       = Do (fmap (\x -> _mplus x r) m);
+-- "foldn/_bind"      forall r l d (g::forall b. (r -> b) -> (c b -> b) -> (f b -> b) -> b) amb.
+--                     foldn r l d (_bind (buildn g) amb) = foldn (\a -> foldn (unsafeCoerce r) l d (amb a)) l d (g r l d)
 
-    "_mappend (Lift c) r"     forall c r.   _mappend (Lift c) r     = Lift (fmap (\x -> _mappend x r) c);
-    "_mappend (Return res) r" forall r res. _mappend (Return res) r = fmap (mappend res) r;
-    "_mappend (Do m k) f"     forall r m.   _mappend (Do m) r       = Do (fmap (\x -> _mappend x r) m);
+"foldn/buildn"    forall r l d (g::forall b. (r -> b) -> (c b -> b) -> (f b -> b) -> b) .
+                  foldn r l d (buildn g) = g r l d
 
-    "_transform f (Do m k)"   forall f g m. _transform f g (Do m)     = g m;
-    "_transform f (Lift c)"   forall f g c. _transform f g (Lift c)   = Lift (fmap (_transform f g) c);
-    "_transform f (Return r)" forall f g r. _transform f g (Return r) = Return (f r);
-  #-}
+"_fmap (Return r)" forall r f. _fmap f (Return r) = Return (f r)
+"_fmap (Lift c)"   forall c f. _fmap f (Lift c)   = Lift (fmap (_fmap f) c)
+"_fmap (Do m)"     forall m f. _fmap f (Do m)     = Do (fmap (_fmap f) m)
+
+"send"   forall f. send f = buildn $ \r _ d -> d (fmap r f)
+
+"_liftIO" forall c. _liftIO c = Lift (liftIO (fmap Return c))
+
+"_hoist (Return r)" forall f r. _hoist f (Return r) = Return r
+"_hoist (Lift c)"   forall f c. _hoist f (Lift c)   = Lift (f (fmap (_hoist f) c))
+"_hoist (Do m)"     forall f m. _hoist f (Do m)     = Do (fmap (_hoist f) m)
+
+"_embed (Return r)" forall f r. _embed f (Return r) = Return r
+"_embed (Lift c)"   forall f c. _embed f (Lift c) = _bind (f c) (_embed f)
+"_embed (Do m)"     forall f m. _embed f (Do m) = Do (fmap (_embed f) m)
+
+"_catch (Return r)" forall f r. _catch (Return r) f = Return r
+"_catch (Lift c)"   forall f c. _catch (Lift c) f = Lift (catch (c >>= \a -> return (_catch a f)) (\a -> return (f a)))
+"_catch (Do m)"     forall f m. _catch (Do m) f = Do (fmap (flip _catch f) m)
+
+"_catchError (Return r)" forall f r. _catchError (Return r) f = Return r
+"_catchError (Lift c)"   forall f (c :: forall g m a. (Functor g, MonadError e m) => Narrative g m a).
+                                      _catchError (Lift c) f   = Lift (_catchError (fmap (flip _catchError f) c) (\a -> pure (f a)))
+"_catchError (Do m)"     forall f m. _catchError (Do m) f     = Do (fmap (flip _catchError f) m)
+
+"_mplus (Return res)"   forall r res. _mplus (Return res) r = Return res
+"_mplus (Lift sup)"     forall c r.   _mplus (Lift c) r     = Lift (fmap (\x -> _mplus x r) c)
+"_mplus (Do message k)" forall r m.   _mplus (Do m) r       = Do (fmap (\x -> _mplus x r) m)
+
+"_mappend (Return res)" forall r res. _mappend (Return res) r = fmap (mappend res) r
+"_mappend (Lift c)"     forall c r.   _mappend (Lift c) r     = Lift (fmap (\x -> _mappend x r) c)
+"_mappend (Do m k)"     forall r m.   _mappend (Do m) r       = Do (fmap (\x -> _mappend x r) m)
+
+-- "_observe (Return r)" forall r. _observe (Return r) = return (Return r)
+-- "_observe (Lift c)"   forall c. _observe (Lift c)   = c >>= _observe
+-- "_observe (Do m)"     forall m. _observe (Do m)     = return (Do (fmap (Lift . _observe) m))
+
+"_distribute (Return r)" forall r. _distribute (Return r) = lift (Return r)
+"_distribute (Lift c)"   forall c. _distribute (Lift c)   = hoist lift c >>= _distribute
+"_distribute (Do m)"     forall m. _distribute (Do m)     = join (lift (Do (fmap (Return . _distribute) m)))
+
+"_zipsWith f l r" forall f l r. _zipsWith f l r = Lift $ liftA2 (_zipsWithInternal f) (uncons l) (uncons r)
+
+"_zipsWithInternal f (Left l) r"         forall f l r. _zipsWithInternal f (Left l) r = Return l
+"_zipsWithInternal f l (Left r)"         forall f l r. _zipsWithInternal f l (Left r) = Return r
+"_zipsWithInernal f (Right l) (Right r)" forall f l r. _zipsWithInternal f (Right l) (Right r) = Do (fmap (uncurry (_zipsWith f)) (f l r))
+
+"_unfold" forall mk n. _unfold mk n = Lift (mk n >>= \a -> return (either Return (\x -> Do (fmap (_unfold mk) x)) a))
+
+-- -- Watch these.
+"_uncons (Return r)" forall r. _uncons (Return r) = return (Left r)
+"_uncons (Lift c)"   forall c. _uncons (Lift c)   = c >>= _uncons
+"_uncons (Do m)"     forall m. _uncons (Do m)     = return (Right m)
+ #-}
 
 {- for reference
+
+_unfold mk n = Lift $ mk n >>= return . either Return (Do . fmap go)
 swapObj :: (Monad c, Delta (Modules ts) (Messages ms)) => Object ts c -> Cofree c (Object ts c, Code ms c a) -> Cofree c (Object ts c, Code ms c a)
 swapObj obj = path obj . snd . extract
 
@@ -428,5 +657,4 @@ reseedObj obj = fmap (swapObj obj)
 
 reseedCode :: (Monad c, Delta (Modules ts) (Messages ms)) => Code ms c a -> Cofree c (Cofree c (Object ts c, Code ms c a)) -> Cofree c (Cofree c (Object ts c, Code ms c a))
 reseedCode code = fmap (swapCode code)
-
 -}

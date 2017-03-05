@@ -39,6 +39,7 @@ module Ef.Pipes
     , push
 
     , X
+    , closed
 
     , (<\\)
     , (\<\)

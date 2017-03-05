@@ -575,9 +575,9 @@ driver :: (MonadIO c, Functor (Messages ms), Delta (Modules ts) (Messages ms))
        => Signaled -> Object ts c -> c ()
 driver (Signaled buf) o = do
   Just qs <- liftIO $ readIORef buf
-  start qs
+  start qs o
   where
-    start q = go o
+    start q = go
       where
         go o = do
           ms <- liftIO $ handle (\(_ :: SomeException) -> return Nothing) (Just <$> collect q)
@@ -590,12 +590,12 @@ driver (Signaled buf) o = do
 {-# SPECIALIZE driverPrintExceptions :: (Functor (Messages ms), Delta (Modules ts) (Messages ms)) => String -> Signaled -> Object ts IO -> IO () #-}
 driverPrintExceptions :: (MonadIO c, Functor (Messages ms), Delta (Modules ts) (Messages ms))
                       => String -> Signaled -> Object ts c -> c ()
-driverPrintExceptions exceptionPrefix (Signaled buf) o = do
+driverPrintExceptions e (Signaled buf) o = do
   Just qs <- liftIO $ readIORef buf
-  start qs
-  liftIO $ print exceptionPrefix
+  start qs o
+  liftIO $ putStrLn e
   where
-    start q = go o
+    start q = go
       where
         go o = do
           ms <- liftIO $ handle (\(_ :: SomeException) -> return Nothing) (Just <$> collect q)
