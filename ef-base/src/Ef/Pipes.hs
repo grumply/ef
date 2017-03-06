@@ -87,19 +87,11 @@ data Pipes a' a b' b k
   | Respond b  (b' -> k)
   deriving Functor
 
-instance Delta (Pipes a' a b' b) (Pipes a' a b' b)
-
 newtype X = X X
 
--- pipes :: Monad c => Pipes a' a b' b (Action '[Pipes a' a b' b] c)
--- pipes = undefined
-
+{-# INLINE runEffect #-}
 runEffect :: Monad c => Effect c r -> c r
-runEffect = go
-  where
-    go (Lift c) = c >>= go
-    go (Do f) = error "Uh-oh"
-    go (Return a) = return a
+runEffect = foldn return join (\_ -> error "Uh-oh")
 
 type Effect super r = Narrative (Pipes X () () X) super r
 
@@ -125,27 +117,38 @@ type Client' a' a super r = forall y' y. Narrative (Pipes a' a y' y) super r
 
 type Proxy a' a b' b super r = Narrative (Pipes a' a b' b) super r
 
+{-# INLINE [2] request #-}
 request :: forall a' a y' y super. Monad super => a' -> Proxy a' a y' y super a
-request a' = Do (Request a' Return)
+request a' = buildn (\r _ d -> d (Request a' r))
 
+{-# INLINE [2] respond #-}
 respond :: forall a' a x' x super. Monad super => a -> Proxy x' x a' a super a'
-respond b = Do (Respond b Return)
+respond b = buildn (\r _ d -> d (Respond b r))
 
-yield :: Monad super => a -> Producer' a super ()
-yield = respond
-
+{-# INLINE [2] await #-}
 await :: Monad super => Consumer' a super a
-await = request ()
+await = buildn (\r _ d -> d (Request () r))
 
+{-# INLINE [2] yield #-}
+yield :: Monad super => a -> Producer' a super ()
+yield a = buildn (\r _ d -> d (Respond a r))
+
+
+{-# INLINE [2] pull #-}
 pull :: Monad super => a' -> Proxy a' a a' a super r
-pull = go
+pull a' = buildn pull'
   where
-    go a' = Do (Request a' (\a -> Do (Respond a go)))
+    pull' r l d = go a'
+      where
+        go a' = d (Request a' (\a -> d (Respond a go)))
 
+{-# INLINE [2] push #-}
 push :: Monad m => a -> Proxy a' a a' a m r
-push = go
+push a = buildn push'
   where
-    go a = Do (Respond a (\a' -> Do (Request a' go)))
+    push' r l d = go a
+      where
+        go a = d (Respond a (\a' -> d (Request a' go)))
 
 closed :: X -> a
 closed (X x) = closed x
@@ -194,7 +197,7 @@ instance (Foldable super) => Foldable (ListT super) where
           case p of
             Return _ -> mempty
             Lift sup -> F.foldMap go sup
-            Do (Respond a fu) -> f (unsafeCoerce a) `mappend` go (unsafeCoerce fu ())
+            Do (Respond a fu) -> f a `mappend` go (fu ())
     {-# INLINE foldMap #-}
 
 instance MonadTrans ListT where
@@ -229,29 +232,31 @@ every it = discard >\\ enumerate it
 --------------------------------------------------------------------------------
 -- Respond; substitute yields
 
+{-# INLINE [0] cat #-}
 cat :: Monad super => Pipe a a super r
 cat = forever (await >>= yield)
 
+{-# INLINE [2] (//>) #-}
 infixl 3 //>
 (//>) :: forall x' x b' b a' c' c super. Monad super
       => Proxy x' x b' b super a'
       -> (b -> Proxy x' x c' c super b')
       -> Proxy x' x c' c super a'
-p0 //> fb = go p0
+(//>) p0 fb = buildn (\r l d -> foldn r l (msg d) p0)
   where
-    go p =
-      case p of
-        Lift m -> Lift (m >>= \p' -> return (p' //> fb))
-        Return r -> Return r
-        Do (Request x' fx) -> Do (Request x' (\x -> fx x //> fb))
-        Do (Respond b fb') -> fb b >>= \b' -> fb' b' //> fb
+    msg d m =
+      case m of
+        Request x' fx -> d (Request x' fx)
+        Respond b fb' -> fb b >>= \b' -> fb' b'
 
+{-# INLINE [0] for #-}
 for :: Monad super
     => Proxy x' x b' b super a'
     -> (b -> Proxy x' x c' c super b')
     -> Proxy x' x c' c super a'
 for = (//>)
 
+{-# INLINE [0] (<\\) #-}
 infixr 3 <\\
 (<\\) :: Monad super
       => (b -> Proxy x' x c' c super b')
@@ -259,6 +264,7 @@ infixr 3 <\\
       -> Proxy x' x c' c super a'
 f <\\ p = p //> f
 
+{-# INLINE [0] (\<\) #-}
 infixl 4 \<\
 (\<\) :: Monad super
       => (b -> Proxy x' x c' c super b')
@@ -267,6 +273,7 @@ infixl 4 \<\
       -> Proxy x' x c' c super a'
 p1 \<\ p2 = p2 />/ p1
 
+{-# INLINE [0] (~>) #-}
 infixr 4 ~>
 (~>) :: Monad super
      => (a -> Proxy x' x b' b super a')
@@ -275,6 +282,7 @@ infixr 4 ~>
      -> Proxy x' x c' c super a'
 (~>) = (/>/)
 
+{-# INLINE [0] (<~) #-}
 infixl 4 <~
 (<~) :: Monad super
      => (b -> Proxy x' x c' c super b')
@@ -283,6 +291,7 @@ infixl 4 <~
      -> Proxy x' x c' c super a'
 g <~ f = f ~> g
 
+{-# INLINE [0] (/>/) #-}
 infixr 4 />/
 (/>/) :: Monad super
       => (a -> Proxy x' x b' b super a')
@@ -293,21 +302,20 @@ infixr 4 />/
 --------------------------------------------------------------------------------
 -- Request; substitute awaits
 
+{-# INLINE [2] (>\\) #-}
 infixr 4 >\\
 (>\\) :: forall b b' a a' y y' c super. Monad super
       => (b' -> Proxy a' a y' y super b)
       -> Proxy b' b y' y super c
       -> Proxy a' a y' y super c
-fb' >\\ p0 = go p0
+(>\\) fb' p0 = buildn (\r l d -> foldn r l (msg d) p0)
   where
-    go :: Proxy b' b y' y super c -> Proxy a' a y' y super c
-    go p =
-      case p of
-        Lift       m   -> Lift (m >>= \p' -> return (go p'))
-        Return     a   -> Return a
-        Do (Request b' fb) -> fb' b' >>= \b -> go (fb b)
-        Do (Respond x fx') -> Do (Respond x (\x' -> go (fx' x')))
+    msg d m =
+      case m of
+        Request b' fb -> fb' b' >>= \b -> fb b
+        Respond x fx' -> d (Respond x fx')
 
+{-# INLINE [0] (/</) #-}
 infixr 5 /</
 (/</) :: Monad super
       => (c' -> Proxy b' b x' x super c)
@@ -316,6 +324,7 @@ infixr 5 /</
       -> Proxy a' a x' x super c
 p1 /</ p2 = p2 \>\ p1
 
+{-# INLINE [0] (>~) #-}
 infixr 5 >~
 (>~) :: Monad super
      => Proxy a' a y' y super b
@@ -323,6 +332,7 @@ infixr 5 >~
      -> Proxy a' a y' y super c
 p1 >~ p2 = (\() -> p1) >\\ p2
 
+{-# INLINE [0] (~<) #-}
 infixl 5 ~<
 (~<) :: Monad super
      => Proxy () b y' y super c
@@ -330,6 +340,7 @@ infixl 5 ~<
      -> Proxy a' a y' y super c
 p2 ~< p1 = p1 >~ p2
 
+{-# INLINE [0] (\>\) #-}
 infixl 5 \>\
 (\>\) :: Monad super
       => (b' -> Proxy a' a y' y super b)
@@ -338,6 +349,7 @@ infixl 5 \>\
       -> Proxy a' a y' y super c
 (fb' \>\ fc') c' = fb' >\\ fc' c'
 
+{-# INLINE [0] (//<) #-}
 infixl 4 //<
 (//<) :: Monad super
       => Proxy b' b y' y super c
@@ -348,6 +360,7 @@ p //< f = f >\\ p
 --------------------------------------------------------------------------------
 -- Push; substitute responds with requests
 
+{-# INLINE (>>~) #-}
 infixl 7 >>~
 (>>~)
     :: forall a' a b' b c' c super r.
@@ -357,11 +370,12 @@ infixl 7 >>~
     -> Proxy a' a c' c super r
 p >>~ fb =
   case p of
-    Do (Request a' fa) -> Do (Request a' (\a -> fa a >>~ fb))
+    Do (Request a' fa) -> buildn $ \_ _ d -> d (Request a' (\a -> fa a >>~ fb))
     Do (Respond b fb') -> fb' +>> fb b
-    Lift m -> Lift (m >>= \p' -> return (p' >>~ fb))
-    Return r -> Return r
+    Lift m -> buildn $ \_ l _ -> l (m >>= \p' -> return (p' >>~ fb))
+    Return a -> buildn $ \r _ _ -> r a
 
+{-# INLINE (<~<) #-}
 infixl 8 <~<
 (<~<) :: Monad super
       => (b -> Proxy b' b c' c super r)
@@ -370,6 +384,7 @@ infixl 8 <~<
       -> Proxy a' a c' c super r
 p1 <~< p2 = p2 >~> p1
 
+{-# INLINE (>~>) #-}
 infixr 8 >~>
 (>~>) :: Monad super
       => (_a -> Proxy a' a b' b super r)
@@ -378,6 +393,7 @@ infixr 8 >~>
       -> Proxy a' a c' c super r
 (fa >~> fb) a = fa a >>~ fb
 
+{-# INLINE (~<<) #-}
 infixr 7 ~<<
 (~<<) :: Monad super
       => (b -> Proxy b' b c' c super r)
@@ -388,6 +404,7 @@ k ~<< p = p >>~ k
 --------------------------------------------------------------------------------
 -- Pull; substitute requests with responds
 
+{-# INLINE (+>>) #-}
 infixr 6 +>>
 (+>>) :: forall a' a b' b c' c super r. Monad super
       => (b' -> Proxy a' a b' b super r)
@@ -396,10 +413,11 @@ infixr 6 +>>
 fb' +>> p =
   case p of
     Do (Request b' fb) -> fb' b' >>~ fb
-    Do (Respond c fc') -> Do (Respond c (\c' -> fb' +>> fc' c'))
-    Lift m -> Lift (m >>= \p' -> return (fb' +>> p'))
-    Return r -> Return r
+    Do (Respond c fc') -> buildn $ \_ _ d -> d (Respond c (\c' -> fb' +>> fc' c'))
+    Lift m -> buildn $ \_ l _ -> l (m >>= \p' -> return (fb' +>> p'))
+    Return a -> buildn $ \r _ _ -> r a
 
+{-# INLINE (>->) #-}
 infixl 7 >->
 (>->) :: Monad super
       => Proxy a' a () b super r
@@ -407,6 +425,7 @@ infixl 7 >->
       -> Proxy a' a c' c super r
 p1 >-> p2 = (\() -> p1) +>> p2
 
+{-# INLINE (<-<) #-}
 infixr 7 <-<
 (<-<) :: Monad super
       => Proxy () b c' c super r
@@ -414,6 +433,7 @@ infixr 7 <-<
       -> Proxy a' a c' c super r
 p2 <-< p1 = p1 >-> p2
 
+{-# INLINE (<+<) #-}
 infixr 7 <+<
 (<+<) :: Monad super
       => (c' -> Proxy b' b c' c super r)
@@ -422,6 +442,7 @@ infixr 7 <+<
       -> Proxy a' a c' c super r
 p1 <+< p2 = p2 >+> p1
 
+{-# INLINE (>+>) #-}
 infixl 7 >+>
 (>+>) :: Monad super
       => (b' -> Proxy a' a b' b super r)
@@ -430,6 +451,7 @@ infixl 7 >+>
       -> Proxy a' a c' c super r
 (fb' >+> fc') c' = fb' +>> fc' c'
 
+{-# INLINE (<<+) #-}
 infixl 6 <<+
 (<<+) :: Monad super
       => Proxy b' b c' c super r
@@ -531,44 +553,6 @@ p <<+ fb = fb +>> p
 
   #-}
 
-
-{-# INLINE runEffect #-}
-
-{-# INLINE request #-}
-{-# INLINE respond #-}
-{-# INLINE yield #-}
-{-# INLINE await #-}
-{-# INLINE pull #-}
-{-# INLINE push #-}
-
-{-# INLINE cat #-}
-
-{-# INLINE (//>) #-}
-{-# INLINE for #-}
-{-# INLINE (<\\) #-}
-{-# INLINE (\<\) #-}
-{-# INLINE (~>) #-}
-{-# INLINE (<~) #-}
-{-# INLINE (/>/) #-}
-
-{-# INLINE (>\\) #-}
-{-# INLINE (/</) #-}
-{-# INLINE (>~) #-}
-{-# INLINE (~<) #-}
-{-# INLINE (\>\) #-}
-{-# INLINE (//<) #-}
-
-{-# INLINE (>>~) #-}
-{-# INLINE (<~<) #-}
-{-# INLINE (>~>) #-}
-{-# INLINE (~<<) #-}
-
-{-# INLINE (+>>) #-}
-{-# INLINE (>->) #-}
-{-# INLINE (<-<) #-}
-{-# INLINE (<+<) #-}
-{-# INLINE (>+>) #-}
-{-# INLINE (<<+) #-}
 
 {-# INLINE each #-}
 {-# INLINE discard #-}

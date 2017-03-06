@@ -95,7 +95,7 @@ manage f = do
 rewrite :: forall ms c r. ('[Manage] <: ms, Monad c) => Int -> [(Int, Code ms c ())] -> Code ms c r -> Code ms c r
 rewrite rewriteSelf = withStore
   where
-    withStore store = transform id go
+    withStore store = go
       where
         cleanup result = cleanup'
           where
@@ -103,15 +103,14 @@ rewrite rewriteSelf = withStore
             cleanup' ((_,x):xs) = do
                 () <- x
                 cleanup' xs
-        go
-            :: Messages ms (Code ms c r)
-            -> Code ms c r
-        go message =
+        go (Return r) = Return r
+        go (Lift c) = Lift c
+        go (Do message) =
             let check currentSelf selfd =
                     if currentSelf == rewriteSelf
                         then selfd
                         else ignore
-                ignore = Do (fmap (transform id go) message)
+                ignore = Do (fmap go message)
             in case prj message of
                    Just x ->
                        case x of

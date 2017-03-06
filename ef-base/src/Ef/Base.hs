@@ -2,19 +2,14 @@ module Ef.Base (module Ef.Base,module X) where
 
 import Ef as X
 
-import Ef.Sync as X
 import Ef.Event as X
 import Ef.Except as X
-import Ef.Exit as X
 import Ef.Fiber as X
 import Ef.Fork as X
 import Ef.Manage as X
-import Ef.Note as X
 import Ef.Reader as X
 import Ef.State as X
-import Ef.Var as X
 import Ef.Writer as X
-import Ef.Guard as X
 
 import Data.Promise as X
 import Data.Queue as X

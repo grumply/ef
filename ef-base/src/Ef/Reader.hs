@@ -53,10 +53,12 @@ asks f = Send (Ask (Return . f))
 {-# INLINE asks #-}
 
 localp :: forall p ms c r. (Monad c, '[Reader p r] <: ms) => Proxy p -> (r -> r) -> Code ms c r -> Code ms c r
-localp _ f = transform id go
+localp _ f n = buildn $ \r l d -> foldn r l (msg d) n
   where
-    go (prj -> Just (AskP (p :: Proxy p) r)) = Send (AskP p (fmap (transform id go) (r . f)))
-    go m = Do (fmap (transform id go) m)
+    msg d m =
+      case prj m of
+        Nothing -> d m
+        Just (AskP (p :: Proxy p) r) -> d (inj (AskP p (r . f)))
 {-# INLINE localp #-}
 
 local :: (Monad c, '[Reader () r] <: ms) => (r -> r) -> Code ms c r -> Code ms c r

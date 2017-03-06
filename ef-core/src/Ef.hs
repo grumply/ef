@@ -43,10 +43,10 @@ data Messages ms a where
 
 newtype Object ts c = Object { deconstruct :: Modules ts (Action ts c) }
 
-data Narrative (f :: * -> *) c a where
-  Return ::                  a  -> Narrative f c a
-  Lift   :: c (Narrative f c a) -> Narrative f c a
-  Do     :: f (Narrative f c a) -> Narrative f c a
+data Narrative (f :: * -> *) c a
+  = Do (f (Narrative f c a))
+  | Lift (c (Narrative f c a))
+  | Return a
 
 type Code (ms :: [* -> *]) (c :: * -> *) = Narrative (Messages ms) c
 
@@ -584,12 +584,26 @@ buildn f = go
   where
     go = f Return Lift Do
 
-{-# RULES
-"foldn/_bind/build"     forall r l d g amb.
-                          foldn r l d (_bind (buildn g) amb) = 
-                            let r' a = foldn r l d (amb a)
-                            in foldn r' l d (g r l d)
+transform :: Monad c => (r -> a) -> (f (Narrative f c r) -> Narrative f' c a) -> Narrative f c r -> Narrative f' c a
+transform = _transform
 
+{-# NOINLINE [1] _transform #-}
+_transform :: Monad c => (r -> a) -> (f (Narrative f c r) -> Narrative f' c a) -> Narrative f c r -> Narrative f' c a
+_transform f t = go
+  where
+    go (Do m) = t m
+    go (Lift sup) = Lift (fmap go sup)
+    go (Return r) = Return (f r)
+
+-- {-# NOINLINE [1] _transform #-}
+-- _transform :: Monad c => (r -> a) -> (Messages ms (Code ms c r) -> Code ms' c a) -> Code ms c r -> Code ms' c a
+-- _transform f t = go
+--   where
+--     go (Do m) = t m
+--     go (Lift sup) = Lift (fmap go sup)
+--     go (Return r) = Return (f r)
+
+{-# RULES
 "foldn/buildn"    forall r l d g. foldn r l d (buildn g) = g r l d
 
 "foldn/_bind"     forall r l d ma amb. foldn r l d (_bind ma amb) = foldn (\a -> foldn r l d (amb a)) l d ma
@@ -623,6 +637,9 @@ buildn f = go
                                       _catchError (Lift c) f   = Lift (_catchError (fmap (flip _catchError f) c) (\a -> pure (f a)))
 "_catchError (Do m)"     forall f m. _catchError (Do m) f     = Do (fmap (flip _catchError f) m)
 
+"_transform f (Do m k)"   forall f g m. _transform f g (Do m)     = g m;
+"_transform f (Lift c)"   forall f g c. _transform f g (Lift c)   = Lift (fmap (_transform f g) c);
+"_transform f (Return r)" forall f g r. _transform f g (Return r) = Return (f r);
  #-}
 
 {- for reference
