@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 module Ef (module Ef, module Export) where
 
 import Control.Applicative as Export
@@ -24,12 +25,15 @@ import Data.Coerce
 import Data.Data
 import Data.Functor.Compose
 import Data.Functor.Sum
+import Data.IORef
 import Data.Proxy as Export
 import Data.Typeable
 import Ef.Type.Bool as Export
 import Ef.Type.Nat as Export
 import Ef.Type.List as Export
 import Ef.Type.Set as Export
+
+import GHC.Exts
 
 import Unsafe.Coerce
 
@@ -59,27 +63,19 @@ pattern Module x o <- (\o -> let x = pull (deconstruct o) in (x,o) -> (x,o)) whe
   Module x o = Object $ push x $ deconstruct o
 
 pattern Send x <- (viewMsg -> Just x) where
-  Send x = buildn send'
-    where
-      send' _ _ d = d (inj x)
+  Send x = Do (inj x)
 
-{-# INLINE inject #-}
-inject :: (Functor f, Monad c) => f r -> Narrative f c r
-inject fr = buildn inject'
-  where
-    inject' r l d = d (fmap r fr)
+{-# INLINE yields #-}
+yields :: (Functor f) => f r -> Narrative f c r
+yields fr = buildn $ \r l d -> d (fmap r fr)
 
 {-# INLINE send #-}
-send :: (Monad c, '[f] <: ms) => f r -> Code ms c r
-send fr = buildn send'
-  where
-    send' r l d = d (fmap r (inj fr))
+send :: ('[f] <: ms) => f r -> Code ms c r
+send = yields . inj
 
 {-# INLINE super #-}
-super :: Monad c => c (Narrative f c a) -> Narrative f c a
-super ca = buildn super'
-  where
-    super' _ l _ = l ca
+super :: forall f c r. (Monad c) => c (Narrative f c r) -> Narrative f c r
+super ca = buildn (\r l d -> l ca)
 
 deriving instance (Show a, Show (c (Narrative f c a)), Show (f (Narrative f c a))) => Show (Narrative f c a)
 deriving instance (Eq a, Eq (c (Narrative f c a)), Eq (f (Narrative f c a))) => Eq (Narrative f c a)
@@ -87,31 +83,27 @@ deriving instance (Typeable f, Typeable c, Data a, Data (c (Narrative f c a)), D
 
 instance (MonadIO c, Functor f) => MonadIO (Narrative f c) where
   {-# INLINE liftIO #-}
-  liftIO ioa = buildn liftIO'
-    where
-      liftIO' r l d = l (fmap r (liftIO ioa))
+  liftIO ioa = buildn $ \r l _ -> l (fmap r (liftIO ioa))
 
 instance MonadTrans (Narrative f) where
   {-# INLINE lift #-}
-  lift ca = buildn lift'
-      where
-        lift' r l d = l (fmap r ca)
+  lift ca = buildn $ \r l d -> l (fmap r ca)
 
 instance Functor (Modules '[]) where
-  fmap _ _ = Empty
   {-# INLINE fmap #-}
+  fmap _ _ = Empty
 
 instance (Functor t, Functor (Modules ts)) => Functor (Modules (t ': ts)) where
-  fmap f (Mod t ts) = Mod (fmap f t) (fmap f ts)
   {-# INLINE fmap #-}
+  fmap f (Mod t ts) = Mod (fmap f t) (fmap f ts)
 
 instance Functor (Messages '[])
 
 instance (Functor (Messages ms), Functor m) => Functor (Messages (m ': ms)) where
-  fmap = _fmapMsg
   {-# INLINE fmap #-}
+  fmap = _fmapMsg
 
-{-# NOINLINE [1] _fmapMsg #-}
+{-# INLINE _fmapMsg #-}
 _fmapMsg :: forall a b m ms. (Functor m, Functor (Messages ms)) => (a -> b) -> Messages (m ': ms) a -> Messages (m ': ms) b
 _fmapMsg f = go
   where
@@ -125,61 +117,61 @@ _fmapMsg f = go
   #-}
 
 instance (Monad c, Functor f) => MonadFree f (Narrative f c) where
-  wrap = Do
+  {-# INLINE wrap #-}
+  wrap a = buildn $ \_ _ d -> d a
 
-instance (Functor f, Functor c) => Functor (Narrative f c) where
-  fmap = _fmap
+instance (Functor f, Monad c) => Functor (Narrative f c) where
   {-# INLINE fmap #-}
+  fmap = _fmap
 
 instance (Functor f, Monad c) => Applicative (Narrative f c) where
-  pure a = buildn $ \r _ _ -> r a
   {-# INLINE pure #-}
-  (<*>) = ap
+  pure a = return a
   {-# INLINE (<*>) #-}
+  (<*>) = ap
 
 instance (Functor f, Monad c) => Monad (Narrative f c) where
-  return a = buildn go
-    where
-      go r _ _ = r a
   {-# INLINE return #-}
+  return a = buildn $ \r l d -> r a
 
-  (>>=) = _bind
   {-# INLINE (>>=) #-}
+  (>>=) = _bind
 
-  (>>) ma mb = _bind ma (\_ -> mb)
   {-# INLINE (>>) #-}
+  (>>) ma mb = _bind ma (const mb)
 
 instance (Monad c, Applicative f) => MonadPlus (Narrative f c) where
-  mzero = empty
   {-# INLINE mzero #-}
-  mplus = (<|>)
+  mzero = empty
+
   {-# INLINE mplus #-}
+  mplus = (<|>)
 
 instance (Monad c, Applicative f) => Alternative (Narrative f c) where
-  empty = never
   {-# INLINE empty #-}
-  (<|>) =  zipsWith (liftA2 (,))
+  empty = never
+
   {-# INLINE (<|>) #-}
+  (<|>) =  zipsWith (liftA2 (,))
 
 instance (Monad c, Monoid r, Functor f) => Monoid (Narrative f c r) where
-  mempty = return mempty
   {-# INLINE mempty #-}
-  mappend a b = a >>= \w -> fmap (mappend w) b
+  mempty = return mempty
+
   {-# INLINE mappend #-}
+  mappend a b = a >>= \w -> fmap (mappend w) b
 
 instance Functor f => MFunctor (Narrative f) where
-  hoist = _hoist
   {-# INLINE hoist #-}
+  hoist = _hoist
 
 instance Functor f => MMonad (Narrative f) where
-  embed = _embed
   {-# INLINE embed #-}
+  embed = _embed
 
 instance (MonadBase b c, Functor f) => MonadBase b (Narrative f c) where
-  liftBase b = buildn liftBase'
-    where
-      liftBase' r l _ = l (fmap r (liftBase b))
   {-# INLINE liftBase #-}
+  liftBase b = Lift (fmap Return (liftBase b))
 
 instance (MonadThrow c, Functor f) => MonadThrow (Narrative f c) where
   throwM = lift . throwM
@@ -213,48 +205,66 @@ instance (MonadError e c, Functor f) => MonadError e (Narrative f c) where
   catchError = _catchError
   {-# INLINE catchError #-}
 
-{-# INLINE [1] _fmap #-}
-_fmap :: (Functor f, Functor c) => (a -> b) -> Narrative f c a -> Narrative f c b
-_fmap f n = buildn go
-  where
-    go r l d = foldn (r . f) l  d n
+data Restore m = Unmasked | Masked (forall x . m x -> m x)
 
-{-# INLINE [1] _bind #-}
-_bind :: forall f c a b. (Monad c, Functor f) => Narrative f c a -> (a -> Narrative f c b) -> Narrative f c b
-_bind ma amb = buildn go
-  where
-    go r l d = foldn amb l d ma
+{-# INLINE liftMask #-}
+liftMask
+    :: forall f c x.
+       (Functor f, MonadIO c, MonadCatch c)
+    => (forall s . ((forall x . c x -> c x) -> c s) -> c s)
+    -> ((forall x . Narrative f c x -> Narrative f c x) -> Narrative f c x)
+    -> Narrative f c x
+liftMask maskVariant k = do
+    ioref <- liftIO $ newIORef Unmasked
 
-{-# INLINE [1] _hoist #-}
+    let -- mask adjacent actions in base monad
+        loop :: Narrative f c r -> Narrative f c r
+        loop (Do m) = Do (fmap loop m)
+        loop (Lift m) = Lift $ maskVariant $ \unmaskVariant -> do
+            -- stash base's unmask and merge action
+            liftIO $ writeIORef ioref $ Masked unmaskVariant
+            m >>= chunk >>= return . loop
+        loop (Return r)         = Return r
+
+        -- unmask adjacent actions in base monad
+        unmask :: forall q. Narrative f c q -> Narrative f c q
+        unmask (Do m) = Do (fmap unmask m)
+        unmask (Lift m)            = Lift $ do
+            -- retrieve base's unmask and apply to merged action
+            Masked unmaskVariant <- liftIO $ readIORef ioref
+            unmaskVariant (m >>= chunk >>= return . unmask)
+        unmask (Return q)         = Return q
+
+        -- merge adjacent actions in base monad
+        chunk :: forall s. Narrative f c s -> c (Narrative f c s)
+        chunk (Lift m) = m >>= chunk
+        chunk s     = return s
+
+    loop $ k unmask
+
+instance (MonadMask c, MonadIO c, Functor f) => MonadMask (Narrative f c) where
+    mask                = liftMask mask
+    uninterruptibleMask = liftMask uninterruptibleMask
+
+{-# INLINE _hoist #-}
 _hoist :: (Functor f, Functor c') => (c' (Narrative f c a) -> c (Narrative f c a)) -> Narrative f c' a -> Narrative f c a
-_hoist f n = buildn go
-  where
-    go r l d = foldn r (l . f) d n
+_hoist f n = foldn Return (Lift . f) Do n
 
-{-# INLINE [1] _embed #-}
+{-# INLINE _embed #-}
 _embed :: (Monad c, Functor f) => (t (Narrative f t a) -> Narrative f c (Narrative f t a)) -> Narrative f t a -> Narrative f c a
 _embed f = go
   where
     go (Return r) = Return r
     go (Lift c) = f c >>= go
     go (Do m) = Do (fmap go m)
-    -- go r l d = foldn r (\c -> l (f _)) d e
 
-{-# INLINE [1] _catch #-}
+{-# INLINE _catch #-}
 _catch :: (Exception e, Functor f, MonadCatch c) => Narrative f c a -> (e -> Narrative f c a) -> Narrative f c a
-_catch n f = buildn go
-  where
-    go r l d = foldn r (\c -> l (catch c (pure . f))) d n
-  -- where
-  --   go (Return r) = Return r
-  --   go (Lift c) = Lift (catch (c >>= return . go) (pure . f))
-  --   go (Do m) = Do (fmap go m)
+_catch n f = foldn Return (\c -> Lift (catch c (pure . f))) Do n
 
-{-# INLINE [1] _catchError #-}
+{-# INLINE _catchError #-}
 _catchError :: (Functor f, MonadError e c) => Narrative f c a -> (e -> Narrative f c a) -> Narrative f c a
-_catchError n f = buildn go
-  where
-    go r l d = foldn r (\c -> l (catchError c (pure . f))) d n
+_catchError n f = foldn Return (\c -> Lift (catchError c (pure . f))) Do n
   -- where
   --   go (Return r) = Return r
   --   go (Lift c) = Lift $ catchError (fmap go c) (pure . f)
@@ -450,111 +460,44 @@ walk = step
         (Return r) -> return (obj,r)
         _          -> step next
 
-
-reduce :: (Monad c, Functor f) => Narrative f c a -> (f b -> b) -> (c b -> b) -> (a -> b) -> b
-reduce n d l r = foldn r l d n
-
-{-# INLINE observe #-}
-observe :: (Functor f, Monad c) => Narrative f c r -> Narrative f c r
-observe n = buildn go
+{-# INLINE runs #-}
+-- groups in streaming
+runs :: forall f g c r.
+        (Functor f, Functor g, Monad c)
+     => Narrative (Sum f g) c r
+     -> Narrative (Sum (Narrative f c) (Narrative g c)) c r
+runs n = buildn start
   where
-    go r l d = l $ foldn (return . r) join (return . d . fmap l) n
-
-{-# INLINE never #-}
-never :: (Monad c, Applicative f) => Narrative f c r
-never = buildn loop
-  where
-    loop r l d = go
+    {-# INLINE start #-}
+    start r l d = foldn r l (d . msg) n
       where
-        go = l $ return $ d $ pure go
+        {-# INLINE msg #-}
+        msg (InL fn) = InL $ goL fn
+        msg (InR gn) = InR $ goR gn
 
-{-# INLINE uncons #-}
-uncons :: (Functor f, Monad c) => Narrative f c r -> c (Either r (f (Narrative f c r)))
-uncons = go
+        {-# INLINE goL #-}
+        goL n = buildn $ \r' l' d' -> d' $ fmap
+                   (foldn (r' . r) l' (\x ->
+                      case x of
+                        InL fn -> join fn
+                        InR gn -> r' (d (fmap (d . InL) (InR gn)))
+                    )) n
+
+        {-# INLINE goR #-}
+        goR n = buildn $ \r' l' d' -> d' $ fmap
+                  (foldn (r' . r) l' (\x ->
+                      case x of
+                        InL fn -> r' (d (fmap (d . InR) (InL fn)))
+                        InR gn -> join gn
+                  )) n
+
+{-# INLINE transform #-}
+transform :: Monad c => (r -> a) -> (f (Narrative f c r) -> Narrative f' c a) -> Narrative f c r -> Narrative f' c a
+transform f t = go
   where
-    go (Return r) = return (Left r)
-    go (Lift m) = m >>= go
-    go (Do fs) = return (Right fs)
-
-zipsWith :: (Monad c, Functor f, Functor g, Functor h)
-         => (forall x y . f x -> g y -> h (x,y))
-         -> Narrative f c a -> Narrative g c a -> Narrative h c a
-zipsWith = _zipsWith
-
-{-# INLINE _zipsWith #-}
-_zipsWith :: (Monad c, Functor f, Functor l, Functor r)
-          => (l (Narrative l c a) -> r (Narrative r c a) -> f (Narrative l c a, Narrative r c a))
-          -> Narrative l c a
-          -> Narrative r c a
-          -> Narrative f c a
-_zipsWith f x y = buildn go
-  where
-    go _ l _ = l $ liftA2 (_zipsWithInternal f) (uncons x) (uncons y)
-
-{-# INLINE _zipsWithInternal #-}
-_zipsWithInternal :: (Monad c, Functor f, Functor l, Functor r)
-                  => (l (Narrative l c a) -> r (Narrative r c a) -> f (Narrative l c a, Narrative r c a))
-                  -> Either a (l (Narrative l c a))
-                  -> Either a (r (Narrative r c a))
-                  -> Narrative f c a
-_zipsWithInternal f eal ear = buildn go
-  where
-    go r _ d = go' eal ear
-      where
-        go' (Left x) _ = r x
-        go' _ (Left y) = r y
-        go' (Right x) (Right y) = d (fmap (uncurry (_zipsWith f)) (f x y))
-
-{-# INLINE zips #-}
-zips :: (Monad c, Functor f, Functor g) => Narrative f c a -> Narrative g c a -> Narrative (Compose f g) c a
-zips = zipsWith (\f g -> Compose (fmap (\x -> fmap (\y -> (x,y)) g) f))
-
-{-# INLINE unzips #-}
-unzips :: (Functor f, Functor g, Monad c) => Narrative (Compose f g) c r -> Narrative f (Narrative g c) r
-unzips n = buildn go
-  where
-    go r l d = foldn r (l .lift) (\(Compose fgn) -> d (fmap (l . inject) fgn)) n
-
-{-# INLINE interleaves #-}
-interleaves :: (Monad c, Applicative f) => Narrative f c a -> Narrative f c a -> Narrative f c a
-interleaves = zipsWith (liftA2 (,))
-
-{-# INLINE cutoff #-}
-cutoff :: (Functor f, Monad c) => Int -> Narrative f c r -> Narrative f c (Maybe r)
-cutoff = go
-  where
-    go 0 _ = return Nothing
-    go i n = do
-        e <- lift $ uncons n
-        case e of
-          Left r -> return (Just r)
-          Right n -> Do $ fmap (go (i-1)) n
-
-{-# INLINE unfold #-}
-unfold :: (Functor f, Monad c) => (s -> c (Either r (f s))) -> s -> Narrative f c r
-unfold mk n0 = buildn go
-  where
-    go r l d = go' n0
-      where
-        go' n = l $ mk n >>= return . either r (d . fmap go')
-
-{-# INLINE iterTM #-}
-iterTM :: (Functor f, Monad c, MonadTrans t, Monad (t c)) => (f (t c a) -> t c a) -> Narrative f c a -> t c a
-iterTM f n = reduce n f (join . lift) return
-
-{-# INLINE iterT #-}
-iterT :: (Functor f, Monad c) => (f (c a) -> c a) -> Narrative f c a -> c a
-iterT f n = reduce n f join return
-
-{-# INLINE distribute #-}
-distribute :: (Functor f, Monad c, MonadTrans t, MFunctor t, Monad (t (Narrative f c)))
-           => Narrative f (t c) r -> t (Narrative f c) r
-distribute = go
-  where
-    go (Return r) = lift (Return r)
-    go (Lift c) = hoist lift c >>= go
-    go (Do m) = join (lift (Do (fmap (Return . go) m)))
-
+    go (Do m) = t m
+    go (Lift sup) = Lift (fmap go sup)
+    go (Return r) = Return (f r)
 
 {-# INLINE runWith' #-}
 runWith' :: forall ts ms c a. ((Modules ts) `Delta` (Messages ms), Functor (Messages ms), Monad c) => Object ts c -> Code ms c a -> c (Object ts c,a)
@@ -570,6 +513,14 @@ runWith' o c = foldn runReturn runLift runDo c o
       let ~(f,cont) = delta (,) (deconstruct o :: Modules ts (Action ts c)) ms
       in f o >>= \o' -> cont o'
 
+{-# INLINE _fmap #-}
+_fmap :: (Functor f, Monad c) => (a -> b) -> Narrative f c a -> Narrative f c b
+_fmap f n = foldn (Return . f) Lift Do n
+
+{-# INLINE _bind #-}
+_bind :: (Functor f,Monad c) => Narrative f c a -> (a -> Narrative f c b) -> Narrative f c b
+_bind ma amb = foldn amb Lift Do ma
+
 {-# INLINE [0] foldn #-}
 foldn :: (Functor f, Functor c) => (r -> b) -> (c b -> b) -> (f b -> b) -> Narrative f c r -> b
 foldn r l d = go
@@ -578,39 +529,16 @@ foldn r l d = go
     go (Lift c) = l (fmap go c)
     go (Do m) = d (fmap go m)
 
-{-# NOINLINE [0] buildn #-}
-buildn :: ((r -> Narrative f c r) -> (c (Narrative f c r) -> Narrative f c r) -> (f (Narrative f c r) -> Narrative f c r) -> Narrative f c r) -> Narrative f c r
-buildn f = go
-  where
-    go = f Return Lift Do
-
-transform :: Monad c => (r -> a) -> (f (Narrative f c r) -> Narrative f' c a) -> Narrative f c r -> Narrative f' c a
-transform = _transform
-
-{-# NOINLINE [1] _transform #-}
-_transform :: Monad c => (r -> a) -> (f (Narrative f c r) -> Narrative f' c a) -> Narrative f c r -> Narrative f' c a
-_transform f t = go
-  where
-    go (Do m) = t m
-    go (Lift sup) = Lift (fmap go sup)
-    go (Return r) = Return (f r)
-
--- {-# NOINLINE [1] _transform #-}
--- _transform :: Monad c => (r -> a) -> (Messages ms (Code ms c r) -> Code ms' c a) -> Code ms c r -> Code ms' c a
--- _transform f t = go
---   where
---     go (Do m) = t m
---     go (Lift sup) = Lift (fmap go sup)
---     go (Return r) = Return (f r)
+{-# INLINE [1] buildn #-}
+buildn :: forall f c a. ((a -> Narrative f c a) -> (c (Narrative f c a) -> Narrative f c a) -> (f (Narrative f c a) -> Narrative f c a) -> Narrative f c a) -> Narrative f c a
+buildn f = f Return Lift Do
 
 {-# RULES
-"foldn/buildn"    forall r l d g. foldn r l d (buildn g) = g r l d
-
-"foldn/_bind"     forall r l d ma amb. foldn r l d (_bind ma amb) = foldn (\a -> foldn r l d (amb a)) l d ma
+"foldn/buildn" forall r l d g. foldn r l d (buildn g) = g r l d
 
 "foldn (Return r)" forall r l d a. foldn r l d (Return a) = r a
-"foldn (Lift c)"   forall r l d c. foldn r l d (Lift c)   = l (fmap (foldn r l d) c)
-"foldn (Do m)"     forall r l d m. foldn r l d (Do m)     = d (fmap (foldn r l d) m)
+"foldn (Lift c)"   forall r l d c. foldn r l d (Lift c) = l (fmap (foldn r l d) c)
+"foldn (Do m)"     forall r l d m. foldn r l d (Do m) = d (fmap (foldn r l d) m)
 
 "_bind (Return r)" forall r f. _bind (Return r) f = f r
 "_bind (Lift c)"   forall c f. _bind (Lift c) f   = Lift (fmap (\a -> _bind a f) c)
@@ -637,13 +565,12 @@ _transform f t = go
                                       _catchError (Lift c) f   = Lift (_catchError (fmap (flip _catchError f) c) (\a -> pure (f a)))
 "_catchError (Do m)"     forall f m. _catchError (Do m) f     = Do (fmap (flip _catchError f) m)
 
-"_transform f (Do m k)"   forall f g m. _transform f g (Do m)     = g m;
-"_transform f (Lift c)"   forall f g c. _transform f g (Lift c)   = Lift (fmap (_transform f g) c);
-"_transform f (Return r)" forall f g r. _transform f g (Return r) = Return (f r);
+"transform f (Do m k)"   forall f g m. transform f g (Do m)     = g m;
+"transform f (Lift c)"   forall f g c. transform f g (Lift c)   = Lift (fmap (transform f g) c);
+"transform f (Return r)" forall f g r. transform f g (Return r) = Return (f r);
  #-}
 
 {- for reference
-
 _unfold mk n = Lift $ mk n >>= return . either Return (Do . fmap go)
 swapObj :: (Monad c, Delta (Modules ts) (Messages ms)) => Object ts c -> Cofree c (Object ts c, Code ms c a) -> Cofree c (Object ts c, Code ms c a)
 swapObj obj = path obj . snd . extract
@@ -737,3 +664,251 @@ getChild _ = Send (GetFundament Return :: Fundament Child p ts (Code ms c (Objec
 getSib :: forall p ms ts c. (Monad c, '[Fundament Sibling p ts] <: ms) => Proxy '(p,Sibling,ts) -> Code ms c (Object ts c)
 getSib _ = Send (GetFundament Return :: Fundament Sibling p ts (Code ms c (Object ts c)))
 
+----------------------------------------
+-- Utilities
+
+
+reduce :: (Monad c, Functor f) => Narrative f c a -> (f b -> b) -> (c b -> b) -> (a -> b) -> b
+reduce n d l r = foldn r l d n
+
+{-# INLINE observe #-}
+observe :: (Functor f, Monad c) => Narrative f c r -> Narrative f c r
+observe n = Lift $ foldn (return . Return) join (return . Do . fmap Lift) n
+
+{-# INLINE never #-}
+never :: (Monad c, Applicative f) => Narrative f c r
+never = loop
+  where
+    loop = Lift $ return $ Do $ pure loop
+
+{-# INLINE uncons #-}
+uncons :: (Functor f, Monad c) => Narrative f c r -> c (Either r (f (Narrative f c r)))
+uncons = go
+  where
+    go (Return r) = return (Left r)
+    go (Lift m) = m >>= go
+    go (Do fs) = return (Right fs)
+
+zipsWith :: (Monad c, Functor f, Functor g, Functor h)
+         => (forall x y . f x -> g y -> h (x,y))
+         -> Narrative f c a -> Narrative g c a -> Narrative h c a
+zipsWith = _zipsWith
+
+{-# INLINE _zipsWith #-}
+_zipsWith :: (Monad c, Functor f, Functor l, Functor r)
+          => (l (Narrative l c a) -> r (Narrative r c a) -> f (Narrative l c a, Narrative r c a))
+          -> Narrative l c a
+          -> Narrative r c a
+          -> Narrative f c a
+_zipsWith f x y = Lift $ liftA2 (_zipsWithInternal f) (uncons x) (uncons y)
+
+{-# INLINE _zipsWithInternal #-}
+_zipsWithInternal :: (Monad c, Functor f, Functor l, Functor r)
+                  => (l (Narrative l c a) -> r (Narrative r c a) -> f (Narrative l c a, Narrative r c a))
+                  -> Either a (l (Narrative l c a))
+                  -> Either a (r (Narrative r c a))
+                  -> Narrative f c a
+_zipsWithInternal f = go
+  where
+    go (Left x) _ = Return x
+    go _ (Left y) = Return y
+    go (Right x) (Right y) = Do (fmap (uncurry (_zipsWith f)) (f x y))
+
+{-# INLINE zips #-}
+zips :: (Monad c, Functor f, Functor g) => Narrative f c a -> Narrative g c a -> Narrative (Compose f g) c a
+zips = zipsWith (\f g -> Compose (fmap (\x -> fmap (\y -> (x,y)) g) f))
+
+{-# INLINE unzips #-}
+unzips :: (Functor f, Functor g, Monad c) => Narrative (Compose f g) c r -> Narrative f (Narrative g c) r
+unzips n = foldn Return (Lift . lift) (\(Compose fgn) -> Do (fmap (Lift . Do . fmap Return) fgn)) n
+
+{-# INLINE interleaves #-}
+interleaves :: (Monad c, Applicative f) => Narrative f c a -> Narrative f c a -> Narrative f c a
+interleaves = zipsWith (liftA2 (,))
+
+{-# INLINE decompose #-}
+decompose :: (Functor f, Monad c) => Narrative (Compose c f) c r -> Narrative f c r
+decompose n = buildn go
+  where
+    go r l d = foldn r l (\(Compose c) -> l $ c >>= return . d) n
+
+{-# INLINE implode #-}
+implode :: (Monad c) => Narrative c c r -> c r
+implode = foldn return join join
+
+{-# INLINE brackets #-}
+brackets :: (Functor f, MonadResource c) => IO a -> (a -> IO ()) -> (a -> Narrative f c b) -> Narrative f c b
+brackets alloc free inside = do
+  (key, seed) <- lift (allocate alloc free)
+  buildn $ \r l d -> foldn (\a -> l (release key >> return (r a))) l d (inside seed)
+
+{-# INLINE cutoff #-}
+cutoff :: (Functor f, Monad c) => Int -> Narrative f c r -> Narrative f c (Maybe r)
+cutoff = go
+  where
+    go 0 _ = return Nothing
+    go i n = do
+        e <- lift $ uncons n
+        case e of
+          Left r -> return (Just r)
+          Right n -> Do $ fmap (go (i-1)) n
+
+{-# INLINE unfold #-}
+unfold :: (Functor f, Monad c) => (s -> c (Either r (f s))) -> s -> Narrative f c r
+unfold mk = go
+  where
+    go n = Lift $ mk n >>= return . either Return (Do . fmap go)
+
+{-# INLINE iterTM #-}
+iterTM :: (Functor f, Monad c, MonadTrans t, Monad (t c)) => (f (t c a) -> t c a) -> Narrative f c a -> t c a
+iterTM f n = reduce n f (join . lift) return
+
+{-# INLINE iterT #-}
+iterT :: (Functor f, Monad c) => (f (c a) -> c a) -> Narrative f c a -> c a
+iterT f n = reduce n f join return
+
+{-# INLINE distribute #-}
+distribute :: (Functor f, Monad c, Functor (t c), MonadTrans t, MFunctor t, Monad (t (Narrative f c)))
+           => Narrative f (t c) r -> t (Narrative f c) r
+distribute n = foldn (lift . return) (join . hoist lift) (join . lift . wrap . fmap return) n
+
+{-# INLINE separate #-}
+separate :: (Monad c, Functor f, Functor g) => Narrative (Sum f g) c r -> Narrative f (Narrative g c) r
+separate n = buildn go
+  where
+    go r l d = foldn r (l . lift) (\x -> case x of InL fn -> d fn; InR gn -> l (yields gn)) n
+
+{-# INLINE unseparate #-}
+unseparate :: (Monad c, Functor f, Functor g) => Narrative f (Narrative g c) r -> Narrative (Sum f g) c r
+unseparate n = buildn go
+  where
+    go r l d = foldn r (join . maps InR) (d . InL) n
+
+-- Walk a narrative n functor steps and then repackage the rest of the narrative as a return value.
+-- If a return constructor is seen, it is repackaged as a return value. Context steps are not counted.
+{-# INLINE splitsAt #-}
+splitsAt :: (Functor f, Monad c) => Int -> Narrative f c r -> Narrative f c (Narrative f c r)
+splitsAt = go
+  where
+    go i n | i <= 0 = return n
+    go i n =
+      case n of
+        Return _ -> return n
+        Lift c -> super (fmap (go i) c)
+        Do m -> wrap (fmap (go (i - 1)) m)
+
+-- drops functor layers where the functor is comonadic (to guarantee extractability);
+-- keeps effect layers. Note that Code is non-droppable.
+{-# INLINE drops #-}
+drops :: (Comonad f, Monad c) => Int -> Narrative f c r -> Narrative f c r
+drops = go
+  where
+    go i n | i <= 0 = n
+    go i n =
+      case n of
+        Return a -> return a
+        Lift c -> super (fmap (go i) c)
+        Do m -> go (i - 1) (extract m)
+
+-- takes n functor layers; keeps effect layers.
+-- Equivalent to `void . splitsAt n`
+{-# INLINE takes #-}
+takes :: (Functor f, Monad c) => Int -> Narrative f c r -> Narrative f c ()
+takes = go
+  where
+    go i n | i <= 0 = return ()
+    go i n =
+      case n of
+        Return a -> return ()
+        Lift c -> super (fmap (go i) c)
+        Do m -> wrap (fmap (go (i - 1)) m)
+
+-- map a value-preserving transformation over functor layers in a Narrative.
+{-# INLINE maps #-}
+maps :: (Functor f, Functor g, Monad c) => (forall x. f x -> g x) -> Narrative f c r -> Narrative g c r
+maps f n = buildn go
+  where
+    go r l d = foldn r l (d . f) n
+
+-- map a value-preserving contextualized transformation over functor layers in a Narrative.
+{-# INLINE mapsM #-}
+mapsM :: (Functor f, Functor g, Monad c) => (forall x. f x -> c (g x)) -> Narrative f c r -> Narrative g c r
+mapsM f n = buildn go
+  where
+    go r l d = foldn r l (l . fmap d . f) n
+
+-- Convert functor layers to context layers; map a value-preserving contextualized
+-- transformation converting from the base Narrative functor to the Narrative's context
+-- and then implode the result to be rid of the Narrative.
+{-# INLINE mapsM_ #-}
+mapsM_ :: (Functor f, Monad c) => (forall x. f x -> c x) -> Narrative f c r -> c r
+mapsM_ f = implode . maps f
+
+{-# INLINE intersperses #-}
+intersperses :: (Monad c, Monad (t c), MonadTrans t) => t c x -> Narrative (t c) c r -> Narrative (t c) c r
+intersperses sep n = buildn $ \r l d -> foldn r l (\m -> d (m >>= \a -> sep >> return a)) n
+
+-- Embed monadic transformer layers between functor layers where the functor layer is the monadic
+-- transformer and collapse the resulting Narrative into the functor/transformer. Equivalent to
+-- `concats . intersperses x` when the type specializes to that expected by concats.
+{-# INLINE intercalates #-}
+intercalates :: (Monad c, Monad (t c), MonadTrans t) => t c x -> Narrative (t c) c r -> t c r
+intercalates sep = go0
+  where
+    go0 (Return a) = return a
+    go0 (Lift c) = lift c >>= go0
+    go0 (Do m) = m >>= go1
+
+    go1 = foldn return (join . lift) (\m -> join (sep >> m))
+
+-- Collapse functor layers into the embedding context when parent contexts match.
+{-# INLINE concats #-}
+concats :: (Functor f, Monad c) => Narrative (Narrative f c) c r -> Narrative f c r
+concats n = buildn go
+  where
+    go r l d = foldn r l join n
+
+-- Split functor layers based on a maximum size; produces a Narrative where the functor layers
+-- are of the same type as the original Narrative. `concats . chunksOf n` == `id`
+{-# INLINE chunksOf #-}
+chunksOf :: (Functor f, Monad c) => Int -> Narrative f c r -> Narrative (Narrative f c) c r
+chunksOf i n = buildn go
+  where
+    go r l d = go' n
+      where
+        go' (Return a) = r a
+        go' (Lift c) = l (fmap go' c)
+        go' (Do fs) = d (Do (fmap (fmap go' . splitsAt (i - 1)) fs))
+
+-- repeat a functor layer ad infinitum
+{-# INLINE repeats #-}
+repeats :: (Functor f, Monad c) => f () -> Narrative f c r
+repeats f = buildn go
+  where
+    go r l d = go'
+      where
+        go' = l (return (d (fmap (\_ -> go') f)))
+
+-- repeat a contextualized layer whose result is a functor layer
+{-# INLINE repeatsM #-}
+repeatsM :: (Functor f, Monad c) => c (f ()) -> Narrative f c r
+repeatsM cf = buildn go
+  where
+    go r l d = go'
+      where
+        go' = l $ cf >>= return . d . fmap (\_ -> go')
+
+-- repeat a functor layer n times
+{-# INLINE replicates #-}
+replicates :: (Functor f, Monad c) => Int -> f () -> Narrative f c ()
+replicates n f = fmap (const ()) (splitsAt n (repeats f))
+
+-- repeat a contextualized layer whose result is a functor layer n times
+{-# INLINE replicatesM #-}
+replicatesM :: (Functor f, Monad c) => Int -> c (f ()) -> Narrative f c ()
+replicatesM n f = fmap (const ()) (splitsAt n (repeatsM f))
+
+-- repeat a Narrative ad infinitum; equivalent to `forever`
+{-# INLINE cycles #-}
+cycles :: (Monad m, Functor f) => Narrative f m r -> Narrative f m s
+cycles str = loop where loop = str >> loop
