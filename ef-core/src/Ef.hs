@@ -63,15 +63,15 @@ pattern Module x o <- (\o -> let x = pull (deconstruct o) in (x,o) -> (x,o)) whe
   Module x o = Object $ push x $ deconstruct o
 
 pattern Send x <- (viewMsg -> Just x) where
-  Send x = Do (inj x)
+  Send x = buildn $ \r l d -> d (inj x)
 
 {-# INLINE yields #-}
 yields :: (Functor f) => f r -> Narrative f c r
 yields fr = buildn $ \r l d -> d (fmap r fr)
 
-{-# INLINE send #-}
-send :: ('[f] <: ms) => f r -> Code ms c r
-send = yields . inj
+{-# INLINE sends #-}
+sends :: ('[f] <: ms) => f r -> Code ms c r
+sends = yields . inj
 
 {-# INLINE super #-}
 super :: forall f c r. (Monad c) => c (Narrative f c r) -> Narrative f c r
@@ -290,19 +290,20 @@ instance (t `Delta` m, Modules ts `Delta` Messages ms) => Delta (Modules (t ': t
   delta u (Mod _ ts) (Other ms) = delta u ts ms
   {-# INLINE delta #-}
 
-{-# INLINE runWith #-}
-runWith :: forall ts ms c a. ((Modules ts) `Delta` (Messages ms), Monad c) => Object ts c -> Code ms c a -> c (Object ts c,a)
-runWith object = go
-  where
-    go (Return a) = return (object,a)
-    go (Lift c) = c >>= go
-    go (Do m) = do
-      let (method,cont) = delta (,) (deconstruct object) m
-      object' <- method object
-      runWith object' cont
+-- Old runWith; does not use foldn.
+-- {-# INLINE runWith #-}
+-- runWith :: forall ts ms c a. ((Modules ts) `Delta` (Messages ms), Monad c) => Object ts c -> Code ms c a -> c (Object ts c,a)
+-- runWith object = go
+--   where
+--     go (Return a) = return (object,a)
+--     go (Lift c) = c >>= go
+--     go (Do m) = do
+--       let (method,cont) = delta (,) (deconstruct object) m
+--       object' <- method object
+--       runWith object' cont
 
 infixr 5 !
-(!) :: ((Modules ts) `Delta` (Messages ms), Monad c) => Object ts c -> Code ms c a -> c (Object ts c,a)
+(!) :: ((Modules ts) `Delta` (Messages ms), Functor (Messages ms), Monad c) => Object ts c -> Code ms c a -> c (Object ts c,a)
 (!) = runWith
 
 type Mod t ts c = t (Action ts c)
@@ -434,7 +435,7 @@ interp :: Code ms c a -> Interpreter ts ms c a
 interp n = Interpreter $ \k -> k n
 
 infixr 5 !#
-(!#) :: (MonadFix c, Delta (Modules ts) (Messages ms)) => Object ts c -> Interpreter ts ms c a -> c (Object ts c,a)
+(!#) :: (MonadFix c, Functor (Messages ms), Delta (Modules ts) (Messages ms)) => Object ts c -> Interpreter ts ms c a -> c (Object ts c,a)
 (!#) o i = interpret i (runWith o)
 
 type Path ts ms c a = Cofree c (Object ts c,Code ms c a)
@@ -499,9 +500,9 @@ transform f t = go
     go (Lift sup) = Lift (fmap go sup)
     go (Return r) = Return (f r)
 
-{-# INLINE runWith' #-}
-runWith' :: forall ts ms c a. ((Modules ts) `Delta` (Messages ms), Functor (Messages ms), Monad c) => Object ts c -> Code ms c a -> c (Object ts c,a)
-runWith' o c = foldn runReturn runLift runDo c o
+{-# INLINE runWith #-}
+runWith :: forall ts ms c a. ((Modules ts) `Delta` (Messages ms), Functor (Messages ms), Monad c) => Object ts c -> Code ms c a -> c (Object ts c,a)
+runWith o c = foldn runReturn runLift runDo c o
   where
     runReturn a o = return (o,a)
 
@@ -633,6 +634,7 @@ tellChild :: forall p ms ms' ts c a.
              , Delta (Modules ts) (Messages ms)
              , Monad c
              , '[Fundament Child p ts] <: ms'
+             , '[] <: ms
              )
           => Proxy '(p,Child,ts)
           -> Code ms (Narrative (Messages ms') c) a
@@ -648,6 +650,7 @@ tellSib :: forall p ms ms' ts c a.
             , Delta (Modules ts) (Messages ms)
             , Monad c
             , '[Fundament Sibling p ts] <: ms'
+            , '[] <: ms
             )
         => Proxy '(p,Sibling,ts)
         -> Code ms c a

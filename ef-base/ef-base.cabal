@@ -37,7 +37,7 @@ library
                      Ef.Except
                      Ef.Event
                      Ef.Base
-                     Ef.Stream
+                     -- Ef.Stream
                      -- , Ef.Pipes.Parse
                      -- , Ef.Pipes.Group
                      -- , Ef.Event.ST
