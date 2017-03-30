@@ -1,3 +1,4 @@
+-- This is a port of Gabriel Gonzalez's BSD-3 licensed pipes library: https://hackage.haskell.org/package/pipes
 {-# OPTIONS_GHC -fno-warn-inline-rule-shadowing -fno-warn-missing-methods #-}
 {-# language DeriveFunctor #-}
 {-# language DeriveAnyClass #-}

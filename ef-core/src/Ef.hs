@@ -270,7 +270,7 @@ _catchError n f = foldn Return (\c -> Lift (catchError c (pure . f))) Do n
   --   go (Lift c) = Lift $ catchError (fmap go c) (pure . f)
   --   go (Do f) = Do (fmap go f)
 
-class Delta f g | f -> g, g -> f where
+class Delta f g | f -> g where
   delta :: (a -> b -> r) -> f a -> g b -> r
 
 instance Delta ((->) a) ((,) a) where
@@ -341,8 +341,8 @@ instance (i ~ Offset ts t, Has' ts t i) => Has' (t' ': ts) t ('S n) where
   {-# INLINE pull' #-}
 
 type ts .> ts' = ts' <. ts
-type family (<.) (ts :: [* -> *]) (ts' :: [* -> *]) where
-  (<.) (t ': '[]) ts' = (Has' ts' t (Offset ts' t))
+type family (<.) (ts :: [* -> *]) (ts' :: [* -> *]) :: Constraint where
+  (<.) '[] ts' = ()
   (<.) (t ': ts) ts' = (Has' ts' t (Offset ts' t), ts <. ts')
 
 class Can ms m where
