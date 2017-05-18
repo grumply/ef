@@ -4,6 +4,7 @@ module Data.Queue
   , newQueue
   , arrive
   , collect
+  , dupe
   ) where
 
 import Ef
@@ -45,4 +46,13 @@ collect :: (MonadIO super) => Queue a -> super a
 collect (Queue i o) = liftIO $ readChan o
 #else
 collect (Queue ch) = liftIO $ readChan ch
+#endif
+
+dupe :: MonadIO super => Queue a -> super (Queue a)
+#ifndef __GHCJS__
+dupe (Queue i o) = liftIO $ do
+  o' <- dupChan i
+  return (Queue i o')
+#else
+dupe (Queue ch) = liftIO $ Queue <$> dupChan ch
 #endif

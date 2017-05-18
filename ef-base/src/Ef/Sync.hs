@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-inline-rule-shadowing #-}
 {-# language ViewPatterns #-}
+{-# language NoCPP #-}
 module Ef.Sync
     ( Sync
     , sync
@@ -331,7 +332,6 @@ type Client' a' a self super r = forall y' y. Synchronized a' a y' y self super 
 cat :: ('[Sync] <: self, Monad super) => Channel a a self super r
 cat = channel $ \awt yld -> forever (awt >>= yld)
 
-infixl 3 //>
 (//>) :: ('[Sync] <: self, Monad super)
       => Synchronized x' x b' b self super a'
       -> (b -> Synchronized x' x c' c self super b')
@@ -373,14 +373,12 @@ for :: ('[Sync] <: self, Monad super)
     -> Synchronized x' x c' c self super a'
 for = (//>)
 
-infixr 3 <\\
 (<\\) :: ('[Sync] <: self, Monad super)
       => (b -> Synchronized x' x c' c self super b')
       -> Synchronized x' x b' b self super a'
       -> Synchronized x' x c' c self super a'
 f <\\ p = p //> f
 
-infixl 4 \<\
 (\<\) :: ('[Sync] <: self, Monad super)
       => (b -> Synchronized x' x c' c self super b')
       -> (a -> Synchronized x' x b' b self super a')
@@ -388,7 +386,6 @@ infixl 4 \<\
       -> Synchronized x' x c' c self super a'
 p1 \<\ p2 = p2 />/ p1
 
-infixr 4 ~>
 (~>) :: ('[Sync] <: self, Monad super)
      => (a -> Synchronized x' x b' b self super a')
      -> (b -> Synchronized x' x c' c self super b')
@@ -396,7 +393,6 @@ infixr 4 ~>
      -> Synchronized x' x c' c self super a'
 (~>) = (/>/)
 
-infixl 4 <~
 (<~) :: ('[Sync] <: self, Monad super)
      => (b -> Synchronized x' x c' c self super b')
      -> (a -> Synchronized x' x b' b self super a')
@@ -404,7 +400,6 @@ infixl 4 <~
      -> Synchronized x' x c' c self super a'
 g <~ f = f ~> g
 
-infixr 4 />/
 (/>/) :: ('[Sync] <: self, Monad super)
       => (a -> Synchronized x' x b' b self super a')
       -> (b -> Synchronized x' x c' c self super b')
@@ -415,7 +410,6 @@ infixr 4 />/
 --------------------------------------------------------------------------------
 -- Request; substitute awaits
 
-infixr 4 >\\
 (>\\) :: ('[Sync] <: self, Monad super)
       => (b' -> Synchronized a' a y' y self super b)
       -> Synchronized b' b y' y self super c
@@ -453,7 +447,6 @@ substituteRequests fb' rewriteScope up dn =
 
 
 
-infixr 5 /</
 (/</) :: ('[Sync] <: self, Monad super)
       => (c' -> Synchronized b' b x' x self super c)
       -> (b' -> Synchronized a' a x' x self super b)
@@ -461,21 +454,18 @@ infixr 5 /</
       -> Synchronized a' a x' x self super c
 p1 /</ p2 = p2 \>\ p1
 
-infixr 5 >~
 (>~) :: ('[Sync] <: self, Monad super)
      => Synchronized a' a y' y self super b
      -> Synchronized () b y' y self super c
      -> Synchronized a' a y' y self super c
 p1 >~ p2 = (\() -> p1) >\\ p2
 
-infixl 5 ~<
 (~<) :: ('[Sync] <: self, Monad super)
      => Synchronized () b y' y self super c
      -> Synchronized a' a y' y self super b
      -> Synchronized a' a y' y self super c
 p2 ~< p1 = p1 >~ p2
 
-infixl 5 \>\
 (\>\) :: ('[Sync] <: self, Monad super)
       => (b' -> Synchronized a' a y' y self super b)
       -> (c' -> Synchronized b' b y' y self super c)
@@ -483,7 +473,6 @@ infixl 5 \>\
       -> Synchronized a' a y' y self super c
 (fb' \>\ fc') c' = fb' >\\ fc' c'
 
-infixl 4 //<
 (//<) :: ('[Sync] <: self, Monad super)
       => Synchronized b' b y' y self super c
       -> (b' -> Synchronized a' a y' y self super b)
@@ -493,7 +482,6 @@ p //< f = f >\\ p
 --------------------------------------------------------------------------------
 -- Push; substitute responds with requests
 
-infixl 7 >>~
 (>>~)
     :: forall self a' a b' b c' c super r.
        (Monad super, '[Sync] <: self)
@@ -552,7 +540,6 @@ pushRewrite rewriteScope up dn fb0 p0 =
                   _ -> ignore
               _ -> ignore
 
-infixl 8 <~<
 (<~<) :: ('[Sync] <: self, Monad super)
       => (b -> Synchronized b' b c' c self super r)
       -> (a -> Synchronized a' a b' b self super r)
@@ -560,7 +547,6 @@ infixl 8 <~<
       -> Synchronized a' a c' c self super r
 p1 <~< p2 = p2 >~> p1
 
-infixr 8 >~>
 (>~>) :: ('[Sync] <: self, Monad super)
       => (_a -> Synchronized a' a b' b self super r)
       -> (b -> Synchronized b' b c' c self super r)
@@ -568,7 +554,6 @@ infixr 8 >~>
       -> Synchronized a' a c' c self super r
 (fa >~> fb) a = fa a >>~ fb
 
-infixr 7 ~<<
 (~<<) :: ('[Sync] <: self, Monad super)
       => (b -> Synchronized b' b c' c self super r)
       -> Synchronized a' a b' b self super r
@@ -578,7 +563,6 @@ k ~<< p = p >>~ k
 --------------------------------------------------------------------------------
 -- Pull; substitute requests with responds
 
-infixr 6 +>>
 (+>>) :: ('[Sync] <: self, Monad super)
       => (b' -> Synchronized a' a b' b self super r)
       ->        Synchronized b' b c' c self super r
@@ -635,21 +619,18 @@ pullRewrite rewriteScope up dn fb' p =
                     _ -> ignore
                 _ -> ignore
 
-infixl 7 >->
 (>->) :: ('[Sync] <: self, Monad super)
       => Synchronized a' a () b self super r
       -> Synchronized () b c' c self super r
       -> Synchronized a' a c' c self super r
 p1 >-> p2 = (\() -> p1) +>> p2
 
-infixr 7 <-<
 (<-<) :: ('[Sync] <: self, Monad super)
       => Synchronized () b c' c self super r
       -> Synchronized a' a () b self super r
       -> Synchronized a' a c' c self super r
 p2 <-< p1 = p1 >-> p2
 
-infixr 7 <+<
 (<+<) :: ('[Sync] <: self, Monad super)
       => (c' -> Synchronized b' b c' c self super r)
       -> (b' -> Synchronized a' a b' b self super r)
@@ -657,7 +638,6 @@ infixr 7 <+<
       -> Synchronized a' a c' c self super r
 p1 <+< p2 = p2 >+> p1
 
-infixl 7 >+>
 (>+>) :: ('[Sync] <: self, Monad super)
       => (b' -> Synchronized a' a b' b self super r)
       -> (_c' -> Synchronized b' b c' c self super r)
@@ -665,7 +645,6 @@ infixl 7 >+>
       -> Synchronized a' a c' c self super r
 (fb' >+> fc') c' = fb' +>> fc' c'
 
-infixl 6 <<+
 (<<+) :: ('[Sync] <: self, Monad super)
       => Synchronized b' b c' c self super r
       -> (b' -> Synchronized a' a b' b self super r)
@@ -744,3 +723,26 @@ p <<+ fb = fb +>> p
 {-# INLINE (<+<) #-}
 {-# INLINE (>+>) #-}
 {-# INLINE (<<+) #-}
+
+infixr 8 >~>
+infixr 7 ~<<
+infixr 6 +>>
+infixl 7 >->
+infixr 7 <-<
+infixr 7 <+<
+infixl 7 >+>
+infixl 6 <<+
+infixl 8 <~<
+infixl 7 >>~
+infixl 5 \>\
+infixl 5 ~<
+infixr 5 >~
+infixr 5 /</
+infixl 4 //<
+infixr 4 >\\
+infixr 4 />/
+infixl 4 <~
+infixr 4 ~>
+infixl 4 \<\
+infixl 3 //>
+infixr 3 <\\

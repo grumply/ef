@@ -42,6 +42,8 @@ module Data.Promise
 
     , completed
     , resolved
+
+    , cancelListener
     ) where
 
 

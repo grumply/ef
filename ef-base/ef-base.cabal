@@ -40,7 +40,6 @@ library
                      -- Ef.Stream
                      -- , Ef.Pipes.Parse
                      -- , Ef.Pipes.Group
-                     -- , Ef.Event.ST
   -- other-modules:
   -- other-extensions:
   default-extensions:  DataKinds
@@ -70,6 +69,7 @@ library
                       , comonad
                       , free
                       , semigroups
+                      , stm
   else
     build-depends:      base >=4.8
                       , ef-core >= 1.6
@@ -81,6 +81,6 @@ library
                       , comonad
                       , free
                       , semigroups
-
+                      , stm
   hs-source-dirs:      src
   default-language:    Haskell2010

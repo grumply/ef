@@ -1,40 +1,25 @@
 {-# language BangPatterns #-}
 {-# language CPP #-}
+{-# language FunctionalDependencies #-}
+{-# language ImpredicativeTypes #-}
 module Ef.Event where
 
 import Ef
+
+import Ef.State
 
 import Data.Queue
 import Data.Promise
 
 import Control.Concurrent
+import Control.Concurrent.STM
 import Control.Exception
 import Data.IORef
 import Data.Maybe
 import Unsafe.Coerce
 
--- This module is simultaneously the most used and most despised. It will
--- eventually disappear.
-
--- A highly simplified implementation of reactive programming; behaviors
--- are in an Event monad that permits behavior self-modification including
--- short-circuiting, exit, and switching. Signals are a sequence of mutable
--- behaviors.
-
--- NOTE: To avoid bugs, do not share signals, networks, or periodicals
---       across thread boundaries. Signaling/syndicating/publishing,
---       respectively, should be managed by the context in which the
---       event primitive was created. Similarly, adding
---       behaviors/periodicals/subscriptions, respectively, should be
---       done in a synchronous context in which the event primitive was
---       created. This doesn't seem to be a difficult problem to avoid when
---       using threaded contexts run in event loops with Signaling/Signaled.
---       The issue, ultimately, is the use of IORefs rather than MVars;
---       when one thread is signaling/syndicating/publishing to a large
---       set of behaviors/periodicals/subscriptions and another thread is
---       trying to add a behavior/periodical/subscription, the addition
---       might fail silently when the message dispatch has finished and
---       the resultant modified behaviors are overwritten.
+-- A small library of types and functions for multithreaded evented contexts with
+-- cross-context communication, callbacks, reactivity and promises.
 
 data Event e k where
   Become :: (e -> Code '[Event e] c ()) -> k -> Event e k
@@ -57,24 +42,25 @@ end = Send (End :: Event e (Code '[Event e] c a))
 
 type Signal ms c e = Signal' (Narrative (Messages ms) c) e
 
--- NOTE: Because this is implemented as IORef, it is not thread safe;
---       as long as Signals are maintained by a synchronous context
---       they can be assumed safe - as soon as a Signal crosses a
---       thread context boundary, safety is thrown out the window, i.e.
---       adding an e to a Signal could silently fail if the Signal
---       is currently being 'siganl'ed. MVar will eventaully fix this
---       at the cost of losing subsignal.
 data Signal' (c :: * -> *) (e :: *)
     = Signal
-        {-# UNPACK #-} !(IORef [IORef (e -> Code '[Event e] c ())])
+        {-# UNPACK #-} !(TMVar [Behavior' c e])
     deriving Eq
+
+{-# INLINE construct_ #-}
+construct_ :: STM (Signal' c e)
+construct_ = Signal <$> newTMVar []
+
+{-# INLINE construct #-}
+construct :: MonadIO m => m (Signal' c e)
+construct = liftIO (Signal <$> newTMVarIO [])
 
 {-# INLINE behaviorCount #-}
 behaviorCount :: (MonadIO c')
               => Signal' c e
               -> c' Int
 behaviorCount (Signal bs_) = do
-  bs <- liftIO $ readIORef bs_
+  bs <- liftIO $ atomically $ readTMVar bs_
   return $ length bs
 
 {-# INLINE nullSignal #-}
@@ -82,46 +68,37 @@ nullSignal :: (MonadIO c')
            => Signal' c e
            -> c' Bool
 nullSignal (Signal bs_) = do
-  bs <- liftIO $ readIORef bs_
+  bs <- liftIO $ atomically $ readTMVar bs_
   return (null bs)
 
-type Behavior ms c e = Behavior' (Narrative (Messages ms) c) e
+{-# INLINE runner #-}
+runner :: forall c c'. (MonadIO c, Monad c') => c (Signal' c' (c' ()),Behavior' c' (c' ()))
+runner = liftIO $ atomically $ do
+  sig <- construct_
+  b   <- behavior_ sig lift
+  return (sig,b)
 
-data Behavior' c e
-  = Behavior
-      {-# UNPACK #-} !(IORef (e -> Code '[Event e] c ()))
+type Behavior ms c e = Behavior' (Narrative (Messages ms) c) e
+data Behavior'   c e = Behavior {-# UNPACK #-} !(TMVar (e -> Code '[Event e] c ()))
   deriving Eq
 
-{-# INLINE construct #-}
-construct :: (MonadIO c')
-          => c' (Signal' c e)
-construct = liftIO $ do
-  behaviors <- newIORef []
-  return $ Signal behaviors
-
-{-# INLINE constructSelf #-}
-constructSelf :: (MonadIO c, Functor (Messages ms)) => Code ms c (Signal ms c e)
-constructSelf = construct
-
--- Slightly more specific than necessary to avoid required type signatures.
-{-# INLINE runner #-}
-runner :: forall ms c c'.
-          (MonadIO c, Monad c')
-       => c (Signal' c' (c' ()))
-runner = liftIO $ do
-  bhvr <- newIORef lift
-  behaviors <- newIORef $ [bhvr]
-  return $ Signal behaviors
+{-# INLINE behavior_ #-}
+behavior_ :: Signal' c e
+         -> (e -> Code '[Event e] c ())
+         -> STM (Behavior' c e)
+behavior_ sig@(Signal behaviors) newBehavior = do
+  b <- Behavior <$> newTMVar newBehavior
+  bs <- takeTMVar behaviors
+  putTMVar behaviors (bs ++ [b])
+  return b
 
 {-# INLINE behavior #-}
-behavior :: (MonadIO c', Monad c)
+behavior :: MonadIO m
          => Signal' c e
          -> (e -> Code '[Event e] c ())
-         -> c' (Behavior' c e)
-behavior sig@(Signal behaviors) newBehavior = liftIO $ do
-  b <- newIORef newBehavior
-  modifyIORef behaviors (++ [b])
-  return (Behavior b)
+         -> m (Behavior' c e)
+behavior sig@(Signal behaviors) newBehavior =
+  liftIO $ atomically (behavior_ sig newBehavior)
 
 {-# INLINE mergeS #-}
 mergeS :: ( MonadIO c
@@ -130,13 +107,13 @@ mergeS :: ( MonadIO c
        => Signal' c e
        -> Signal' c e
        -> c' ( Signal' c e
-                 , Behavior' c e
-                 , Behavior' c e
-                 )
-mergeS sig0 sig1 = do
-  sig <- construct
-  bt0 <- behavior sig0 $ lift . signal sig
-  bt1 <- behavior sig1 $ lift . signal sig
+             , Behavior' c e
+             , Behavior' c e
+             )
+mergeS sig0 sig1 = liftIO $ atomically $ do
+  sig <- construct_
+  bt0 <- behavior_ sig0 $ lift . signal sig
+  bt1 <- behavior_ sig1 $ lift . signal sig
   return (sig,bt0,bt1)
 
 {-# INLINE zipS #-}
@@ -159,20 +136,20 @@ zipWithS :: ( MonadIO c
          -> Signal' c e
          -> Signal' c e'
          -> c' ( Signal' c x
-                   , Behavior' c e
-                   , Behavior' c e'
-                   )
-zipWithS f sig0@(Signal bs0) sig1@(Signal bs1) = do
-  sig <- construct
-  c0 <- liftIO $ newIORef Nothing
-  c1 <- liftIO $ newIORef Nothing
-  bt0 <- behavior sig0 $ \e0 -> do
-    mc1 <- liftIO $ readIORef c1
+               , Behavior' c e
+               , Behavior' c e'
+               )
+zipWithS f sig0@(Signal bs0) sig1@(Signal bs1) = liftIO $ atomically $ do
+  sig <- construct_
+  c0 <- newTVar Nothing
+  c1 <- newTVar Nothing
+  bt0 <- behavior_ sig0 $ \e0 -> do
+    mc1 <- liftIO $ atomically $ readTVar c1
     lift $ do
       e' <- f (Just e0) mc1
       signal sig e'
-  bt1 <- behavior sig1 $ \e1 -> do
-    mc0 <- liftIO $ readIORef c0
+  bt1 <- behavior_ sig1 $ \e1 -> do
+    mc0 <- liftIO $ atomically $ readTVar c0
     lift $ do
       e' <- f mc0 (Just e1)
       signal sig e'
@@ -187,9 +164,9 @@ mapS :: ( MonadIO c
      -> c' ( Signal' c e'
            , Behavior' c e
            )
-mapS sig f = do
-  sig' <- construct
-  bt   <- behavior sig $ \e -> lift $ do
+mapS sig f = liftIO $ atomically $ do
+  sig' <- construct_
+  bt   <- behavior_ sig $ \e -> lift $ do
             e' <- f e
             signal sig' e'
   return (sig',bt)
@@ -205,12 +182,12 @@ map2S :: ( MonadIO c
             , Behavior' c e0
             , Behavior' c e1
             )
-map2S sig0 sig1 f = do
-  sig <- construct
-  bt0 <- behavior sig0 $ \e0 -> lift $ do
+map2S sig0 sig1 f = liftIO $ atomically $ do
+  sig <- construct_
+  bt0 <- behavior_ sig0 $ \e0 -> lift $ do
            e0' <- f $ Left e0
            signal sig e0'
-  bt1 <- behavior sig1 $ \e1 -> lift $ do
+  bt1 <- behavior_ sig1 $ \e1 -> lift $ do
            e1' <- f $ Right e1
            signal sig e1'
   return (sig,bt0,bt1)
@@ -224,9 +201,9 @@ filterS :: ( MonadIO c
         -> c' ( Signal' c e'
               , Behavior' c e
               )
-filterS sig f = do
-  sig' <- construct
-  bt   <- behavior sig $ \e -> lift $ do
+filterS sig f = liftIO $ atomically $ do
+  sig' <- construct_
+  bt   <- behavior_ sig $ \e -> lift $ do
             me' <- f e
             forM_ me' (signal sig')
   return (sig',bt)
@@ -242,384 +219,487 @@ filter2S :: ( MonadIO c
                , Behavior' c e0
                , Behavior' c e1
                )
-filter2S sig0 sig1 f = do
-  sig <- construct
-  bt0 <- behavior sig0 $ \e -> lift $ do
+filter2S sig0 sig1 f = liftIO $ atomically $ do
+  sig <- construct_
+  bt0 <- behavior_ sig0 $ \e -> lift $ do
            me' <- f $ Left e
            forM_ me' (signal sig)
-  bt1 <- behavior sig1 $ \e -> lift $ do
+  bt1 <- behavior_ sig1 $ \e -> lift $ do
            me' <- f $ Right e
            forM_ me' (signal sig)
   return (sig,bt0,bt1)
 
-{-# INLINE duplicate #-}
-duplicate :: (MonadIO c')
-          => Behavior' c e
-          -> Signal' c e
-          -> c' ()
-duplicate (Behavior b) (Signal bs_) = liftIO $ modifyIORef bs_ (++ [b])
-
--- stop is a delayed effect that doesn't happen until the next event, but all
--- internally maintained references are released; stopping an un-needed behavior
--- can permit GC external to the behavior itms.
 {-# INLINE stop #-}
-stop :: (Monad c, MonadIO c')
-     => Behavior' c a -> c' ()
-stop (Behavior b_) = liftIO $ atomicModifyIORef' b_ $ const (const end,())
-
-data Runnable c where
-  Runnable :: {-# UNPACK #-} !(IORef [(IORef (e -> Code '[Event e] c ()))])
-           -> {-# UNPACK #-} !(IORef (e -> Code '[Event e] c ()))
-           -> Code '[Event e] c ()
-           -> Runnable c
+stop :: (Monad c, MonadIO c') => Behavior' c a -> c' ()
+stop (Behavior b_) = liftIO $ atomically $ do
+  _ <- takeTMVar b_
+  putTMVar b_ (const end)
 
 {-# INLINE signal #-}
-signal :: forall c e.
-          (MonadIO c)
-       => Signal' c e
-       -> e
-       -> c ()
-signal sig e = do
-  let Signal bs_ = sig
-  bs <- liftIO $ readIORef bs_
-  seeded <- forM bs $ \f_ -> do
-    f <- liftIO $ readIORef f_
-    return $ Runnable bs_ f_ (f e)
-  signal_ seeded
+signal :: forall c e. (MonadIO c) => Signal' c e -> e -> c ()
+signal (Signal bs_) e = do
+  bs <- liftIO $ atomically $ takeTMVar bs_
+  bs' <- signal_ bs e
+  liftIO $ atomically $ putTMVar bs_ bs'
 
 {-# INLINE signal_ #-}
-signal_ :: forall c.
-           (MonadIO c)
-        => [Runnable c] -> c ()
-signal_ [] = return ()
-signal_ (r@(Runnable bs_ f_ f):rs) = start rs r
+signal_ :: forall c e. MonadIO c => [Behavior' c e] -> e -> c [Behavior' c e]
+signal_ bs e = do
+  fmap catMaybes $ forM bs $ \(Behavior b_) -> do
+    b <- liftIO $ atomically $ takeTMVar b_
+    mc <- start b (b e)
+    liftIO $ atomically $ putTMVar b_ $ fromMaybe (const end) mc
+    return $ maybe Nothing (const $ Just $ Behavior b_) mc
   where
-    start :: [Runnable c] -> Runnable c -> c ()
-    start rs (Runnable bs_ f_ f) = go' f
+    start :: (e -> Code '[Event e] c ()) -> Code '[Event e] c () -> c (Maybe (e -> Code '[Event e] c ()))
+    start f = go
       where
-        go' :: forall e. Code '[Event e] c ()
-            -> c ()
-        go' (Return _) = signal_ rs
-        go' (Lift sup) = sup >>= go'
-        go' (Do msg) =
-          case prj msg of
+        go (Return _) = return (Just f)
+        go (Lift sup) = sup >>= go
+        go (Do m) =
+          case prj m of
             ~(Just x) ->
               case x :: Event e (Code '[Event e] c ()) of
-                Become f' k -> do
-                  liftIO $ writeIORef f_ $ unsafeCoerce f'
-                  go' k
-                Continue -> signal_ rs
-                End -> do
-                  liftIO $ do
-                  -- in case we arrived here through trigger, nullify the behavior.
-                    writeIORef f_ (const end)
-                    atomicModifyIORef' bs_ $ \bs ->
-                      (Prelude.filter (/= f_) bs,())
-                  signal_ rs
+                Become f' k -> start (unsafeCoerce f') k
+                Continue    -> return (Just f)
+                End         -> return Nothing
 
 {-# INLINE trigger #-}
-trigger :: (MonadIO c)
-        => Behavior' c e
-        -> e
-        -> c ()
-trigger (Behavior b_) e = do
-  b <- liftIO $ readIORef b_
-  bs_ <- liftIO $ newIORef []
-  signal_ [Runnable bs_ b_ (b e)]
+trigger :: (MonadIO c) => Behavior' c e -> e -> c ()
+trigger b e = void $ signal_ [b] e
 
--- NOTE: Because this is implemented as IORef, it is not thread safe;
---       as long as Periodicals are maintained by a synchronous context
---       they can be assumed safe - as soon as a Periodical crosses a
---       thread context boundary, safety is thrown out the window, i.e.
---       adding a subscription to a Periodical could silently fail if the
---       periodical is currently being published. MVar will eventually
---       fix this at the cost of losing subpublish.
-data Periodical' c e
-  = Periodical {-# UNPACK #-} !(IORef (Maybe (Signal' c e)))
-  deriving Eq
+-- Directly, the following types looks inherently unsafe. Technically, they are.
+-- Extension of this interface to protect the construction of these types prevents
+-- unsafe usage.
 
-type Periodical ms c e = Periodical' (Narrative (Messages ms) c) e
+data Ev where Ev :: e -> {-# UNPACK #-} !(Signal' c e) -> Ev
 
-type Subscription' c e = Behavior' c e
+data EvQueue where EvQueue :: {-# UNPACK #-} !(IORef (Maybe (Queue Ev))) -> EvQueue
 
-type Subscription ms c e = Behavior ms c e
-
-periodical :: (MonadIO c)
-             => c (Periodical' c' e)
-periodical = do
-  sig <- construct
-  p <- liftIO $ newIORef (Just sig)
-  return $ Periodical p
-
-periodical' :: (MonadIO c)
-             => e -> c (Periodical' c' e)
-periodical' ev = do
-  sig <- construct
-  p <- liftIO $ newIORef (Just sig)
-  return $ Periodical p
-
-nullPeriodical :: (MonadIO c)
-               => Periodical' c' e -> c Bool
-nullPeriodical (Periodical p_) = do
-  mp <- liftIO $ readIORef p_
-  return $ isNothing mp
-
-emptyPeriodical :: (MonadIO c)
-                => Periodical' c e -> c Bool
-emptyPeriodical (Periodical p_) = do
-  mp <- liftIO $ readIORef p_
-  maybe (return True) nullSignal mp
-
-subscribe :: (MonadIO c', Monad c)
-          => Periodical' c e
-          -> (e -> Code '[Event e] c ())
-          -> c' (Maybe (Subscription' c e))
-subscribe (Periodical p_) f = do
-  mp <- liftIO $ readIORef p_
-  forM mp $ \sig -> behavior sig f
-
--- Lost this to improve space performance of periodicals; they kept the last message around and
--- prevented GC to be able to react to a current message/last message on subscription.
--- -- like subscribe, but immediately trigger the behavior with the current value
--- subscribe' :: (MonadIO c)
---            => Periodical' c e
---            -> (e -> Code '[Event e] c ())
---            -> c (Maybe (Subscription' c event,Bool))
--- subscribe' (Periodical p_) f = do
---   mp <- liftIO $ readIORef p_
---   forM mp $ \(cur_,sig) -> do
---     bt <- behavior sig f
---     mcur <- liftIO $ readIORef cur_
---     case mcur of
---       Nothing -> return (bt,False)
---       Just cur -> do
---         trigger bt cur
---         return (bt,True)
-
-publish :: (MonadIO c)
-        => Periodical' c e
-        -> e
-        -> c Bool
-publish (Periodical p_) ev = do
-  mp <- liftIO $ readIORef p_
-  case mp of
-    Nothing -> return False
-    Just sig -> do
-      signal sig ev
-      return True
-
--- Lost this to improve space performance of periodicals; it prevented GC of one message
--- per periodical.
--- periodicalCurrent :: (MonadIO c)
---                   => Periodical' c e -> c (Maybe e)
--- periodicalCurrent (Periodical p_) = liftIO $ do
---   mp <- readIORef p_
---   case mp of
---     Just _ -> readIORef cur_
---     _ -> return Nothing
-
-data Syndicated e where
-  Syndicated :: Periodical' c e -> Signaled -> Syndicated e
-
--- syndicated periodical network; periodicals that share a common event;
--- e propagation network for concurrent dispatch.
--- NOTE: Suffer from the same desynchronization issues...
-data Network e
-  = Network (MVar [Syndicated e])
-  deriving Eq
-
--- create a new syndication network
-network :: (MonadIO c)
-        => c (Network e)
-network = liftIO $ do
-  nw <- newMVar []
-  return $ Network nw
-
--- create a new syndication network
-network' :: (MonadIO c)
-        => e -> c (Network e)
-network' ev = liftIO $ do
-  nw <- newMVar []
-  return $ Network nw
-
-nullNetwork :: (MonadIO c)
-            => Network e -> c Bool
-nullNetwork (Network nw) = liftIO $ do
-  ss <- readMVar nw
-  return (null ss)
-
--- syndicate an e across multiple periodicals in a network
-syndicate :: (MonadIO c)
-          => Network e -> e -> c ()
-syndicate (Network nw) ev = liftIO $ do
-  -- garbage collect null periodicals and get the current set of
-  -- executable periodicals. The garbage collection is for periodical
-  -- that have been nullified but not removed via leaveNetwork. This is
-  -- useful for periodicals that are members of multiple networks.
-  ss <- modifyMVar nw $ \xs -> do
-    if null xs then
-      return (xs,Nothing)
-    else do
-      mss <- forM xs $ \s@(Syndicated (Periodical p_) sigd) -> do
-              mp <- readIORef p_
-              case mp of
-                Nothing -> return Nothing
-                Just _ -> return $ Just s
-      let ss' = catMaybes mss
-      return (ss',Just ss')
-  case ss of
-    Nothing -> return ()
-    Just xs -> do
-      forM_ xs $ \s@(Syndicated (Periodical p_) sigd) -> do
-        mp <- readIORef p_
-        forM_ mp $ \sig ->
-          buffer sigd sig ev
-
--- Lost this to improve GC.
--- networkCurrent :: (MonadIO c) => Network e -> c (Maybe e)
--- networkCurrent (Network nw) = liftIO $ fst <$> readMVar nw
-
-joinNetwork :: (MonadIO c)
-            => Network e -> Periodical' c' e -> Signaled -> c ()
-joinNetwork (Network nw) pl sg = do
-  liftIO $ modifyMVar nw $ \ss -> return (ss ++ [Syndicated pl sg],())
-
--- Lost this to improve GC.
--- joinNetwork' :: (MonadIO c)
---              => Network e -> Periodical' c' e -> Signaled -> c Bool
--- joinNetwork' ntw@(Network nw) pl@(Periodical p_) sigd = liftIO $ do
---   mp <- readIORef p_
---   case mp of
---     Nothing -> return False
---     Just (sig) -> do
---       mcur <- modifyMVar nw $ \ss -> return ((ev,ss ++ [Syndicated pl sigd]),ev)
---       case mcur of
---         Nothing -> return False
---         Just cur -> do
---           writeIORef cur_ (Just cur)
---           bufferIO sigd sig cur
---           return True
-
-leaveNetwork :: (MonadIO c)
-             => Network e -> Periodical' c' e -> c ()
-leaveNetwork (Network nw) pl =
-  liftIO $
-    -- let's hope this works.... if not, just create a counter token or make
-    -- Network (IORef [IORef (Maybe (Syndicated e))]) or something
-    modifyMVar nw $ \ss ->
-      let ss' = filter (\(Syndicated pl' _) -> pl /= unsafeCoerce pl') ss
-      in return (ss',())
-
--- An abstract Signal queue. Useful for building e loops.
--- Note that there is still a need to call unsafeCoerce on the
--- Signal itms since this data type avoids having `ms` and
--- `c` as type variables. It is the responsibility of the
--- programmer to know how to use this safely; single-responsibility
--- for both injection and extraction with unified typing is required.
-data Signaling where
-    Signaling :: e -> {-# UNPACK #-} !(Signal' c e) -> Signaling
-data Signaled where
-    Signaled :: {-# UNPACK #-} !(IORef (Maybe (Queue Signaling))) -> Signaled
-
-data As internal external
-  = As { signaledAs :: Signaled
-       , runAs :: forall a. internal a -> external (Promise a)
-       }
-
-runAs_ :: Functor external => As internal external -> internal a -> external ()
-runAs_ as ia = void $ runAs as ia
-
-runAsIO :: (MonadIO c) => As internal IO -> internal a -> c (Promise a)
-runAsIO as f = liftIO $ runAs as f
-
-runAsIO_ :: (MonadIO c) => As internal IO -> internal a -> c ()
-runAsIO_ as f = void $ liftIO $ runAs as f
-
--- Note that the `Signaled` passed to this method MUST be driven by
--- a correctly witnessing object. It is only decoupled from `driver`
--- for convenience to allow forked and unforked drivers. Be careful!
-{-# INLINE constructAs #-}
-constructAs :: ( MonadIO internal
-               , MonadIO external
-               , Functor (Messages internalMs)
-               )
-            => Signaled
-            -> Signal' (Narrative (Messages internalMs) internal) (Code internalMs internal ())
-            -> Narrative (Messages internalMs) internal `As` external
-constructAs buf sig = As buf $ \nar -> liftIO $ do
-  p <- promise
-  buffer buf sig $ nar >>= void . fulfill p
-  return p
-
-reconstructAs :: forall internal external external' c internalMs.
-                 ( MonadIO internal
-                 , MonadIO external
-                 , MonadIO external'
-                 , MonadIO c
-                 , Functor (Messages internalMs)
-                 )
-              => Narrative (Messages internalMs) internal `As` external -> c (Narrative (Messages internalMs) internal `As` external')
-reconstructAs (As buf _) = do
-  sig :: Signal internalMs internal (Code internalMs internal ()) <- runner
-  return $ As buf $ \nar -> liftIO $ do
-    p <- promise
-    buffer buf sig $ nar >>= void . fulfill p
-    return p
-
-{-# INLINE newSignalBuffer #-}
-newSignalBuffer :: (MonadIO c) => c Signaled
-newSignalBuffer = Signaled <$> liftIO (newIORef . Just =<< newQueue)
-
-{-# SPECIALIZE driver :: (Functor (Messages ms), Delta (Modules ts) (Messages ms)) => Signaled -> Object ts IO -> IO () #-}
-driver :: (MonadIO c, Functor (Messages ms), Delta (Modules ts) (Messages ms))
-       => Signaled -> Object ts c -> c ()
-driver (Signaled buf) o = do
-  Just qs <- liftIO $ readIORef buf
-  start qs o
-  where
-    start q = go
-      where
-        go o = do
-          ms <- liftIO $ handle (\(_ :: SomeException) -> return Nothing) (Just <$> collect q)
-          case ms of
-            Nothing -> return ()
-            Just (Signaling e s) -> do
-              (o',_) <- o ! signal (unsafeCoerce s) e
-              go o'
-
-{-# SPECIALIZE driverPrintExceptions :: (Functor (Messages ms), Delta (Modules ts) (Messages ms)) => String -> Signaled -> Object ts IO -> IO () #-}
-driverPrintExceptions :: (MonadIO c, Functor (Messages ms), Delta (Modules ts) (Messages ms))
-                      => String -> Signaled -> Object ts c -> c ()
-driverPrintExceptions e (Signaled buf) o = do
-  Just qs <- liftIO $ readIORef buf
-  start qs o
-  liftIO $ putStrLn e
-  where
-    start q = go
-      where
-        go o = do
-          ms <- liftIO $ handle (\(_ :: SomeException) -> return Nothing) (Just <$> collect q)
-          case ms of
-            Nothing -> return ()
-            Just (Signaling e s) -> do
-              (o',_) <- o ! signal (unsafeCoerce s) e
-              go o'
-
+{-# INLINE newEvQueue #-}
+newEvQueue :: (MonadIO c) => c EvQueue
+newEvQueue = EvQueue <$> liftIO (newIORef . Just =<< newQueue)
 
 data DriverStopped = DriverStopped deriving Show
 instance Exception DriverStopped
 
-{-# INLINE buffer #-}
-buffer :: (MonadIO c')
-              => Signaled
-              -> Signal' c e
-              -> e
-              -> c' ()
-buffer (Signaled buf) sig e = liftIO $ do
-  mqs <- readIORef buf
-  forM_ mqs $ \qs -> arrive qs $ Signaling e sig
+{-# INLINE driver #-}
+driver :: (MonadIO c, '[] <: ms, Delta (Modules ts) (Messages ms))
+       => EvQueue -> Object ts c -> c ()
+driver (EvQueue buf) o = do
+  Just qs <- liftIO $ readIORef buf
+  start qs o
+  where
+    start q = go
+      where
+        go o = do
+          ms <- liftIO $ handle (\(_ :: SomeException) -> return Nothing) (Just <$> collect q)
+          case ms of
+            Nothing -> return ()
+            Just (Ev e s) -> do
+              (o',_) <- o ! signal (unsafeCoerce s) e
+              go o'
 
-killBuffer :: (MonadIO c)
-           => Signaled
-           -> c ()
-killBuffer (Signaled buf) = liftIO $ writeIORef buf Nothing
+{-# INLINE driverPrintExceptions #-}
+driverPrintExceptions :: (MonadIO c, '[] <: ms, Delta (Modules ts) (Messages ms))
+                      => String -> EvQueue -> Object ts c -> c ()
+driverPrintExceptions e (EvQueue buf) o = do
+  Just qs <- liftIO $ readIORef buf
+  start qs o
+  where
+    start q = go
+      where
+        go o = do
+          ms <- liftIO $ catch (Just <$> collect q) $ \(se :: SomeException) -> do
+                  putStrLn (e ++ show se)
+                  return Nothing
+          case ms of
+            Nothing -> return ()
+            Just (Ev e s) -> do
+              (o',_) <- o ! signal (unsafeCoerce s) e
+              go o'
+
+data As i = As { asQueue :: EvQueue, runAs_ :: forall a. i a -> IO (Promise a) }
+
+runAs :: MonadIO c => As i -> i a -> c (Promise a)
+runAs a i = liftIO (runAs_ a i)
+
+{-# INLINE unsafeConstructAs #-}
+unsafeConstructAs :: forall c i. (MonadIO c, MonadIO i) => EvQueue -> c (As i)
+unsafeConstructAs buf = do
+  (sig,_) <- runner
+  return $ As buf $ \i -> do
+    p <- promise
+    buffer buf sig $ i >>= void . fulfill p
+    return p
+
+-- Use this to create safer As constructors. For evented contexts that hold
+-- their internal event buffer, EvQueue, in state, this would be used as:
+--
+-- > asSelf <- constructAs get
+{-# INLINE constructAs #-}
+constructAs :: MonadIO c => c EvQueue -> c (As c)
+constructAs g = unsafeConstructAs =<< g
+
+-- Not for external use.
+{-# INLINE buffer #-}
+buffer :: (MonadIO c') => EvQueue -> Signal' c e -> e -> c' ()
+buffer (EvQueue buf) sig e = liftIO $ do
+  mqs <- readIORef buf
+  forM_ mqs $ \qs -> arrive qs $ Ev e sig
+
+{-# INLINE killBuffer #-}
+killBuffer :: (MonadIO c) => EvQueue -> c ()
+killBuffer (EvQueue buf) = liftIO $ writeIORef buf Nothing
+
+data Subscription c e = Subscription (TMVar (Maybe e,EvQueue,Signal' c e))
+  deriving Eq
+
+subscription :: MonadIO c' => EvQueue -> Signal' c e -> c' (Subscription c e)
+subscription evq sig = liftIO $ Subscription <$> newTMVarIO (Nothing,evq,sig)
+
+subscription' :: MonadIO c' => EvQueue -> Signal' c e -> e -> c' (Subscription c e)
+subscription' evq sig e = liftIO $ Subscription <$> newTMVarIO (Just e,evq,sig)
+
+issue :: MonadIO c' => Subscription c e -> e -> c' ()
+issue (Subscription sub_) e = do
+  (_,evq,sig) <- liftIO $ atomically $ takeTMVar sub_
+  buffer evq sig e
+  liftIO $ atomically $ putTMVar sub_ (Just e,evq,sig)
+
+data SomeSubscription e where
+  SomeSubscription :: Subscription c e -> SomeSubscription e
+
+instance Eq (SomeSubscription e) where
+  (==) (SomeSubscription (Subscription tmv)) (SomeSubscription (Subscription tmv')) = tmv == unsafeCoerce tmv'
+
+data Syndicate e where
+  Syndicate :: TMVar (Maybe e,[SomeSubscription e]) -> Syndicate e
+
+instance Eq (Syndicate e) where
+  (==) (Syndicate synd) (Syndicate synd') = synd == unsafeCoerce synd'
+
+syndicate :: MonadIO c => c (Syndicate e)
+syndicate = liftIO $ Syndicate <$> newTMVarIO (Nothing,[])
+
+syndicate' :: MonadIO c => e -> c (Syndicate e)
+syndicate' ev = liftIO $ Syndicate <$> newTMVarIO (Just ev,[])
+
+nullSyndicate :: MonadIO c => Syndicate e -> c Bool
+nullSyndicate (Syndicate nw) = liftIO $ atomically $ do
+  ss <- takeTMVar nw
+  putTMVar nw ss
+  return (null ss)
+
+joinSyndicate :: MonadIO c => Syndicate e -> Subscription c' e -> c ()
+joinSyndicate (Syndicate nw) s = liftIO $ atomically $ do
+  (cur,subs) <- takeTMVar nw
+  putTMVar nw (cur,subs ++ [SomeSubscription s])
+
+leaveSyndicate :: MonadIO c => Syndicate e -> Subscription c' e -> c ()
+leaveSyndicate (Syndicate nw) s = liftIO $ atomically $ do
+  (cur,subs) <- takeTMVar nw
+  let filt = filter $ \sub -> sub /= (SomeSubscription $ unsafeCoerce s)
+  putTMVar nw $ (cur,filt subs)
+
+takeSyndicate :: MonadIO c => Syndicate e -> c (Maybe e,[SomeSubscription e])
+takeSyndicate (Syndicate syn_) = liftIO $ atomically (takeTMVar syn_)
+
+putSyndicate :: MonadIO c => Syndicate e -> (Maybe e,[SomeSubscription e]) -> c ()
+putSyndicate (Syndicate syn_) syn = liftIO $ atomically (putTMVar syn_ syn)
+
+publish :: MonadIO c => Syndicate e -> e -> c ()
+publish (Syndicate nw) ev = do
+  (cur,subs) <- liftIO $ atomically $ takeTMVar nw
+  forM_ subs $ \(SomeSubscription (Subscription sub)) -> do
+    (_,evq,sig) <- liftIO $ atomically $ takeTMVar sub
+    buffer evq sig ev
+    liftIO $ atomically $ putTMVar sub (Just ev,evq,sig)
+  liftIO $ atomically $ putTMVar nw (Just ev,subs)
+
+subscribe :: (MonadIO c) => Syndicate e -> c EvQueue -> c (Subscription c' e)
+subscribe synd cevq = do
+  evq <- cevq
+  sig <- construct
+  sub <- subscription evq sig
+  joinSyndicate synd sub
+  return sub
+
+listen :: MonadIO c' => Subscription c e -> (e -> Code '[Event e] c ()) -> c' (Behavior' c e)
+listen (Subscription sub_) b = liftIO $ atomically $ do
+  (cur,evq,sig) <- takeTMVar sub_
+  b_ <- behavior_ sig b
+  putTMVar sub_ (cur,evq,sig)
+  return b_
+
+type Revent = State () EvQueue
+
+-- Be sure the `State () EvQueue` is the local context's EvQueue.
+--
+-- > disconnect <- connect synd $ \e -> ...
+connect :: (MonadIO c,'[Revent] <: ms)
+        => Syndicate e
+        -> (e -> Code '[Event e] (Code ms c) ())
+        -> Code ms c (IO ())
+connect synd f = connect_ synd get f
+
+connect_ :: (MonadIO c', Monad c, '[Revent] <: ms)
+         => Syndicate e
+         -> c' EvQueue
+         -> (e -> Code '[Event e] (Code ms c) ())
+         -> c' (IO ())
+connect_ synd cevq f = do
+  sub <- subscribe synd cevq
+  bhv <- listen sub f
+  return (stop bhv >> leaveSyndicate synd sub)
+
+-- Delay the execution of the given method by at least the given number of
+-- microseconds. This is non-blocking.
+delay :: forall ms c a.
+         (MonadIO c, '[Revent] <: ms)
+      => Int
+      -> Code ms c a
+      -> Code ms c (IO (),Promise a)
+delay uSeconds c = do
+  p       <- promise
+  buf     <- get
+  (sig,b) <- runner
+
+  if uSeconds == 0 then
+    buffer buf sig (c >>= void . fulfill p)
+  else
+    liftIO $ void $ forkIO $ do
+      threadDelay uSeconds
+      buffer buf sig (c >>= void . fulfill p)
+
+  return (stop b,p)
+
+-- Execute the given method locally as soon as possible, but after everything
+-- currently in the event queue.
+--
+-- Implemented as:
+--
+-- > schedule = delay 0
+schedule :: (MonadIO c, '[Revent] <: ms) => Code ms c a -> Code ms c (IO (),Promise a)
+schedule = delay 0
+
+{-# INLINE asSelf #-}
+asSelf :: (MonadIO c, '[Revent] <: ms) => Code ms c (As (Code ms c))
+asSelf = constructAs get
+
+data Callback status result c = Callback_ (MVar (Callback_ status result c))
+data Callback_ status result c = Callback
+  { success :: result -> c ()
+  , updates :: status -> c ()
+  , failure :: SomeException -> c ()
+  }
+
+modifyCallback :: (MonadIO c')
+               => Callback status result c
+               -> (Callback_ status result c -> c' (Callback_ status result c))
+               -> c' Bool
+modifyCallback (Callback_ cb_) f = do
+  mcb <- liftIO $ tryTakeMVar cb_
+  case mcb of
+    Nothing -> return False
+    Just cb -> do
+      cb' <- f cb
+      liftIO $ putMVar cb_ cb'
+      return True
+
+done :: MonadIO c' => Callback status result c -> c' Bool
+done (Callback_ cb) = liftIO $ isEmptyMVar cb
+
+-- | withCallback is a primitive for constructing truly asynchronous processes.
+-- Alone, `withCallback` is not especially useful. When extended to
+-- cross-context execution, it becomes more useful.
+withCallback :: (MonadIO c, '[Revent] <: ms)
+             => (Process status result -> Code ms c r)
+             -> Callback_ status result (Code ms c)
+             -> Code ms c (Callback status result (Code ms c),r)
+withCallback f cb0 = do
+  pr <- process
+  self <- asSelf
+  cb_ <- liftIO $ newMVar cb0
+  onComplete pr $ \res -> void $ do
+    cb@Callback {..} <- takeMVar cb_
+    runAs self (success res)
+  onNotify pr $ \upd -> void $ do
+    cb@Callback {..} <- takeMVar cb_
+    runAs self (updates upd)
+    putMVar cb_ cb
+  onAbort pr $ \exc -> void $ do
+    cb@Callback {..} <- takeMVar cb_
+    runAs self (failure exc)
+  r <- f pr
+  return (Callback_ cb_,r)
+
+-- onSuccess :: forall ms c status result.
+--              (MonadIO c, '[Revent] <: ms)
+--           => Process status result
+--           -> (result -> Code ms c ())
+--           -> Code ms c (ProcessListener status result,IO ())
+-- onSuccess p f = do
+--   cont <- liftIO $ newIORef True
+--   buf <- get
+--   (sig,bhv) <- liftIO $ atomically $ do
+--     sig <- construct
+--     bhv <- behavior sig (lift . f)
+--     return (sig,bhv)
+--   pl <- onComplete p $ \a -> do
+--     shouldRun <- readIORef cont
+--     when shouldRun $ buffer buf sig a
+--   return (pl,stop bhv >> writeIORef cont False >> cancelListener pl)
+
+-- onFailure :: forall ms c s r.
+--              (MonadIO c, '[Revent] <: ms)
+--           => Process s r
+--           -> (SomeException -> Code ms c ())
+--           -> Code ms c (ProcessListener s r,IO ())
+-- onFailure p f = do
+--   cont <- liftIO $ newIORef True
+--   buf <- get
+--   (sig,bhv) <- liftIO $ atomically $ do
+--     sig <- construct
+--     bhv <- behavior sig (lift . f)
+--     return (sig,bhv)
+--   pl <- onAbort p $ \a -> do
+--     shouldRun <- readIORef cont
+--     when shouldRun $ buffer buf sig a
+--   return (pl,stop bhv >> writeIORef cont False >> cancelListener pl)
+
+-- onUpdate :: forall ms c status result.
+--             (MonadIO c, '[Revent] <: ms)
+--          => Process status result
+--          -> (status -> Code ms c ())
+--          -> Code ms c (ProcessListener status result,IO ())
+-- onUpdate p f = do
+--   cont <- liftIO $ newIORef True
+--   buf <- get
+--   (sig,bhv) <- liftIO $ atomically $ do
+--     sig <- construct
+--     bhv <- behavior sig (lift . f)
+--     return (sig,bhv)
+--   pl <- onNotify p $ \a -> do
+--     shouldRun <- readIORef cont
+--     when shouldRun $ buffer buf sig a
+--   return (pl,stop bhv >> writeIORef cont False >> cancelListener pl)
+
+-- onUpdate' :: forall ms c status result.
+--              (MonadIO c, '[Revent] <: ms)
+--           => Process status result
+--           -> (status -> Code ms c ())
+--           -> Code ms c (ProcessListener status result,IO ())
+-- onUpdate' p f = do
+--   cont <- liftIO $ newIORef True
+--   buf <- get
+--   (sig,bhv) <- liftIO $ atomically $ do
+--     sig <- construct
+--     bhv <- behavior sig (lift . f)
+--     return (sig,bhv)
+--   pl <- onNotify' p $ \a -> do
+--     shouldRun <- readIORef cont
+--     when shouldRun $ buffer buf sig a
+--   return (pl,stop bhv >> writeIORef cont False >> cancelListener pl)
+
+data Shutdown = Shutdown (Syndicate ())
+
+class With a m n | a -> m where
+  using_ :: a -> n (m b -> n (Promise b))
+  with_ :: a -> m b -> n (Promise b)
+  shutdown_ :: a -> n ()
+
+using :: (With a m IO, MonadIO n) => a -> n (m b -> n (Promise b))
+using a = fmap (fmap liftIO) $ liftIO $ using_ a
+
+with :: (With a m IO, MonadIO n) => a -> m b -> n (Promise b)
+with a m = liftIO $ with_ a m
+
+shutdown :: (With a m IO, MonadIO n) => a -> n ()
+shutdown a = liftIO $ shutdown_ a
+
+initialize :: (With a m IO, Monad m, MonadIO n)
+           => a -> n ()
+initialize a = void $ with a (return ())
+
+connectWith :: (With w c' IO, MonadIO c', MonadIO c, '[Revent] <: ms)
+            => w
+            -> c' (Syndicate e)
+            -> (e -> Code '[Event e] (Code ms c) ())
+            -> Code ms c (Promise (IO ()))
+connectWith w syndicateGetter f = do
+  buf <- get
+  with w $ do
+    syn <- syndicateGetter
+    sub <- subscribe syn (return buf)
+    bhv <- listen sub f
+    return (stop bhv >> leaveSyndicate syn sub)
+
+syndicateWith :: (With w c' IO, MonadIO c', MonadIO c, '[Revent] <: ms)
+              => w
+              -> c' (Syndicate e)
+              -> e
+              -> Code ms c (Promise ())
+syndicateWith w syndicateGetter e = do
+  with w $ do
+    nw <- syndicateGetter
+    publish nw e
+
+-- | Async simplifies cross-context callback-based computations.
+--
+-- > async renderer renderWithProcess Callback
+-- >  { onSuccess = \r -> liftIO $ putStrLn ("Rendering result: " ++ show r)
+-- >  , onFailure = \e -> liftIO $ putStrLn ("Rendering failed: " ++ show e)
+-- >  , onUpdates = \n -> liftIO $ putStrLn ("Rendering progress:" ++ show n ++ "%")
+-- >  }
+--
+-- Note that execution of a callback connected to an async process might be
+-- delayed due to a non-empty event queue for the callback context. This means
+-- it is possible for an async computation to complete before `onUpdates`
+-- callbacks have had a chance to execute. If this is a problem, simply use raw
+-- `Process`es which have callbacks of type `_ -> IO ()` that are executed
+-- immediately. Note that ordering of callbacks is guaranteed by the unified
+-- execution context, the calling context for `async`, unless the `Process`
+-- is used in multiple threads.
+async :: (With a m IO, MonadIO c, '[Revent] <: ms)
+      => a
+      -> (Process status result -> m ())
+      -> Callback_ status result (Code ms c)
+      -> Code ms c (Callback status result (Code ms c))
+async a f cb = fst <$> withCallback (with a . f) cb
+
+async' :: (With a m IO, MonadIO c, '[Revent] <: ms)
+       => a
+       -> (Process status result -> m ())
+       -> Callback_ status result (Code ms c)
+       -> Code ms c (Callback status result (Code ms c),Promise ())
+async' a f cb = withCallback (with a . f) cb
+
+onShutdown :: ( With a (Code ms' IO) IO
+              , MonadIO c
+              , '[State () Shutdown] <: ms'
+              , '[Revent] <: ms
+              )
+           => a
+           -> Code ms c ()
+           -> Code ms c (Promise (IO ()))
+onShutdown c ons =
+  connectWith c (get >>= \(Shutdown sdn) -> return sdn) (const (lift ons))
+
+-- onSelfShutdown :: ( MonadIO c
+--                 , '[Revent,State () Shutdown] <: ms
+--                 )
+--              => Code ms c ()
+--              -> Code ms c (IO ())
+-- onSelfShutdown ons = do
+--   buf <- get
+--   p <- periodical
+--   Just s <- subscribe p (const $ lift ons)
+--   Shutdown sdn <- get
+--   joinSyndicate sdn p buf
+--   return (stop s >> leaveSyndicate sdn p)
+
+shutdownSelf :: (MonadIO c,'[State () Shutdown] <: ms) => Code ms c ()
+shutdownSelf = do
+  Shutdown sdn <- get
+  publish sdn ()
