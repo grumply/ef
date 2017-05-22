@@ -1,7 +1,6 @@
 {-# language BangPatterns #-}
 {-# language CPP #-}
 {-# language FunctionalDependencies #-}
-{-# language ImpredicativeTypes #-}
 module Ef.Event where
 
 import Ef

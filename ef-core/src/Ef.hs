@@ -379,7 +379,7 @@ instance (ms ~ (m ': ms')) => Can' ms m 'Z where
 
 type ms :> ms' = ms' <: ms
 type family (<:) ms ms' where
-  '[] <: ms = (Functor (Messages ms))
+  '[] <: ms = (Functor (Messages ms), Typeable ms)
   (m ': ms') <: ms = (Can' ms m (Offset ms m), ms' <: ms)
 
 infixr 6 *:*
