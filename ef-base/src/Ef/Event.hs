@@ -431,18 +431,18 @@ listen (Subscription sub_) b = liftIO $ atomically $ do
   putTMVar sub_ (cur,evq,sig)
   return b_
 
-type Revent = State () EvQueue
+type Evented = State () EvQueue
 
 -- Be sure the `State () EvQueue` is the local context's EvQueue.
 --
 -- > disconnect <- connect synd $ \e -> ...
-connect :: (MonadIO c,'[Revent] <: ms)
+connect :: (MonadIO c,'[Evented] <: ms)
         => Syndicate e
         -> (e -> Code '[Event e] (Code ms c) ())
         -> Code ms c (IO ())
 connect synd f = connect_ synd get f
 
-connect_ :: (MonadIO c', Monad c, '[Revent] <: ms)
+connect_ :: (MonadIO c', Monad c, '[Evented] <: ms)
          => Syndicate e
          -> c' EvQueue
          -> (e -> Code '[Event e] (Code ms c) ())
@@ -455,7 +455,7 @@ connect_ synd cevq f = do
 -- Delay the execution of the given method by at least the given number of
 -- microseconds. This is non-blocking.
 delay :: forall ms c a.
-         (MonadIO c, '[Revent] <: ms)
+         (MonadIO c, '[Evented] <: ms)
       => Int
       -> Code ms c a
       -> Code ms c (IO (),Promise a)
@@ -479,11 +479,11 @@ delay uSeconds c = do
 -- Implemented as:
 --
 -- > schedule = delay 0
-schedule :: (MonadIO c, '[Revent] <: ms) => Code ms c a -> Code ms c (IO (),Promise a)
+schedule :: (MonadIO c, '[Evented] <: ms) => Code ms c a -> Code ms c (IO (),Promise a)
 schedule = delay 0
 
 {-# INLINE asSelf #-}
-asSelf :: (MonadIO c, '[Revent] <: ms) => Code ms c (As (Code ms c))
+asSelf :: (MonadIO c, '[Evented] <: ms) => Code ms c (As (Code ms c))
 asSelf = constructAs get
 
 data Callback status result c = Callback_ (MVar (Callback_ status result c))
@@ -512,7 +512,7 @@ done (Callback_ cb) = liftIO $ isEmptyMVar cb
 -- | withCallback is a primitive for constructing truly asynchronous processes.
 -- Alone, `withCallback` is not especially useful. When extended to
 -- cross-context execution, it becomes more useful.
-withCallback :: (MonadIO c, '[Revent] <: ms)
+withCallback :: (MonadIO c, '[Evented] <: ms)
              => (Process status result -> Code ms c r)
              -> Callback_ status result (Code ms c)
              -> Code ms c (Callback status result (Code ms c),r)
@@ -534,7 +534,7 @@ withCallback f cb0 = do
   return (Callback_ cb_,r)
 
 -- onSuccess :: forall ms c status result.
---              (MonadIO c, '[Revent] <: ms)
+--              (MonadIO c, '[Evented] <: ms)
 --           => Process status result
 --           -> (result -> Code ms c ())
 --           -> Code ms c (ProcessListener status result,IO ())
@@ -551,7 +551,7 @@ withCallback f cb0 = do
 --   return (pl,stop bhv >> writeIORef cont False >> cancelListener pl)
 
 -- onFailure :: forall ms c s r.
---              (MonadIO c, '[Revent] <: ms)
+--              (MonadIO c, '[Evented] <: ms)
 --           => Process s r
 --           -> (SomeException -> Code ms c ())
 --           -> Code ms c (ProcessListener s r,IO ())
@@ -568,7 +568,7 @@ withCallback f cb0 = do
 --   return (pl,stop bhv >> writeIORef cont False >> cancelListener pl)
 
 -- onUpdate :: forall ms c status result.
---             (MonadIO c, '[Revent] <: ms)
+--             (MonadIO c, '[Evented] <: ms)
 --          => Process status result
 --          -> (status -> Code ms c ())
 --          -> Code ms c (ProcessListener status result,IO ())
@@ -585,7 +585,7 @@ withCallback f cb0 = do
 --   return (pl,stop bhv >> writeIORef cont False >> cancelListener pl)
 
 -- onUpdate' :: forall ms c status result.
---              (MonadIO c, '[Revent] <: ms)
+--              (MonadIO c, '[Evented] <: ms)
 --           => Process status result
 --           -> (status -> Code ms c ())
 --           -> Code ms c (ProcessListener status result,IO ())
@@ -621,7 +621,7 @@ initialize :: (With a m IO, Monad m, MonadIO n)
            => a -> n ()
 initialize a = void $ with a (return ())
 
-connectWith :: (With w c' IO, MonadIO c', MonadIO c, '[Revent] <: ms)
+connectWith :: (With w c' IO, MonadIO c', MonadIO c, '[Evented] <: ms)
             => w
             -> c' (Syndicate e)
             -> (e -> Code '[Event e] (Code ms c) ())
@@ -634,7 +634,7 @@ connectWith w syndicateGetter f = do
     bhv <- listen sub f
     return (stop bhv >> leaveSyndicate syn sub)
 
-syndicateWith :: (With w c' IO, MonadIO c', MonadIO c, '[Revent] <: ms)
+syndicateWith :: (With w c' IO, MonadIO c', MonadIO c, '[Evented] <: ms)
               => w
               -> c' (Syndicate e)
               -> e
@@ -660,14 +660,14 @@ syndicateWith w syndicateGetter e = do
 -- immediately. Note that ordering of callbacks is guaranteed by the unified
 -- execution context, the calling context for `async`, unless the `Process`
 -- is used in multiple threads.
-async :: (With a m IO, MonadIO c, '[Revent] <: ms)
+async :: (With a m IO, MonadIO c, '[Evented] <: ms)
       => a
       -> (Process status result -> m ())
       -> Callback_ status result (Code ms c)
       -> Code ms c (Callback status result (Code ms c))
 async a f cb = fst <$> withCallback (with a . f) cb
 
-async' :: (With a m IO, MonadIO c, '[Revent] <: ms)
+async' :: (With a m IO, MonadIO c, '[Evented] <: ms)
        => a
        -> (Process status result -> m ())
        -> Callback_ status result (Code ms c)
@@ -677,7 +677,7 @@ async' a f cb = withCallback (with a . f) cb
 onShutdown :: ( With a (Code ms' IO) IO
               , MonadIO c
               , '[State () Shutdown] <: ms'
-              , '[Revent] <: ms
+              , '[Evented] <: ms
               )
            => a
            -> Code ms c ()
@@ -686,7 +686,7 @@ onShutdown c ons =
   connectWith c (get >>= \(Shutdown sdn) -> return sdn) (const (lift ons))
 
 -- onSelfShutdown :: ( MonadIO c
---                 , '[Revent,State () Shutdown] <: ms
+--                 , '[Evented,State () Shutdown] <: ms
 --                 )
 --              => Code ms c ()
 --              -> Code ms c (IO ())
