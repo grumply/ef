@@ -22,5 +22,5 @@ liftIO_ = void . liftIO
 lift_ :: (Monad m, Functor (t m), MonadTrans t) => m a -> t m ()
 lift_ = void . lift
 
-super_ :: (Functor (Messages ms), Monad c) => c (Code ms c a) -> Code ms c ()
+super_ :: (Functor (Messages ms), Monad c) => c (Ef ms c a) -> Ef ms c ()
 super_ = void . super

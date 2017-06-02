@@ -17,17 +17,17 @@ data Throws e k
 
 instance Delta (Throws e) (Throws e)
 
-throwChecked :: e -> Code (Throws e ': ms) c a
+throwChecked :: e -> Ef (Throws e ': ms) c a
 throwChecked = Send . Throw
 
 catchChecked :: forall ms c a e. (Monad c, Functor (Messages ms))
-             => Code (Throws e ': ms) c a -> (e -> Code ms c a) -> Code ms c a
+             => Ef (Throws e ': ms) c a -> (e -> Ef ms c a) -> Ef ms c a
 catchChecked act h = handleThrows act
   where
-    handleThrows :: Code (Throws e ': ms) c a -> Code ms c a
+    handleThrows :: Ef (Throws e ': ms) c a -> Ef ms c a
     handleThrows = transform id go
       where
-        go :: Messages (Throws e ': ms) (Code (Throws e ': ms) c a) -> Code ms c a
+        go :: Messages (Throws e ': ms) (Ef (Throws e ': ms) c a) -> Ef ms c a
         go m =
           case prj m of
             Just (Throw e) -> h e
@@ -36,18 +36,18 @@ catchChecked act h = handleThrows act
                 Other ms -> Do (fmap (transform id go) ms)
 
 handleChecked :: forall ms c a e. (Monad c, Functor (Messages ms))
-              => (e -> Code ms c a) -> Code (Throws e ': ms) c a -> Code ms c a
+              => (e -> Ef ms c a) -> Ef (Throws e ': ms) c a -> Ef ms c a
 handleChecked h act = catchChecked act h
 
 tryChecked
     :: (Monad c, Functor (Messages ms))
-    => (Code (Throws e ': ms) c r)
-    -> Code ms c (Either e r)
+    => (Ef (Throws e ': ms) c r)
+    -> Ef ms c (Either e r)
 tryChecked a = catchChecked (Right <$> a) (return . Left)
 
 mapChecked
     :: (Monad c, Exception e, Exception e', Functor (Messages ms))
     => (e -> e')
-    -> (Code (Throws e ': Throws e' ': ms) c a)
-    -> (Code (Throws e' ': ms) c a)
+    -> (Ef (Throws e ': Throws e' ': ms) c a)
+    -> (Ef (Throws e' ': ms) c a)
 mapChecked f p = catchChecked p (throwChecked . f)

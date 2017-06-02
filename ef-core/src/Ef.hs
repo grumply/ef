@@ -52,10 +52,10 @@ data Narrative (f :: * -> *) c a
   | Lift (c (Narrative f c a))
   | Return a
 
-type Code (ms :: [* -> *]) (c :: * -> *) = Narrative (Messages ms) c
+type Ef (ms :: [* -> *]) (c :: * -> *) = Narrative (Messages ms) c
 
 {-# INLINE viewMsg #-}
-viewMsg :: (Can' ms m (Offset ms m)) => Code ms c a -> Maybe (m (Code ms c a))
+viewMsg :: (Can' ms m (Offset ms m)) => Ef ms c a -> Maybe (m (Ef ms c a))
 viewMsg (Do m) = prj m
 viewMsg _ = Nothing
 
@@ -70,7 +70,7 @@ yields :: (Functor f) => f r -> Narrative f c r
 yields fr = buildn $ \r l d -> d (fmap r fr)
 
 {-# INLINE sends #-}
-sends :: ('[f] <: ms) => f r -> Code ms c r
+sends :: ('[f] <: ms) => f r -> Ef ms c r
 sends = yields . inj
 
 {-# INLINE super #-}
@@ -292,7 +292,7 @@ instance (t `Delta` m, Modules ts `Delta` Messages ms) => Delta (Modules (t ': t
 
 -- Old runWith; does not use foldn.
 -- {-# INLINE runWith #-}
--- runWith :: forall ts ms c a. ((Modules ts) `Delta` (Messages ms), Monad c) => Object ts c -> Code ms c a -> c (Object ts c,a)
+-- runWith :: forall ts ms c a. ((Modules ts) `Delta` (Messages ms), Monad c) => Object ts c -> Ef ms c a -> c (Object ts c,a)
 -- runWith object = go
 --   where
 --     go (Return a) = return (object,a)
@@ -303,7 +303,7 @@ instance (t `Delta` m, Modules ts `Delta` Messages ms) => Delta (Modules (t ': t
 --       runWith object' cont
 
 infixr 5 !
-(!) :: ((Modules ts) `Delta` (Messages ms), Functor (Messages ms), Monad c) => Object ts c -> Code ms c a -> c (Object ts c,a)
+(!) :: ((Modules ts) `Delta` (Messages ms), Functor (Messages ms), Monad c) => Object ts c -> Ef ms c a -> c (Object ts c,a)
 (!) = runWith
 
 type Mod t ts c = t (Action ts c)
@@ -407,7 +407,7 @@ unit :: Proxy ()
 unit = Proxy
 
 data Interpreter ts ms c a = Interpreter
-  { interpret :: (forall x. Code ms c x -> c (Object ts c,x)) -> c (Object ts c,a) }
+  { interpret :: (forall x. Ef ms c x -> c (Object ts c,x)) -> c (Object ts c,a) }
 
 instance (Monad c, Functor (Messages ms)) => Functor (Interpreter ts ms c) where
   fmap f (Interpreter k) = Interpreter $ \k' -> fmap (fmap f) (k k')
@@ -431,16 +431,16 @@ instance (Monad c, Functor (Messages ms), Delta (Modules ts) (Messages ms), Mona
 instance (Functor (Messages ms), Delta (Modules ts) (Messages ms), MonadFix c) => MonadFix (Interpreter ts ms c) where
   mfix f = Interpreter $ \d -> mfix (\((_,x)) -> interpret (f x) d)
 
-interp :: Code ms c a -> Interpreter ts ms c a
+interp :: Ef ms c a -> Interpreter ts ms c a
 interp n = Interpreter $ \k -> k n
 
 infixr 5 !#
 (!#) :: (MonadFix c, Functor (Messages ms), Delta (Modules ts) (Messages ms)) => Object ts c -> Interpreter ts ms c a -> c (Object ts c,a)
 (!#) o i = interpret i (runWith o)
 
-type Path ts ms c a = Cofree c (Object ts c,Code ms c a)
+type Path ts ms c a = Cofree c (Object ts c,Ef ms c a)
 
-lay :: (Monad c, Delta (Modules ts) (Messages ms)) => Object ts c -> Code ms c a -> Path ts ms c a
+lay :: (Monad c, Delta (Modules ts) (Messages ms)) => Object ts c -> Ef ms c a -> Path ts ms c a
 lay obj nar = coiter (uncurry lay) (obj,nar)
   where
   lay o = go
@@ -501,7 +501,7 @@ transform f t = go
     go (Return r) = Return (f r)
 
 {-# INLINE runWith #-}
-runWith :: forall ts ms c a. ((Modules ts) `Delta` (Messages ms), Functor (Messages ms), Monad c) => Object ts c -> Code ms c a -> c (Object ts c,a)
+runWith :: forall ts ms c a. ((Modules ts) `Delta` (Messages ms), Functor (Messages ms), Monad c) => Object ts c -> Ef ms c a -> c (Object ts c,a)
 runWith o c = foldn runReturn runLift runDo c o
   where
     runReturn a o = return (o,a)
@@ -573,20 +573,20 @@ buildn f = f Return Lift Do
 
 {- for reference
 _unfold mk n = Lift $ mk n >>= return . either Return (Do . fmap go)
-swapObj :: (Monad c, Delta (Modules ts) (Messages ms)) => Object ts c -> Cofree c (Object ts c, Code ms c a) -> Cofree c (Object ts c, Code ms c a)
+swapObj :: (Monad c, Delta (Modules ts) (Messages ms)) => Object ts c -> Cofree c (Object ts c, Ef ms c a) -> Cofree c (Object ts c, Ef ms c a)
 swapObj obj = path obj . snd . extract
 
-swapCode :: (Monad c, Delta (Modules ts) (Messages ms)) => Code ms c a -> Cofree c (Object ts c, Code ms c a) -> Cofree c (Object ts c, Code ms c a)
-swapCode code = flip path code . fst . extract
+swapEf :: (Monad c, Delta (Modules ts) (Messages ms)) => Ef ms c a -> Cofree c (Object ts c, Ef ms c a) -> Cofree c (Object ts c, Ef ms c a)
+swapEf code = flip path code . fst . extract
 
-branch :: (Monad c, Delta (Modules ts) (Messages ms)) => Cofree c (Object ts c, Code ms c a) -> Cofree c (Cofree c (Object ts c, Code ms c a))
+branch :: (Monad c, Delta (Modules ts) (Messages ms)) => Cofree c (Object ts c, Ef ms c a) -> Cofree c (Cofree c (Object ts c, Ef ms c a))
 branch = duplicate
 
-reseedObj :: (Monad c, Delta (Modules ts) (Messages ms)) => Object ts c -> Cofree c (Cofree c (Object ts c, Code ms c a)) -> Cofree c (Cofree c (Object ts c, Code ms c a))
+reseedObj :: (Monad c, Delta (Modules ts) (Messages ms)) => Object ts c -> Cofree c (Cofree c (Object ts c, Ef ms c a)) -> Cofree c (Cofree c (Object ts c, Ef ms c a))
 reseedObj obj = fmap (swapObj obj)
 
-reseedCode :: (Monad c, Delta (Modules ts) (Messages ms)) => Code ms c a -> Cofree c (Cofree c (Object ts c, Code ms c a)) -> Cofree c (Cofree c (Object ts c, Code ms c a))
-reseedCode code = fmap (swapCode code)
+reseedEf :: (Monad c, Delta (Modules ts) (Messages ms)) => Ef ms c a -> Cofree c (Cofree c (Object ts c, Ef ms c a)) -> Cofree c (Cofree c (Object ts c, Ef ms c a))
+reseedEf code = fmap (swapEf code)
 -}
 
 data Child
@@ -637,12 +637,12 @@ tellChild :: forall p ms ms' ts c a.
              , '[] <: ms
              )
           => Proxy '(p,Child,ts)
-          -> Code ms (Narrative (Messages ms') c) a
-          -> Code ms' c (Object ts (Narrative (Messages ms') c),Object ts (Narrative (Messages ms') c),a)
+          -> Ef ms (Narrative (Messages ms') c) a
+          -> Ef ms' c (Object ts (Narrative (Messages ms') c),Object ts (Narrative (Messages ms') c),a)
 tellChild _ ma = do
-  o <- Send (GetFundament Return :: Fundament Child p ts (Code ms' c (Object ts (Narrative (Messages ms') c))))
+  o <- Send (GetFundament Return :: Fundament Child p ts (Ef ms' c (Object ts (Narrative (Messages ms') c))))
   (o',a) <- o ! ma
-  Send (SetFundament o' (Return ()) :: Fundament Child p ts (Code ms' c ()))
+  Send (SetFundament o' (Return ()) :: Fundament Child p ts (Ef ms' c ()))
   return (o,o',a)
 
 tellSib :: forall p ms ms' ts c a.
@@ -653,19 +653,19 @@ tellSib :: forall p ms ms' ts c a.
             , '[] <: ms
             )
         => Proxy '(p,Sibling,ts)
-        -> Code ms c a
-        -> Code ms' c (Object ts c,Object ts c,a)
+        -> Ef ms c a
+        -> Ef ms' c (Object ts c,Object ts c,a)
 tellSib _ ma = do
-  o <- Send (GetFundament Return :: Fundament Sibling p ts (Code ms' c (Object ts c)))
+  o <- Send (GetFundament Return :: Fundament Sibling p ts (Ef ms' c (Object ts c)))
   (o',a) <- Lift (runWith o ma >>= return . Return)
-  Send (SetFundament o' (Return ()) :: Fundament Sibling p ts (Code ms' c ()))
+  Send (SetFundament o' (Return ()) :: Fundament Sibling p ts (Ef ms' c ()))
   return (o,o',a)
 
-getChild :: forall p ms ts c. (Monad c, '[Fundament Child p ts] <: ms) => Proxy '(p,Sibling,ts) -> Code ms c (Object ts (Narrative (Messages ms) c))
-getChild _ = Send (GetFundament Return :: Fundament Child p ts (Code ms c (Object ts (Narrative (Messages ms) c))))
+getChild :: forall p ms ts c. (Monad c, '[Fundament Child p ts] <: ms) => Proxy '(p,Sibling,ts) -> Ef ms c (Object ts (Narrative (Messages ms) c))
+getChild _ = Send (GetFundament Return :: Fundament Child p ts (Ef ms c (Object ts (Narrative (Messages ms) c))))
 
-getSib :: forall p ms ts c. (Monad c, '[Fundament Sibling p ts] <: ms) => Proxy '(p,Sibling,ts) -> Code ms c (Object ts c)
-getSib _ = Send (GetFundament Return :: Fundament Sibling p ts (Code ms c (Object ts c)))
+getSib :: forall p ms ts c. (Monad c, '[Fundament Sibling p ts] <: ms) => Proxy '(p,Sibling,ts) -> Ef ms c (Object ts c)
+getSib _ = Send (GetFundament Return :: Fundament Sibling p ts (Ef ms c (Object ts c)))
 
 ----------------------------------------
 -- Utilities
@@ -801,7 +801,7 @@ splitsAt = go
         Do m -> wrap (fmap (go (i - 1)) m)
 
 -- drops functor layers where the functor is comonadic (to guarantee extractability);
--- keeps effect layers. Note that Code is non-droppable.
+-- keeps effect layers. Note that Ef is non-droppable.
 {-# INLINE drops #-}
 drops :: (Comonad f, Monad c) => Int -> Narrative f c r -> Narrative f c r
 drops = go

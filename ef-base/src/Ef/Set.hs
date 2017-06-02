@@ -20,5 +20,5 @@ instance Delta Set Set where
 set :: (Monad c, '[Set] <. ts) => Set (Action ts c)
 set = Set (const . pure)
 
-become :: (Monad c, '[Set] <: ms, Delta (Modules ts) (Messages ms)) => Object ts c -> Code ms c ()
+become :: (Monad c, '[Set] <: ms, Delta (Modules ts) (Messages ms)) => Object ts c -> Ef ms c ()
 become o = Send (Become o)

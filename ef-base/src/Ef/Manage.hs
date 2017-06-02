@@ -13,10 +13,10 @@ data Manage k where
   FreshSelf :: (Int -> k) -> Manage k
   Allocate ::
     Int ->
-      Code ms c a ->
-        (a -> Code ms c ()) -> ((a, Token) -> k) -> Manage k
+      Ef ms c a ->
+        (a -> Ef ms c ()) -> ((a, Token) -> k) -> Manage k
   Register ::
-    Int -> Token -> Code ms c () -> k -> Manage k
+    Int -> Token -> Ef ms c () -> k -> Manage k
   Unregister :: Int -> Token -> k -> Manage k
   Deallocate :: Token -> k -> Manage k
   Finish :: Int -> a -> Manage k
@@ -48,21 +48,21 @@ data Manager ms c = Manager
       -- | allocate a resource with a given cleanup method to be performed
       -- when the managed scope returns or when triggered via
       -- deallocate/unregister.
-      allocate :: forall resource. Code ms c resource -> (resource -> Code ms c ()) -> Code ms c (resource, Token)
+      allocate :: forall resource. Ef ms c resource -> (resource -> Ef ms c ()) -> Ef ms c (resource, Token)
     ,
       -- | deallocate a resource by invoking the `Token`'s registered
       -- actions across all nested managed scopes for which the
       -- resource is registered.
-      deallocate :: Token -> Code ms c ()
+      deallocate :: Token -> Ef ms c ()
     ,
       -- | register a resource with this manager with a given cleanup action
       -- to be performed when deallocate is called or the managed scope
       -- returns. Resources may have multiple actions registered.
-      register :: Token -> Code ms c () -> Code ms c ()
+      register :: Token -> Ef ms c () -> Ef ms c ()
     ,
       -- | unregister a resource within this manager's context without
       -- calling the associated cleanup actions.
-      unregister :: Token -> Code ms c ()
+      unregister :: Token -> Ef ms c ()
     }
 
 -- Simple Example:
@@ -78,7 +78,7 @@ data Manager ms c = Manager
 -- Tokens may be deallocated which forces registered cleanup actions to be
 -- performed in all managers for which that token is registered in LIFO order
 -- of the nesting scopes.
-manage :: ('[Manage] <: ms, Monad c) => (Manager ms c -> Code ms c r) -> Code ms c r
+manage :: ('[Manage] <: ms, Monad c) => (Manager ms c -> Ef ms c r) -> Ef ms c r
 manage f = do
   scope <- Send (FreshSelf Return)
   rewrite scope [] $
@@ -92,7 +92,7 @@ manage f = do
 
 {-# INLINE manage #-}
 
-rewrite :: forall ms c r. ('[Manage] <: ms, Monad c) => Int -> [(Int, Code ms c ())] -> Code ms c r -> Code ms c r
+rewrite :: forall ms c r. ('[Manage] <: ms, Monad c) => Int -> [(Int, Ef ms c ())] -> Ef ms c r -> Ef ms c r
 rewrite rewriteSelf = withStore
   where
     withStore store = go

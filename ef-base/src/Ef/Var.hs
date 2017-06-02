@@ -13,16 +13,16 @@ data Eagerness = Strict | Lazy
 data Modification state = Modify Eagerness (state -> state)
 
 data Var var self super = Var
-  { alter :: (var -> var) -> Code self super ()
-  , alter' :: (var -> var) -> Code self super ()
-  , peek :: Code self super var
-  , peeks :: forall a. (var -> a) -> Code self super a
-  , poke :: var -> Code self super ()
-  , pokes :: forall a. (a -> var) -> a -> Code self super ()
+  { alter :: (var -> var) -> Ef self super ()
+  , alter' :: (var -> var) -> Ef self super ()
+  , peek :: Ef self super var
+  , peeks :: forall a. (var -> a) -> Ef self super a
+  , poke :: var -> Ef self super ()
+  , pokes :: forall a. (a -> var) -> a -> Ef self super ()
   }
 
 stateful :: ('[Sync] <: ms, Monad c)
-         => (Var s ms c -> Code ms c r)
+         => (Var s ms c -> Ef ms c r)
          -> Synchronized (Modification s) s () X ms c r
 stateful computation =
   let
@@ -51,7 +51,7 @@ stateful computation =
       synchronized $ \up _ -> computation (stateInterface up)
 {-# INLINE stateful #-}
 
-var :: ('[Sync] <: ms, Monad c) => s -> (Var s ms c -> Code ms c r) -> Code ms c r
+var :: ('[Sync] <: ms, Monad c) => s -> (Var s ms c -> Ef ms c r) -> Ef ms c r
 var initial computation = runSync (serve +>> stateful computation)
   where
     serve firstRequest = synchronized $ \_ dn -> do
@@ -70,7 +70,7 @@ var initial computation = runSync (serve +>> stateful computation)
               handle new next
 {-# INLINE var #-}
 
-var' :: ('[Sync] <: ms, Monad c) => s -> (Var s ms c -> Code ms c r) -> Code ms c r
+var' :: ('[Sync] <: ms, Monad c) => s -> (Var s ms c -> Ef ms c r) -> Ef ms c r
 var' initial computation = runSync (serve +>> stateful computation)
   where
     serve firstRequest = synchronized $ \_ dn -> withRespond dn initial firstRequest

@@ -7,8 +7,8 @@ import Ef.Set
 
 data Reflection ms ts c =
     Reflection
-        { project :: Code ms c (Object ts c)
-        , inject :: Object ts c -> Code ms c ()
+        { project :: Ef ms c (Object ts c)
+        , inject :: Object ts c -> Ef ms c ()
         }
 
 withReflection :: ( '[Get,Set] <: ms
@@ -16,7 +16,7 @@ withReflection :: ( '[Get,Set] <: ms
                   , Delta (Modules ts) (Messages ms)
                   , Monad c
                   )
-               => (Reflection ms ts c -> Code ms c result) -> Code ms c result
+               => (Reflection ms ts c -> Ef ms c result) -> Ef ms c result
 withReflection f =
     f Reflection
           { project = introspect

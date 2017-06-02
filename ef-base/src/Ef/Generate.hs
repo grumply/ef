@@ -52,7 +52,7 @@ instance (Functor (Messages ms), Monad c) => Monoid (Generator ms c a) where
 
 generate
     :: ('[Sync] <: ms, Monad c)
-    => Generator ms c a -> Code ms c ()
+    => Generator ms c a -> Ef ms c ()
 generate l = runSync (enumerate (l >> mzero))
 
 each

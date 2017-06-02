@@ -21,7 +21,7 @@ import Unsafe.Coerce
 -- cross-context communication, callbacks, reactivity and promises.
 
 data Event e k where
-  Become :: (e -> Code '[Event e] c ()) -> k -> Event e k
+  Become :: (e -> Ef '[Event e] c ()) -> k -> Event e k
   Continue :: Event e k
   End :: Event e k
 
@@ -30,14 +30,14 @@ instance Functor (Event e) where
   fmap f Continue = Continue
   fmap f End = End
 
-become :: Monad c => (e -> Code '[Event e] c ()) -> Code '[Event e] c ()
+become :: Monad c => (e -> Ef '[Event e] c ()) -> Ef '[Event e] c ()
 become f = Send $ Become f (Return ())
 
-continue :: forall e c a. Monad c => Code '[Event e] c a
-continue = Send (Continue :: Event e (Code '[Event e] c a))
+continue :: forall e c a. Monad c => Ef '[Event e] c a
+continue = Send (Continue :: Event e (Ef '[Event e] c a))
 
-end :: forall e c a. Monad c => Code '[Event e] c a
-end = Send (End :: Event e (Code '[Event e] c a))
+end :: forall e c a. Monad c => Ef '[Event e] c a
+end = Send (End :: Event e (Ef '[Event e] c a))
 
 type Signal ms c e = Signal' (Narrative (Messages ms) c) e
 
@@ -78,12 +78,12 @@ runner = liftIO $ atomically $ do
   return (sig,b)
 
 type Behavior ms c e = Behavior' (Narrative (Messages ms) c) e
-data Behavior'   c e = Behavior {-# UNPACK #-} !(TMVar (e -> Code '[Event e] c ()))
+data Behavior'   c e = Behavior {-# UNPACK #-} !(TMVar (e -> Ef '[Event e] c ()))
   deriving Eq
 
 {-# INLINE behavior_ #-}
 behavior_ :: Signal' c e
-         -> (e -> Code '[Event e] c ())
+         -> (e -> Ef '[Event e] c ())
          -> STM (Behavior' c e)
 behavior_ sig@(Signal behaviors) newBehavior = do
   b <- Behavior <$> newTMVar newBehavior
@@ -94,7 +94,7 @@ behavior_ sig@(Signal behaviors) newBehavior = do
 {-# INLINE behavior #-}
 behavior :: MonadIO m
          => Signal' c e
-         -> (e -> Code '[Event e] c ())
+         -> (e -> Ef '[Event e] c ())
          -> m (Behavior' c e)
 behavior sig@(Signal behaviors) newBehavior =
   liftIO $ atomically (behavior_ sig newBehavior)
@@ -250,7 +250,7 @@ signal_ bs e = do
     liftIO $ atomically $ putTMVar b_ $ fromMaybe (const end) mc
     return $ maybe Nothing (const $ Just $ Behavior b_) mc
   where
-    start :: (e -> Code '[Event e] c ()) -> Code '[Event e] c () -> c (Maybe (e -> Code '[Event e] c ()))
+    start :: (e -> Ef '[Event e] c ()) -> Ef '[Event e] c () -> c (Maybe (e -> Ef '[Event e] c ()))
     start f = go
       where
         go (Return _) = return (Just f)
@@ -258,7 +258,7 @@ signal_ bs e = do
         go (Do m) =
           case prj m of
             ~(Just x) ->
-              case x :: Event e (Code '[Event e] c ()) of
+              case x :: Event e (Ef '[Event e] c ()) of
                 Become f' k -> start (unsafeCoerce f') k
                 Continue    -> return (Just f)
                 End         -> return Nothing
@@ -424,7 +424,7 @@ subscribe synd cevq = do
   joinSyndicate synd sub
   return sub
 
-listen :: MonadIO c' => Subscription c e -> (e -> Code '[Event e] c ()) -> c' (Behavior' c e)
+listen :: MonadIO c' => Subscription c e -> (e -> Ef '[Event e] c ()) -> c' (Behavior' c e)
 listen (Subscription sub_) b = liftIO $ atomically $ do
   (cur,evq,sig) <- takeTMVar sub_
   b_ <- behavior_ sig b
@@ -438,14 +438,14 @@ type Evented = State () EvQueue
 -- > disconnect <- connect synd $ \e -> ...
 connect :: (MonadIO c,'[Evented] <: ms)
         => Syndicate e
-        -> (e -> Code '[Event e] (Code ms c) ())
-        -> Code ms c (IO ())
+        -> (e -> Ef '[Event e] (Ef ms c) ())
+        -> Ef ms c (IO ())
 connect synd f = connect_ synd get f
 
 connect_ :: (MonadIO c', Monad c, '[Evented] <: ms)
          => Syndicate e
          -> c' EvQueue
-         -> (e -> Code '[Event e] (Code ms c) ())
+         -> (e -> Ef '[Event e] (Ef ms c) ())
          -> c' (IO ())
 connect_ synd cevq f = do
   sub <- subscribe synd cevq
@@ -457,8 +457,8 @@ connect_ synd cevq f = do
 delay :: forall ms c a.
          (MonadIO c, '[Evented] <: ms)
       => Int
-      -> Code ms c a
-      -> Code ms c (IO (),Promise a)
+      -> Ef ms c a
+      -> Ef ms c (IO (),Promise a)
 delay uSeconds c = do
   p       <- promise
   buf     <- get
@@ -479,11 +479,11 @@ delay uSeconds c = do
 -- Implemented as:
 --
 -- > schedule = delay 0
-schedule :: (MonadIO c, '[Evented] <: ms) => Code ms c a -> Code ms c (IO (),Promise a)
+schedule :: (MonadIO c, '[Evented] <: ms) => Ef ms c a -> Ef ms c (IO (),Promise a)
 schedule = delay 0
 
 {-# INLINE asSelf #-}
-asSelf :: (MonadIO c, '[Evented] <: ms) => Code ms c (As (Code ms c))
+asSelf :: (MonadIO c, '[Evented] <: ms) => Ef ms c (As (Ef ms c))
 asSelf = constructAs get
 
 data Callback status result c = Callback_ (MVar (Callback_ status result c))
@@ -513,9 +513,9 @@ done (Callback_ cb) = liftIO $ isEmptyMVar cb
 -- Alone, `withCallback` is not especially useful. When extended to
 -- cross-context execution, it becomes more useful.
 withCallback :: (MonadIO c, '[Evented] <: ms)
-             => (Process status result -> Code ms c r)
-             -> Callback_ status result (Code ms c)
-             -> Code ms c (Callback status result (Code ms c),r)
+             => (Process status result -> Ef ms c r)
+             -> Callback_ status result (Ef ms c)
+             -> Ef ms c (Callback status result (Ef ms c),r)
 withCallback f cb0 = do
   pr <- process
   self <- asSelf
@@ -536,8 +536,8 @@ withCallback f cb0 = do
 -- onSuccess :: forall ms c status result.
 --              (MonadIO c, '[Evented] <: ms)
 --           => Process status result
---           -> (result -> Code ms c ())
---           -> Code ms c (ProcessListener status result,IO ())
+--           -> (result -> Ef ms c ())
+--           -> Ef ms c (ProcessListener status result,IO ())
 -- onSuccess p f = do
 --   cont <- liftIO $ newIORef True
 --   buf <- get
@@ -553,8 +553,8 @@ withCallback f cb0 = do
 -- onFailure :: forall ms c s r.
 --              (MonadIO c, '[Evented] <: ms)
 --           => Process s r
---           -> (SomeException -> Code ms c ())
---           -> Code ms c (ProcessListener s r,IO ())
+--           -> (SomeException -> Ef ms c ())
+--           -> Ef ms c (ProcessListener s r,IO ())
 -- onFailure p f = do
 --   cont <- liftIO $ newIORef True
 --   buf <- get
@@ -570,8 +570,8 @@ withCallback f cb0 = do
 -- onUpdate :: forall ms c status result.
 --             (MonadIO c, '[Evented] <: ms)
 --          => Process status result
---          -> (status -> Code ms c ())
---          -> Code ms c (ProcessListener status result,IO ())
+--          -> (status -> Ef ms c ())
+--          -> Ef ms c (ProcessListener status result,IO ())
 -- onUpdate p f = do
 --   cont <- liftIO $ newIORef True
 --   buf <- get
@@ -587,8 +587,8 @@ withCallback f cb0 = do
 -- onUpdate' :: forall ms c status result.
 --              (MonadIO c, '[Evented] <: ms)
 --           => Process status result
---           -> (status -> Code ms c ())
---           -> Code ms c (ProcessListener status result,IO ())
+--           -> (status -> Ef ms c ())
+--           -> Ef ms c (ProcessListener status result,IO ())
 -- onUpdate' p f = do
 --   cont <- liftIO $ newIORef True
 --   buf <- get
@@ -624,8 +624,8 @@ initialize a = void $ with a (return ())
 connectWith :: (With w c' IO, MonadIO c', MonadIO c, '[Evented] <: ms)
             => w
             -> c' (Syndicate e)
-            -> (e -> Code '[Event e] (Code ms c) ())
-            -> Code ms c (Promise (IO ()))
+            -> (e -> Ef '[Event e] (Ef ms c) ())
+            -> Ef ms c (Promise (IO ()))
 connectWith w syndicateGetter f = do
   buf <- get
   with w $ do
@@ -638,7 +638,7 @@ syndicateWith :: (With w c' IO, MonadIO c', MonadIO c, '[Evented] <: ms)
               => w
               -> c' (Syndicate e)
               -> e
-              -> Code ms c (Promise ())
+              -> Ef ms c (Promise ())
 syndicateWith w syndicateGetter e = do
   with w $ do
     nw <- syndicateGetter
@@ -663,33 +663,33 @@ syndicateWith w syndicateGetter e = do
 async :: (With a m IO, MonadIO c, '[Evented] <: ms)
       => a
       -> (Process status result -> m ())
-      -> Callback_ status result (Code ms c)
-      -> Code ms c (Callback status result (Code ms c))
+      -> Callback_ status result (Ef ms c)
+      -> Ef ms c (Callback status result (Ef ms c))
 async a f cb = fst <$> withCallback (with a . f) cb
 
 async' :: (With a m IO, MonadIO c, '[Evented] <: ms)
        => a
        -> (Process status result -> m ())
-       -> Callback_ status result (Code ms c)
-       -> Code ms c (Callback status result (Code ms c),Promise ())
+       -> Callback_ status result (Ef ms c)
+       -> Ef ms c (Callback status result (Ef ms c),Promise ())
 async' a f cb = withCallback (with a . f) cb
 
-onShutdown :: ( With a (Code ms' IO) IO
+onShutdown :: ( With a (Ef ms' IO) IO
               , MonadIO c
               , '[State () Shutdown] <: ms'
               , '[Evented] <: ms
               )
            => a
-           -> Code ms c ()
-           -> Code ms c (Promise (IO ()))
+           -> Ef ms c ()
+           -> Ef ms c (Promise (IO ()))
 onShutdown c ons =
   connectWith c (get >>= \(Shutdown sdn) -> return sdn) (const (lift ons))
 
 -- onSelfShutdown :: ( MonadIO c
 --                 , '[Evented,State () Shutdown] <: ms
 --                 )
---              => Code ms c ()
---              -> Code ms c (IO ())
+--              => Ef ms c ()
+--              -> Ef ms c (IO ())
 -- onSelfShutdown ons = do
 --   buf <- get
 --   p <- periodical
@@ -698,7 +698,7 @@ onShutdown c ons =
 --   joinSyndicate sdn p buf
 --   return (stop s >> leaveSyndicate sdn p)
 
-shutdownSelf :: (MonadIO c,'[State () Shutdown] <: ms) => Code ms c ()
+shutdownSelf :: (MonadIO c,'[State () Shutdown] <: ms) => Ef ms c ()
 shutdownSelf = do
   Shutdown sdn <- get
   publish sdn ()

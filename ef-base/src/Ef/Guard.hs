@@ -19,8 +19,8 @@ instance Delta Guard Guard where
   delta eval (Guard i k) (FreshScope ik) = eval k (ik i)
 
 data Guards ms c = Guards
-    { choose :: forall f a. Foldable f => f a -> Code ms c a
-    , cut :: forall b. Code ms c b
+    { choose :: forall f a. Foldable f => f a -> Ef ms c a
+    , cut :: forall b. Ef ms c b
     }
 
 nondet :: (Monad c, '[Guard] <. ts) => Guard (Action ts c)
@@ -30,7 +30,7 @@ nondet = Guard 0 $ \o ->
   in pure $ Module (Guard i' k) o
 {-# INLINE nondet #-}
 
-guards :: (Monad c, '[Guard] <: ms) => (Guards ms c -> Code ms c r) -> Code ms c (Maybe r)
+guards :: (Monad c, '[Guard] <: ms) => (Guards ms c -> Ef ms c r) -> Ef ms c (Maybe r)
 guards l = do
   scope <- Send (FreshScope Return)
   transform id (rewrite scope) $
@@ -42,7 +42,7 @@ guards l = do
       }
 {-# INLINE guards #-}
 
-rewrite :: (Monad c, '[Guard] <: ms) => Int -> Messages ms (Code ms c (Maybe r)) -> Code ms c (Maybe r)
+rewrite :: (Monad c, '[Guard] <: ms) => Int -> Messages ms (Ef ms c (Maybe r)) -> Ef ms c (Maybe r)
 rewrite scope message =
   let ignore = Do (fmap (transform id (rewrite scope)) message)
       check i scoped = if i == scope then scoped else ignore
@@ -53,17 +53,17 @@ rewrite scope message =
             _ -> ignore
         Nothing -> ignore
 
-choosing :: (Monad c, '[Guard] <: ms) => Int -> [a] -> (a -> Code ms c r) -> Code ms c r -> Code ms c r
+choosing :: (Monad c, '[Guard] <: ms) => Int -> [a] -> (a -> Ef ms c r) -> Ef ms c r -> Ef ms c r
 choosing _ [] _ alt = alt
 choosing scope (a:as) bp alt = transform id (nestedChoosing scope as alt bp) (bp a)
 
 nestedChoosing :: (Monad c, '[Guard] <: ms)
                => Int
                -> [a]
-               -> Code ms c result
-               -> (a -> Code ms c result)
-               -> Messages ms (Code ms c result)
-               -> Code ms c result
+               -> Ef ms c result
+               -> (a -> Ef ms c result)
+               -> Messages ms (Ef ms c result)
+               -> Ef ms c result
 nestedChoosing scope choices alt cContinue message =
     let ignore = Do (fmap (transform id (nestedChoosing scope choices alt cContinue)) message)
         check i scoped =

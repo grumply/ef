@@ -60,9 +60,9 @@ noted :: (Monad c, '[Writer () w] <. ts) => Object ts c -> w
 noted = notedp unit
 
 tellp :: forall p w ms c. (Monad c, '[Writer p w] <: ms)
-      => Proxy p -> w -> Code ms c ()
+      => Proxy p -> w -> Ef ms c ()
 tellp p = Send . TellP p
 
 tell :: (Monad c, '[Writer () w] <: ms)
-     => w -> Code ms c ()
+     => w -> Ef ms c ()
 tell = Send . Tell

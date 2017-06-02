@@ -11,14 +11,14 @@ data NoteTaking ns where
   Finish :: NoteTaking ns
 
 data Book ns ms c = Book
-  { write :: ns -> Code ms c ()
-  , watch :: forall r. Code ms c r -> Code ms c (r, ns)
-  , condense :: forall r. Code ms c (r, ns -> ns) -> Code ms c r
-  , watches :: forall r b. (ns -> b) -> Code ms c r -> Code ms c (r, b)
-  , edit :: forall r. (ns -> ns) -> Code ms c r -> Code ms c r
+  { write :: ns -> Ef ms c ()
+  , watch :: forall r. Ef ms c r -> Ef ms c (r, ns)
+  , condense :: forall r. Ef ms c (r, ns -> ns) -> Ef ms c r
+  , watches :: forall r b. (ns -> b) -> Ef ms c r -> Ef ms c (r, b)
+  , edit :: forall r. (ns -> ns) -> Ef ms c r -> Ef ms c r
   }
 
-notated :: ('[Sync] <: ms, Monad c) => (Book ns ms c -> Code ms c r) -> Synchronized (NoteTaking ns) ns () X ms c (r, ns)
+notated :: ('[Sync] <: ms, Monad c) => (Book ns ms c -> Ef ms c r) -> Synchronized (NoteTaking ns) ns () X ms c (r, ns)
 notated computation =
     let notationInterface up =
           Book
@@ -58,7 +58,7 @@ notated computation =
            ns <- up Finish
            return (r, ns)
 
-notate :: ('[Sync] <: ms, Monad c, Monoid ns) => (Book ns ms c -> Code ms c r) -> Code ms c (r, ns)
+notate :: ('[Sync] <: ms, Monad c, Monoid ns) => (Book ns ms c -> Ef ms c r) -> Ef ms c (r, ns)
 notate computation = runSync (serve +>> notated computation)
   where
     serve firstRequest =

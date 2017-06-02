@@ -12,9 +12,9 @@ newtype ThreadRef ts c r =
 forkWith
     :: ((Modules ts) `Delta` (Messages ms), Functor (Messages ms), Functor (Messages ms'), MonadIO c', Monad c', Monad c)
     => Object ts c
-    -> Code ms c r
+    -> Ef ms c r
     -> (forall x. c x -> IO x)
-    -> Code ms' c' (ThreadRef ts c r)
+    -> Ef ms' c' (ThreadRef ts c r)
 forkWith comp plan embedInIO = do
     p <- liftIO promise
     let thread = embedInIO $ runWith comp plan
@@ -26,9 +26,9 @@ forkWith comp plan embedInIO = do
 forkOSWith
     :: ((Modules ts) `Delta` (Messages ms), Functor (Messages ms), Functor (Messages ms'), MonadIO c', Monad c', Monad c)
     => Object ts c
-    -> Code ms c r
+    -> Ef ms c r
     -> (forall x. c x -> IO x)
-    -> Code ms' c' (ThreadRef ts c r)
+    -> Ef ms' c' (ThreadRef ts c r)
 forkOSWith comp plan embedInIO = do
     p <- liftIO promise
     let thread = embedInIO $ runWith comp plan
@@ -41,9 +41,9 @@ forkOnWith
     :: ((Modules ts) `Delta` (Messages ms), Functor (Messages ms), Functor (Messages ms'), MonadIO c', Monad c', Monad c)
     => Int
     -> Object ts c
-    -> Code ms c r
+    -> Ef ms c r
     -> (forall x. c x -> IO x)
-    -> Code ms' c' (ThreadRef ts c r)
+    -> Ef ms' c' (ThreadRef ts c r)
 forkOnWith n comp plan embedInIO = do
     p <- liftIO promise
     let thread = embedInIO $ runWith comp plan

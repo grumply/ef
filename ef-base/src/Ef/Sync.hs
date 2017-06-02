@@ -91,17 +91,17 @@ sync = Sync (0,\o -> let Module Sync {..} _ = o
                      in pure $ Module (Sync { scopeCreator = first succ scopeCreator }) o
             )
 
-freshScope :: (Monad super, '[Sync] <: self) => Code self super Int
+freshScope :: (Monad super, '[Sync] <: self) => Ef self super Int
 freshScope = Send (FreshScope Return)
 
-getScope :: ('[Sync] <: self, Monad super) => Code self super a -> super Int
+getScope :: ('[Sync] <: self, Monad super) => Ef self super a -> super Int
 getScope (Send x) =
   case x of
       Request i _ _ -> return i
       Respond i _ _ -> return i
 
 runSync :: ('[Sync] <: self, Monad super)
-        => Effect self super r -> Code self super r
+        => Effect self super r -> Ef self super r
 runSync e = do
     scope <- freshScope
     rewrite scope $
@@ -111,11 +111,11 @@ runSync e = do
 
 rewrite :: forall self super result.
            ('[Sync] <: self, Monad super)
-        => Int -> Code self super result -> Code self super result
+        => Int -> Ef self super result -> Ef self super result
 rewrite rewriteScope = transform id go
   where
 
-    go :: Messages self (Code self super result) -> Code self super result
+    go :: Messages self (Ef self super result) -> Ef self super result
     go message = do
         let check currentScope scoped = if currentScope == rewriteScope then scoped else ignore
             ignore = Do message
@@ -224,7 +224,7 @@ type Producer b self super r = Synchronized X () () b self super r
 producer
     :: forall self super b r.
        ('[Sync] <: self, Monad super)
-    => ((b -> Code self super ()) -> Code self super r)
+    => ((b -> Ef self super ()) -> Ef self super r)
     -> Producer' b self super r
 
 producer f =
@@ -234,7 +234,7 @@ producer f =
             scopedDown =
                 dn (unsafeCoerce ()) (unsafeCoerce ())
 
-            respond :: Int -> b -> Code self super ()
+            respond :: Int -> b -> Ef self super ()
             respond scope b =
                 Send (Respond scope b Return)
 
@@ -246,7 +246,7 @@ type Consumer a self super r = Synchronized () a () X self super r
 consumer
     :: forall self super a r.
        ('[Sync] <: self, Monad super)
-    => (Code self super a -> Code self super r)
+    => (Ef self super a -> Ef self super r)
     -> Consumer' a self super r
 
 consumer f =
@@ -256,7 +256,7 @@ consumer f =
             scopedUp =
                 up (unsafeCoerce ()) (unsafeCoerce ())
 
-            request :: Int -> Code self super a
+            request :: Int -> Ef self super a
             request scope =
                 Send (Request scope () Return)
 
@@ -268,7 +268,7 @@ type Channel a b self super r = Synchronized () a () b self super r
 channel
     :: forall self super a b r.
        ('[Sync] <: self, Monad super)
-    => (Code self super a -> (b -> Code self super ()) -> Code self super r)
+    => (Ef self super a -> (b -> Ef self super ()) -> Ef self super r)
     -> Channel a b self super r
 
 channel f =
@@ -296,15 +296,15 @@ newtype Synchronized a' a b' b self super r =
     Synchronized
         {
           runSynchronized
-              :: (forall x. a' -> (a -> Code self super x) -> Code self super x)
-              -> (forall x. b -> (b' -> Code self super x) -> Code self super x)
-              -> Code self super r
+              :: (forall x. a' -> (a -> Ef self super x) -> Ef self super x)
+              -> (forall x. b -> (b' -> Ef self super x) -> Ef self super x)
+              -> Ef self super r
         }
 
 synchronized
     :: forall self a a' b b' super r.
        ('[Sync] <: self, Monad super)
-    => ((a' -> Code self super a) -> (b -> Code self super b') -> Code self super r)
+    => ((a' -> Ef self super a) -> (b -> Ef self super b') -> Ef self super r)
     -> Synchronized a' a b' b self super r
 
 synchronized f =
@@ -348,15 +348,15 @@ substituteResponds
        ('[Sync] <: self, Monad super)
     => (b -> Synchronized x' x c' c self super b')
     -> Int
-    -> (forall r. x' -> (x -> Code self super r) -> Code self super r)
-    -> (forall r. c -> (c' -> Code self super r) -> Code self super r)
-    -> Code self super a'
-    -> Code self super a'
+    -> (forall r. x' -> (x -> Ef self super r) -> Ef self super r)
+    -> (forall r. c -> (c' -> Ef self super r) -> Ef self super r)
+    -> Ef self super a'
+    -> Ef self super a'
 substituteResponds fb rewriteScope up dn =
     transform id go
   where
 
-    go :: Messages self (Code self super a') -> Code self super a'
+    go :: Messages self (Ef self super a') -> Ef self super a'
     go message =
         case prj message of
             Just (Respond currentScope b k) ->
@@ -426,15 +426,15 @@ substituteRequests
        ('[Sync] <: self, Monad super)
     => (b -> Synchronized x' x c' c self super b')
     -> Int
-    -> (forall r. x' -> (x -> Code self super r) -> Code self super r)
-    -> (forall r. c -> (c' -> Code self super r) -> Code self super r)
-    -> Code self super a'
-    -> Code self super a'
+    -> (forall r. x' -> (x -> Ef self super r) -> Ef self super r)
+    -> (forall r. c -> (c' -> Ef self super r) -> Ef self super r)
+    -> Ef self super a'
+    -> Ef self super a'
 substituteRequests fb' rewriteScope up dn =
     transform id go
   where
 
-    go :: Messages self (Code self super a') -> Code self super a'
+    go :: Messages self (Ef self super a') -> Ef self super a'
     go message =
         case prj message of
             Just (Request currentScope b' k) -> do
@@ -498,11 +498,11 @@ pushRewrite
     :: forall self super r a' a b' b c' c.
        ('[Sync] <: self, Monad super)
     => Int
-    -> (forall x. a' -> (a -> Code self super x) -> Code self super x)
-    -> (forall x. c -> (c' -> Code self super x) -> Code self super x)
+    -> (forall x. a' -> (a -> Ef self super x) -> Ef self super x)
+    -> (forall x. c -> (c' -> Ef self super x) -> Ef self super x)
     -> (b -> Synchronized b' b c' c self super r)
     -> Synchronized a' a b' b self super r
-    -> Code self super r
+    -> Ef self super r
 pushRewrite rewriteScope up dn fb0 p0 =
     let upstream = runSynchronized p0 (unsafeCoerce up) (unsafeCoerce dn)
         downstream b = runSynchronized (fb0 b) (unsafeCoerce up) (unsafeCoerce dn)
@@ -511,7 +511,7 @@ pushRewrite rewriteScope up dn fb0 p0 =
     goLeft fb =
       transform id goLeft'
       where
-        goLeft' :: Messages self (Code self super r) -> Code self super r
+        goLeft' :: Messages self (Ef self super r) -> Ef self super r
         goLeft' message =
           let ignore = Do (fmap (transform id goLeft') message) 
           in case prj message of
@@ -527,7 +527,7 @@ pushRewrite rewriteScope up dn fb0 p0 =
     goRight b'p =
       transform id goRight'
       where
-        goRight' :: Messages self (Code self super r) -> Code self super r
+        goRight' :: Messages self (Ef self super r) -> Ef self super r
         goRight' message =
           let ignore = Do (fmap (transform id goRight') message)
           in case prj message of
@@ -577,11 +577,11 @@ pullRewrite
     :: forall self super a' a b' b c' c r.
        ('[Sync] <: self, Monad super)
     => Int
-    -> (forall x. a' -> (a -> Code self super x) -> Code self super x)
-    -> (forall x. c -> (c' -> Code self super x) -> Code self super x)
+    -> (forall x. a' -> (a -> Ef self super x) -> Ef self super x)
+    -> (forall x. c -> (c' -> Ef self super x) -> Ef self super x)
     -> (b' -> Synchronized a' a b' b self super r)
     -> Synchronized b' b c' c self super r
-    -> Code self super r
+    -> Ef self super r
 pullRewrite rewriteScope up dn fb' p =
     let upstream b' = runSynchronized (fb' b') (unsafeCoerce up) (unsafeCoerce dn)
         downstream = runSynchronized p (unsafeCoerce up) (unsafeCoerce dn)
@@ -590,7 +590,7 @@ pullRewrite rewriteScope up dn fb' p =
     goRight fb'' =
       transform id goRight'
       where
-        goRight' :: Messages self (Code self super r) -> Code self super r
+        goRight' :: Messages self (Ef self super r) -> Ef self super r
         goRight' message =
           let ignore = Do (fmap (transform id goRight') message)
           in case prj message of
@@ -606,7 +606,7 @@ pullRewrite rewriteScope up dn fb' p =
     goLeft bp =
       transform id goLeft'
       where
-        goLeft' :: Messages self (Code self super r) -> Code self super r
+        goLeft' :: Messages self (Ef self super r) -> Ef self super r
         goLeft' message =
             let ignore = Do (fmap (transform id goLeft') message)
             in case prj message of

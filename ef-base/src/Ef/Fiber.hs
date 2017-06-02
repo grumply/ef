@@ -13,18 +13,18 @@ data Operation s r =
     Operation (IORef (ThreadS s r))
 
 data Ops ms c s r = Ops
-    { inform :: s -> Code ms c ()
-    , supplement :: (Maybe s -> Maybe s) -> Code ms c ()
+    { inform :: s -> Ef ms c ()
+    , supplement :: (Maybe s -> Maybe s) -> Ef ms c ()
     }
 
-queryOp :: (MonadIO c, Functor (Messages ms)) => Operation s r -> Code ms c (ThreadS s r)
+queryOp :: (MonadIO c, Functor (Messages ms)) => Operation s r -> Ef ms c (ThreadS s r)
 queryOp (Operation op) = liftIO (readIORef op)
 
 data Fiber k
     = Fiber Int k
-    | forall r c s ms. Fork Int (Operation s r) (Code ms c r) (Operation s r -> k)
+    | forall r c s ms. Fork Int (Operation s r) (Ef ms c r) (Operation s r -> k)
     | Yield Int k
-    | forall r c ms. Focus Int (Code ms c r) (r -> k)
+    | forall r c ms. Focus Int (Ef ms c r) (r -> k)
     | FreshScope (Int -> k)
 
 instance Functor Fiber where
@@ -44,11 +44,11 @@ fibers = Fiber 0 $ \o ->
   in pure $ Module (Fiber i' k) o
 
 data Threader ms c = Threader
-    { fork :: forall s r. (Ops ms c s r -> Code ms c r) -> Code ms c (Operation s r)
-    , wait :: forall s r. Operation s r -> Code ms c (ThreadS s r)
-    , focus :: forall focusR. Code ms c focusR -> Code ms c focusR
-    , yield :: Code ms c ()
-    , chunk :: forall chunkR. Int -> Code ms c chunkR -> Code ms c chunkR
+    { fork :: forall s r. (Ops ms c s r -> Ef ms c r) -> Ef ms c (Operation s r)
+    , wait :: forall s r. Operation s r -> Ef ms c (ThreadS s r)
+    , focus :: forall focusR. Ef ms c focusR -> Ef ms c focusR
+    , yield :: Ef ms c ()
+    , chunk :: forall chunkR. Int -> Ef ms c chunkR -> Ef ms c chunkR
     }
 
 -- Example use of `fibers`:
@@ -120,7 +120,7 @@ data Threader ms c = Threader
 -- the n-th context is, interestingly, not atomic in the context of the n-m call
 -- to fiber for all m > 0.
 --
-fiber :: forall ms c r. ('[Fiber] <: ms, MonadIO c) => (Threader ms c -> Code ms c r) -> Code ms c r
+fiber :: forall ms c r. ('[Fiber] <: ms, MonadIO c) => (Threader ms c -> Ef ms c r) -> Ef ms c r
 fiber f = do
     scope <- Send (FreshScope Return)
     let newOp = Operation <$> newIORef (ThreadRunning Nothing)
@@ -179,13 +179,13 @@ fiber f = do
            Int
         -> Operation s r
         -> ThreadRunning ms c
-        -> Code ms c r
+        -> Ef ms c r
     rewrite scope (Operation rootOp) = withFibers (Threads [])
       where
         withFibers
             :: ThreadRunning ms c
             -> ThreadRunning ms c
-            -> Code ms c r
+            -> Ef ms c r
         withFibers (Threads []) (Threads []) = do
             ThreadDone r <- liftIO (readIORef rootOp :: IO (ThreadS s r))
             return r
@@ -242,7 +242,7 @@ fiber f = do
                                    Yield currentScope k ->
                                        check currentScope $
                                        let continue = Send (Focus currentScope k Return) 
-                                           refocus :: forall threadR. Code ms c threadR
+                                           refocus :: forall threadR. Ef ms c threadR
                                            refocus = do
                                                focusR <- continue
                                                unsafeCoerce focusK focusR
@@ -257,7 +257,7 @@ fiber f = do
 
 data ThreadRunning ms c where
         Threads ::
-          [(Code ms c threadR,
+          [(Ef ms c threadR,
             Operation threadThreadS threadR)]
             -> ThreadRunning ms c
 

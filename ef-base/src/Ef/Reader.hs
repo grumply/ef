@@ -36,23 +36,23 @@ reader :: (Monad c, '[Reader () r] <. ts) => r -> Reader () r (Action ts c)
 reader = readerp unit
 {-# INLINE reader #-}
 
-askp :: (Monad c, '[Reader p r] <: ms) => Proxy p -> Code ms c r
+askp :: (Monad c, '[Reader p r] <: ms) => Proxy p -> Ef ms c r
 askp p = Send (AskP p Return)
 {-# INLINE askp #-}
 
-ask :: (Monad c, '[Reader () r] <: ms) => Code ms c r
+ask :: (Monad c, '[Reader () r] <: ms) => Ef ms c r
 ask = Send (Ask Return)
 {-# INLINE ask #-}
 
-asksp :: (Monad c, '[Reader p r] <: ms) => Proxy p -> (r -> a) -> Code ms c a
+asksp :: (Monad c, '[Reader p r] <: ms) => Proxy p -> (r -> a) -> Ef ms c a
 asksp p f = Send (AskP p (Return . f))
 {-# INLINE asksp #-}
 
-asks :: (Monad c, '[Reader () r] <: ms) => (r -> a) -> Code ms c a
+asks :: (Monad c, '[Reader () r] <: ms) => (r -> a) -> Ef ms c a
 asks f = Send (Ask (Return . f))
 {-# INLINE asks #-}
 
-localp :: forall p ms c r. (Monad c, '[Reader p r] <: ms) => Proxy p -> (r -> r) -> Code ms c r -> Code ms c r
+localp :: forall p ms c r. (Monad c, '[Reader p r] <: ms) => Proxy p -> (r -> r) -> Ef ms c r -> Ef ms c r
 localp _ f n = buildn $ \r l d -> foldn r l (msg d) n
   where
     msg d m =
@@ -61,6 +61,6 @@ localp _ f n = buildn $ \r l d -> foldn r l (msg d) n
         Just (AskP (p :: Proxy p) r) -> d (inj (AskP p (r . f)))
 {-# INLINE localp #-}
 
-local :: (Monad c, '[Reader () r] <: ms) => (r -> r) -> Code ms c r -> Code ms c r
+local :: (Monad c, '[Reader () r] <: ms) => (r -> r) -> Ef ms c r -> Ef ms c r
 local = localp unit 
 {-# INLINE local #-}

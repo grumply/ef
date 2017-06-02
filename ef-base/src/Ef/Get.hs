@@ -56,7 +56,7 @@ get = Get (undefined,reflector) resetter reifier
 {-# INLINE get #-}
 
 introspect :: (Monad c, '[Get] <: ms, '[Get] <. ts, Delta (Modules ts) (Messages ms))
-           => Code ms c (Object ts c)
+           => Ef ms c (Object ts c)
 introspect = do
     -- does the reset help the GC or is it unnecessary?
     Send Reify
