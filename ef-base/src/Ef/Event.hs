@@ -518,20 +518,27 @@ withCallback :: (MonadIO c, '[Evented] <: ms)
              -> Ef ms c (Callback status result (Ef ms c),r)
 withCallback f cb0 = do
   pr <- process
+  cb <- attach pr cb0
+  r <- f pr
+  return (cb,r)
+
+attach :: (MonadIO c, '[Evented] <: ms)
+       => Process status result
+       -> Callback_ status result (Ef ms c)
+       -> Ef ms c (Callback status result (Ef ms c))
+attach pr cb0 = do
   self <- asSelf
   cb_ <- liftIO $ newMVar cb0
   onComplete pr $ \res -> void $ do
-    cb@Callback {..} <- takeMVar cb_
+    Callback {..} <- takeMVar cb_
     runAs self (success res)
   onNotify pr $ \upd -> void $ do
-    cb@Callback {..} <- takeMVar cb_
+    Callback {..} <- takeMVar cb_
     runAs self (updates upd)
-    putMVar cb_ cb
   onAbort pr $ \exc -> void $ do
-    cb@Callback {..} <- takeMVar cb_
+    Callback {..} <- takeMVar cb_
     runAs self (failure exc)
-  r <- f pr
-  return (Callback_ cb_,r)
+  return (Callback_ cb_)
 
 -- onSuccess :: forall ms c status result.
 --              (MonadIO c, '[Evented] <: ms)
