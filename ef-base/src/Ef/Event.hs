@@ -234,6 +234,10 @@ stop (Behavior b_) = liftIO $ atomically $ do
   _ <- takeTMVar b_
   putTMVar b_ (const end)
 
+{-# INLINE forkStop #-}
+forkStop :: (Monad c, MonadIO c') => Behavior' c a -> c' ()
+forkStop bhvr = void . liftIO . forkIO $ stop bhvr
+
 {-# INLINE signal #-}
 signal :: forall c e. (MonadIO c) => Signal' c e -> e -> c ()
 signal (Signal bs_) e = do
