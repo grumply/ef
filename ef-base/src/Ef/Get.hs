@@ -39,7 +39,7 @@ instance Delta Get Get where
         self = unsafeCoerce o
     in eval viewer (view self)
 
-get :: forall ts c. (Monad c, '[Get] <. ts) => Get (Action ts c)
+get :: forall ts c. (Monad c, ts <. '[Get]) => Get (Action ts c)
 get = Get (undefined,reflector) resetter reifier
   where
     reflector o =
@@ -55,7 +55,7 @@ get = Get (undefined,reflector) resetter reifier
     reifier = pure
 {-# INLINE get #-}
 
-introspect :: (Monad c, '[Get] <: ms, '[Get] <. ts, Delta (Modules ts) (Messages ms))
+introspect :: (Monad c, ms <: '[Get], ts <. '[Get], Delta (Modules ts) (Messages ms))
            => Ef ms c (Object ts c)
 introspect = do
     -- does the reset help the GC or is it unnecessary?

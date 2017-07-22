@@ -7,7 +7,7 @@ import qualified Data.Foldable as F
 import Unsafe.Coerce
 
 newtype Generator ms c a = Select
-    { enumerate :: ('[Sync] <: ms, Monad c) => Producer a ms c ()
+    { enumerate :: (ms <: '[Sync], Monad c) => Producer a ms c ()
     }
 
 instance Functor (Generator ms c) where
@@ -51,12 +51,12 @@ instance (Functor (Messages ms), Monad c) => Monoid (Generator ms c a) where
     mappend = (<|>)
 
 generate
-    :: ('[Sync] <: ms, Monad c)
+    :: (ms <: '[Sync], Monad c)
     => Generator ms c a -> Ef ms c ()
 generate l = runSync (enumerate (l >> mzero))
 
 each
-    :: ('[Sync] <: ms, Monad c, F.Foldable f)
+    :: (ms <: '[Sync], Monad c, F.Foldable f)
     => f a -> Producer' a ms c ()
 each xs =
     let yields yield = F.foldr (const . yield) (return ()) xs
@@ -70,7 +70,7 @@ discard _ =
     in Synchronized ignore
 
 every
-    :: ('[Sync] <: ms, Monad c)
+    :: (ms <: '[Sync], Monad c)
     => Generator ms c a -> Producer' a ms c ()
 every it = discard >\\ enumerate it
 

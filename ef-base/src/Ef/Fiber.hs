@@ -37,7 +37,7 @@ instance Functor Fiber where
 instance Delta Fiber Fiber where
   delta eval (Fiber i k) (FreshScope ik) = eval k (ik i)
 
-fibers :: (Monad c, '[Fiber] <. ts) => Fiber (Action ts c)
+fibers :: (Monad c, ts <. '[Fiber]) => Fiber (Action ts c)
 fibers = Fiber 0 $ \o ->
   let Module (Fiber i k) _ = o
       !i' = succ i
@@ -120,7 +120,7 @@ data Threader ms c = Threader
 -- the n-th context is, interestingly, not atomic in the context of the n-m call
 -- to fiber for all m > 0.
 --
-fiber :: forall ms c r. ('[Fiber] <: ms, MonadIO c) => (Threader ms c -> Ef ms c r) -> Ef ms c r
+fiber :: forall ms c r. (ms <: '[Fiber], MonadIO c) => (Threader ms c -> Ef ms c r) -> Ef ms c r
 fiber f = do
     scope <- Send (FreshScope Return)
     let newOp = Operation <$> newIORef (ThreadRunning Nothing)
@@ -241,7 +241,7 @@ fiber f = do
                                        in withNew newNew (k childOp)
                                    Yield currentScope k ->
                                        check currentScope $
-                                       let continue = Send (Focus currentScope k Return) 
+                                       let continue = Send (Focus currentScope k Return)
                                            refocus :: forall threadR. Ef ms c threadR
                                            refocus = do
                                                focusR <- continue

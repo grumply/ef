@@ -23,14 +23,14 @@ data Guards ms c = Guards
     , cut :: forall b. Ef ms c b
     }
 
-nondet :: (Monad c, '[Guard] <. ts) => Guard (Action ts c)
+nondet :: (Monad c, ts <. '[Guard]) => Guard (Action ts c)
 nondet = Guard 0 $ \o ->
   let Module (Guard i k) _ = o
       !i' = succ i
   in pure $ Module (Guard i' k) o
 {-# INLINE nondet #-}
 
-guards :: (Monad c, '[Guard] <: ms) => (Guards ms c -> Ef ms c r) -> Ef ms c (Maybe r)
+guards :: (Monad c, ms <: '[Guard]) => (Guards ms c -> Ef ms c r) -> Ef ms c (Maybe r)
 guards l = do
   scope <- Send (FreshScope Return)
   transform id (rewrite scope) $
@@ -42,7 +42,7 @@ guards l = do
       }
 {-# INLINE guards #-}
 
-rewrite :: (Monad c, '[Guard] <: ms) => Int -> Messages ms (Ef ms c (Maybe r)) -> Ef ms c (Maybe r)
+rewrite :: (Monad c, ms <: '[Guard]) => Int -> Messages ms (Ef ms c (Maybe r)) -> Ef ms c (Maybe r)
 rewrite scope message =
   let ignore = Do (fmap (transform id (rewrite scope)) message)
       check i scoped = if i == scope then scoped else ignore
@@ -53,11 +53,11 @@ rewrite scope message =
             _ -> ignore
         Nothing -> ignore
 
-choosing :: (Monad c, '[Guard] <: ms) => Int -> [a] -> (a -> Ef ms c r) -> Ef ms c r -> Ef ms c r
+choosing :: (Monad c, ms <: '[Guard]) => Int -> [a] -> (a -> Ef ms c r) -> Ef ms c r -> Ef ms c r
 choosing _ [] _ alt = alt
 choosing scope (a:as) bp alt = transform id (nestedChoosing scope as alt bp) (bp a)
 
-nestedChoosing :: (Monad c, '[Guard] <: ms)
+nestedChoosing :: (Monad c, ms <: '[Guard])
                => Int
                -> [a]
                -> Ef ms c result

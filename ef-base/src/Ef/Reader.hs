@@ -28,31 +28,31 @@ pattern Ask f <- Ask_ (Proxy :: Proxy ()) f where
 instance Delta (Reader p r) (Reader p r) where
   delta eval Reader {..} Ask_ {..} = delta eval asker askee
 
-readerp :: (Monad c, '[Reader p r] <. ts) => Proxy p -> r -> Reader p r (Action ts c)
+readerp :: (Monad c, ts <. '[Reader p r]) => Proxy p -> r -> Reader p r (Action ts c)
 readerp p r = Reader p (r,pure)
 {-# INLINE readerp #-}
 
-reader :: (Monad c, '[Reader () r] <. ts) => r -> Reader () r (Action ts c)
+reader :: (Monad c, ts <. '[Reader () r]) => r -> Reader () r (Action ts c)
 reader = readerp unit
 {-# INLINE reader #-}
 
-askp :: (Monad c, '[Reader p r] <: ms) => Proxy p -> Ef ms c r
+askp :: (Monad c, ms <: '[Reader p r]) => Proxy p -> Ef ms c r
 askp p = Send (AskP p Return)
 {-# INLINE askp #-}
 
-ask :: (Monad c, '[Reader () r] <: ms) => Ef ms c r
+ask :: (Monad c, ms <: '[Reader () r]) => Ef ms c r
 ask = Send (Ask Return)
 {-# INLINE ask #-}
 
-asksp :: (Monad c, '[Reader p r] <: ms) => Proxy p -> (r -> a) -> Ef ms c a
+asksp :: (Monad c, ms <: '[Reader p r]) => Proxy p -> (r -> a) -> Ef ms c a
 asksp p f = Send (AskP p (Return . f))
 {-# INLINE asksp #-}
 
-asks :: (Monad c, '[Reader () r] <: ms) => (r -> a) -> Ef ms c a
+asks :: (Monad c, ms <: '[Reader () r]) => (r -> a) -> Ef ms c a
 asks f = Send (Ask (Return . f))
 {-# INLINE asks #-}
 
-localp :: forall p ms c r. (Monad c, '[Reader p r] <: ms) => Proxy p -> (r -> r) -> Ef ms c r -> Ef ms c r
+localp :: forall p ms c r. (Monad c, ms <: '[Reader p r]) => Proxy p -> (r -> r) -> Ef ms c r -> Ef ms c r
 localp _ f n = buildn $ \r l d -> foldn r l (msg d) n
   where
     msg d m =
@@ -61,6 +61,6 @@ localp _ f n = buildn $ \r l d -> foldn r l (msg d) n
         Just (AskP (p :: Proxy p) r) -> d (inj (AskP p (r . f)))
 {-# INLINE localp #-}
 
-local :: (Monad c, '[Reader () r] <: ms) => (r -> r) -> Ef ms c r -> Ef ms c r
-local = localp unit 
+local :: (Monad c, ms <: '[Reader () r]) => (r -> r) -> Ef ms c r -> Ef ms c r
+local = localp unit
 {-# INLINE local #-}

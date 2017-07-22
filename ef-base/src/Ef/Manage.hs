@@ -35,7 +35,7 @@ instance Delta Manage Manage where
     delta eval (Manage _ _ k) (Deallocate _ k') = eval k k'
     delta eval (Manage i k _) (FreshSelf ik) = eval k (ik i)
 
-manages :: (Monad c, '[Manage] <. ts) => Manage (Action ts c)
+manages :: (Monad c, ts <. '[Manage]) => Manage (Action ts c)
 manages = flip (Manage 0) pure $ \o ->
   let Module (Manage i non me) _ = o
       !i' = succ i
@@ -78,7 +78,7 @@ data Manager ms c = Manager
 -- Tokens may be deallocated which forces registered cleanup actions to be
 -- performed in all managers for which that token is registered in LIFO order
 -- of the nesting scopes.
-manage :: ('[Manage] <: ms, Monad c) => (Manager ms c -> Ef ms c r) -> Ef ms c r
+manage :: (ms <: '[Manage], Monad c) => (Manager ms c -> Ef ms c r) -> Ef ms c r
 manage f = do
   scope <- Send (FreshSelf Return)
   rewrite scope [] $
@@ -92,7 +92,7 @@ manage f = do
 
 {-# INLINE manage #-}
 
-rewrite :: forall ms c r. ('[Manage] <: ms, Monad c) => Int -> [(Int, Ef ms c ())] -> Ef ms c r -> Ef ms c r
+rewrite :: forall ms c r. (ms <: '[Manage], Monad c) => Int -> [(Int, Ef ms c ())] -> Ef ms c r -> Ef ms c r
 rewrite rewriteSelf = withStore
   where
     withStore store = go

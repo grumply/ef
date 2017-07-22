@@ -18,7 +18,7 @@ data Book ns ms c = Book
   , edit :: forall r. (ns -> ns) -> Ef ms c r -> Ef ms c r
   }
 
-notated :: ('[Sync] <: ms, Monad c) => (Book ns ms c -> Ef ms c r) -> Synchronized (NoteTaking ns) ns () X ms c (r, ns)
+notated :: (ms <: '[Sync], Monad c) => (Book ns ms c -> Ef ms c r) -> Synchronized (NoteTaking ns) ns () X ms c (r, ns)
 notated computation =
     let notationInterface up =
           Book
@@ -58,7 +58,7 @@ notated computation =
            ns <- up Finish
            return (r, ns)
 
-notate :: ('[Sync] <: ms, Monad c, Monoid ns) => (Book ns ms c -> Ef ms c r) -> Ef ms c (r, ns)
+notate :: (ms <: '[Sync], Monad c, Monoid ns) => (Book ns ms c -> Ef ms c r) -> Ef ms c (r, ns)
 notate computation = runSync (serve +>> notated computation)
   where
     serve firstRequest =

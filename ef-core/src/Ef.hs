@@ -37,6 +37,28 @@ import GHC.Exts
 
 import Unsafe.Coerce
 
+-- Features:
+--
+-- Effect monad paired with persistent interpreters as functional, immutable objects.
+--
+-- Functional and immutable.
+--
+-- Splits invocation from implementation in a manner similar to Java interfaces.
+--
+-- Pairs invocation and implementation uniquely to help preserve type inference.
+--
+-- Permits overriding of trait implementations during construction.
+--
+-- Subtyping and Subclassing and single/multiple inheritance via nesting of paired implementation/invocation contexts.
+--
+-- Permits subtyping of sets of messages.
+--
+-- Permits subclassing of sets of traits.
+--
+-- Permits functional extension/overriding of individual message invocations.
+--
+-- Invocation implemented as a free monad transformer with lift implemented individually.
+
 data Modules (ts :: [* -> *]) (x :: *) where
   Empty :: Modules '[] x
   Mod :: !(t x) -> !(Modules ts x) -> Modules (t ': ts) x
@@ -70,7 +92,7 @@ yields :: (Functor f) => f r -> Narrative f c r
 yields fr = buildn $ \r l d -> d (fmap r fr)
 
 {-# INLINE sends #-}
-sends :: ('[f] <: ms) => f r -> Ef ms c r
+sends :: (ms <: '[f]) => f r -> Ef ms c r
 sends = yields . inj
 
 {-# INLINE super #-}
@@ -340,10 +362,13 @@ instance (i ~ Offset ts t, Has' ts t i) => Has' (t' ': ts) t ('S n) where
   pull' _   (Mod _ ts)  = let i = Index :: Index i in pull' i ts
   {-# INLINE pull' #-}
 
-type ts .> ts' = ts' <. ts
+-- Subclassing; think BIG <. little
 type family (<.) (ts :: [* -> *]) (ts' :: [* -> *]) :: Constraint where
-  (<.) '[] ts' = ()
-  (<.) (t ': ts) ts' = (Has' ts' t (Offset ts' t), ts <. ts')
+  (<.) ts' '[] = ()
+  (<.) ts' (t ': ts) = (Has' ts' t (Offset ts' t), ts' <. ts)
+
+-- Superclassing; think little .> BIG
+type ts .> ts' = ts' <. ts
 
 class Can ms m where
   inj :: m a -> Messages ms a
@@ -377,10 +402,13 @@ instance (ms ~ (m ': ms')) => Can' ms m 'Z where
   prj' _ (Other _)     = Nothing
   {-# INLINE prj' #-}
 
-type ms :> ms' = ms' <: ms
+-- Subtyping; think BIG <: little
 type family (<:) ms ms' where
-  '[] <: ms = (Functor (Messages ms), Typeable ms)
-  (m ': ms') <: ms = (Can' ms m (Offset ms m), ms' <: ms)
+  ms <: '[] = (Functor (Messages ms), Typeable ms)
+  ms <: (m ': ms') = (Can' ms m (Offset ms m), ms <: ms')
+
+-- Supertyping; think little :> BIG
+type ms :> ms' = ms' <: ms
 
 infixr 6 *:*
 (*:*) :: t a -> Modules ts a -> Modules (t ': ts) a
@@ -607,7 +635,7 @@ child :: forall p ms ms' ts ts' c.
          ( Monad c
          , Delta (Modules ts') (Messages ms')
          , Delta (Modules ts) (Messages ms)
-         , '[Fundament Child p ts] <. ts'
+         , ts' <. '[Fundament Child p ts]
          )
       => Proxy p
       -> Object ts (Narrative (Messages ms') c)
@@ -618,7 +646,7 @@ sibling :: forall p ms ms' ts ts' c.
            ( Monad c
            , Delta (Modules ts') (Messages ms')
            , Delta (Modules ts) (Messages ms)
-           , '[Fundament Sibling p ts] <. ts'
+           , ts' <. '[Fundament Sibling p ts]
            )
         => Proxy p
         -> Object ts c
@@ -633,8 +661,8 @@ tellChild :: forall p ms ms' ts c a.
              ( Functor (Messages ms')
              , Delta (Modules ts) (Messages ms)
              , Monad c
-             , '[Fundament Child p ts] <: ms'
-             , '[] <: ms
+             , ms' <: '[Fundament Child p ts]
+             , ms <: '[]
              )
           => Proxy '(p,Child,ts)
           -> Ef ms (Narrative (Messages ms') c) a
@@ -649,8 +677,8 @@ tellSib :: forall p ms ms' ts c a.
             ( Functor (Messages ms')
             , Delta (Modules ts) (Messages ms)
             , Monad c
-            , '[Fundament Sibling p ts] <: ms'
-            , '[] <: ms
+            , ms' <: '[Fundament Sibling p ts]
+            , ms <: '[]
             )
         => Proxy '(p,Sibling,ts)
         -> Ef ms c a
@@ -661,10 +689,10 @@ tellSib _ ma = do
   Send (SetFundament o' (Return ()) :: Fundament Sibling p ts (Ef ms' c ()))
   return (o,o',a)
 
-getChild :: forall p ms ts c. (Monad c, '[Fundament Child p ts] <: ms) => Proxy '(p,Sibling,ts) -> Ef ms c (Object ts (Narrative (Messages ms) c))
+getChild :: forall p ms ts c. (Monad c, ms <: '[Fundament Child p ts]) => Proxy '(p,Sibling,ts) -> Ef ms c (Object ts (Narrative (Messages ms) c))
 getChild _ = Send (GetFundament Return :: Fundament Child p ts (Ef ms c (Object ts (Narrative (Messages ms) c))))
 
-getSib :: forall p ms ts c. (Monad c, '[Fundament Sibling p ts] <: ms) => Proxy '(p,Sibling,ts) -> Ef ms c (Object ts c)
+getSib :: forall p ms ts c. (Monad c, ms <: '[Fundament Sibling p ts]) => Proxy '(p,Sibling,ts) -> Ef ms c (Object ts c)
 getSib _ = Send (GetFundament Return :: Fundament Sibling p ts (Ef ms c (Object ts c)))
 
 ----------------------------------------

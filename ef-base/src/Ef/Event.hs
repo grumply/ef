@@ -287,7 +287,7 @@ data DriverStopped = DriverStopped deriving Show
 instance Exception DriverStopped
 
 {-# INLINE driver #-}
-driver :: (MonadIO c, '[] <: ms, Delta (Modules ts) (Messages ms))
+driver :: (MonadIO c, ms <: '[], Delta (Modules ts) (Messages ms))
        => EvQueue -> Object ts c -> c ()
 driver (EvQueue buf) o = do
   Just qs <- liftIO $ readIORef buf
@@ -304,7 +304,7 @@ driver (EvQueue buf) o = do
               go o'
 
 {-# INLINE driverPrintExceptions #-}
-driverPrintExceptions :: (MonadIO c, '[] <: ms, Delta (Modules ts) (Messages ms))
+driverPrintExceptions :: (MonadIO c, ms <: '[], Delta (Modules ts) (Messages ms))
                       => String -> EvQueue -> Object ts c -> c ()
 driverPrintExceptions e (EvQueue buf) o = do
   Just qs <- liftIO $ readIORef buf
@@ -440,13 +440,13 @@ type Evented = State () EvQueue
 -- Be sure the `State () EvQueue` is the local context's EvQueue.
 --
 -- > disconnect <- connect synd $ \e -> ...
-connect :: (MonadIO c,'[Evented] <: ms)
+connect :: (MonadIO c, ms <: '[Evented])
         => Syndicate e
         -> (e -> Ef '[Event e] (Ef ms c) ())
         -> Ef ms c (IO ())
 connect synd f = connect_ synd get f
 
-connect_ :: (MonadIO c', Monad c, '[Evented] <: ms)
+connect_ :: (MonadIO c', Monad c, ms <: '[Evented])
          => Syndicate e
          -> c' EvQueue
          -> (e -> Ef '[Event e] (Ef ms c) ())
@@ -459,7 +459,7 @@ connect_ synd cevq f = do
 -- Delay the execution of the given method by at least the given number of
 -- microseconds. This is non-blocking.
 delay :: forall ms c a.
-         (MonadIO c, '[Evented] <: ms)
+         (MonadIO c, ms <: '[Evented])
       => Int
       -> Ef ms c a
       -> Ef ms c (IO (),Promise a)
@@ -483,11 +483,11 @@ delay uSeconds c = do
 -- Implemented as:
 --
 -- > schedule = delay 0
-schedule :: (MonadIO c, '[Evented] <: ms) => Ef ms c a -> Ef ms c (IO (),Promise a)
+schedule :: (MonadIO c, ms <: '[Evented]) => Ef ms c a -> Ef ms c (IO (),Promise a)
 schedule = delay 0
 
 {-# INLINE asSelf #-}
-asSelf :: (MonadIO c, '[Evented] <: ms) => Ef ms c (As (Ef ms c))
+asSelf :: (MonadIO c, ms <: '[Evented]) => Ef ms c (As (Ef ms c))
 asSelf = constructAs get
 
 data Callback status result c = Callback_ (MVar (Callback_ status result c))
@@ -516,7 +516,7 @@ done (Callback_ cb) = liftIO $ isEmptyMVar cb
 -- | withCallback is a primitive for constructing truly asynchronous processes.
 -- Alone, `withCallback` is not especially useful. When extended to
 -- cross-context execution, it becomes more useful.
-withCallback :: (MonadIO c, '[Evented] <: ms)
+withCallback :: (MonadIO c, ms <: '[Evented])
              => (Process status result -> Ef ms c r)
              -> Callback_ status result (Ef ms c)
              -> Ef ms c (Callback status result (Ef ms c),r)
@@ -526,7 +526,7 @@ withCallback f cb0 = do
   r <- f pr
   return (cb,r)
 
-attach :: (MonadIO c, '[Evented] <: ms)
+attach :: (MonadIO c, ms <: '[Evented])
        => Process status result
        -> Callback_ status result (Ef ms c)
        -> Ef ms c (Callback status result (Ef ms c))
@@ -545,7 +545,7 @@ attach pr cb0 = do
   return (Callback_ cb_)
 
 -- onSuccess :: forall ms c status result.
---              (MonadIO c, '[Evented] <: ms)
+--              (MonadIO c, ms <: '[Evented])
 --           => Process status result
 --           -> (result -> Ef ms c ())
 --           -> Ef ms c (ProcessListener status result,IO ())
@@ -562,7 +562,7 @@ attach pr cb0 = do
 --   return (pl,stop bhv >> writeIORef cont False >> cancelListener pl)
 
 -- onFailure :: forall ms c s r.
---              (MonadIO c, '[Evented] <: ms)
+--              (MonadIO c, ms <: '[Evented])
 --           => Process s r
 --           -> (SomeException -> Ef ms c ())
 --           -> Ef ms c (ProcessListener s r,IO ())
@@ -579,7 +579,7 @@ attach pr cb0 = do
 --   return (pl,stop bhv >> writeIORef cont False >> cancelListener pl)
 
 -- onUpdate :: forall ms c status result.
---             (MonadIO c, '[Evented] <: ms)
+--             (MonadIO c, ms <: '[Evented])
 --          => Process status result
 --          -> (status -> Ef ms c ())
 --          -> Ef ms c (ProcessListener status result,IO ())
@@ -596,7 +596,7 @@ attach pr cb0 = do
 --   return (pl,stop bhv >> writeIORef cont False >> cancelListener pl)
 
 -- onUpdate' :: forall ms c status result.
---              (MonadIO c, '[Evented] <: ms)
+--              (MonadIO c, ms <: '[Evented])
 --           => Process status result
 --           -> (status -> Ef ms c ())
 --           -> Ef ms c (ProcessListener status result,IO ())
@@ -632,7 +632,7 @@ initialize :: (With a m IO, Monad m, MonadIO n)
            => a -> n ()
 initialize a = void $ with a (return ())
 
-connectWith :: (With w c' IO, MonadIO c', MonadIO c, '[Evented] <: ms)
+connectWith :: (With w c' IO, MonadIO c', MonadIO c, ms <: '[Evented])
             => w
             -> c' (Syndicate e)
             -> (e -> Ef '[Event e] (Ef ms c) ())
@@ -645,7 +645,7 @@ connectWith w syndicateGetter f = do
     bhv <- listen sub f
     return (stop bhv >> leaveSyndicate syn sub)
 
-syndicateWith :: (With w c' IO, MonadIO c', MonadIO c, '[Evented] <: ms)
+syndicateWith :: (With w c' IO, MonadIO c', MonadIO c, ms <: '[Evented])
               => w
               -> c' (Syndicate e)
               -> e
@@ -671,14 +671,14 @@ syndicateWith w syndicateGetter e = do
 -- immediately. Note that ordering of callbacks is guaranteed by the unified
 -- execution context, the calling context for `async`, unless the `Process`
 -- is used in multiple threads.
-async :: (With a m IO, MonadIO c, '[Evented] <: ms)
+async :: (With a m IO, MonadIO c, ms <: '[Evented])
       => a
       -> (Process status result -> m ())
       -> Callback_ status result (Ef ms c)
       -> Ef ms c (Callback status result (Ef ms c))
 async a f cb = fst <$> withCallback (with a . f) cb
 
-async' :: (With a m IO, MonadIO c, '[Evented] <: ms)
+async' :: (With a m IO, MonadIO c, ms <: '[Evented])
        => a
        -> (Process status result -> m ())
        -> Callback_ status result (Ef ms c)
@@ -687,8 +687,8 @@ async' a f cb = withCallback (with a . f) cb
 
 onShutdown :: ( With a (Ef ms' IO) IO
               , MonadIO c
-              , '[State () Shutdown] <: ms'
-              , '[Evented] <: ms
+              , ms' <: '[State () Shutdown]
+              , ms <: '[Evented]
               )
            => a
            -> Ef ms c ()
@@ -697,7 +697,7 @@ onShutdown c ons =
   connectWith c (get >>= \(Shutdown sdn) -> return sdn) (const (lift ons))
 
 -- onSelfShutdown :: ( MonadIO c
---                 , '[Evented,State () Shutdown] <: ms
+--                 , ms <: '[Evented,State () Shutdown]
 --                 )
 --              => Ef ms c ()
 --              -> Ef ms c (IO ())
@@ -709,7 +709,7 @@ onShutdown c ons =
 --   joinSyndicate sdn p buf
 --   return (stop s >> leaveSyndicate sdn p)
 
-shutdownSelf :: (MonadIO c,'[State () Shutdown] <: ms) => Ef ms c ()
+shutdownSelf :: (MonadIO c, ms <: '[State () Shutdown]) => Ef ms c ()
 shutdownSelf = do
   Shutdown sdn <- get
   publish sdn ()

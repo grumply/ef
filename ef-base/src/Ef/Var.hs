@@ -21,7 +21,7 @@ data Var var self super = Var
   , pokes :: forall a. (a -> var) -> a -> Ef self super ()
   }
 
-stateful :: ('[Sync] <: ms, Monad c)
+stateful :: (ms <: '[Sync], Monad c)
          => (Var s ms c -> Ef ms c r)
          -> Synchronized (Modification s) s () X ms c r
 stateful computation =
@@ -51,7 +51,7 @@ stateful computation =
       synchronized $ \up _ -> computation (stateInterface up)
 {-# INLINE stateful #-}
 
-var :: ('[Sync] <: ms, Monad c) => s -> (Var s ms c -> Ef ms c r) -> Ef ms c r
+var :: (ms <: '[Sync], Monad c) => s -> (Var s ms c -> Ef ms c r) -> Ef ms c r
 var initial computation = runSync (serve +>> stateful computation)
   where
     serve firstRequest = synchronized $ \_ dn -> do
@@ -70,7 +70,7 @@ var initial computation = runSync (serve +>> stateful computation)
               handle new next
 {-# INLINE var #-}
 
-var' :: ('[Sync] <: ms, Monad c) => s -> (Var s ms c -> Ef ms c r) -> Ef ms c r
+var' :: (ms <: '[Sync], Monad c) => s -> (Var s ms c -> Ef ms c r) -> Ef ms c r
 var' initial computation = runSync (serve +>> stateful computation)
   where
     serve firstRequest = synchronized $ \_ dn -> withRespond dn initial firstRequest

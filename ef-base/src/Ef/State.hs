@@ -61,35 +61,34 @@ instance Delta (State p s) (State p s) where
     in eval (stateSetter new) (viewModified (new,a))
 
 {-# INLINE statep #-}
-statep :: forall p ts st c. (Monad c, '[State p st] <. ts) => Proxy p -> st -> State p st (Action ts c)
+statep :: forall p ts st c. (Monad c, ts <. '[State p st]) => Proxy p -> st -> State p st (Action ts c)
 statep p initial =
   State p initial pure $ \new o -> return $ Module (statep p new) o
 
 {-# INLINE state #-}
-state :: forall ts st c. (Monad c, '[State () st] <. ts) => st -> State () st (Action ts c)
+state :: forall ts st c. (Monad c, ts <. '[State () st]) => st -> State () st (Action ts c)
 state = statep unit
 
 {-# INLINE getp #-}
-getp :: forall p st ms c. (Monad c, '[State p st] <: ms) => Proxy p -> Ef ms c st
+getp :: forall p st ms c. (Monad c, ms <: '[State p st]) => Proxy p -> Ef ms c st
 getp = Send . flip GetP Return
 
 {-# INLINE get #-}
-get :: forall st ms c. (Monad c, '[State () st] <: ms) => Ef ms c st
+get :: forall st ms c. (Monad c, ms <: '[State () st]) => Ef ms c st
 get = Send (GetP unit Return)
 
 {-# INLINE putp #-}
-putp :: forall p st ms c. (Monad c, '[State p st] <: ms) => Proxy p -> st -> Ef ms c ()
+putp :: forall p st ms c. (Monad c, ms <: '[State p st]) => Proxy p -> st -> Ef ms c ()
 putp p = Send . PutP p
 
 {-# INLINE put #-}
-put :: forall st ms c. (Monad c, '[State () st] <: ms) => st -> Ef ms c ()
+put :: forall st ms c. (Monad c, ms <: '[State () st]) => st -> Ef ms c ()
 put = Send . PutP unit
 
 {-# INLIEN modifyp #-}
-modifyp :: forall p st ms c a. (Monad c, '[State p st] <: ms) => Proxy p -> (st -> (st,a)) -> Ef ms c (st,a)
+modifyp :: forall p st ms c a. (Monad c, ms <: '[State p st]) => Proxy p -> (st -> (st,a)) -> Ef ms c (st,a)
 modifyp p f = Send $ ModifyP p f Return
 
 {-# INLINE modify #-}
-modify :: forall st ms c a. (Monad c, '[State () st] <: ms) => (st -> (st,a)) -> Ef ms c (st,a)
+modify :: forall st ms c a. (Monad c, ms <: '[State () st]) => (st -> (st,a)) -> Ef ms c (st,a)
 modify f = Send $ ModifyP unit f Return
-

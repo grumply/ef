@@ -11,8 +11,8 @@ data Reflection ms ts c =
         , inject :: Object ts c -> Ef ms c ()
         }
 
-withReflection :: ( '[Get,Set] <: ms
-                  , '[Get,Set] <. ts
+withReflection :: ( ms <: '[Get,Set]
+                  , ts <. '[Get,Set]
                   , Delta (Modules ts) (Messages ms)
                   , Monad c
                   )
