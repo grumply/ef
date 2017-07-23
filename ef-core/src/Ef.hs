@@ -295,6 +295,8 @@ _catchError n f = foldn Return (\c -> Lift (catchError c (pure . f))) Do n
 class Delta f g | f -> g where
   delta :: (a -> b -> r) -> f a -> g b -> r
 
+type (<=>) ts ms = Delta (Modules ts) (Messages ms)
+
 instance Delta ((->) a) ((,) a) where
   delta u f (l,r) = u (f l) r
   {-# INLINE delta #-}
