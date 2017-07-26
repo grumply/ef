@@ -32,6 +32,7 @@ import Ef.Type.Bool as Export
 import Ef.Type.Nat as Export
 import Ef.Type.List as Export
 import Ef.Type.Set as Export
+import Ef.Type.Comments as Export
 
 import GHC.Exts
 

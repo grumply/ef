@@ -19,24 +19,25 @@ library
                    Ef.Type.Nat
                    Ef.Type.Bool
                    Ef.Type.List
+                   Ef.Type.Comments
                    Ef
 
   default-extensions: MultiParamTypeClasses
-                      GADTs 
-                      DataKinds 
-                      RankNTypes 
-                      TypeFamilies 
-                      TypeOperators 
-                      FlexibleContexts 
-                      FlexibleInstances 
-                      ScopedTypeVariables 
-                      UndecidableInstances 
-                      ConstraintKinds 
-                      PolyKinds 
-                      FunctionalDependencies 
-                      NoMonoLocalBinds 
-                      InstanceSigs 
-                      BangPatterns 
+                      GADTs
+                      DataKinds
+                      RankNTypes
+                      TypeFamilies
+                      TypeOperators
+                      FlexibleContexts
+                      FlexibleInstances
+                      ScopedTypeVariables
+                      UndecidableInstances
+                      ConstraintKinds
+                      PolyKinds
+                      FunctionalDependencies
+                      NoMonoLocalBinds
+                      InstanceSigs
+                      BangPatterns
                       ViewPatterns
                       PatternSynonyms
                       DeriveFunctor
