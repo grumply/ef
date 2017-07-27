@@ -33,9 +33,9 @@ type Comment (comment :: Symbol) = (() :: Constraint)
 -- | Type-level variable comment constraint. Reduces to a unital constraint.
 --
 -- > adminLogin :: ( credentials ~ [UserPrivilege]
--- >               , credentials :@ "Must contain AdminPrivilege"
+-- >               , Param credentials "Must contain AdminPrivilege"
 -- >               , adminSession ~ AdminSession
--- >               , adminSession :@ "Admin sessions expire after 30 minutes"
+-- >               , Param adminSession "Admin sessions expire after 30 minutes"
 -- >               )
 -- >            => credentials
 -- >            -> IO (Maybe adminSession)
@@ -43,4 +43,10 @@ type Comment (comment :: Symbol) = (() :: Constraint)
 -- As with `Comment`, these variable constraint comments are only visible when
 -- retrieving type information. In environments with support for function type
 -- inspection, like ghci, these comments are visible.
-type (:@) a (comment :: Symbol) = (() :: Constraint)
+type Param a (comment :: Symbol) = (() :: Constraint)
+
+type Constructor (comment :: Symbol) = (() :: Constraint)
+
+type Function (comment :: Symbol) = (() :: Constraint)
+
+type Field (comment :: Symbol) = (() :: Constraint)
