@@ -43,6 +43,7 @@ library
   -- other-modules:
   -- other-extensions:
   default-extensions:  DataKinds
+                       PolyKinds
                        KindSignatures
                        TypeOperators
                        MultiParamTypeClasses

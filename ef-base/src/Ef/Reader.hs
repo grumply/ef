@@ -9,7 +9,7 @@ module Ef.Reader
 
 import Ef
 
-data Reader p r k where
+data Reader (p :: x) r k where
   Reader
     :: { _reader_proxy :: Proxy p
        , asker :: (r,k)
@@ -19,6 +19,10 @@ data Reader p r k where
     :: { ask_reader_proxy :: Proxy p
        , askee :: r -> k
        } -> Reader p r k
+
+instance Functor (Reader p s) where
+  fmap f (Reader p (r,sk)) = Reader p (r,f sk)
+  fmap f (Ask_ p sak) = Ask_ p (fmap f sak)
 
 pattern AskP p f = Ask_ p f
 

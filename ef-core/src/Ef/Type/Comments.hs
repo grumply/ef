@@ -7,7 +7,7 @@ import Data.Kind
 -- an environment with type inspection or when retrieving type information in
 -- ghci. These comments are trivially removed at compile time.
 
--- | Type-level inline variable comment.
+-- | Type-level inline annoation.
 --
 -- > divide :: Int -> Int ::: "Must be non-zero." -> Int
 --
@@ -19,9 +19,10 @@ import Data.Kind
 --
 -- You could see: Found hole: _ :: Int ::: "Must be non-zero." ...
 --
-type (:::) a (comment :: Symbol) = a
+type (:::) (a :: k) (comment :: Symbol) = a
+infixl 1 :::
 
--- | Type-level comment constraint. Reduces to a unital constraint.
+-- | Type-level constraint annoation. Reduces to a unital constraint.
 --
 -- > double :: Comment "Double the given integer." => Int -> Int
 --
@@ -30,7 +31,7 @@ type (:::) a (comment :: Symbol) = a
 -- comments are visible.
 type Comment (comment :: Symbol) = (() :: Constraint)
 
--- | Type-level variable comment constraint. Reduces to a unital constraint.
+-- | Type-level constraint annoation. Reduces to a unital constraint.
 --
 -- > adminLogin :: ( credentials ~ [UserPrivilege]
 -- >               , Param credentials "Must contain AdminPrivilege"
@@ -43,10 +44,10 @@ type Comment (comment :: Symbol) = (() :: Constraint)
 -- As with `Comment`, these variable constraint comments are only visible when
 -- retrieving type information. In environments with support for function type
 -- inspection, like ghci, these comments are visible.
-type Param a (comment :: Symbol) = (() :: Constraint)
+type Param (a :: k) (comment :: Symbol) = Comment comment
 
-type Constructor (comment :: Symbol) = (() :: Constraint)
+type Constructor (comment :: Symbol) = Comment comment
 
-type Function (comment :: Symbol) = (() :: Constraint)
+type Function (comment :: Symbol) = Comment comment
 
-type Field (comment :: Symbol) = (() :: Constraint)
+type Field (comment :: Symbol) = Comment comment

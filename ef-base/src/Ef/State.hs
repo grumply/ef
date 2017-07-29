@@ -7,15 +7,13 @@ module Ef.State
 
 import Ef
 
-data State p s k where
+data State (p :: x) s k where
   State
     :: { state_proxy :: {-# UNPACK #-} !(Proxy p)
        , currentState :: !s
        , stateViewer :: !k
        , stateSetter :: !(s -> k)
        } -> State p s k
-
-
 
   Get_
     :: { get_state_proxy :: {-# UNPACK #-} !(Proxy p)
