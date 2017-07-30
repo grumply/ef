@@ -46,8 +46,24 @@ type Comment (comment :: Symbol) = (() :: Constraint)
 -- inspection, like ghci, these comments are visible.
 type Param (a :: k) (comment :: Symbol) = Comment comment
 
+type Result (comment :: Symbol) = Comment comment
+
 type Constructor (comment :: Symbol) = Comment comment
 
 type Function (comment :: Symbol) = Comment comment
 
 type Field (comment :: Symbol) = Comment comment
+
+type Selector (comment :: Symbol) = Comment comment
+
+type TODO (comment :: Symbol) = Comment comment
+
+type Note (comment :: Symbol) = Comment comment
+
+type Permits (comment :: Symbol) = Comment comment
+
+type Forbids (comment :: Symbol) = Comment comment
+
+type Allows (comment :: Symbol) = Comment comment
+
+type Disallows (comment :: Symbol) = Comment comment
