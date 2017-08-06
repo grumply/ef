@@ -3,9 +3,12 @@ module Ef.Type.Comments where
 import GHC.TypeLits
 import Data.Kind
 
+import Data.Proxy
+
 -- An expiriment in type-level comments. Benefits of this approach are seen in
 -- an environment with type inspection or when retrieving type information in
--- ghci. These comments are trivially removed at compile time.
+-- ghci. These comments are trivially removed at compile time. Downsides are
+-- excessively long error messages in compilation.
 
 -- | Type-level inline annoation.
 --
@@ -19,51 +22,126 @@ import Data.Kind
 --
 -- You could see: Found hole: _ :: Int ::: "Must be non-zero." ...
 --
+-- This annoation is useful even when a comment constraint context is supplied
+-- because the annoation propagates to completion tooltips in editors, wild-card
+-- compiler completions and compilation errors.
 type (:::) (a :: k) (comment :: Symbol) = a
-infixl 1 :::
+infixl 0 :::
 
--- | Type-level constraint annoation. Reduces to a unital constraint.
---
--- > double :: Comment "Double the given integer." => Int -> Int
---
--- These constraint comments are only visible when retrieving type information.
--- In environments with support for function type inspection, like ghci, these
--- comments are visible.
-type Comment (comment :: Symbol) = (() :: Constraint)
+type Using (u :: k) (x :: k') = (() :: Constraint)
+type Describe (d :: k) (describe :: k') = (() :: Constraint)
 
--- | Type-level constraint annoation. Reduces to a unital constraint.
---
--- > adminLogin :: ( credentials ~ [UserPrivilege]
--- >               , Param credentials "Must contain AdminPrivilege"
--- >               , adminSession ~ AdminSession
--- >               , Param adminSession "Admin sessions expire after 30 minutes"
--- >               )
--- >            => credentials
--- >            -> IO (Maybe adminSession)
---
--- As with `Comment`, these variable constraint comments are only visible when
--- retrieving type information. In environments with support for function type
--- inspection, like ghci, these comments are visible.
-type Param (a :: k) (comment :: Symbol) = Comment comment
+type Given (givens :: k) = (() :: Constraint)
 
-type Result (comment :: Symbol) = Comment comment
+type Invariant (i :: k) = (() :: Constraint)
+type Assumption (a :: k) = (() :: Constraint)
+type Assume (x :: k) (assume :: k') = (() :: Constraint)
+type Assumptions (assumptions :: k') = (() :: Constraint)
 
-type Constructor (comment :: Symbol) = Comment comment
+type Define (d :: k) = (() :: Constraint)
+type Defines (d :: k) = (() :: Constraint)
+type Parameter (param :: k) = (() :: Constraint)
+type Variable (v :: k) = (() :: Constraint)
+type Environment (environment :: k') = (() :: Constraint)
 
-type Function (comment :: Symbol) = Comment comment
+type It (it :: k) = (() :: Constraint)
+type Should (should :: k) = (() :: Constraint)
+type Then (t :: k) = (() :: Constraint)
+type May (t :: k) = (() :: Constraint)
 
-type Field (comment :: Symbol) = Comment comment
+type Produce (p :: k) = (() :: Constraint)
+type Consume (c :: k) = (() :: Constraint)
 
-type Selector (comment :: Symbol) = Comment comment
+type Produces (p :: k) = p
+type Consumes (c :: k) = c
 
-type TODO (comment :: Symbol) = Comment comment
+type Input (input :: k) = (() :: Constraint)
+type Output (output :: k) = (() :: Constraint)
+type Finally (finally :: k) = (() :: Constraint)
 
-type Note (comment :: Symbol) = Comment comment
+type Projects (p :: k) = (() :: Constraint)
 
-type Permits (comment :: Symbol) = Comment comment
+type Transforms (p :: k) = (() :: Constraint)
+type Transformed (t :: k) = (() :: Constraint)
 
-type Forbids (comment :: Symbol) = Comment comment
+-- type Manage (manages :: k) = (() :: Constraint)
+type Manages (manages :: k) = (() :: Constraint)
+type Construct (constrcuts :: k) = (() :: Constraint)
+type Constructs (constrcuts :: k) = (() :: Constraint)
+type Destroy (destroys :: k) = (() :: Constraint)
+type Destroys (destroys :: k) = (() :: Constraint)
+type Mutate (mutate :: k) = (() :: Constraint)
+type Mutates (mutates :: k) = (() :: Constraint)
+type Return (return :: k) = (() :: Constraint)
+type Returns (returns :: k) = (() :: Constraint)
+type Remove (remove :: k) = (() :: Constraint)
+type Removes (removes :: k) = (() :: Constraint)
+type Add (add :: k) = (() :: Constraint)
+type AddS (adds :: k) = (() :: Constraint)
+type Update (update :: k) = (() :: Constraint)
+type Updates (updates :: k) = (() :: Constraint)
 
-type Allows (comment :: Symbol) = Comment comment
+-- Tags
+type New (new :: k) = new
+type Old (old :: k) = old
+type Intermediate (imd :: k) = imd
+type Updated (updated :: k) = updated
+type Added (added :: k) = added
+-- type Removed (removed :: k) = removed
+type Returned (returned :: k) = returned
+type Mutated (mutated :: k) = mutated
+type Destroyed (destroyed :: k) = destroyed
+type Constructed (constructed :: k) = constructed
+type Managed (managed :: k) = managed
 
-type Disallows (comment :: Symbol) = Comment comment
+type Mutable (x :: k) = x
+type Immutable (x :: k) = x
+
+
+type From (x :: k) (y :: k') = y
+type In (x :: k') (y :: k') = y
+
+type Let (x :: k) = (() :: Constraint)
+
+type An (a :: k) = (() :: Constraint)
+
+type Result (result :: k') = (() :: Constraint)
+type Results (results :: k') = (() :: Constraint)
+
+type Class (c :: k) = (() :: Constraint)
+
+type Constructor (constructor :: k') = (() :: Constraint)
+type Method (f :: k) = (() :: Constraint)
+type Function (f :: k) = (() :: Constraint)
+type Field (f :: k) = (() :: Constraint)
+type Selector (s :: k) = (() :: Constraint)
+type Pattern (p :: k) = (() :: Constraint)
+type Implicit (i :: k) = (() :: Constraint)
+
+type Example (ex :: k') = (() :: Constraint)
+
+type Usage (x :: k) = (() :: Constraint)
+type About (x :: k) = (() :: Constraint)
+type Use (x :: k) = (() :: Constraint)
+type Misuse (x :: k) = (() :: Constraint)
+type Permits (x :: k) = (() :: Constraint)
+type Forbids (x :: k) = (() :: Constraint)
+type Allows (x :: k) = (() :: Constraint)
+type Disallows (x :: k) = (() :: Constraint)
+type Dos (x :: k) = (() :: Constraint)
+type Don'ts (x :: k) = (() :: Constraint)
+type Errors (x :: k) = (() :: Constraint)
+
+type TODO (x :: k) = (() :: Constraint)
+type FIXME (x :: k) = (() :: Constraint)
+type NOTE (x :: k) = (() :: Constraint)
+type BUG (x :: k) = (() :: Constraint)
+type IDEA (x :: k) = (() :: Constraint)
+type HACK (x :: k) = (() :: Constraint)
+
+type Thus (a :: k) (a' :: k) = a' ~ a
+
+type Reconciles (a :: k) (b :: k) = a ~ b
+
+type Compares (a :: k) (b :: k) = a ~ b
+type Simultaneously (a :: k) (b :: k') = (() :: Constraint)
