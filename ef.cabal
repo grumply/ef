@@ -1,17 +1,14 @@
 
-name:                ef-core
+name:                ef
 version:             3.0.0.0
 synopsis:
--- description:
-homepage:            ef-lang.org
+homepage:            github.com/grumply/ef
 license:             BSD3
 license-file:        LICENSE
 author:              S. M. Hickman
 maintainer:          sean@grump.ly
--- copyright:
 category:            Development, Language
 build-type:          Simple
--- extra-source-files:
 cabal-version:       >=1.10
 
 library
@@ -43,8 +40,6 @@ library
                       DeriveFunctor
                       DeriveDataTypeable
                       StandaloneDeriving
-  -- other-modules:
-  -- other-extensions:
   build-depends:       base >=4.8
                      , comonad
                      , free

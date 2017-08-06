@@ -1,8 +1,0 @@
-dist/
-ef-core/dist/
-ef-base/dist/
-before/dist/
-*.js_*
-TAGS
-*/.stack-work/
-.DS_Store
