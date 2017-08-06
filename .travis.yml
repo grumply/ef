@@ -15,12 +15,12 @@ script:
   set -eu
 
   nix-build -E --option extra-binary-caches https://nixcache.atomic.grump.ly/ "with (import <nixpkgs> {}); pkgs.haskell.packages.$COMPILER.callPackage ./default.nix { }"
- 
-  DIR=$( cd "$ dirname "${BASH_SOURCE[0]}" )" && pwd )
+
+  DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
   TMPDIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'cache')
   trap "rm -rf \"$TMPDIR\"" EXIT
-  
+
   (
     cd "$DIR"
 
