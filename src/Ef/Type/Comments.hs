@@ -1,7 +1,7 @@
 module Ef.Type.Comments where
 
 import GHC.TypeLits
-import Data.Kind
+import GHC.Exts
 
 import Data.Proxy
 
