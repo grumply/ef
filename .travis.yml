@@ -14,25 +14,36 @@ script:
 - |
   set -eu
 
-  nix-build -E --option extra-binary-caches https://nixcache.atomic.grump.ly/ "with (import <nixpkgs> {}); pkgs.haskell.packages.$COMPILER.callPackage ./default.nix { }"
-
   DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
+  echo "DIR: $DIR"
 
   TMPDIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'cache')
+  echo "TMPDIR: $TMPDIR"
+
+  echo "*** nix-build ***"
+  nix-build -E --option extra-binary-caches https://nixcache.atomic.grump.ly/ "with (import <nixpkgs> {}); pkgs.haskell.packages.$COMPILER.callPackage ./default.nix { }"
+  echo "*** nix-built ***"
+
   trap "rm -rf \"$TMPDIR\"" EXIT
 
   (
+    echo "SUBSHELL"
+
     cd "$DIR"
 
+    echo "Stripping (System|Deriver)"
     for i in "$TMPDIR/"*.narinfo; do
       [ -f "$i" ] || break
+      echo "Stripping narinfo: $i"
       sed -e '/^\(System\|Deriver\): /d' "$i" > "$i.new"
       mv -- "$i.new" "$i"
     done
 
+    echo "Uploading cache."
     nix-shell $NIXOPTS -E 'with import <nixpkgs> {}; runCommand "shell" { buildInputs = [ awscli ]; } ""' --run "HOME=/var/empty aws s3 sync --size-only --cache-control 'public, max-age=315360000' --expires 'Tue, 01 Feb 2050 00:00:00 GMT' '$TMPDIR/' s3://nixcache.atomic.grump.ly/"
   )
 
+  echo "nix-collect-garbage"
   nix-collect-garbage -d
 
 env:
