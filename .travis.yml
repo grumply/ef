@@ -6,8 +6,11 @@ cache:
 
 matrix:
   include:
-  - script: nix-build -E 'with import <nixpkgs> { }; import ./default.nix { compiler= "ghc7103"; }'
-  - script: nix-build -E 'with import <nixpkgs> { }; import ./default.nix { compiler= "ghc801"; }'
-  - script: nix-build -E 'with import <nixpkgs> { }; import ./default.nix { compiler= "ghcjsHEAD"; }'
+  - env: COMPILER="ghc7103"
+    script: nix-build -E 'with import <nixpkgs> { }; import ./default.nix { compiler= $COMPILER; }'
+  - env: COMPILER="ghc801"
+    script: nix-build -E 'with import <nixpkgs> { }; import ./default.nix { compiler= $COMPILER; }'
+  - env: COMPILER="ghcjsHEAD"
+    script: travis_wait nix-build -E 'with import <nixpkgs> { }; import ./default.nix { compiler= $COMPILER; }'
 
 
