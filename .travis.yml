@@ -4,9 +4,10 @@ cache:
   directories:
   - "/nix"
 
-env:
-  - COMPILER=ghc7103
-  - COMPILER=ghc801
-  - COMPILER=ghcjs
+matrix:
+  include:
+  - env: COMPILER="ghc7103"
+  - env: COMPILER="ghc801"
+  - env: COMPILER="ghcjs"
 
-script: nix-build -E 'with import <nixpkgs> { }; import ./default.nix { compiler= "$COMPILER"; }'
+script: nix-build -E 'with import <nixpkgs> { }; import ./default.nix { compiler= $COMPILER; }'
