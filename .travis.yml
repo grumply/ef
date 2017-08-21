@@ -11,4 +11,4 @@ matrix:
   - env: COMPILER=ghcjsHEAD
 
 script: |-
-  travis_wait nix-build -E 'with import <nixpkgs> { }; import ./default.nix { compiler='\"$COMPILER\"'; }
+  travis_wait nix-build -E 'with import <nixpkgs> { }; import ./default.nix { compiler='\"$COMPILER\"'; }'
