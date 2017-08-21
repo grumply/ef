@@ -10,4 +10,4 @@ matrix:
   - env: COMPILER=ghc801
   - env: COMPILER=ghcjs
 
-script: nix-build
+script: nix-build -E 'with import <nixpkgs> { }; import ./default.nix { compiler= "$COMPILER"; }'
