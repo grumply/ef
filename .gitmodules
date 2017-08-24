@@ -1,0 +1,3 @@
+[submodule "deps/trivial"]
+	path = deps/trivial
+	url = https://github.com/grumply/trivial.git

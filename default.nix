@@ -8,6 +8,9 @@ let
           "${compiler}" = pkgs.haskell.packages."${compiler}".override {
             overrides = new: old: rec {
 
+              trivial =
+                new.callPackage ./deps/trivial/trivial.nix { };
+
               ef =
                 new.callPackage ./ef.nix { };
 
@@ -22,5 +25,6 @@ let
 
 in
   { ef = pkgs.haskell.packages.${compiler}.ef;
+    trivial = pkgs.haskell.packages.${compiler}.trivial;
   }
 
