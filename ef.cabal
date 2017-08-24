@@ -1,4 +1,3 @@
-
 name:                ef
 version:             3.0.0.0
 synopsis:
@@ -10,6 +9,106 @@ maintainer:          sean@grump.ly
 category:            Development, Language
 build-type:          Simple
 cabal-version:       >=1.10
+
+executable bench
+  main-is: Bench.hs
+  other-modules: Bench.Functor
+                 Bench.State
+                 Ef.Type.Set
+                 Ef.Type.Nat
+                 Ef.Type.Bool
+                 Ef.Type.List
+                 Ef.Type.Comments
+                 Ef
+  hs-source-dirs: src bench
+  build-depends:       base >=4.8
+                     , trivial
+                     , comonad
+                     , free
+                     , kan-extensions
+                     , transformers
+                     , transformers-base
+                     , mmorph
+                     , monad-control
+                     , mtl
+                     , resourcet
+                     , exceptions
+  if (impl(ghcjs))
+    ghc-options: -dedupe -O2
+  else
+    ghc-options: -O2 -threaded -rtsopts -with-rtsopts=-T -v0
+  default-extensions: MultiParamTypeClasses
+                      GADTs
+                      DataKinds
+                      RankNTypes
+                      TypeFamilies
+                      TypeOperators
+                      FlexibleContexts
+                      FlexibleInstances
+                      ScopedTypeVariables
+                      UndecidableInstances
+                      ConstraintKinds
+                      PolyKinds
+                      FunctionalDependencies
+                      NoMonoLocalBinds
+                      InstanceSigs
+                      BangPatterns
+                      ViewPatterns
+                      PatternSynonyms
+                      DeriveFunctor
+                      DeriveDataTypeable
+                      StandaloneDeriving
+  default-language: Haskell2010
+
+executable tests
+  main-is: Test.hs
+  other-modules: Bench.Functor
+                 Bench.State
+                 Ef.Type.Set
+                 Ef.Type.Nat
+                 Ef.Type.Bool
+                 Ef.Type.List
+                 Ef.Type.Comments
+                 Ef
+  hs-source-dirs: src tests bench
+  build-depends:       base >=4.8
+                     , trivial
+                     , comonad
+                     , free
+                     , kan-extensions
+                     , transformers
+                     , transformers-base
+                     , mmorph
+                     , monad-control
+                     , mtl
+                     , resourcet
+                     , exceptions
+  if (impl(ghcjs))
+    ghc-options: -dedupe -w  -O2
+  else
+    ghc-options: -O2 -w -threaded -rtsopts -with-rtsopts=-N -v0
+  default-extensions: MultiParamTypeClasses
+                      GADTs
+                      DataKinds
+                      RankNTypes
+                      TypeFamilies
+                      TypeOperators
+                      FlexibleContexts
+                      FlexibleInstances
+                      ScopedTypeVariables
+                      UndecidableInstances
+                      ConstraintKinds
+                      PolyKinds
+                      FunctionalDependencies
+                      NoMonoLocalBinds
+                      InstanceSigs
+                      BangPatterns
+                      ViewPatterns
+                      PatternSynonyms
+                      DeriveFunctor
+                      DeriveDataTypeable
+                      StandaloneDeriving
+  default-language: Haskell2010
 
 library
   exposed-modules: Ef.Type.Set
