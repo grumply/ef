@@ -4,13 +4,9 @@ cache:
   directories:
   - "/nix"
 
-matrix:
-  include:
-  - env: COMPILER=ghc7103
-    script: travis_wait nix-build -E 'with import <nixpkgs> { }; import ./default.nix { compiler="ghc7103"; }'
-  - env: COMPILER=ghc801
-    script: travis_wait nix-build -E 'with import <nixpkgs> { }; import ./default.nix { compiler="ghc801"; }'
-  - env: COMPILER=ghcjsHEAD
-    script: travis_wait nix-build -E 'with import <nixpkgs> { }; import ./default.nix { compiler="ghcjsHEAD"; }'
+env:
+  matrix:
+    - COMPILER=ghc801
+    - COMPILER=ghcjsHEAD
 
-
+script: nix-build --argstr compiler $COMPILER
