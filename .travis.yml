@@ -9,4 +9,4 @@ env:
     - COMPILER=ghc801
     - COMPILER=ghcjsHEAD
 
-script: travis_wait 30 nix-build --argstr compiler $COMPILER
+script: travis_wait 60 nix-build --argstr compiler $COMPILER
