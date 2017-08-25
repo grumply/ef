@@ -159,11 +159,11 @@ instance (Functor f, Monad c) => Applicative (Narrative f c) where
 
 instance (Functor f, Monad c) => Monad (Narrative f c) where
   {-# INLINE return #-}
-  return a = buildn $ \r _ _ -> r a
+  return a = Return a -- buildn $ \r _ _ -> r a
   {-# INLINE (>>=) #-}
-  (>>=) m k = foldn k Lift Do m
+  (>>=) = _bind
   {-# INLINE (>>) #-}
-  (>>) m k = foldn (\_ -> k) Lift Do m
+  (>>) ma mb = _bind ma (const mb)
 
 instance (Monad c, Applicative f) => MonadPlus (Narrative f c) where
   {-# INLINE mzero #-}
@@ -549,6 +549,14 @@ fmapnFB l = \a -> l a
 augmentn :: forall f c a. (forall b. (a -> b) -> (c b -> b) -> (f b -> b) -> b -> b) -> Narrative f c a -> Narrative f c a
 augmentn f n = f Return Lift Do n
 
+{-# INLINE [2] _bind #-}
+_bind :: (Functor f, Functor c) => Narrative f c a -> (a -> Narrative f c b) -> Narrative f c b
+_bind m k = foldn k Lift Do m
+
+{-# INLINE [2] _fmap #-}
+_fmap :: (Functor f, Functor c) => (a -> b) -> Narrative f c a -> Narrative f c b
+_fmap f n = foldn (Return . f) Lift Do n
+
 {-# RULES
 "foldn/buildn" forall r l d (g :: forall b. (a -> b) -> (c b -> b) -> (f b -> b) -> b).
                foldn r l d (buildn g) = g r l d
@@ -563,9 +571,9 @@ augmentn f n = f Return Lift Do n
 "foldn/augmentn" forall r l d (g :: forall b. (a -> b) -> (c b -> b) -> (f b -> b) -> b -> b) n.
                  foldn r l d (augmentn g n) = g r l d (foldn r l d n)
 
-"fmapn" [~1] forall f n. fmapn f n = buildn (\r l d -> foldn (fmapnR r f) (fmapnFB l) (fmapnFB d) n);
-"fmapnRFB" [1] forall f. foldn (fmapnR Return f) (fmapnFB Lift) (fmapnFB Do) = fmapn f;
-"fmapnR" forall r f g. fmapnR (fmapnR r f) g = fmapnR r (f . g);
+"fmapn" [~1] forall f n. fmapn f n = buildn (\r l d -> foldn (fmapnR r f) (fmapnFB l) (fmapnFB d) n)
+"fmapnRFB" [1] forall f. foldn (fmapnR Return f) (fmapnFB Lift) (fmapnFB Do) = fmapn f
+"fmapnR" forall r f g. fmapnR (fmapnR r f) g = fmapnR r (f . g)
 
 "foldn (Return r)" forall r l d a. foldn r l d (Return a) = r a
 "foldn (Lift c)"   forall r l d c. foldn r l d (Lift c)   = l (fmap (foldn r l d) c)
@@ -574,6 +582,14 @@ augmentn f n = f Return Lift Do n
 "foldn' (Return r)" forall r l d a. foldn' r l d (Return a) = r a
 "foldn' (Lift c)"   forall r l d c. foldn' r l d (Lift c)   = l (fmap (foldn' r l d) c)
 "foldn' (Do m)"     forall r l d m. foldn' r l d (Do m)     = d (fmap (foldn' r l d) m)
+
+"_bind (Return r)" [~2] forall r f. _bind (Return r) f = f r
+"_bind (Lift c)"   [~2] forall c f. _bind (Lift c) f   = Lift (fmap (\a -> _bind a f) c)
+"_bind (Do m)"     [~2] forall m f. _bind (Do m) f     = Do (fmap (\a -> _bind a f) m)
+
+"_fmap (Return r)" [~2] forall r f. _fmap f (Return r) = Return (f r)
+"_fmap (Lift c)"   [~2] forall c f. _fmap f (Lift c)   = Lift (fmap (_fmap f) c)
+"_fmap (Do m)"     [~2] forall m f. _fmap f (Do m)     = Do (fmap (_fmap f) m)
   #-}
 
 {- for reference

@@ -13,14 +13,20 @@ cabal-version:       >=1.10
 executable bench
   main-is: Bench.hs
   other-modules: Bench.Functor
-                 Bench.State
+                 Bench.Shared
+                 Bench.Pipes
+                 Bench.Pipes.Chain
+                 Ef.Reader
+                 Ef.Writer
+                 Ef.State
+                 Ef.Pipes
                  Ef.Type.Set
                  Ef.Type.Nat
                  Ef.Type.Bool
                  Ef.Type.List
                  Ef.Type.Comments
                  Ef
-  hs-source-dirs: src bench
+  hs-source-dirs: src tests bench
   build-depends:       base >=4.8
                      , trivial
                      , comonad
@@ -33,6 +39,7 @@ executable bench
                      , mtl
                      , resourcet
                      , exceptions
+                     , pipes
   if (impl(ghcjs))
     ghc-options: -dedupe -O2
   else
@@ -62,8 +69,10 @@ executable bench
 
 executable tests
   main-is: Test.hs
-  other-modules: Bench.Functor
-                 Bench.State
+  other-modules: Ef.Reader
+                 Ef.Writer
+                 Ef.State
+                 Ef.Pipes
                  Ef.Type.Set
                  Ef.Type.Nat
                  Ef.Type.Bool
