@@ -2,39 +2,61 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
 module Main where
 
 import Ef
 
 import Data.Functor.Identity
 
-import Data.Functor.Identity
+main = do
+  noops (go 100000000)
+  where
+    go (0 :: Int) = return ()
+    go n = do
+      send (Noop ())
+      go (n - 1)
 
-main = print $ runIdentity $ ef_add_return 1
+main' :: IO ()
+main' = do
+  let prompt str = send (Put str ()) >> send (Get id)
 
-{-# INLINE ef_add_return #-}
-ef_add_return :: Int -> Identity Int
-ef_add_return n = (`evalState` n) $ do
-  x :: Int <- get
-  y :: Int <- get
-  put $ x + y
-  get
+  (n,t) <- instr $ do
+    number <- prompt "What number?"
+    times  <- prompt "How many times?"
+    return (read number,read times)
 
-data State s k
-  = Get (s -> k)
-  | Put s k
+  (s,_) <- (`stack` []) $
+             replicateM_ t $
+               send (Push n ())
+
+  print s
+
+data Instr k where
+  Get :: (String -> k) -> Instr k
+  Put :: String -> k -> Instr k
   deriving Functor
 
-{-# INLINE evalState #-}
-evalState :: Monad c => Narrative (State s) c a -> s -> c a
-evalState n = foldn (\a _ -> return a) (\cf a -> cf >>= ($ a)) d n
+instr = run eval
   where
-    d (Get sk) s = sk s s
-    d (Put s' k) _ = k s'
+    eval (Get k)     = getLine >>= k
+    eval (Put str k) = putStrLn str >> k
 
-{-# INLINE get #-}
-get = buildn $ \r _ d -> d (Get r)
+data StackInstruction k where
+  Push :: Int -> k -> StackInstruction k
+  Pop  :: (Int -> k) -> StackInstruction k
+  deriving Functor
 
-{-# INLINE put #-}
-put x = buildn $ \r _ d -> d (Put x (r ()))
+stack = thread eval
+  where
+    eval (Push a k) stack   = k (a:stack)
+    eval (Pop ak) (a:stack) = ak a stack
 
+data Noop k where
+  Noop :: k -> Noop k
+  deriving Functor
+
+noops = run eval
+  where
+    eval (Noop k) = k

@@ -98,7 +98,7 @@ send :: Functor f => f a -> Narrative f c a
 send f = buildn $ \r _ d -> d (fmap r f)
 
 {-# INLINE yields #-}
-yields :: (Functor f) => f r -> Narrative f c r
+yields :: Functor f => f r -> Narrative f c r
 yields fr = buildn $ \r l d -> d (fmap r fr)
 
 {-# INLINE sends #-}
@@ -143,36 +143,36 @@ _fmapMsg f = go
     go (Other ms) = Other (fmap f ms)
     go (Msg m) = Msg (fmap f m)
 
-instance (Monad c, Functor f) => MonadFree f (Narrative f c) where
+instance (Functor f, Functor c) => MonadFree f (Narrative f c) where
   {-# INLINE wrap #-}
   wrap = Do
 
-instance (Functor f, Monad c) => Functor (Narrative f c) where
+instance (Functor f, Functor c) => Functor (Narrative f c) where
   {-# INLINE fmap #-}
   fmap = fmapn
 
-instance (Functor f, Monad c) => Applicative (Narrative f c) where
+instance (Functor f, Functor c) => Applicative (Narrative f c) where
   {-# INLINE pure #-}
-  pure a = return a
+  pure a = Return a
   {-# INLINE (<*>) #-}
   (<*>) = ap
 
-instance (Functor f, Monad c) => Monad (Narrative f c) where
+instance (Functor f, Functor c) => Monad (Narrative f c) where
   {-# INLINE return #-}
-  return a = Return a -- buildn $ \r _ _ -> r a
+  return a = Return a
   {-# INLINE (>>=) #-}
   (>>=) = _bind
   {-# INLINE (>>) #-}
   (>>) ma mb = _bind ma (const mb)
 
-instance (Monad c, Applicative f) => MonadPlus (Narrative f c) where
+instance (Applicative f, Monad c) => MonadPlus (Narrative f c) where
   {-# INLINE mzero #-}
   mzero = empty
 
   {-# INLINE mplus #-}
   mplus = (<|>)
 
-instance (Monad c, Applicative f) => Alternative (Narrative f c) where
+instance (Applicative f, Monad c) => Alternative (Narrative f c) where
   {-# INLINE empty #-}
   empty = never
 
@@ -512,6 +512,14 @@ foldn r l d = go
 buildn :: (forall b. (a -> b) -> (c b -> b) -> (f b -> b) -> b) -> Narrative f c a
 buildn f = f Return Lift Do
 
+{-# INLINE run #-}
+run :: (Functor f, Monad m) => (f (m a) -> m a) -> Narrative f m a -> m a
+run = foldn return join
+
+{-# INLINE thread #-}
+thread :: (Functor f, Monad m) => (f (r -> m (r,a)) -> r -> m (r, a)) -> Narrative f m a -> r -> m (r,a)
+thread = foldn (\a r -> return (r,a)) (\cf a -> cf >>= ($ a))
+
 -- non-fusing
 {-# INLINE [0] foldn' #-}
 foldn' :: (Functor c, Functor f)
@@ -613,8 +621,8 @@ reseedEf code = fmap (swapEf code)
 ----------------------------------------
 -- Utilities
 
-
-reduce :: (Monad c, Functor f) => Narrative f c a -> (f b -> b) -> (c b -> b) -> (a -> b) -> b
+{-# INLINE reduce #-}
+reduce :: (Functor f, Functor c) => Narrative f c a -> (f b -> b) -> (c b -> b) -> (a -> b) -> b
 reduce n d l r = foldn r l d n
 
 {-# INLINE observe #-}
@@ -622,10 +630,10 @@ observe :: (Functor f, Monad c) => Narrative f c r -> Narrative f c r
 observe n = Lift $ foldn (return . Return) join (return . Do . fmap Lift) n
 
 {-# INLINE never #-}
-never :: (Monad c, Applicative f) => Narrative f c r
+never :: (Applicative f, Applicative c) => Narrative f c r
 never = loop
   where
-    loop = Lift $ return $ Do $ pure loop
+    loop = Lift $ pure $ Do $ pure loop
 
 {-# INLINE uncons #-}
 uncons :: (Functor f, Monad c) => Narrative f c r -> c (Either r (f (Narrative f c r)))

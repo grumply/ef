@@ -11,7 +11,7 @@ import qualified Bench.RWS    as RWS
 
 import Control.Concurrent
 
-main = Trivial.runOnly "chain" suite
+main = Trivial.runOnly "state" suite
 
 suite = tests
   [ Reader.suite

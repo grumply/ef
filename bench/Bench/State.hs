@@ -18,7 +18,7 @@ suite = scope "state" $ tests
 state :: Test Sync ()
 state = tests
   [ addReturn
-  , fmapChain
+  -- , fmapChain
   ]
 
 addReturn :: Test Sync ()
@@ -37,20 +37,23 @@ fmapChain = scope "fmap/fmap/fmap" $ do
 ef_add_return :: Narrative (State Int) Identity Int
 ef_add_return = go (10000 :: Int)
   where
+    {-# INLINE go #-}
     go 0 = get
     go n = do
       x :: Int <- get
       y :: Int <- get
-      put $ x + y
+      put $! x + y
       go (n - 1)
 
+{-# INLINE mtl_add_return #-}
 mtl_add_return :: T.StateT Int Identity Int
 mtl_add_return = go (10000 :: Int)
   where
+    {-# INLINE go #-}
     go 0 = T.get
     go n = do
       x :: Int <- T.get
       y :: Int <- T.get
-      T.put $ x + y
+      T.put $! x + y
       go (n - 1)
 
