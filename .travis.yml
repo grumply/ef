@@ -6,7 +6,8 @@ cache:
 
 env:
   matrix:
-    - COMPILER=ghc801
-    - COMPILER=ghcjsHEAD
+    - COMPILER=ghc
+    # - COMPILER=ghc801
+    # - COMPILER=ghcjsHEAD
 
 script: travis_wait 60 nix-build --argstr compiler $COMPILER
