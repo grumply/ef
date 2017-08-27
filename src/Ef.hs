@@ -1,4 +1,26 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE
+        MultiParamTypeClasses
+      , GADTs
+      , DataKinds
+      , RankNTypes
+      , TypeFamilies
+      , TypeOperators
+      , FlexibleContexts
+      , FlexibleInstances
+      , ScopedTypeVariables
+      , UndecidableInstances
+      , ConstraintKinds
+      , PolyKinds
+      , FunctionalDependencies
+      , NoMonoLocalBinds
+      , InstanceSigs
+      , BangPatterns
+      , ViewPatterns
+      , PatternSynonyms
+      , DeriveFunctor
+      , DeriveDataTypeable
+      , StandaloneDeriving
+  #-}
 {-# OPTIONS_GHC -fno-warn-missing-methods #-}
 module Ef (module Ef, module Export) where
 
@@ -17,18 +39,14 @@ import Control.Monad.Morph as Export
 import Control.Monad.Base as Export
 import Control.Monad.Trans.Resource
 import Control.Monad.Catch
-import Control.Monad.Trans.Control
 import Control.Comonad
 import Control.Comonad.Cofree
-import Control.Concurrent
 
-import Data.Coerce
 import Data.Data
 import Data.Functor.Compose
 import Data.Functor.Sum
 import Data.IORef
 import Data.Proxy as Export
-import Data.Typeable
 import Ef.Type.Bool as Export
 import Ef.Type.Nat as Export
 import Ef.Type.List as Export
@@ -36,10 +54,6 @@ import Ef.Type.Set as Export
 import Ef.Type.Comments as Export
 
 import GHC.Exts
-
-import Unsafe.Coerce
-
-import Data.Functor.Identity
 
 -- Features:
 --
@@ -168,21 +182,18 @@ instance (Functor f, Functor c) => Monad (Narrative f c) where
 instance (Applicative f, Monad c) => MonadPlus (Narrative f c) where
   {-# INLINE mzero #-}
   mzero = empty
-
   {-# INLINE mplus #-}
   mplus = (<|>)
 
 instance (Applicative f, Monad c) => Alternative (Narrative f c) where
   {-# INLINE empty #-}
   empty = never
-
   {-# INLINE (<|>) #-}
   (<|>) =  zipsWith (liftA2 (,))
 
 instance (Monad c, Monoid r, Functor f) => Monoid (Narrative f c r) where
   {-# INLINE mempty #-}
   mempty = return mempty
-
   {-# INLINE mappend #-}
   mappend a b = a >>= \w -> fmap (mappend w) b
 
@@ -199,36 +210,66 @@ instance (MonadBase b c, Functor f) => MonadBase b (Narrative f c) where
   liftBase b = Lift (fmap Return (liftBase b))
 
 instance (MonadThrow c, Functor f) => MonadThrow (Narrative f c) where
-  throwM = lift . throwM
   {-# INLINE throwM #-}
+  throwM = lift . throwM
 
 instance (MonadCatch c, Functor f) => MonadCatch (Narrative f c) where
-  catch = _catch
   {-# INLINE catch #-}
+  catch = _catch
 
 instance (MonadResource c, Functor f) => MonadResource (Narrative f c) where
-  liftResourceT = lift . liftResourceT
   {-# INLINE liftResourceT #-}
+  liftResourceT = lift . liftResourceT
+
+instance (MonadWriter w c, Functor f) => MonadWriter w (Narrative f c) where
+  {-# INLINE writer #-}
+  writer = lift . writer
+  {-# INLINE tell #-}
+  tell = lift . tell
+  {-# INLINE listen #-}
+  listen n = buildn go
+    where
+      go r l d =
+        foldn
+          (\a w -> r (a,w))
+          (\c w -> l (fmap ($ w) c))
+          (\f w -> d (fmap ($ w) f))
+          n
+          mempty
+  {-# INLINE pass #-}
+  pass n = buildn go
+    where
+      go r l d =
+        foldn
+          (\(a,f) w -> l $ pass $ return (r a,\_ -> f w))
+          (\c w -> l (fmap ($ w) c))
+          (\f w -> d (fmap ($ w) f))
+          n
+          mempty
 
 instance (MonadReader r c, Functor f) => MonadReader r (Narrative f c) where
-  ask = lift ask
   {-# INLINE ask #-}
-  local f = hoist (local f)
+  ask = lift ask
   {-# INLINE local #-}
+  local f n = buildn go
+    where
+      go r l d = foldn r (l . local f) d n
+  {-# INLINE reader #-}
+  reader = lift . reader
 
 instance (MonadState s c, Functor f) => MonadState s (Narrative f c) where
-  get = lift get
   {-# INLINE get #-}
-  put = lift . put
+  get = lift get
   {-# INLINE put #-}
-  state = lift . state
+  put = lift . put
   {-# INLINE state #-}
+  state = lift . state
 
 instance (MonadError e c, Functor f) => MonadError e (Narrative f c) where
-  throwError = lift . throwError
   {-# INLINE throwError #-}
-  catchError = _catchError
+  throwError = lift . throwError
   {-# INLINE catchError #-}
+  catchError = _catchError
 
 data Restore m = Unmasked | Masked (forall x . m x -> m x)
 
@@ -290,10 +331,6 @@ _catch n f = foldn Return (\c -> Lift (catch c (pure . f))) Do n
 {-# INLINE _catchError #-}
 _catchError :: (Functor f, MonadError e c) => Narrative f c a -> (e -> Narrative f c a) -> Narrative f c a
 _catchError n f = foldn Return (\c -> Lift (catchError c (pure . f))) Do n
-  -- where
-  --   go (Return r) = Return r
-  --   go (Lift c) = Lift $ catchError (fmap go c) (pure . f)
-  --   go (Do f) = Do (fmap go f)
 
 class Delta f g | f -> g where
   delta :: (a -> b -> r) -> f a -> g b -> r
@@ -301,37 +338,21 @@ class Delta f g | f -> g where
 type (<=>) ts ms = Delta (Modules ts) (Messages ms)
 
 instance Delta ((->) a) ((,) a) where
-  delta u f (l,r) = u (f l) r
   {-# INLINE delta #-}
+  delta u f (l,r) = u (f l) r
 
 instance Delta ((,) a) ((->) a) where
-  delta u (l,r) g = u r (g l)
   {-# INLINE delta #-}
+  delta u (l,r) g = u r (g l)
 
 instance Delta (Modules '[]) (Messages '[]) where
-  delta u _ _ = u undefined undefined
   {-# INLINE delta #-}
+  delta u _ _ = u undefined undefined
 
 instance (t `Delta` m, Modules ts `Delta` Messages ms) => Delta (Modules (t ': ts)) (Messages (m ': ms)) where
+  {-# INLINE delta #-}
   delta u (Mod t _) (Msg m) = delta u t m
   delta u (Mod _ ts) (Other ms) = delta u ts ms
-  {-# INLINE delta #-}
-
--- Old runWith; does not use foldn.
-{-# INLINE runWith' #-}
-runWith' :: forall ts ms c a. (Functor (Messages ms), (Modules ts) `Delta` (Messages ms), Monad c) => Object ts c -> Ef ms c a -> c (Object ts c,a)
-runWith' object = go
-  where
-    go (Return a) = return (object,a)
-    go (Lift c) = c >>= go
-    go (Do m) = do
-      let (method,cont) = delta (,) (deconstruct object) m
-      object' <- method object
-      runWith object' cont
-
-infixr 5 !
-(!) :: ((Modules ts) `Delta` (Messages ms), Functor (Messages ms), Monad c) => Object ts c -> Ef ms c a -> c (Object ts c,a)
-(!) = runWith
 
 type Mod t ts c = t (Action ts c)
 
@@ -342,7 +363,9 @@ class Has (ts :: [* -> *]) (t :: * -> *) where
   pull :: Modules ts a -> t a
 
 instance (i ~ Offset ts t, Has' ts t i) => Has ts t where
+  {-# INLINE push #-}
   push = let i = Index :: Index i in push' i
+  {-# INLINE pull #-}
   pull = let i = Index :: Index i in pull' i
 
 class Has' (ts :: [* -> *]) (t :: * -> *) (n :: Nat) where
@@ -350,11 +373,15 @@ class Has' (ts :: [* -> *]) (t :: * -> *) (n :: Nat) where
   pull' :: Index n -> Modules ts a -> t a
 
 instance ts ~ (t ': xs) => Has' ts t 'Z where
+  {-# INLINE push' #-}
   push' _ t (Mod _ ts) = Mod t ts
+  {-# INLINE pull' #-}
   pull' _   (Mod t _) = t
 
 instance (i ~ Offset ts t, Has' ts t i) => Has' (t' ': ts) t ('S n) where
+  {-# INLINE push' #-}
   push' _ t (Mod t' ts) = let i = Index :: Index i in Mod t' (push' i t ts)
+  {-# INLINE pull' #-}
   pull' _   (Mod _ ts)  = let i = Index :: Index i in pull' i ts
 
 -- Subclassing; think BIG <. little
@@ -370,7 +397,9 @@ class Can ms m where
   prj :: Messages ms a -> Maybe (m a)
 
 instance (i ~ Offset ms m, Can' ms m i) => Can ms m where
+  {-# INLINE inj #-}
   inj = let i = Index :: Index i in inj' i
+  {-# INLINE prj #-}
   prj = let i = Index :: Index i in prj' i
 
 class Can' ms m (n :: Nat) where
@@ -378,12 +407,16 @@ class Can' ms m (n :: Nat) where
   prj' :: Index n -> Messages ms a -> Maybe (m a)
 
 instance (i ~ Offset ms' m, Can' ms' m i) => Can' (m' ': ms') m ('S n) where
+  {-# INLINE inj' #-}
   inj' _            = let i = Index :: Index i in Other . inj' i
+  {-# INLINE prj' #-}
   prj' _ (Other ms) = let i = Index :: Index i in prj' i ms
   prj' _ _          = Nothing
 
 instance (ms ~ (m ': ms')) => Can' ms m 'Z where
+  {-# INLINE inj' #-}
   inj' _                   = Msg
+  {-# INLINE prj' #-}
   prj' _ (Msg message) = Just message
   prj' _ (Other _)     = Nothing
 
@@ -396,83 +429,28 @@ type family (<:) ms ms' where
 type ms :> ms' = ms' <: ms
 
 infixr 6 *:*
+{-# INLINE (*:*) #-}
 (*:*) :: t a -> Modules ts a -> Modules (t ': ts) a
 (*:*) = Mod
-{-# INLINE (*:*) #-}
 
 class Append ts ts' ts'' where
   (*++*) :: (Appended ts ts' ~ ts'') => Modules ts a -> Modules ts' a -> Modules ts'' a
 
 instance (Appended ts ts' ~ ts'', Append ts ts' ts'') => Append (t ': ts) ts' (t ': ts'') where
-  (*++*) (Mod m ms) ys = m *:* (ms *++* ys)
   {-# INLINE (*++*) #-}
+  (*++*) (Mod m ms) ys = m *:* (ms *++* ys)
 
 instance Append '[] ts ts where
-  (*++*) Empty ys = ys
   {-# INLINE (*++*) #-}
+  (*++*) Empty ys = ys
 
 instance Append ts '[] ts where
-  (*++*) xs Empty = xs
   {-# INLINE (*++*) #-}
+  (*++*) xs Empty = xs
 
 {-# INLINE unit #-}
 unit :: Proxy ()
 unit = Proxy
-
-data Interpreter ts ms c a = Interpreter
-  { interpret :: (forall x. Ef ms c x -> c (Object ts c,x)) -> c (Object ts c,a) }
-
-instance (Monad c, Functor (Messages ms)) => Functor (Interpreter ts ms c) where
-  fmap f (Interpreter k) = Interpreter $ \k' -> fmap (fmap f) (k k')
-
-instance (Monad c, Functor (Messages ms), Delta (Modules ts) (Messages ms)) => Applicative (Interpreter ts ms c) where
-  pure = pure
-  (<*>) = ap
-
-instance (Monad c, Functor (Messages ms), Delta (Modules ts) (Messages ms)) => Monad (Interpreter ts ms c) where
-  return a = Interpreter $ \k -> k (return a)
-  (Interpreter k) >>= f = Interpreter $ \d -> k d >>= \(o,a) -> interpret (f a) (runWith o)
-
-instance (Monad c, Functor (Messages ms), Delta (Modules ts) (Messages ms), MonadPlus c) => MonadPlus (Interpreter ts ms c) where
-  mzero = Interpreter $ \k -> k (Lift mzero)
-  mplus (Interpreter p0) (Interpreter p1) = Interpreter $ \k -> (p0 k) `mplus` (p1 k)
-
-instance (Monad c, Functor (Messages ms), Delta (Modules ts) (Messages ms), MonadPlus c) => Alternative (Interpreter ts ms c) where
-  empty = mzero
-  (<|>) = mplus
-
-instance (Functor (Messages ms), Delta (Modules ts) (Messages ms), MonadFix c) => MonadFix (Interpreter ts ms c) where
-  mfix f = Interpreter $ \d -> mfix (\((_,x)) -> interpret (f x) d)
-
-interp :: Ef ms c a -> Interpreter ts ms c a
-interp n = Interpreter $ \k -> k n
-
-infixr 5 !#
-(!#) :: (MonadFix c, Functor (Messages ms), Delta (Modules ts) (Messages ms)) => Object ts c -> Interpreter ts ms c a -> c (Object ts c,a)
-(!#) o i = interpret i (runWith o)
-
-type Path ts ms c a = Cofree c (Object ts c,Ef ms c a)
-
-lay :: (Monad c, Delta (Modules ts) (Messages ms)) => Object ts c -> Ef ms c a -> Path ts ms c a
-lay obj nar = coiter (uncurry lay) (obj,nar)
-  where
-  lay o = go
-    where
-      go (Do m) =
-        let (method,b) = delta (,) (deconstruct o) m
-        in method o >>= \o' -> return (o',b)
-      go (Lift m) = m >>= \c -> return (o,c)
-      go (Return r) = return (o,Return r)
-
-walk :: (Monad c, Delta (Modules ts) (Messages ms)) => Path ts ms c a -> c (Object ts c,a)
-walk = step
-  where
-    step machine = do
-      next <- unwrap machine
-      let (obj,c) = extract next
-      case c of
-        (Return r) -> return (obj,r)
-        _          -> step next
 
 {-# INLINE transform #-}
 transform :: Monad c => (r -> a) -> (f (Narrative f c r) -> Narrative f' c a) -> Narrative f c r -> Narrative f' c a
@@ -494,6 +472,11 @@ runWith o c = foldn runReturn runLift runDo c o
     runDo ms o' =
       let ~(f,cont) = delta (,) (deconstruct o' :: Modules ts (Action ts c)) ms
       in f o' >>= cont
+
+infixr 5 !
+{-# INLINE (!) #-}
+(!) :: ((Modules ts) `Delta` (Messages ms), Functor (Messages ms), Monad c) => Object ts c -> Ef ms c a -> c (Object ts c,a)
+(!) = runWith
 
 {-# INLINE [0] foldn #-}
 foldn :: (Functor c, Functor f)

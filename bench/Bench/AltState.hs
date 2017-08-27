@@ -1,6 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveFunctor #-}
-module Bench.State where
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE GADTs #-}
+module Bench.AltState where
 
 import Trivial
 
@@ -13,8 +15,8 @@ import qualified Control.Monad.Trans.State as T
 import Data.Functor.Identity
 
 suite :: Test Sync ()
-suite = scope "state" $ tests
-  [ Bench.State.state
+suite = scope "altstate" $ tests
+  [ Bench.AltState.state
   ]
 
 state :: Test Sync ()
@@ -25,15 +27,15 @@ state = tests
 
 addReturn :: Test Sync ()
 addReturn = scope "add/return" $ do
-  br1 <- nf "transformers" (runIdentity . T.evalStateT mtl_add_return) 1
-  br2 <- nf "ef" (runIdentity . interp ef_add_return) 1
+  br1 <- nf "transformers" (runIdentity . mtl_test) 1
+  br2 <- nf "ef" (runIdentity . ef_test) 1
   report br1 br2
 
-fmapChain :: Test Sync ()
-fmapChain = scope "fmap/fmap/fmap" $ do
-  br1 <- nf "transformers" (runIdentity . T.evalStateT (fmap (+1) . fmap (+1) . fmap (+1) $ return (3 :: Int))) (1 :: Int)
-  br2 <- nf "ef" (runIdentity . interp (fmap (+1) . fmap (+1) . fmap (+1) $ return (3 :: Int))) (1 :: Int)
-  report br1 br2
+{-# INLINE ef_test #-}
+ef_test = interp ef_add_return
+
+{-# INLINE mtl_test #-}
+mtl_test = T.evalStateT mtl_add_return
 
 {-# INLINE ef_add_return #-}
 ef_add_return :: StateT Int Identity Int
@@ -61,13 +63,17 @@ mtl_add_return = go (10000 :: Int)
 
 type StateT s c a = Interp s (State s) c a
 
-newtype State s k = State { runState :: s -> (s,k) }
+data State s k where
+  Get :: (s -> k) -> State s k
+  Put ::  s -> k  -> State s k
   deriving Functor
 
 {-# INLINE eval #-}
 eval :: Monad c => Narrative (State s) c a -> s -> c (s,a)
-eval n = \s ->
-  Ef.thread (\(State ssk) s -> let (s',k) = ssk s in k s') n s
+eval n = \s -> Ef.thread go n s
+  where
+    go (Get sk) s  = sk s s
+    go (Put s k) _ =  k s
 
 {-# INLINE interp #-}
 interp :: Monad c => StateT s c a -> s -> c (s,a)
@@ -75,16 +81,16 @@ interp = I.thread (flip eval)
 
 {-# INLINE get #-}
 get :: StateT s c s
-get = I.send (State (\s -> (s,s)))
+get = I.send (Get id)
 
 {-# INLINE put #-}
 put :: s -> StateT s c ()
-put s = I.send (State (\_ -> (s,())))
+put s = I.send (Put s ())
 
-{-# INLINE modify' #-}
-modify' :: (s -> s) -> StateT s c ()
-modify' f = I.send (State (\s -> let !s' = f s in (s',())))
+-- {-# INLINE modify' #-}
+-- modify' :: (s -> s) -> StateT s c ()
+-- modify' f = I.send (State (\s -> let !s' = f s in (s',())))
 
-{-# INLINE modify #-}
-modify :: (s -> s) -> StateT s c ()
-modify f = I.send (State (\s -> (f s,())))
+-- {-# INLINE modify #-}
+-- modify :: (s -> s) -> StateT s c ()
+-- modify f = I.send (State (\s -> (f s,())))

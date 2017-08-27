@@ -2,7 +2,9 @@
 {-# OPTIONS_GHC -fno-warn-inline-rule-shadowing -fno-warn-missing-methods #-}
 {-# language DeriveFunctor #-}
 {-# language DeriveAnyClass #-}
+{-# language RankNTypes #-}
 {-# language GeneralizedNewtypeDeriving #-}
+{-# language ScopedTypeVariables #-}
 {-# language StandaloneDeriving #-}
 {-# language InstanceSigs #-}
 {-# language NoCPP #-}

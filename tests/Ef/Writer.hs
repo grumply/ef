@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFunctor #-}
 module Ef.Writer where
 
 import Ef

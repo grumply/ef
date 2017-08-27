@@ -1,3 +1,9 @@
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE KindSignatures  #-}
+{-# LANGUAGE TypeOperators   #-}
+{-# LANGUAGE TypeFamilies    #-}
+{-# LANGUAGE DataKinds       #-}
+{-# LANGUAGE PolyKinds       #-}
 module Ef.Type.Comments where
 
 import GHC.TypeLits

@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFunctor #-}
 module Ef.Reader where
 
 import Ef

@@ -4,27 +4,32 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE RecursiveDo #-}
 module Main where
 
 import Ef
+import Ef.Interpreter
 
 import Data.Functor.Identity
 
-main = do
-  noops (go 100000000)
-  where
-    go (0 :: Int) = return ()
-    go n = do
-      send (Noop ())
-      go (n - 1)
+main3 :: IO ()
+main3 = void $ do
+  let rdo = mdo
+        z <- interp $ prompt "Number" ((+ n) . read)
+        x <- return y
+        y <- return (3 :: Int)
+        n <- interp $ prompt "Number" read
+        return (z + x + y + n)
+  interpret rdo instr
 
-main' :: IO ()
-main' = do
-  let prompt str = send (Put str ()) >> send (Get id)
+prompt str f = send (Put str ()) >> send (Get f)
+
+main1 :: IO ()
+main1 = do
 
   (n,t) <- instr $ do
-    number <- prompt "What number?"
-    times  <- prompt "How many times?"
+    number <- prompt "What number?" id
+    times  <- prompt "How many times?" id
     return (read number,read times)
 
   (s,_) <- (`stack` []) $
@@ -41,7 +46,7 @@ data Instr k where
 instr = run eval
   where
     eval (Get k)     = getLine >>= k
-    eval (Put str k) = putStrLn str >> k
+    eval (Put str k) = putStr (str ++ ": ") >> k
 
 data StackInstruction k where
   Push :: Int -> k -> StackInstruction k
@@ -53,10 +58,3 @@ stack = thread eval
     eval (Push a k) stack   = k (a:stack)
     eval (Pop ak) (a:stack) = ak a stack
 
-data Noop k where
-  Noop :: k -> Noop k
-  deriving Functor
-
-noops = run eval
-  where
-    eval (Noop k) = k
