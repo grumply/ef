@@ -8,21 +8,23 @@
 module Main where
 
 import Ef
-import Ef.Interpreter
+import Ef.Interpreter as I
 
 import Data.Functor.Identity
+
+main = return ()
 
 main3 :: IO ()
 main3 = void $ do
   let rdo = mdo
-        z <- interp $ prompt "Number" ((+ n) . read)
+        z <- prompt "Number" ((+ n) . read)
         x <- return y
         y <- return (3 :: Int)
-        n <- interp $ prompt "Number" read
+        n <- prompt "Number" read
         return (z + x + y + n)
-  interpret rdo instr
+  instr rdo
 
-prompt str f = send (Put str ()) >> send (Get f)
+prompt str f = I.send (Put str ()) >> I.send (Get f)
 
 main1 :: IO ()
 main1 = do
@@ -34,7 +36,7 @@ main1 = do
 
   (s,_) <- (`stack` []) $
              replicateM_ t $
-               send (Push n ())
+               I.send (Push n ())
 
   print s
 
@@ -43,7 +45,7 @@ data Instr k where
   Put :: String -> k -> Instr k
   deriving Functor
 
-instr = run eval
+instr = I.run (Ef.run eval)
   where
     eval (Get k)     = getLine >>= k
     eval (Put str k) = putStr (str ++ ": ") >> k
@@ -53,7 +55,7 @@ data StackInstruction k where
   Pop  :: (Int -> k) -> StackInstruction k
   deriving Functor
 
-stack = thread eval
+stack = I.thread (Ef.thread eval)
   where
     eval (Push a k) stack   = k (a:stack)
     eval (Pop ak) (a:stack) = ak a stack

@@ -96,15 +96,15 @@ run :: (Monad c, Functor f)
        -> c a
 run f i =
   fmap snd $
-    Ef.Interpreter.thread (\ctx n -> fmap (\a -> (ctx,a)) (f n)) i ()
+    Ef.Interpreter.thread (\n ctx -> fmap (\a -> (ctx,a)) (f n)) i ()
 
 {-# INLINE thread #-}
 thread :: (Monad c, Functor f)
-    => (forall x. ctx -> Narrative f c x -> c (ctx,x))
+    => (forall x. Narrative f c x -> ctx -> c (ctx,x))
     -> Interp ctx f c a
     -> ctx
     -> c (ctx,a)
-thread f i c = interpret i f c
+thread f i c = interpret i (flip f) c
 
 {-# INLINE send #-}
 send :: Functor f => f a -> Interp ctx f c a
