@@ -4,10 +4,11 @@ cache:
   directories:
   - "/nix"
 
-env:
-  matrix:
-    - COMPILER=ghc
-    # - COMPILER=ghc801
-    # - COMPILER=ghcjsHEAD
-
-script: travis_wait 60 nix-build --argstr compiler $COMPILER
+script:
+- |
+  nix-env -f "<nixpkgs>" -iA haskellPackages.cabal-install
+  nix-shell -E 'with import <nixpkgs> {}; haskell.packages.ghc821.ghcWithPackages (pkgs: [ ])'
+  cabal install deps/ef/ deps/trivial/ . --dependencies-only
+  cabal configure --enable-tests
+  cabal install deps/ef/ deps/trivial/ .
+  cabal test
