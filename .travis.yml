@@ -8,7 +8,7 @@ script:
 - |
   nix-env -f "<nixpkgs>" -iA haskellPackages.cabal-install
   nix-shell -E 'with import <nixpkgs> {}; haskell.packages.ghc821.ghcWithPackages (pkgs: [ ])'
-  cabal install deps/ef/ deps/trivial/ . --dependencies-only
+  cabal install deps/trivial/ . --dependencies-only
   cabal configure --enable-tests
-  cabal install deps/ef/ deps/trivial/ .
+  cabal install deps/trivial/ .
   cabal test

@@ -9,7 +9,10 @@ module Ef.Type.Comments where
 import GHC.TypeLits
 import GHC.Exts
 
-import Data.Proxy
+import Data.Char
+
+import Language.Haskell.TH
+import Language.Haskell.TH.Quote
 
 -- An expiriment in type-level comments. Benefits of this approach are seen in
 -- an environment with type inspection or when retrieving type information in
@@ -34,8 +37,26 @@ import Data.Proxy
 type (:::) (a :: k) (comment :: Symbol) = a
 infixl 0 :::
 
+c :: QuasiQuoter
+c = QuasiQuoter { quoteType = commentExprType }
+
+commentExprType :: String -> TypeQ
+commentExprType = foldr ((\x xs -> appT (appT promotedConsT x) xs) . litT . strTyLit) promotedNilT . lines . unindent
+
 type Using (u :: k) (x :: k') = (() :: Constraint)
 type Describe (d :: k) (describe :: k') = (() :: Constraint)
+
+type Parameters (ps :: k) = (() :: Constraint)
+type Param    (p :: k) (x :: k') = (() :: Constraint)
+
+type Returns (returns :: k) = (() :: Constraint)
+type Return (v :: k) (return :: k') = (() :: Constraint)
+
+type Value (v :: k) (x :: k') = (() :: Constraint)
+
+type Implicits (is :: k) = (() :: Constraint)
+type Implicit (i :: k) (x :: k') = (() :: Constraint)
+type Variable (v :: k) (x :: k') = (() :: Constraint)
 
 type Given (givens :: k) = (() :: Constraint)
 
@@ -46,8 +67,6 @@ type Assumptions (assumptions :: k') = (() :: Constraint)
 
 type Define (d :: k) = (() :: Constraint)
 type Defines (d :: k) = (() :: Constraint)
-type Parameter (param :: k) = (() :: Constraint)
-type Variable (v :: k) = (() :: Constraint)
 type Environment (environment :: k') = (() :: Constraint)
 
 type It (it :: k) = (() :: Constraint)
@@ -78,8 +97,6 @@ type Destroy (destroys :: k) = (() :: Constraint)
 type Destroys (destroys :: k) = (() :: Constraint)
 type Mutate (mutate :: k) = (() :: Constraint)
 type Mutates (mutates :: k) = (() :: Constraint)
-type Return (return :: k) = (() :: Constraint)
-type Returns (returns :: k) = (() :: Constraint)
 type Remove (remove :: k) = (() :: Constraint)
 type Removes (removes :: k) = (() :: Constraint)
 type Add (add :: k) = (() :: Constraint)
@@ -111,18 +128,20 @@ type Let (x :: k) = (() :: Constraint)
 
 type An (a :: k) = (() :: Constraint)
 
-type Result (result :: k') = (() :: Constraint)
-type Results (results :: k') = (() :: Constraint)
+type Result (r :: k) (x :: k') = (() :: Constraint)
+type Results (rs :: k) = (() :: Constraint)
+
+type Errors (es :: k) = (() :: Constraint)
+type Error (e :: k) (x :: k') = (() :: Constraint)
 
 type Class (c :: k) = (() :: Constraint)
 
-type Constructor (constructor :: k') = (() :: Constraint)
-type Method (f :: k) = (() :: Constraint)
-type Function (f :: k) = (() :: Constraint)
-type Field (f :: k) = (() :: Constraint)
-type Selector (s :: k) = (() :: Constraint)
-type Pattern (p :: k) = (() :: Constraint)
-type Implicit (i :: k) = (() :: Constraint)
+type Constructor (nm :: Symbol) (c :: k) = (() :: Constraint)
+type Method (nm :: Symbol) (m :: k) = (() :: Constraint)
+type Function (nm :: Symbol) (f :: k) = (() :: Constraint)
+type Field (nm :: Symbol) (f :: k) = (() :: Constraint)
+type Selector (nm :: Symbol) (s :: k) = (() :: Constraint)
+type Pattern (nm :: Symbol) (p :: k) = (() :: Constraint)
 
 type Example (ex :: k') = (() :: Constraint)
 
@@ -136,7 +155,6 @@ type Allows (x :: k) = (() :: Constraint)
 type Disallows (x :: k) = (() :: Constraint)
 type Dos (x :: k) = (() :: Constraint)
 type Don'ts (x :: k) = (() :: Constraint)
-type Errors (x :: k) = (() :: Constraint)
 
 type TODO (x :: k) = (() :: Constraint)
 type FIXME (x :: k) = (() :: Constraint)
@@ -151,3 +169,73 @@ type Reconciles (a :: k) (b :: k) = a ~ b
 
 type Compares (a :: k) (b :: k) = a ~ b
 type Simultaneously (a :: k) (b :: k') = (() :: Constraint)
+
+-- unindent is from the great interpolate package by Simon Hengel.
+--
+-- Originally licensed as MIT, sublicensing as BSD3.
+--
+-- Original License:
+--
+{-
+Copyright (c) 2013-2015 Simon Hengel <sol@typeful.net>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+-}
+unindent :: String -> String
+unindent = concat . removeIndentation . trimLastLine . removeLeadingEmptyLine . lines_
+  where
+    isEmptyLine = all isSpace
+
+    lines_ s
+      | null s = []
+      | otherwise =
+          case span (/= '\n') s of
+            (first,'\n':rest) -> (first ++ "\n") : lines_ rest
+            (first,rest)      -> first : lines_ rest
+
+    removeLeadingEmptyLine xs =
+      case xs of
+        y:ys | isEmptyLine y -> ys
+        _                    -> xs
+
+    trimLastLine [] = []
+    trimLastLine (a : b : r) = a : trimLastLine (b : r)
+    trimLastLine [a]
+      | all (== ' ') a = []
+      | otherwise = [a]
+
+    removeIndentation ys = map (dropSpaces indentation) ys
+      where
+        dropSpaces 0 s = s
+        dropSpaces n s =
+          case s of
+            (' ':r) -> dropSpaces (n - 1) r
+            _       -> s
+
+        indentation = minimalIndentation ys
+
+        minimalIndentation =
+            safeMinimum 0
+          . map (length . takeWhile (== ' '))
+          . removeEmptyLines
+
+        removeEmptyLines = filter (not . isEmptyLine)
+
+        safeMinimum x [] = x
+        safeMinimum _ xs = minimum xs
