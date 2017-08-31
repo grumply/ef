@@ -31,7 +31,6 @@ benchmark bench-ef
     , resourcet
     , exceptions
     , pipes
-    , template-haskell
   default-language: Haskell2010
 
 
@@ -54,7 +53,6 @@ test-suite tests-ef
     , mtl
     , resourcet
     , exceptions
-    , template-haskell
   default-language: Haskell2010
 
 
@@ -66,7 +64,6 @@ library
       Ef.Type.Nat
       Ef.Type.Bool
       Ef.Type.List
-      Ef.Type.Comments
       Ef.Path
       Ef.Interpreter
       Ef
@@ -82,5 +79,4 @@ library
     , mtl
     , resourcet
     , exceptions
-    , template-haskell
   default-language: Haskell2010
