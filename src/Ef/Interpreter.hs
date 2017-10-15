@@ -7,6 +7,8 @@ module Ef.Interpreter where
 import Ef hiding (send,thread,run)
 import qualified Ef
 
+import Control.Monad.ST
+
 {- | Interp is an interpretive monad for stateful evaluation that
      exposes join points that are not naturally available to
      Narrative interpretation via foldn.
@@ -109,3 +111,8 @@ thread f i c = interpret i (flip f) c
 {-# INLINE send #-}
 send :: Functor f => f a -> Interp ctx f c a
 send f = Interp $ \k ctx -> k ctx (Ef.send f)
+
+liftInterp :: (Monad c, Functor f) => Narrative f c a -> Interp ctx f c a
+liftInterp (Return a) = return a
+liftInterp (Lift c)   = join $ lift (fmap liftInterp c)
+liftInterp (Do d)     = join $ send (fmap liftInterp d)
