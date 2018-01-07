@@ -421,7 +421,7 @@ instance (ms ~ (m ': ms')) => Can' ms m 'Z where
 
 -- Subtyping; think BIG <: little
 type family (<:) ms ms' where
-  ms <: '[] = (Functor (Messages ms), Typeable ms)
+  ms <: '[] = (Functor (Messages ms))
   ms <: (m ': ms') = (Can' ms m (Offset ms m), ms <: ms')
 
 -- Supertyping; think little :> BIG
