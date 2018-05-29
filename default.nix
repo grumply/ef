@@ -1,6 +1,6 @@
 { mkDerivation, base, comonad, exceptions, free, kan-extensions
 , mmorph, monad-control, mtl, pipes, resourcet, stdenv
-, transformers, transformers-base, trivial
+, transformers, transformers-base
 }:
 mkDerivation {
   pname = "ef";
@@ -12,11 +12,11 @@ mkDerivation {
   ];
   testHaskellDepends = [
     base comonad exceptions free kan-extensions mmorph monad-control
-    mtl resourcet transformers transformers-base trivial
+    mtl resourcet transformers transformers-base
   ];
   benchmarkHaskellDepends = [
     base comonad exceptions free kan-extensions mmorph monad-control
-    mtl pipes resourcet transformers transformers-base trivial
+    mtl pipes resourcet transformers transformers-base
   ];
   homepage = "github.com/grumply/ef";
   license = stdenv.lib.licenses.bsd3;
