@@ -20,6 +20,7 @@
       , DeriveFunctor
       , DeriveDataTypeable
       , StandaloneDeriving
+      , CPP
   #-}
 {-# OPTIONS_GHC -fno-warn-missing-methods #-}
 module Ef (module Ef, module Export) where
@@ -193,8 +194,13 @@ instance (Applicative f, Monad c) => Alternative (Narrative f c) where
 instance (Monad c, Monoid r, Functor f) => Monoid (Narrative f c r) where
   {-# INLINE mempty #-}
   mempty = return mempty
+#if !MIN_VERSION_base(4,11,0)
   {-# INLINE mappend #-}
   mappend a b = a >>= \w -> fmap (mappend w) b
+#else
+instance (Monad c, Semigroup r, Functor f) => Semigroup (Narrative f c r) where
+  (<>) a b = a >>= \w -> fmap (w <>) b
+#endif
 
 instance Functor f => MFunctor (Narrative f) where
   {-# INLINE hoist #-}
