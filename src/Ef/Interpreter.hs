@@ -9,38 +9,6 @@ import qualified Ef
 
 import Control.Monad.ST
 
-{- | Interp is an interpretive monad for stateful evaluation that
-     exposes join points that are not naturally available to
-     Narrative interpretation via foldn.
-
-     Given an evaluation of some functorial instructions:
-
-     > eval :: Narrative f c a -> c a
-
-     Simply wrap it with Ef.Interpreter.run:
-
-     > interp :: Interp f c a -> c a
-     > interp = I.run eval
-
-     And use Ef.Interpreter.send to create instructions rather than Ef.send:
-
-     > instr = I.send ...
-
-     And use interp rather than eval for evaluation.
-
-     > main = interp $ do { ...; return () }
-
-     As an example:
-
-     > data Prompt k where
-     >   Prompt :: String -> (String -> k) -> Prompt k
-     >
-     > eval :: MonadIO c => Narrative Prompt c a -> c a
-     > eval = 
-
-
--}
-
 newtype Interp ctx f c a = Interp
   { interpret :: (forall x. ctx -> Narrative f c x -> c (ctx,x)) -> ctx -> c (ctx,a) }
 
