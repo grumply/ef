@@ -55,28 +55,6 @@ import Ef.Type.Set as Export
 
 import GHC.Exts
 
--- Features:
---
--- Effect monad paired with persistent interpreters as functional, immutable objects.
---
--- Functional and immutable.
---
--- Splits invocation from implementation in a manner similar to Java interfaces.
---
--- Pairs invocation and implementation uniquely to help preserve type inference.
---
--- Permits overriding of trait implementations during construction.
---
--- Subtyping and Subclassing and single/multiple inheritance via nesting of paired implementation/invocation contexts.
---
--- Permits subtyping of sets of messages.
---
--- Permits subclassing of sets of traits.
---
--- Permits functional extension/overriding of individual message invocations.
---
--- Invocation implemented as a free monad transformer with lift implemented individually.
-
 data Modules (ts :: [* -> *]) (x :: *) where
   Empty :: Modules '[] x
   Mod :: t x -> Modules ts x -> Modules (t ': ts) x
