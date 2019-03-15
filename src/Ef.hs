@@ -367,12 +367,10 @@ instance (i ~ Offset ts t, Has' ts t i) => Has' (t' ': ts) t ('S n) where
   {-# INLINE pull' #-}
   pull' _   (Mod _ ts)  = let i = Index :: Index i in pull' i ts
 
--- Subclassing; think BIG <. little
 type family (<.) (ts :: [* -> *]) (ts' :: [* -> *]) :: Constraint where
   (<.) ts' '[] = ()
   (<.) ts' (t ': ts) = (Has' ts' t (Offset ts' t), ts' <. ts)
 
--- Superclassing; think little .> BIG
 type ts .> ts' = ts' <. ts
 
 class Can ms m where
@@ -403,12 +401,10 @@ instance (ms ~ (m ': ms')) => Can' ms m 'Z where
   prj' _ (Msg message) = Just message
   prj' _ (Other _)     = Nothing
 
--- Subtyping; think BIG <: little
 type family (<:) ms ms' where
   ms <: '[] = (Functor (Messages ms))
   ms <: (m ': ms') = (Can' ms m (Offset ms m), ms <: ms')
 
--- Supertyping; think little :> BIG
 type ms :> ms' = ms' <: ms
 
 infixr 6 *:*
@@ -486,7 +482,6 @@ run = foldn return join
 thread :: (Functor f, Monad m) => (f (r -> m (r,a)) -> r -> m (r, a)) -> Narrative f m a -> r -> m (r,a)
 thread = foldn (\a r -> return (r,a)) (\cf a -> cf >>= ($ a))
 
--- non-fusing
 {-# INLINE [0] foldn' #-}
 foldn' :: (Functor c, Functor f)
       => (a -> Narrative f c a)
@@ -500,7 +495,6 @@ foldn' r l d = go
     go (Lift c) = l (fmap go c)
     go (Do m) = d (fmap go m)
 
--- non-fusing
 {-# INLINE [1] buildn' #-}
 buildn' :: forall f c a. ((a -> Narrative f c a) -> (c (Narrative f c a) -> Narrative f c a) -> (f (Narrative f c a) -> Narrative f c a) -> Narrative f c a) -> Narrative f c a
 buildn' f = f Return Lift Do
@@ -535,10 +529,8 @@ _fmap f n = foldn (Return . f) Lift Do n
 "foldn/buildn" forall r l d (g :: forall b. (a -> b) -> (c b -> b) -> (f b -> b) -> b).
                foldn r l d (buildn g) = g r l d
 
--- buildn' is too specific for this rule to fire
 "foldn'/buildn'" forall r l d g. foldn' r l d (buildn' g) = g r l d
 
--- buildn' is too specific
 "foldn/buildn'" forall r l d (g :: forall b. (a -> b) -> (c b -> b) -> (f b -> b) -> b).
                 foldn r l d (buildn' g) = g r l d
 
@@ -583,9 +575,6 @@ reseedObj obj = fmap (swapObj obj)
 reseedEf :: (Monad c, Delta (Modules ts) (Messages ms)) => Ef ms c a -> Cofree c (Cofree c (Object ts c, Ef ms c a)) -> Cofree c (Cofree c (Object ts c, Ef ms c a))
 reseedEf code = fmap (swapEf code)
 -}
-
-----------------------------------------
--- Utilities
 
 {-# INLINE [2] reduce #-}
 reduce :: (Functor f, Functor c) => Narrative f c a -> (f b -> b) -> (c b -> b) -> (a -> b) -> b
