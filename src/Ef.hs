@@ -500,11 +500,11 @@ foldn r l d = go
 buildn :: (forall b. (a -> b) -> (c b -> b) -> (f b -> b) -> b) -> Narrative f c a
 buildn f = f Return Lift Do
 
-{-# INLINE run #-}
+{-# INLINE [2] run #-}
 run :: (Functor f, Monad m) => (f (m a) -> m a) -> Narrative f m a -> m a
 run = foldn return join
 
-{-# INLINE thread #-}
+{-# INLINE [2] thread #-}
 thread :: (Functor f, Monad m) => (f (r -> m (r,a)) -> r -> m (r, a)) -> Narrative f m a -> r -> m (r,a)
 thread = foldn (\a r -> return (r,a)) (\cf a -> cf >>= ($ a))
 
@@ -609,7 +609,7 @@ reseedEf code = fmap (swapEf code)
 ----------------------------------------
 -- Utilities
 
-{-# INLINE reduce #-}
+{-# INLINE [2] reduce #-}
 reduce :: (Functor f, Functor c) => Narrative f c a -> (f b -> b) -> (c b -> b) -> (a -> b) -> b
 reduce n d l r = foldn r l d n
 
@@ -660,7 +660,7 @@ _zipsWithInternal f = go
 zips :: (Monad c, Functor f, Functor g) => Narrative f c a -> Narrative g c a -> Narrative (Compose f g) c a
 zips = zipsWith (\f g -> Compose (fmap (\x -> fmap (\y -> (x,y)) g) f))
 
-{-# INLINE unzips #-}
+{-# INLINE [2] unzips #-}
 unzips :: (Functor f, Functor g, Monad c) => Narrative (Compose f g) c r -> Narrative f (Narrative g c) r
 unzips n = foldn Return (Lift . lift) (\(Compose fgn) -> Do (fmap (Lift . Do . fmap Return) fgn)) n
 
@@ -674,7 +674,7 @@ decompose n = buildn go
   where
     go r l d = foldn r l (\(Compose c) -> l $ c >>= return . d) n
 
-{-# INLINE implode #-}
+{-# INLINE [2] implode #-}
 implode :: (Monad c) => Narrative c c r -> c r
 implode = foldn return join join
 
@@ -709,7 +709,7 @@ iterTM f n = reduce n f (join . lift) return
 iterT :: (Functor f, Monad c) => (f (c a) -> c a) -> Narrative f c a -> c a
 iterT f n = reduce n f join return
 
-{-# INLINE distribute #-}
+{-# INLINE [2] distribute #-}
 distribute :: (Functor f, Monad c, Functor (t c), MonadTrans t, MFunctor t, Monad (t (Narrative f c)))
            => Narrative f (t c) r -> t (Narrative f c) r
 distribute n = foldn (lift . return) (join . hoist lift) (join . lift . wrap . fmap return) n

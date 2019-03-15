@@ -84,6 +84,7 @@ instance (Functor f, MonadFix c) => MonadFix (Interp ctx f c) where
   mfix f = Interp $ \d ctx -> mfix (\(_,a) -> interpret (f a) d ctx)
 
 instance MonadTrans (Interp ctx f) where
+  {-# INLINE lift #-}
   lift f = Interp $ \k ctx -> k ctx (lift f)
 
 infixr 5 !
@@ -112,6 +113,7 @@ thread f i c = interpret i (flip f) c
 send :: Functor f => f a -> Interp ctx f c a
 send f = Interp $ \k ctx -> k ctx (Ef.send f)
 
+{-# INLINE liftInterp #-}
 liftInterp :: (Monad c, Functor f) => Narrative f c a -> Interp ctx f c a
 liftInterp (Return a) = return a
 liftInterp (Lift c)   = join $ lift (fmap liftInterp c)
