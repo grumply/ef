@@ -457,7 +457,7 @@ infixr 5 !
 (!) :: ((Modules ts) `Delta` (Messages ms), Functor (Messages ms), Monad c) => Object ts c -> Ef ms c a -> c (Object ts c,a)
 (!) = runWith
 
-{-# INLINE [0] foldn #-}
+{-# NOINLINE foldn #-}
 foldn :: (Functor c, Functor f)
       => (a -> b)
       -> (c b -> b)
