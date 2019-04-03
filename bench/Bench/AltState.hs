@@ -33,34 +33,24 @@ addReturn = scope "add/return" $ do
   report br1 br2
 
 {-# INLINE ef_test #-}
-ef_test = interp ef_add_return
+ef_test = eval ef_add_return
 
 {-# INLINE mtl_test #-}
 mtl_test = T.evalStateT mtl_add_return
 
 {-# INLINE ef_add_return #-}
-ef_add_return :: StateT Int Identity Int
-ef_add_return = go (10000 :: Int)
-  where
-    {-# INLINE go #-}
-    go 0 = get
-    go n = do
-      x :: Int <- get
-      y :: Int <- get
-      put $! x + y
-      go (n - 1)
+ef_add_return :: StateT Int Identity ()
+ef_add_return = forM_ [1..1000 :: Int] $ \_ -> do
+  x :: Int <- get
+  y <- get
+  put $! x + y
 
 {-# INLINE mtl_add_return #-}
-mtl_add_return :: T.StateT Int Identity Int
-mtl_add_return = go (10000 :: Int)
-  where
-    {-# INLINE go #-}
-    go 0 = T.get
-    go n = do
-      x :: Int <- T.get
-      y :: Int <- T.get
-      T.put $! x + y
-      go (n - 1)
+mtl_add_return :: T.StateT Int Identity ()
+mtl_add_return = forM_ [1..1000 :: Int] $ \_ -> do
+  x :: Int <- T.get
+  y <- T.get
+  T.put $! x + y
 
 type StateT s c a = Interp s (State s) c a
 
@@ -70,15 +60,11 @@ data State s k where
   deriving Functor
 
 {-# INLINE eval #-}
-eval :: Monad c => Narrative (State s) c a -> s -> c (s,a)
-eval n = \s -> Ef.thread go n s
+eval :: Monad c => StateT s c a -> s -> c (s,a)
+eval = I.thread (Ef.thread go)
   where
     go (Get sk) s  = sk s s
     go (Put s k) _ =  k s
-
-{-# INLINE interp #-}
-interp :: Monad c => StateT s c a -> s -> c (s,a)
-interp = I.thread eval
 
 {-# INLINE get #-}
 get :: StateT s c s

@@ -42,32 +42,11 @@ import Prelude hiding (
 
 map :: Monad m => (a -> b) -> Pipe a b m r
 map f = for cat (\a -> yield (f a))
-{-# INLINABLE [1] map #-}
-
-{-# RULES
-    "p >-> map f" forall p f . p >-> map f = for p (\a -> yield (f a))
-
-  ; "map f >-> p" forall p f . map f >-> p = (do
-        a <- await
-        return (f a) ) >~ p
-  #-}
 
 mapM :: Monad m => (a -> m b) -> Pipe a b m r
 mapM f = for cat $ \a -> do
     b <- lift (f a)
     yield b
-{-# INLINABLE [1] mapM #-}
-
-{-# RULES
-    "p >-> mapM f" forall p f . p >-> mapM f = for p (\a -> do
-        b <- lift (f a)
-        yield b )
-
-  ; "mapM f >-> p" forall p f . mapM f >-> p = (do
-        a <- await
-        b <- lift (f a)
-        return b ) >~ p
-  #-}
 
 scan :: Monad m => (x -> a -> x) -> x -> (x -> b) -> Pipe a b m r
 scan step begin done = go begin
@@ -77,7 +56,7 @@ scan step begin done = go begin
         a <- await
         let x' = step x a
         go $! x'
-{-# INLINABLE scan #-}
+{-# INLINE scan #-}
 
 drop :: Monad m => Int -> Pipe a a m r
 drop = go
@@ -86,7 +65,7 @@ drop = go
     go n =  do
         await
         go (n-1)
-{-# INLINABLE drop #-}
+{-# INLINE drop #-}
 
 dropWhile :: Monad m => (a -> Bool) -> Pipe a a m r
 dropWhile predicate = go
@@ -98,7 +77,7 @@ dropWhile predicate = go
             else do
                 yield a
                 cat
-{-# INLINABLE dropWhile #-}
+{-# INLINE dropWhile #-}
 
 take :: Monad m => Int -> Pipe a a m ()
 take = go
@@ -108,7 +87,7 @@ take = go
         a <- await
         yield a
         go (n-1)
-{-# INLINABLE take #-}
+{-# INLINE take #-}
 
 takeWhile :: Monad m => (a -> Bool) -> Pipe a a m ()
 takeWhile predicate = go
@@ -120,7 +99,7 @@ takeWhile predicate = go
                 yield a
                 go
             else return ()
-{-# INLINABLE takeWhile #-}
+{-# INLINE takeWhile #-}
 
 last :: Monad m => Producer a m () -> m (Maybe a)
 last p0 = do
@@ -134,11 +113,11 @@ last p0 = do
         case x of
             Left   _       -> return (Just a)
             Right (a', p') -> go a' p'
-{-# INLINABLE last #-}
+{-# INLINE last #-}
 
 filter :: Monad m => (a -> Bool) -> Pipe a a m r
 filter predicate = for cat $ \a -> when (predicate a) (yield a)
-{-# INLINABLE [1] filter #-}
+{-# INLINE filter #-}
 
 {-# RULES
     "p >-> filter predicate" forall p predicate.
@@ -147,7 +126,7 @@ filter predicate = for cat $ \a -> when (predicate a) (yield a)
 
 concat :: (Monad m, Foldable f) => Pipe (f a) a m r
 concat = for cat each
-{-# INLINABLE [1] concat #-}
+{-# INLINE concat #-}
 
 {-# RULES
     "p >-> concat" forall p . p >-> concat = for p each
@@ -160,7 +139,7 @@ fold step begin done p0 =
     go p x = case p of
         Request v  _  -> closed v
         Respond a  fu -> fu () $! step x a
-{-# INLINABLE fold #-}
+{-# INLINE fold #-}
 
 toListM :: Monad m => Producer a m () -> m [a]
 toListM = fold step begin done
@@ -168,14 +147,14 @@ toListM = fold step begin done
     step x a = x . (a:)
     begin = id
     done x = x []
-{-# INLINABLE toListM #-}
+{-# INLINE toListM #-}
 
 zip :: Monad m
     => (Producer   a     m r)
     -> (Producer      b  m r)
     -> (Producer' (a, b) m r)
 zip = zipWith (,)
-{-# INLINABLE zip #-}
+{-# INLINE zip #-}
 
 zipWith :: Monad m
     => (a -> b -> c)
@@ -195,7 +174,7 @@ zipWith f = go
                     Right (b, p2') -> do
                         yield (f a b)
                         go p1' p2'
-{-# INLINABLE zipWith #-}
+{-# INLINE zipWith #-}
 
 unfoldr :: Monad m 
         => (s -> m (Either r (a, s))) -> s -> Producer a m r
@@ -207,4 +186,4 @@ unfoldr step = go where
       Right (a,s) -> do 
         yield a
         go s
-{-# INLINABLE unfoldr #-}
+{-# INLINE unfoldr #-}

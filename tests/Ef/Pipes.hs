@@ -22,7 +22,7 @@ data Pipes a' a b' b k
 
 newtype X = X X
 
-{-# INLINABLE runEffect #-}
+{-# INLINE runEffect #-}
 runEffect :: Monad c => Effect c r -> c r
 runEffect = foldn return join (error "runEffect: error")
 
@@ -50,29 +50,29 @@ type Client' a' a m r = forall y' y. Narrative (Pipes a' a y' y) m r
 
 type Proxy a' a b' b = Narrative (Pipes a' a b' b)
 
-{-# INLINABLE [1] request #-}
+{-# INLINE request #-}
 request :: forall a' a y' y m. Monad m => a' -> Proxy a' a y' y m a
 request a' = send (Request a' id)
 
-{-# INLINABLE [1] respond #-}
+{-# INLINE respond #-}
 respond :: forall a' a x' x m. Monad m => a -> Proxy x' x a' a m a'
 respond b = send (Respond b id)
 
-{-# INLINABLE [1] await #-}
+{-# INLINE await #-}
 await :: Monad m => Consumer' a m a
 await = send (Request () id)
 
-{-# INLINABLE [1] yield #-}
+{-# INLINE yield #-}
 yield :: Monad m => a -> Producer' a m ()
 yield a = send (Respond a id)
 
-{-# INLINABLE [1] pull #-}
+{-# INLINE pull #-}
 pull :: Monad m => a' -> Proxy a' a a' a m r
 pull = pull'
   where
     pull' a' = Do (Request a' (\a -> Do (Respond a pull')))
 
-{-# INLINABLE [1] push #-}
+{-# INLINE push #-}
 push :: Monad m => a -> Proxy a' a a' a m r
 push = push'
   where
@@ -129,7 +129,7 @@ instance (Foldable m) => Foldable (ListT m) where
             Return _ -> mempty
             Lift sup -> F.foldMap go sup
             Do (Respond a fu) -> f a `mappend` go (fu ())
-    {-# INLINE [1] foldMap #-}
+    {-# INLINE foldMap #-}
 
 instance MonadTrans ListT where
   lift m = Select (lift m >>= yield)
@@ -163,11 +163,11 @@ every it = discard >\\ enumerate it
 --------------------------------------------------------------------------------
 -- Respond; substitute yields
 
-{-# INLINE [1] cat #-}
+{-# INLINE cat #-}
 cat :: Monad m => Pipe a a m r
 cat = forever (await >>= yield)
 
-{-# INLINE [1] (//>) #-}
+{-# INLINE (//>) #-}
 (//>) :: forall x' x b' b a' c' c m. Monad m
       => Proxy x' x b' b m a'
       -> (b -> Proxy x' x c' c m b')
@@ -179,21 +179,21 @@ cat = forever (await >>= yield)
         Request x' fx -> Do (Request x' fx)
         Respond b fb' -> fb b >>= \b' -> fb' b'
 
-{-# INLINE [1] for #-}
+{-# INLINE for #-}
 for :: Monad m
     => Proxy x' x b' b m a'
     -> (b -> Proxy x' x c' c m b')
     -> Proxy x' x c' c m a'
 for = (//>)
 
-{-# INLINE [1] (<\\) #-}
+{-# INLINE (<\\) #-}
 (<\\) :: Monad m
       => (b -> Proxy x' x c' c m b')
       -> Proxy x' x b' b m a'
       -> Proxy x' x c' c m a'
 f <\\ p = p //> f
 
-{-# INLINABLE [1] (\<\) #-}
+{-# INLINE (\<\) #-}
 (\<\) :: Monad m
       => (b -> Proxy x' x c' c m b')
       -> (a -> Proxy x' x b' b m a')
@@ -201,7 +201,7 @@ f <\\ p = p //> f
       -> Proxy x' x c' c m a'
 p1 \<\ p2 = p2 />/ p1
 
-{-# INLINE [1] (~>) #-}
+{-# INLINE (~>) #-}
 (~>) :: Monad m
      => (a -> Proxy x' x b' b m a')
      -> (b -> Proxy x' x c' c m b')
@@ -209,7 +209,7 @@ p1 \<\ p2 = p2 />/ p1
      -> Proxy x' x c' c m a'
 (~>) = (/>/)
 
-{-# INLINE [1] (<~) #-}
+{-# INLINE (<~) #-}
 (<~) :: Monad m
      => (b -> Proxy x' x c' c m b')
      -> (a -> Proxy x' x b' b m a')
@@ -217,7 +217,7 @@ p1 \<\ p2 = p2 />/ p1
      -> Proxy x' x c' c m a'
 g <~ f = f ~> g
 
-{-# INLINABLE [1] (/>/) #-}
+{-# INLINE (/>/) #-}
 (/>/) :: Monad m
       => (a -> Proxy x' x b' b m a')
       -> (b -> Proxy x' x c' c m b')
@@ -227,7 +227,7 @@ g <~ f = f ~> g
 --------------------------------------------------------------------------------
 -- Request; substitute awaits
 
-{-# INLINE [1] (>\\) #-}
+{-# INLINE (>\\) #-}
 (>\\) :: forall b b' a a' y y' c m. Monad m
       => (b' -> Proxy a' a y' y m b)
       -> Proxy b' b y' y m c
@@ -239,7 +239,7 @@ g <~ f = f ~> g
         Request b' fb -> fb' b' >>= \b -> fb b
         Respond x fx' -> Do (Respond x fx')
 
-{-# INLINABLE [1] (/</) #-}
+{-# INLINE (/</) #-}
 (/</) :: Monad m
       => (c' -> Proxy b' b x' x m c)
       -> (b' -> Proxy a' a x' x m b)
@@ -247,21 +247,21 @@ g <~ f = f ~> g
       -> Proxy a' a x' x m c
 p1 /</ p2 = p2 \>\ p1
 
-{-# INLINE [1] (>~) #-}
+{-# INLINE (>~) #-}
 (>~) :: Monad m
      => Proxy a' a y' y m b
      -> Proxy () b y' y m c
      -> Proxy a' a y' y m c
 p1 >~ p2 = (\() -> p1) >\\ p2
 
-{-# INLINE [1] (~<) #-}
+{-# INLINE (~<) #-}
 (~<) :: Monad m
      => Proxy () b y' y m c
      -> Proxy a' a y' y m b
      -> Proxy a' a y' y m c
 p2 ~< p1 = p1 >~ p2
 
-{-# INLINABLE [1] (\>\) #-}
+{-# INLINE (\>\) #-}
 (\>\) :: Monad m
       => (b' -> Proxy a' a y' y m b)
       -> (c' -> Proxy b' b y' y m c)
@@ -269,7 +269,7 @@ p2 ~< p1 = p1 >~ p2
       -> Proxy a' a y' y m c
 (fb' \>\ fc') c' = fb' >\\ fc' c'
 
-{-# INLINABLE [1] (//<) #-}
+{-# INLINE (//<) #-}
 (//<) :: Monad m
       => Proxy b' b y' y m c
       -> (b' -> Proxy a' a y' y m b)
@@ -279,7 +279,7 @@ p //< f = f >\\ p
 --------------------------------------------------------------------------------
 -- Push; substitute responds with requests
 
-{-# INLINE [1] (>>~) #-}
+{-# INLINE (>>~) #-}
 (>>~)
     :: forall a' a b' b c' c m r.
        Monad m
@@ -303,7 +303,7 @@ p >>~ fb =
   #-}
 
 
-{-# INLINABLE [1] (<~<) #-}
+{-# INLINE (<~<) #-}
 (<~<) :: Monad m
       => (b -> Proxy b' b c' c m r)
       -> (a -> Proxy a' a b' b m r)
@@ -311,7 +311,7 @@ p >>~ fb =
       -> Proxy a' a c' c m r
 p1 <~< p2 = p2 >~> p1
 
-{-# INLINABLE [1] (>~>) #-}
+{-# INLINE (>~>) #-}
 (>~>) :: Monad m
       => (_a -> Proxy a' a b' b m r)
       -> (b -> Proxy b' b c' c m r)
@@ -319,7 +319,7 @@ p1 <~< p2 = p2 >~> p1
       -> Proxy a' a c' c m r
 (fa >~> fb) a = fa a >>~ fb
 
-{-# INLINABLE [1] (~<<) #-}
+{-# INLINE (~<<) #-}
 (~<<) :: Monad m
       => (b -> Proxy b' b c' c m r)
       -> Proxy a' a b' b m r
@@ -329,7 +329,7 @@ k ~<< p = p >>~ k
 --------------------------------------------------------------------------------
 -- Pull; substitute requests with responds
 
-{-# INLINABLE [1] (+>>) #-}
+{-# INLINE (+>>) #-}
 (+>>) :: forall a' a b' b c' c m r. Monad m
       => (b' -> Proxy a' a b' b m r)
       ->        Proxy b' b c' c m r
@@ -350,21 +350,21 @@ fb' +>> p =
   "(+>>) _ (Respond c fc')" forall fb' c fc'. fb' +>> (Do (Respond c fc')) = Do (Respond c (\c' -> fb' +>> fc' c'));
   #-}
 
-{-# INLINE [1] (>->) #-}
+{-# INLINE (>->) #-}
 (>->) :: Monad m
       => Proxy a' a () b m r
       -> Proxy () b c' c m r
       -> Proxy a' a c' c m r
 p1 >-> p2 = (\() -> p1) +>> p2
 
-{-# INLINE [1] (<-<) #-}
+{-# INLINE (<-<) #-}
 (<-<) :: Monad m
       => Proxy () b c' c m r
       -> Proxy a' a () b m r
       -> Proxy a' a c' c m r
 p2 <-< p1 = p1 >-> p2
 
-{-# INLINABLE [1] (<+<) #-}
+{-# INLINE (<+<) #-}
 (<+<) :: Monad m
       => (c' -> Proxy b' b c' c m r)
       -> (b' -> Proxy a' a b' b m r)
@@ -372,7 +372,7 @@ p2 <-< p1 = p1 >-> p2
       -> Proxy a' a c' c m r
 p1 <+< p2 = p2 >+> p1
 
-{-# INLINABLE [1] (>+>) #-}
+{-# INLINE (>+>) #-}
 (>+>) :: Monad m
       => (b' -> Proxy a' a b' b m r)
       -> (_c' -> Proxy b' b c' c m r)
@@ -380,7 +380,7 @@ p1 <+< p2 = p2 >+> p1
       -> Proxy a' a c' c m r
 (fb' >+> fc') c' = fb' +>> fc' c'
 
-{-# INLINABLE [1] (<<+) #-}
+{-# INLINE (<<+) #-}
 (<<+) :: Monad m
       => Proxy b' b c' c m r
       -> (b' -> Proxy a' a b' b m r)
@@ -482,10 +482,10 @@ p <<+ fb = fb +>> p
   #-}
 
 
-{-# INLINE [1] each #-}
-{-# INLINE [1] discard #-}
-{-# INLINE [1] every #-}
-{-# INLINE [1] next #-}
+{-# INLINE each #-}
+{-# INLINE discard #-}
+{-# INLINE every #-}
+{-# INLINE next #-}
 
 infixr 8 >~>
 infixr 7 ~<<

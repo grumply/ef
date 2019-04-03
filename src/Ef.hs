@@ -127,7 +127,7 @@ instance (Functor (Messages ms), Functor m) => Functor (Messages (m ': ms)) wher
   {-# INLINE fmap #-}
   fmap = _fmapMsg
 
-{-# INLINE _fmapMsg #-}
+{-# INLINE [1] _fmapMsg #-}
 _fmapMsg :: forall a b m ms. (Functor m, Functor (Messages ms)) => (a -> b) -> Messages (m ': ms) a -> Messages (m ': ms) b
 _fmapMsg f = go
   where
@@ -141,7 +141,7 @@ instance (Functor f, Functor c) => MonadFree f (Narrative f c) where
 
 instance (Functor f, Functor c) => Functor (Narrative f c) where
   {-# INLINE fmap #-}
-  fmap = fmapn
+  fmap = _fmap
 
 instance (Functor f, Functor c) => Applicative (Narrative f c) where
   {-# INLINE pure #-}
@@ -154,6 +154,8 @@ instance (Functor f, Functor c) => Monad (Narrative f c) where
   return a = Return a
   {-# INLINE (>>=) #-}
   (>>=) = _bind
+  {-# INLINE (>>) #-}
+  (>>) ma mb = _bind ma (const mb)
 
 instance (Applicative f, Monad c) => MonadPlus (Narrative f c) where
   {-# INLINE mzero #-}
@@ -497,7 +499,6 @@ foldn' r l d = go
 buildn' :: forall f c a. ((a -> Narrative f c a) -> (c (Narrative f c a) -> Narrative f c a) -> (f (Narrative f c a) -> Narrative f c a) -> Narrative f c a) -> Narrative f c a
 buildn' f = f Return Lift Do
 
-
 {-# INLINE [1] fmapn #-}
 fmapn :: (Functor f, Functor c) => (a -> b) -> Narrative f c a -> Narrative f c b
 fmapn f (Return r) = Return (f r)
@@ -536,6 +537,7 @@ _fmap f n = foldn (Return . f) Lift Do n
 "foldn/augmentn" forall r l d (g :: forall b. (a -> b) -> (c b -> b) -> (f b -> b) -> b -> b) n.
                  foldn r l d (augmentn g n) = g r l d (foldn r l d n)
 
+"_fmap/fmapn" forall f n. _fmap f n = fmapn f n
 "fmapn" [~1] forall f n. fmapn f n = buildn (\r l d -> foldn (fmapnR r f) (fmapnFB l) (fmapnFB d) n)
 "fmapnRFB" [1] forall f. foldn (fmapnR Return f) (fmapnFB Lift) (fmapnFB Do) = fmapn f
 "fmapnR" forall r f g. fmapnR (fmapnR r f) g = fmapnR r (f . g)
