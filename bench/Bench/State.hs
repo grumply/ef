@@ -2,7 +2,8 @@
 {-# LANGUAGE DeriveFunctor #-}
 module Bench.State where
 
-import Trivial
+import Pure.Bench
+import Pure.Test
 
 import Ef
 
@@ -74,11 +75,11 @@ newtype State s k = State { runState :: s -> (s,k) }
 {-# INLINE eval #-}
 eval :: Monad c => Narrative (State s) c a -> s -> c (s,a)
 eval n = \s ->
-  Ef.thread (\(State ssk) s -> let ~(s',k) = ssk s in k s') n s
+  Ef.thread (\(State ssk) s -> let (s',k) = ssk s in k s') n s
 
 {-# INLINE interp #-}
 interp :: Monad c => StateT s c a -> s -> c (s,a)
-interp = I.thread (flip eval)
+interp = I.thread eval
 
 {-# INLINE get #-}
 get :: StateT s c s

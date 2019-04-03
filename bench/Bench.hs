@@ -1,6 +1,6 @@
-module Main where
+module Bench where
 
-import           Trivial
+import           Pure.Bench
 
 import qualified Bench.Reader as Reader
 import qualified Bench.Writer as Writer
@@ -14,7 +14,7 @@ import qualified Bench.AltState as AltState
 
 import           Control.Concurrent
 
-main = Trivial.runOnly "state" suite
+main = run suite
 
 suite = tests
   [      Reader.suite

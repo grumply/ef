@@ -1,6 +1,7 @@
 module Bench.Writer where
 
-import Trivial
+import Pure.Bench
+import Pure.Test
 
 import Ef
 

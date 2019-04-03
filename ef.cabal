@@ -10,8 +10,36 @@ category:            Development, Language
 build-type:          Simple
 cabal-version:       >=1.10
 
+
+executable ef-exe
+  main-is: Main.hs
+  other-modules:
+    Ef
+    Ef.Interpreter
+    Ef.Type.Bool
+    Ef.Type.List
+    Ef.Type.Nat
+    Ef.Type.Set
+  hs-source-dirs:
+      src
+  ghc-options: -O2
+  build-depends:
+      base >=4.7 && <5
+    , comonad
+    , free
+    , kan-extensions
+    , transformers
+    , transformers-base
+    , mmorph
+    , monad-control
+    , mtl
+    , resourcet
+    , exceptions
+    , gauge
+  default-language: Haskell2010
+
 library
-  hs-source-dirs: src
+  hs-source-dirs: src tests
   exposed-modules:
       Ef.Type.Set
       Ef.Type.Nat
@@ -20,6 +48,8 @@ library
       Ef.Path
       Ef.Interpreter
       Ef
+      Ef.Pipes
+      Ef.Pipes.Prelude
   build-depends:
       base >=4.8
     , comonad
@@ -33,3 +63,89 @@ library
     , resourcet
     , exceptions
   default-language: Haskell2010
+
+test-suite ef-test
+  type: exitcode-stdio-1.0
+  main-is: Test.hs
+  hs-source-dirs: src tests
+  ghc-options: -main-is Test
+  other-modules:
+    Ef.NewPipes
+    Ef.Noop
+    Ef.Pipes
+    Ef.Reader
+    Ef.State
+    Ef.Writer
+    Ef.Type.Set
+    Ef.Type.Nat
+    Ef.Type.Bool
+    Ef.Type.List
+    Ef.Path
+    Ef.Interpreter
+    Ef
+  build-depends:
+      base >=4.8
+    , comonad
+    , free
+    , kan-extensions
+    , transformers
+    , transformers-base
+    , mmorph
+    , monad-control
+    , mtl
+    , resourcet
+    , exceptions
+    , pure-test
+  default-language: Haskell2010
+
+benchmark ef-bench
+  type: exitcode-stdio-1.0
+  main-is: Bench.hs
+  ghc-options: -O2 -rtsopts -with-rtsopts=-T -main-is Bench
+  hs-source-dirs: src bench tests
+  other-modules:
+    Ef
+    Ef.Interpreter
+    Ef.Type.Bool
+    Ef.Type.List
+    Ef.Type.Nat
+    Ef.Type.Set 
+    Ef.Interpreter
+    Ef.Noop
+    Ef.Pipes
+    Ef.Reader
+    Ef.State
+    Ef.Type.Bool
+    Ef.Type.List
+    Ef.Type.Nat
+    Ef.Type.Set
+    Ef.Writer
+    Bench.Pipes.Chain
+    Bench.AltState
+    Bench.Functor
+    Bench.Interpreter
+    Bench.Noop
+    Bench.Pipes
+    Bench.Reader
+    Bench.RWS
+    Bench.Shared
+    Bench.State
+    Bench.Writer
+  build-depends:
+      base >=4.8
+    , comonad
+    , free
+    , kan-extensions
+    , transformers
+    , transformers-base
+    , mmorph
+    , monad-control
+    , mtl
+    , resourcet
+    , exceptions
+    , pure-test
+    , pure-bench
+    , pipes
+  default-language: Haskell2010
+
+

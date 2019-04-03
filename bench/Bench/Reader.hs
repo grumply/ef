@@ -2,7 +2,8 @@
 {-# LANGUAGE DeriveFunctor #-}
 module Bench.Reader where
 
-import Trivial
+import Pure.Bench
+import Pure.Test
 
 import Ef
 

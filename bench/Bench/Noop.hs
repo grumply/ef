@@ -1,6 +1,7 @@
 module Bench.Noop where
 
-import Trivial
+import Pure.Bench
+import Pure.Test
 
 import Ef
 import qualified Ef.Noop as Noop

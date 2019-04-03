@@ -4,7 +4,8 @@
 {-# LANGUAGE GADTs #-}
 module Bench.AltState where
 
-import Trivial
+import Pure.Bench
+import Pure.Test
 
 import Ef
 
@@ -77,7 +78,7 @@ eval n = \s -> Ef.thread go n s
 
 {-# INLINE interp #-}
 interp :: Monad c => StateT s c a -> s -> c (s,a)
-interp = I.thread (flip eval)
+interp = I.thread eval
 
 {-# INLINE get #-}
 get :: StateT s c s

@@ -1,6 +1,7 @@
 module Bench.Pipes.Chain where
 
-import Trivial
+import Pure.Bench
+import Pure.Test
 
 import qualified Ef.Pipes as Ef
 import qualified Pipes as Pipes

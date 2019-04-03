@@ -2,7 +2,8 @@
 {-# LANGUAGE TupleSections #-}
 module Bench.Interpreter where
 
-import Trivial
+import Pure.Bench
+import Pure.Test
 
 import Ef
 import Ef.Interpreter as I

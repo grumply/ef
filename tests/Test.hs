@@ -5,17 +5,15 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecursiveDo #-}
-module Main where
+module Test where
 
 import Ef
 import Ef.Interpreter as I
 
 import Data.Functor.Identity
 
-main = return ()
-
-main3 :: IO ()
-main3 = void $ do
+main :: IO ()
+main = void $ do
   let rdo = mdo
         z <- prompt "Number" ((+ n) . read)
         x <- return y

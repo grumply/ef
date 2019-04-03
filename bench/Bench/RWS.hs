@@ -1,7 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Bench.RWS where
 
-import Trivial
+import Pure.Bench
+import Pure.Test
 
 import Ef
 

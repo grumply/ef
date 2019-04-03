@@ -1,7 +1,8 @@
 {-# LANGUAGE DataKinds #-}
 module Bench.Functor where
 
-import Trivial
+import Pure.Bench
+import Pure.Test
 
 import Ef
 import Data.Functor.Identity

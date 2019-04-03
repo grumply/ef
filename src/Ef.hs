@@ -127,7 +127,7 @@ instance (Functor (Messages ms), Functor m) => Functor (Messages (m ': ms)) wher
   {-# INLINE fmap #-}
   fmap = _fmapMsg
 
-{-# INLINE [1] _fmapMsg #-}
+{-# INLINE _fmapMsg #-}
 _fmapMsg :: forall a b m ms. (Functor m, Functor (Messages ms)) => (a -> b) -> Messages (m ': ms) a -> Messages (m ': ms) b
 _fmapMsg f = go
   where
@@ -154,8 +154,6 @@ instance (Functor f, Functor c) => Monad (Narrative f c) where
   return a = Return a
   {-# INLINE (>>=) #-}
   (>>=) = _bind
-  {-# INLINE (>>) #-}
-  (>>) ma mb = _bind ma (const mb)
 
 instance (Applicative f, Monad c) => MonadPlus (Narrative f c) where
   {-# INLINE mzero #-}
@@ -457,7 +455,7 @@ infixr 5 !
 (!) :: ((Modules ts) `Delta` (Messages ms), Functor (Messages ms), Monad c) => Object ts c -> Ef ms c a -> c (Object ts c,a)
 (!) = runWith
 
-{-# NOINLINE foldn #-}
+{-# INLINE [0] foldn #-}
 foldn :: (Functor c, Functor f)
       => (a -> b)
       -> (c b -> b)
@@ -474,11 +472,11 @@ foldn r l d = go
 buildn :: (forall b. (a -> b) -> (c b -> b) -> (f b -> b) -> b) -> Narrative f c a
 buildn f = f Return Lift Do
 
-{-# INLINE [2] run #-}
+{-# INLINE run #-}
 run :: (Functor f, Monad m) => (f (m a) -> m a) -> Narrative f m a -> m a
 run = foldn return join
 
-{-# INLINE [2] thread #-}
+{-# INLINE thread #-}
 thread :: (Functor f, Monad m) => (f (r -> m (r,a)) -> r -> m (r, a)) -> Narrative f m a -> r -> m (r,a)
 thread = foldn (\a r -> return (r,a)) (\cf a -> cf >>= ($ a))
 
@@ -498,6 +496,7 @@ foldn' r l d = go
 {-# INLINE [1] buildn' #-}
 buildn' :: forall f c a. ((a -> Narrative f c a) -> (c (Narrative f c a) -> Narrative f c a) -> (f (Narrative f c a) -> Narrative f c a) -> Narrative f c a) -> Narrative f c a
 buildn' f = f Return Lift Do
+
 
 {-# INLINE [1] fmapn #-}
 fmapn :: (Functor f, Functor c) => (a -> b) -> Narrative f c a -> Narrative f c b
@@ -549,13 +548,13 @@ _fmap f n = foldn (Return . f) Lift Do n
 "foldn' (Lift c)"   forall r l d c. foldn' r l d (Lift c)   = l (fmap (foldn' r l d) c)
 "foldn' (Do m)"     forall r l d m. foldn' r l d (Do m)     = d (fmap (foldn' r l d) m)
 
-"_bind (Return r)" [~2] forall r f. _bind (Return r) f = f r
-"_bind (Lift c)"   [~2] forall c f. _bind (Lift c) f   = Lift (fmap (\a -> _bind a f) c)
-"_bind (Do m)"     [~2] forall m f. _bind (Do m) f     = Do (fmap (\a -> _bind a f) m)
+"_bind (Return r)" forall r f. _bind (Return r) f = f r
+"_bind (Lift c)"   forall c f. _bind (Lift c) f   = Lift (fmap (\a -> _bind a f) c)
+"_bind (Do m)"     forall m f. _bind (Do m) f     = Do (fmap (\a -> _bind a f) m)
 
-"_fmap (Return r)" [~2] forall r f. _fmap f (Return r) = Return (f r)
-"_fmap (Lift c)"   [~2] forall c f. _fmap f (Lift c)   = Lift (fmap (_fmap f) c)
-"_fmap (Do m)"     [~2] forall m f. _fmap f (Do m)     = Do (fmap (_fmap f) m)
+"_fmap (Return r)" forall r f. _fmap f (Return r) = Return (f r)
+"_fmap (Lift c)"   forall c f. _fmap f (Lift c)   = Lift (fmap (_fmap f) c)
+"_fmap (Do m)"     forall m f. _fmap f (Do m)     = Do (fmap (_fmap f) m)
   #-}
 
 {- for reference
