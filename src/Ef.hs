@@ -28,6 +28,7 @@ module Ef (module Ef, module Export) where
 import Control.Applicative as Export
 import Control.Monad as Export
 import Control.Monad.Codensity as Export
+import Control.Monad.Fail
 import Control.Monad.Fix as Export
 import Control.Monad.Free as Export hiding (unfold,cutoff)
 import Control.Monad.IO.Class as Export
@@ -259,7 +260,7 @@ data Restore m = Unmasked | Masked (forall x . m x -> m x)
 {-# INLINE liftMask #-}
 liftMask
     :: forall f c x.
-       (Functor f, MonadIO c, MonadCatch c)
+       (Functor f, MonadIO c, MonadCatch c, MonadFail c)
     => (forall s . ((forall x . c x -> c x) -> c s) -> c s)
     -> ((forall x . Narrative f c x -> Narrative f c x) -> Narrative f c x)
     -> Narrative f c x
@@ -291,7 +292,7 @@ liftMask maskVariant k = do
 
     loop $ k unmask
 
-instance (MonadMask c, MonadIO c, Functor f) => MonadMask (Narrative f c) where
+instance (MonadMask c, MonadFail c, MonadIO c, Functor f) => MonadMask (Narrative f c) where
     mask                = liftMask mask
     uninterruptibleMask = liftMask uninterruptibleMask
 
