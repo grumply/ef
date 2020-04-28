@@ -22,8 +22,8 @@ type RWS r w s m a = Narrative (Reader r) (Narrative (Writer w) (Narrative (Stat
 
 rws :: Test Sync ()
 rws = do
-  br1 <- nfio "transformers" (run_t t_go)
-  br2 <- nfio "ef" (run_ef ef_go)
+  br1 <- scope "transformers" $ nfio (run_t t_go)
+  br2 <- scope "ef" $ nfio (run_ef ef_go)
   report br1 br2
 
 {-# INLINE run_t #-}

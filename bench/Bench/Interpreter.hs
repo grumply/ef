@@ -18,8 +18,8 @@ suite = scope "interpreter" $ tests
   ]
 
 noops = scope "noop" $ do
-  br0 <- nf "direct"      (runIdentity . Noop.noops . directNoopN) 100
-  br1 <- nf "interpreter" (runIdentity . Noop.noopsI . interpretedNoopN ) 100
+  br0 <- scope "direct" $ nf (runIdentity . Noop.noops . directNoopN) 100
+  br1 <- scope "interpreter" $ nf (runIdentity . Noop.noopsI . interpretedNoopN ) 100
   report br0 br1
 
 {-# INLINE directNoopN #-}

@@ -1,4 +1,4 @@
-module Bench where
+module Main where
 
 import           Pure.Bench
 
@@ -16,7 +16,9 @@ import           Control.Concurrent
 
 main = run suite
 
-suite = tests
+suite = tests [ AltState.suite ]
+
+others =
   [      Reader.suite
   ,      Writer.suite
   ,       State.suite

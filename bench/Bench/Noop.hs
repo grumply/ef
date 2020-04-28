@@ -13,12 +13,12 @@ suite = scope "noop" $ tests
   [ noops ]
 
 noops = do
-  br0 <- nf "1 no-op" (runIdentity . Noop.noops . noopN) 1
-  br1 <- nf "1 no-op; interpreted" (runIdentity . Noop.noopsI . noopNI) 1
+  br0 <- scope "1 no-op" $ nf (runIdentity . Noop.noops . noopN) 1
+  br1 <- scope "1 no-op; interpreted" $ nf (runIdentity . Noop.noopsI . noopNI) 1
   report br0 br1
 
-  br0 <- nf "100 no-ops" (runIdentity . Noop.noops . noopN) 100
-  br1 <- nf "100 no-ops; interpreted" (runIdentity . Noop.noopsI . noopNI) 100
+  br0 <- scope "100 no-ops" $ nf (runIdentity . Noop.noops . noopN) 100
+  br1 <- scope "100 no-ops; interpreted" $ nf (runIdentity . Noop.noopsI . noopNI) 100
   report br0 br1
 
 {-# INLINE noopN #-}

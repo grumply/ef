@@ -19,8 +19,8 @@ suite = scope "reader" $ tests
   ]
 
 reader = do
-  br1 <- nf "transformer" (\n -> runIdentity $ mtl_test n) (1 :: Int)
-  br2 <- nf "ef" (\n -> runIdentity $ ef_test n) (1 :: Int)
+  br1 <- scope "transformer" $ nf (\n -> runIdentity $ mtl_test n) (1 :: Int)
+  br2 <- scope "ef" $ nf (\n -> runIdentity $ ef_test n) (1 :: Int)
   report br1 br2
 
 {-# INLINE mtl_test #-}

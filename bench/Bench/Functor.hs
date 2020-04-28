@@ -30,13 +30,13 @@ functorSuite = tests [
 
 fmapReturn :: Test Sync ()
 fmapReturn = scope "fmap/return" $ do
-  br1 <- nf "identity" runIdentity identity_fmap_return
+  br1 <- scope "identity" $ nf runIdentity identity_fmap_return
   notep br1
 
-  br3 <- nf "identityT/identity" (runIdentity . runIdentityT) identityT_fmap_return
+  br3 <- scope "identityT/identity" $ nf (runIdentity . runIdentityT) identityT_fmap_return
   notep br3
 
-  br2 <- nf "ef/identity" (runIdentity . eval) ef_fmap_return
+  br2 <- scope "ef/identity" $ nf (runIdentity . eval) ef_fmap_return
   notep br2
 
 ef_fmap_lift_return :: Ef '[] Identity Int
@@ -56,11 +56,11 @@ stateT_fmap_lift_return = fmap (+1) $ do
 
 fmapLiftReturn :: Test Sync ()
 fmapLiftReturn = scope "fmap/lift/return" $ do
-  br <- nf "identityT/identity" (runIdentity . runIdentityT) identityT_fmap_lift_return
+  br <- scope "identityT/identity" $ nf (runIdentity . runIdentityT) identityT_fmap_lift_return
   notep br
 
-  br <- nf "stateT/identity" (runIdentity . (`evalStateT` ())) stateT_fmap_lift_return
+  br <- scope "stateT/identity" $ nf (runIdentity . (`evalStateT` ())) stateT_fmap_lift_return
   notep br
 
-  br <- nf "ef/identity" (runIdentity . eval) ef_fmap_lift_return
+  br <- scope "ef/identity" $ nf (runIdentity . eval) ef_fmap_lift_return
   notep br

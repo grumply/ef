@@ -14,8 +14,8 @@ suite = scope "chain" $ tests
   ]
 
 simple n = scope ("simple " ++ show n) $ do
-  br1 <- nfio "ef"    (ef    n)
-  br2 <- nfio "pipes" (pipes n)
+  br1 <- scope "ef" $ nfio (ef    n)
+  br2 <- scope "pipes" $ nfio (pipes n)
   report br1 br2
 
 {-# INLINE [1] ef_map #-}

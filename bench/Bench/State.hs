@@ -1,5 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE BangPatterns #-}
 module Bench.State where
 
 import Pure.Bench
@@ -13,6 +14,8 @@ import qualified Control.Monad.Trans.State as T
 
 import Data.Functor.Identity
 
+import Control.Concurrent
+
 suite :: Test Sync ()
 suite = scope "state" $ tests
   [ Bench.State.state
@@ -24,31 +27,31 @@ state = tests
   , fmapChain
   ]
 
+{-# INLINE addReturn #-}
 addReturn :: Test Sync ()
 addReturn = scope "add/return" $ do
   let (_,a) = runIdentity (interp ef_add_return 1)
       b = runIdentity (T.evalStateT mtl_add_return 1)
   expect (a == b)
-  br1 <- nf "transformers" (runIdentity . T.evalStateT mtl_add_return) 1
-  br2 <- nf "ef" (runIdentity . interp ef_add_return) 1
-  report br1 br2
+  scope "transformers" $ whnf (runIdentity . T.evalStateT mtl_add_return) 1 >>= summary
+  scope "ef" $ whnf (runIdentity . interp ef_add_return) 1 >>= summary
 
+{-# INLINE fmapChain #-}
 fmapChain :: Test Sync ()
 fmapChain = scope "fmap/fmap/fmap" $ do
-  br1 <- nf "transformers" (runIdentity . T.evalStateT mtl_fmap) (1 :: Int)
-  br2 <- nf "ef" (runIdentity . interp ef_fmap) (1 :: Int)
-  report br1 br2
+  scope "transformers" $ whnf (runIdentity . T.evalStateT mtl_fmap) (1 :: Int) >>= summary
+  scope "ef" $ whnf (runIdentity . interp ef_fmap) (1 :: Int) >>= summary
 
 {-# INLINE mtl_fmap #-}
-mtl_fmap :: T.StateT Int Identity Int
+mtl_fmap :: Monad m => T.StateT Int m Int
 mtl_fmap = fmap (+1) . fmap (+1) . fmap (+1) $ T.get
 
 {-# INLINE ef_fmap #-}
-ef_fmap :: StateT Int Identity Int
+ef_fmap :: Monad m => StateT Int m Int
 ef_fmap = fmap (+1) . fmap (+1) . fmap (+1) $ get
 
 {-# INLINE ef_add_return #-}
-ef_add_return :: StateT Int Identity Int
+ef_add_return :: Monad m => StateT Int m Int
 ef_add_return = do
   w :: Int <- get
   x :: Int <- get
@@ -58,7 +61,7 @@ ef_add_return = do
   get
 
 {-# INLINE mtl_add_return #-}
-mtl_add_return :: T.StateT Int Identity Int
+mtl_add_return :: Monad m => T.StateT Int m Int
 mtl_add_return = do
   w :: Int <- T.get
   x :: Int <- T.get

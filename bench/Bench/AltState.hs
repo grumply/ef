@@ -28,24 +28,20 @@ state = tests
 
 addReturn :: Test Sync ()
 addReturn = scope "add/return" $ do
-  br1 <- nf "transformers" (runIdentity . mtl_test) 1
-  br2 <- nf "ef" (runIdentity . ef_test) 1
+  br1 <- scope "transformers" $ nf (runIdentity . mtl_test) 1
+  br2 <- scope "ef" $ nf (runIdentity . ef_test) 1
   report br1 br2
 
-{-# INLINE ef_test #-}
 ef_test = eval ef_add_return
 
-{-# INLINE mtl_test #-}
 mtl_test = T.evalStateT mtl_add_return
 
-{-# INLINE ef_add_return #-}
 ef_add_return :: StateT Int Identity ()
 ef_add_return = forM_ [1..1000 :: Int] $ \_ -> do
   x :: Int <- get
   y <- get
   put $! x + y
 
-{-# INLINE mtl_add_return #-}
 mtl_add_return :: T.StateT Int Identity ()
 mtl_add_return = forM_ [1..1000 :: Int] $ \_ -> do
   x :: Int <- T.get
