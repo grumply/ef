@@ -1,17 +1,15 @@
 -- This is a port of Gabriel Gonzalez's BSD-3 licensed pipes library: https://hackage.haskell.org/package/pipes
 {-# OPTIONS_GHC -fno-warn-inline-rule-shadowing -fno-warn-missing-methods #-}
 {-# language DeriveFunctor #-}
-{-# language DeriveAnyClass #-}
 {-# language RankNTypes #-}
-{-# language GeneralizedNewtypeDeriving #-}
 {-# language ScopedTypeVariables #-}
-{-# language StandaloneDeriving #-}
 {-# language InstanceSigs #-}
 {-# language NoCPP #-}
 module Ef.Pipes where
 
 import Ef hiding (Proxy,pull,push)
 import Data.Foldable as F
+import Control.Monad.Fail
 
 import Unsafe.Coerce
 
@@ -99,6 +97,8 @@ instance Monad m => Applicative (ListT m) where
 instance Monad m => Monad (ListT m) where
   return a = Select (yield a)
   m >>= f = Select $ for (enumerate m) (enumerate . f)
+
+instance Monad m => MonadFail (ListT m) where
   fail _ = mzero
 
 instance Monad m => Alternative (ListT m) where
