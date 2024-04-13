@@ -110,7 +110,7 @@ instance (MonadIO c, Functor f) => MonadIO (Narrative f c) where
   {-# INLINE liftIO #-}
   liftIO ioa = buildn $ \r l _ -> l (fmap r (liftIO ioa))
 
-instance MonadTrans (Narrative f) where
+instance Functor f => MonadTrans (Narrative f) where
   {-# INLINE lift #-}
   lift ca = buildn $ \r l _ -> l (fmap r ca)
 
