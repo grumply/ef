@@ -51,7 +51,7 @@ instance (Functor f, MonadFix c) => MonadFix (Interp ctx f c) where
   {-# INLINE mfix #-}
   mfix f = Interp $ \d ctx -> mfix (\(_,a) -> interpret (f a) d ctx)
 
-instance MonadTrans (Interp ctx f) where
+instance Functor f => MonadTrans (Interp ctx f) where
   {-# INLINE lift #-}
   lift f = Interp $ \k ctx -> k ctx (lift f)
 
